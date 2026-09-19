@@ -5,6 +5,7 @@ import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.Supplier;
 
 import static org.junit.Assert.*;
 
@@ -141,6 +142,96 @@ public class AsyncLockTests {
     }
 
 
+
+    @Test
+    public void aFailedWriteDoesntPoisonTheWriteQueue() {
+        AsyncLock<Integer> lock = new AsyncLock<>(Futures.of(7));
+
+        CompletableFuture<Integer> failed = lock.runWithLock(x -> Futures.errored(new RuntimeException("boom")));
+        assertTrue(failed.isCompletedExceptionally());
+
+        CompletableFuture<Integer> next = lock.runWithLock(x -> Futures.of(x + 1));
+        assertTrue("the write queue is still usable after a failed write", next.isDone());
+        assertEquals(8, (int) next.join());
+    }
+
+    @Test
+    public void aFailedInitialValueDoesntHangTheWriteQueue() {
+        AsyncLock<Integer> lock = new AsyncLock<>(Futures.errored(new RuntimeException("boom")));
+
+        CompletableFuture<Integer> failed = lock.runWithLock(x -> Futures.of(x));
+        assertTrue(failed.isCompletedExceptionally());
+
+        // with no updater there is no fresh value to recover, but the queue must still terminate
+        // rather than be left permanently incomplete
+        CompletableFuture<Integer> next = lock.runWithLock(x -> Futures.of(x));
+        assertTrue("the write queue terminates rather than hanging", next.isDone());
+        assertTrue("and terminates with the failure, not a null value", next.isCompletedExceptionally());
+    }
+
+    @Test
+    public void anUpdaterThatFailsDoesntHangTheWriteQueue() {
+        for (Supplier<CompletableFuture<Integer>> broken : List.<Supplier<CompletableFuture<Integer>>>of(
+                () -> Futures.errored(new RuntimeException("updater failed")),
+                () -> { throw new RuntimeException("updater threw"); },
+                () -> null)) {
+            AsyncLock<Integer> lock = new AsyncLock<>(Futures.of(7));
+
+            CompletableFuture<Integer> failed = lock.runWithLock(x -> Futures.errored(new RuntimeException("boom")), broken);
+            assertTrue(failed.isCompletedExceptionally());
+
+            CompletableFuture<Integer> next = lock.runWithLock(x -> Futures.of(x + 1), broken);
+            assertTrue("the write queue is still usable", next.isDone());
+        }
+    }
+
+    @Test
+    public void anUpdaterThatFailsDoesntHangAQueuedWrite() {
+        for (Supplier<CompletableFuture<Integer>> broken : List.<Supplier<CompletableFuture<Integer>>>of(
+                () -> Futures.errored(new RuntimeException("updater failed")),
+                () -> { throw new RuntimeException("updater threw"); },
+                () -> null)) {
+            AsyncLock<Integer> lock = new AsyncLock<>(Futures.errored(new RuntimeException("boom")));
+
+            CompletableFuture<Integer> failed = lock.runWithLock(x -> Futures.of(x), broken);
+            assertTrue(failed.isCompletedExceptionally());
+
+            CompletableFuture<Integer> next = lock.runWithLock(x -> Futures.of(x), broken);
+            assertTrue("the write queue is still usable", next.isDone());
+        }
+    }
+
+    @Test
+    public void aFailedInitialValueIsRecoveredForWrites() {
+        AsyncLock<Integer> lock = new AsyncLock<>(Futures.errored(new RuntimeException("boom")));
+
+        CompletableFuture<Integer> failed = lock.runWithLock(x -> Futures.of(x), () -> Futures.of(5));
+        assertTrue(failed.isCompletedExceptionally());
+
+        List<Integer> startedFrom = new ArrayList<>();
+        CompletableFuture<Integer> next = lock.runWithLock(x -> {
+            startedFrom.add(x);
+            return Futures.of(x);
+        }, () -> Futures.of(5));
+        assertEquals(Arrays.asList(5), startedFrom);
+        assertEquals(5, (int) next.join());
+    }
+
+    @Test
+    public void anUpdaterThatFailsDoesntHangTheReadQueue() {
+        for (Supplier<CompletableFuture<Integer>> broken : List.<Supplier<CompletableFuture<Integer>>>of(
+                () -> Futures.errored(new RuntimeException("updater failed")),
+                () -> { throw new RuntimeException("updater threw"); },
+                () -> null)) {
+            AsyncLock<Integer> lock = new AsyncLock<>(Futures.errored(new RuntimeException("boom")));
+
+            CompletableFuture<Integer> failed = lock.runWithReadLock(x -> Futures.of(x), broken);
+            assertTrue(failed.isCompletedExceptionally());
+
+            CompletableFuture<Integer> next = lock.runWithReadLock(x -> Futures.of(x), broken);
+            assertTrue("the read queue is still usable", next.isDone());
+        }
+    }
 
     @Test
     public void writesAreStillSerialised() {
