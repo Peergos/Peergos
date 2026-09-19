@@ -1225,6 +1225,36 @@ public abstract class UserTests {
     }
 
     /**
+     * A recipient lands on the first item in the link, which is the owner's order and not the
+     * alphabetical one a directory listing would give. So this names its members backwards.
+     */
+    @Test
+    public void aMultiItemLinkLandsOnItsFirstMember() throws Exception {
+        String username = generateUsername();
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, "test", network, crypto);
+        context.getUserRoot().join().mkdir("zeta", context.network, false, context.mirrorBatId(), crypto).join();
+        context.getUserRoot().join().mkdir("alpha", context.network, false, context.mirrorBatId(), crypto).join();
+
+        LinkProperties link = context.createSecretLink(
+                Arrays.asList(username + "/zeta", username + "/alpha"), Collections.emptyList(),
+                Optional.empty(), Optional.empty(), "", false).join();
+
+        UserContext fromLink = UserContext.fromSecretLinkV2(link.toLinkString(context.signer.publicKeyHash),
+                () -> Futures.of(""), network.clear(), crypto).join();
+        Assert.assertEquals("lands on the first member, not the first alphabetically",
+                "/" + username + "/zeta", fromLink.getEntryPath().join());
+        Assert.assertTrue("and the other member is still reachable",
+                fromLink.getByPath(username + "/alpha").join().isPresent());
+
+        // and reordering the members moves where it lands, without the link changing
+        context.setSecretLinkMembers(Arrays.asList(username + "/alpha", username + "/zeta"),
+                Collections.emptyList(), link).join();
+        UserContext reordered = UserContext.fromSecretLinkV2(link.toLinkString(context.signer.publicKeyHash),
+                () -> Futures.of(""), network.clear(), crypto).join();
+        Assert.assertEquals("/" + username + "/alpha", reordered.getEntryPath().join());
+    }
+
+    /**
      * The point of the feature: a link handed out once can grow afterwards, and the string does
      * not change. That is also the hazard - whoever holds it gets the new items with no further
      * action by the sender - so pin it rather than leave it implied.

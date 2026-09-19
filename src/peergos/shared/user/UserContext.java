@@ -72,6 +72,15 @@ public class UserContext {
     // The root of the global filesystem as viewed by this context
     @JsProperty
     public TrieNode entrie; // ba dum che!
+    /**
+     * Where a secret link should land its recipient: the first item in the link, in the order the
+     * owner put them in.
+     *
+     * The trie cannot say which that is - it mounts every member at its own real path, and a
+     * listing of those is ordered by name. The payload is what carries the owner's order, so it
+     * has to be remembered while it is in hand.
+     */
+    public Optional<String> linkEntryPath = Optional.empty();
 
     // Contact external world
     @JsProperty
@@ -846,8 +855,9 @@ public class UserContext {
                 crypto, userData, TrieNodeImpl.empty(), null, null,
                 new SharedWithCache(null, null, network, crypto), Optional.empty());
         return buildTrieFromCaps(caps, context.entrie, network)
-                .thenApply(trieNode -> {
-                    context.entrie = trieNode;
+                .thenApply(built -> {
+                    context.entrie = built.left;
+                    context.linkEntryPath = built.right.stream().findFirst();
                     return context;
                 });
     }
@@ -872,18 +882,21 @@ public class UserContext {
                         })));
     }
 
-    private static CompletableFuture<TrieNode> buildTrieFromCaps(List<AbsoluteCapability> caps,
-                                                                TrieNode currentRoot,
-                                                                NetworkAccess network) {
+    /** The mounted trie, and each member's real path in the order the caps were given. */
+    private static CompletableFuture<Pair<TrieNode, List<String>>> buildTrieFromCaps(List<AbsoluteCapability> caps,
+                                                                                     TrieNode currentRoot,
+                                                                                     NetworkAccess network) {
         List<CompletableFuture<RetrievedEntryPoint>> retrieved = caps.stream()
                 .map(cap -> NetworkAccess.retrieveEntryPoint(new EntryPoint(cap, ""), network))
                 .collect(Collectors.toList());
-        return Futures.reduceAll(retrieved, currentRoot,
-                (c, f) -> f.thenCompose(r -> r.entry.isValid(r.getPath(), network)
+        return Futures.reduceAll(retrieved, new Pair<>(currentRoot, (List<String>) new ArrayList<String>()),
+                (acc, f) -> f.thenCompose(r -> r.entry.isValid(r.getPath(), network)
                         .thenApply(valid -> {
                             if (! valid)
                                 throw new IllegalStateException("Invalid link!");
-                            return c.put(r.getPath(), r.entry);
+                            List<String> paths = new ArrayList<>(acc.right);
+                            paths.add(r.getPath());
+                            return new Pair<>(acc.left.put(r.getPath(), r.entry), paths);
                         })),
                 (a, b) -> b);
     }
@@ -1180,6 +1193,10 @@ public class UserContext {
     public CompletableFuture<String> getEntryPath() {
         if (username != null)
             return CompletableFuture.completedFuture("/");
+        // a link with several items lands on the first of them, which the trie cannot tell us:
+        // every member is mounted at its own path and a listing of those is ordered by name
+        if (linkEntryPath.isPresent())
+            return CompletableFuture.completedFuture(linkEntryPath.get());
 
         CompletableFuture<Optional<FileWrapper>> dir = getByPath("/");
         return dir.thenCompose(opt -> getLinkPath(opt.get()))
