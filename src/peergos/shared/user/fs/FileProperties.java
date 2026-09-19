@@ -249,7 +249,7 @@ public class FileProperties implements Cborable {
         streamSecret.ifPresent(secret -> state.put("p", new CborObject.CborByteArray(secret)));
         // absent means the legacy size, so the cbor of every existing file is unchanged
         if (chunkSize != Chunk.LEGACY_SIZE)
-            state.put("cs", new CborObject.CborLong(log2(chunkSize)));
+            state.put("cs", new CborObject.CborLong(chunkSizeLog2(chunkSize)));
         return CborObject.CborMap.build(state);
     }
 
@@ -297,14 +297,14 @@ public class FileProperties implements Cborable {
         return Chunk.LEGACY_SIZE;
     }
 
-    private static int chunkSizeFromLog2(long log2) {
+    public static int chunkSizeFromLog2(long log2) {
         int size = 1 << log2;
         if (log2 < 0 || log2 > 30 || (size != Chunk.DEFAULT_SIZE && size != Chunk.LEGACY_SIZE))
             throw new IllegalStateException("Unsupported chunk size in file properties: 2^" + log2);
         return size;
     }
 
-    private static int log2(int size) {
+    public static long chunkSizeLog2(int size) {
         return Integer.numberOfTrailingZeros(size);
     }
 

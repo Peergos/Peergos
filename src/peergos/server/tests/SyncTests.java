@@ -685,7 +685,7 @@ public class SyncTests {
         byte[] data = new byte[1024 * 1024];
         new Random(1).nextBytes(data);
         Files.write(base2.resolve("f.bin"), data, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-        HashTree hash = srcFs.hashFile(Paths.get("f.bin"), Optional.empty(), "f.bin", syncDb, data.length);
+        HashTree hash = srcFs.hashFile(Paths.get("f.bin"), Optional.empty(), "f.bin", syncDb, data.length, Chunk.LEGACY_SIZE);
         FileState remote = new FileState("f.bin", srcFs.getLastModified(Paths.get("f.bin")), data.length, hash);
         List<CopyOp> ops = List.of(new CopyOp(true, srcFs.resolve("f.bin"), targetFs.resolve("f.bin"), remote, null,
                 0, data.length, peergos.shared.user.fs.ResumeUploadProps.random(crypto)));

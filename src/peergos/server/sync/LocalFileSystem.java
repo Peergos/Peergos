@@ -255,8 +255,8 @@ public class LocalFileSystem implements SyncFilesystem {
     }
 
     @Override
-    public HashTree hashFile(Path p, Optional<FileWrapper> meta, String relPath, SyncState syncedVersions, long size) {
-        return ScryptJava.hashFile(root.resolve(p), hasher, size);
+    public HashTree hashFile(Path p, Optional<FileWrapper> meta, String relPath, SyncState syncedVersions, long size, int chunkSize) {
+        return ScryptJava.hashFile(root.resolve(p), hasher, size, chunkSize);
     }
 
     @Override

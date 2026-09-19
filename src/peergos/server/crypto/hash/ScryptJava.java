@@ -108,7 +108,49 @@ public class ScryptJava implements Hasher {
                 .thenApply(h -> new Multihash(Multihash.Type.sha2_256, h));
     }
 
-    public static List<byte[]> hashChunks(InputStream fin, long size) {
+    /**
+     * The per-chunk values of a run of a file, starting at chunk {@code firstChunk}.
+     *
+     * The legacy path streams 64 KiB at a time into a running sha256, which is why it is kept
+     * rather than folded into the BLAKE3 one: a chunk's BLAKE3 chaining value cannot be computed
+     * from a running digest, so that path has to hold a whole chunk, and there is no reason to
+     * make every existing file pay for that.
+     */
+    public static List<byte[]> hashChunks(InputStream fin, long size, long firstChunk, int chunkSize,
+                                          long fileSize, Hasher hasher) {
+        if (Chunk.usesBlake3(chunkSize))
+            return blake3Chunks(fin, size, firstChunk, chunkSize, fileSize, hasher);
+        return sha256Chunks(fin, size, chunkSize);
+    }
+
+    private static List<byte[]> blake3Chunks(InputStream fin, long size, long firstChunk, int chunkSize,
+                                             long fileSize, Hasher hasher) {
+        List<byte[]> chunkHashes = new ArrayList<>();
+        boolean onlyChunk = fileSize <= chunkSize;
+        byte[] buf = new byte[chunkSize];
+        try {
+            for (long done = 0; done < size || (size == 0 && chunkHashes.isEmpty()); ) {
+                int want = (int) Math.min(chunkSize, size - done);
+                int read = 0;
+                while (read < want) {
+                    int n = fin.read(buf, read, want - read);
+                    if (n < 0)
+                        throw new IllegalStateException("File ended after " + (done + read) + " of " + size + " bytes");
+                    read += n;
+                }
+                byte[] chunk = read == buf.length ? buf : Arrays.copyOf(buf, read);
+                chunkHashes.add(HashTree.chunkHash(chunk, firstChunk + chunkHashes.size(), chunkSize, onlyChunk, hasher).join());
+                done += read;
+                if (size == 0)
+                    break;
+            }
+            return chunkHashes;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static List<byte[]> sha256Chunks(InputStream fin, long size, int chunkSize) {
         List<byte[]> chunkHashes = new ArrayList<>();
         int chunkOffset = 0;
         byte[] buf = new byte[64 * 1024];
@@ -117,8 +159,8 @@ public class ScryptJava implements Hasher {
             for (long i = 0; i < size; ) {
                 int read = fin.read(buf);
                 chunkOffset += read;
-                if (chunkOffset >= Chunk.LEGACY_SIZE) {
-                    int thisChunk = read - chunkOffset + Chunk.LEGACY_SIZE;
+                if (chunkOffset >= chunkSize) {
+                    int thisChunk = read - chunkOffset + chunkSize;
                     chunkHash.update(buf, 0, thisChunk);
                     chunkHashes.add(chunkHash.digest());
                     chunkHash = MessageDigest.getInstance("SHA-256");
@@ -130,7 +172,7 @@ public class ScryptJava implements Hasher {
                     chunkHash.update(buf, 0, read);
                 i += read;
             }
-            if (size == 0 || size % Chunk.LEGACY_SIZE != 0)
+            if (size == 0 || size % chunkSize != 0)
                 chunkHashes.add(chunkHash.digest());
             return chunkHashes;
         } catch (IOException | NoSuchAlgorithmException e) {
@@ -138,12 +180,13 @@ public class ScryptJava implements Hasher {
         }
     }
 
-    public static List<byte[]> parallelHashChunks(Supplier<InputStream> fins, int nThreads, long size) {
-        int nChunks = (int) ((size + Chunk.LEGACY_SIZE - 1)/ Chunk.LEGACY_SIZE);
+    public static List<byte[]> parallelHashChunks(Supplier<InputStream> fins, int nThreads, long size,
+                                                 int chunkSize, Hasher hasher) {
+        int nChunks = (int) ((size + chunkSize - 1)/ chunkSize);
         long chunksPerThread = (nChunks + nThreads - 1) / nThreads;
-        if (size < Chunk.LEGACY_SIZE)
+        if (size < chunkSize)
             try (InputStream fin = fins.get()) {
-                return hashChunks(fin, size);
+                return hashChunks(fin, size, 0, chunkSize, size, hasher);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -151,14 +194,14 @@ public class ScryptJava implements Hasher {
                 .parallel()
                 .mapToObj(i -> {
                     try (InputStream fin = fins.get()) {
-                        long start = i * chunksPerThread * Chunk.LEGACY_SIZE;
-                        long end = Math.min(size, (i + 1) * chunksPerThread * Chunk.LEGACY_SIZE);
+                        long start = i * chunksPerThread * chunkSize;
+                        long end = Math.min(size, (i + 1) * chunksPerThread * chunkSize);
                         if (start == end || start > size)
                             return Collections.<byte[]>emptyList();
                         long skipped = fin.skip(start);
                         if (skipped != start)
                             throw new IllegalStateException("Skip did not complete!");
-                        return hashChunks(fin, end - start);
+                        return hashChunks(fin, end - start, i * chunksPerThread, chunkSize, size, hasher);
                     } catch (IOException e) {
                         throw new IllegalStateException(e);
                     }
@@ -167,18 +210,23 @@ public class ScryptJava implements Hasher {
                 .collect(Collectors.toList());
     }
 
-    public static HashTree hashFile(Path p, Hasher hasher) {
-        return hashFile(p, hasher, p.toFile().length());
+    public static HashTree hashFile(Path p, Hasher hasher, int chunkSize) {
+        return hashFile(p, hasher, p.toFile().length(), chunkSize);
     }
 
-    public static HashTree hashFile(Path p, Hasher hasher, long size) {
+    /**
+     * @param chunkSize the chunk size of the file this one is being compared against, which
+     *                  decides the scheme as well as the cut - not a property of the local file,
+     *                  which has none.
+     */
+    public static HashTree hashFile(Path p, Hasher hasher, long size, int chunkSize) {
         List<byte[]> chunkHashes = parallelHashChunks(() -> {
             try {
                 return new FileInputStream(p.toFile());
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
-        }, Runtime.getRuntime().availableProcessors(), size);
-        return HashTree.build(chunkHashes, Chunk.LEGACY_SIZE, hasher).join();
+        }, Runtime.getRuntime().availableProcessors(), size, chunkSize, hasher);
+        return HashTree.build(chunkHashes, chunkSize, hasher).join();
     }
 }

@@ -93,7 +93,13 @@ public interface SyncFilesystem {
 
     Optional<Thumbnail> getThumbnail(Path p);
 
-    HashTree hashFile(Path p, Optional<FileWrapper> meta, String relativePath, SyncState syncedState, long size);
+    /**
+     * @param chunkSize the chunk size, and so the scheme, of the file this one is compared
+     *                  against. A local file has no properties to read it from, and the two
+     *                  schemes give different roots for the same bytes, so a wrong value here
+     *                  makes an unchanged file look changed.
+     */
+    HashTree hashFile(Path p, Optional<FileWrapper> meta, String relativePath, SyncState syncedState, long size, int chunkSize);
 
     /**
      *

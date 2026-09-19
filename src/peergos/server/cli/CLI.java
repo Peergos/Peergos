@@ -53,6 +53,9 @@ import static org.jline.builtins.Completers.TreeCompleter.node;
 
 public class CLI implements Runnable {
 
+    /** How much to read at a time when streaming a file out. Not a chunk size. */
+    private static final int READ_BUFFER = 5 * 1024 * 1024;
+
     private static void disableLogSpam() {
         // disable log spam
         TrieNodeImpl.disableLog();
@@ -450,7 +453,7 @@ public class CLI implements Runnable {
      *  throwing - so a short read has to end the copy instead of spinning on it.
      */
     public static void copy(AsyncReader reader, long size, OutputStream out, LongConsumer progress) throws IOException {
-        byte[] buf = new byte[Chunk.LEGACY_SIZE];
+        byte[] buf = new byte[READ_BUFFER];
         for (long offset = 0; offset < size;) {
             int read = reader.readIntoArray(buf, 0, (int) Math.min(buf.length, size - offset)).join();
             if (read <= 0)
@@ -619,7 +622,7 @@ public class CLI implements Runnable {
                         long fileSize = p.toFile().length();
                         LocalDateTime modified = LocalDateTime.ofInstant(Instant.ofEpochSecond(p.toFile().lastModified() / 1000, 0), ZoneOffset.UTC);
                         return new FileWrapper.FileUploadProperties(p.getFileName().toString(), () -> reader(p.toFile()),
-                                (int) (fileSize >> 32), (int) fileSize, Optional.of(modified), Optional.of(ScryptJava.hashFile(p, hasher)), skipExisting, true,
+                                (int) (fileSize >> 32), (int) fileSize, Optional.of(modified), Optional.of(ScryptJava.hashFile(p, hasher, FileProperties.chunkSizeForNewFiles())), skipExisting, true,
                                 progressCreator.create(remoteRelativeDir, p.getFileName().toString(), Math.max(4096, fileSize)));
                     })
                     .collect(Collectors.toList());
