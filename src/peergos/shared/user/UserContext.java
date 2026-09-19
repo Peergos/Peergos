@@ -901,6 +901,54 @@ public class UserContext {
                 (a, b) -> b);
     }
 
+    /**
+     * Every secret link this user has, once each.
+     *
+     * A link is recorded under each path it contains, so the same link appears under several
+     * files; they are deduplicated by label here, keeping whichever record knows its members.
+     */
+    @JsMethod
+    public CompletableFuture<List<SecretLinkSummary>> getAllSecretLinks() {
+        return getUserRoot()
+                .thenCompose(home -> sharedWithCache.getAllShares(username, home.version))
+                .thenApply(shares -> {
+                    Map<Long, SecretLinkSummary> byLabel = new LinkedHashMap<>();
+                    for (Map.Entry<Path, SharedWithState> dir : shares.entrySet()) {
+                        for (Map.Entry<String, Set<LinkProperties>> file : dir.getValue().links().entrySet()) {
+                            String path = dir.getKey().resolve(file.getKey()).toString();
+                            for (LinkProperties props : file.getValue()) {
+                                SecretLinkSummary existing = byLabel.get(props.label);
+                                // a record that knows its members describes the whole link; one
+                                // that does not only knows the file it was found under
+                                if (existing == null || (existing.props.members.isEmpty() && ! props.members.isEmpty()))
+                                    byLabel.put(props.label, new SecretLinkSummary(props, path));
+                            }
+                        }
+                    }
+                    return new ArrayList<>(byLabel.values());
+                });
+    }
+
+    /**
+     * Append one file or folder to a link that already exists.
+     *
+     * The link string does not change, so whoever already holds it gets this item too - which is
+     * the point, and the thing to say out loud in the UI before doing it.
+     */
+    @JsMethod
+    public CompletableFuture<LinkProperties> addToSecretLink(SecretLinkSummary link, String path, boolean writable) {
+        List<String> paths = new ArrayList<>(Arrays.asList(link.paths()));
+        if (paths.contains(path))
+            return Futures.errored(new IllegalStateException(path + " is already in this link."));
+        List<String> writablePaths = link.props.members.isEmpty() ?
+                (link.props.isLinkWritable ? new ArrayList<>(paths) : new ArrayList<>()) :
+                link.props.members.stream().filter(m -> m.writable).map(m -> m.path).collect(Collectors.toList());
+        paths.add(path);
+        if (writable)
+            writablePaths.add(path);
+        return setSecretLinkMembers(paths, writablePaths, link.props);
+    }
+
     @JsMethod
     public String getLinkString(LinkProperties props) {
         return props.toLinkString(signer.publicKeyHash);
