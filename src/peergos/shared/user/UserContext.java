@@ -969,6 +969,8 @@ public class UserContext {
      */
     @JsMethod
     public CompletableFuture<LinkProperties> addToSecretLink(SecretLinkSummary link, String path, boolean writable) {
+        if (path == null || path.isEmpty())
+            return Futures.errored(new IllegalStateException("No file given to add to this link."));
         List<String> paths = new ArrayList<>(Arrays.asList(link.paths()));
         if (paths.contains(path))
             return Futures.errored(new IllegalStateException(path + " is already in this link."));
