@@ -201,7 +201,8 @@ public class WriteSynchronizer {
         return pending.computeIfAbsent(
                         new Pair<>(owner, writer),
                         p -> new AsyncLock<>(getWriterData(owner, p.right))
-                ).runWithLock(v -> CompletableFuture.completedFuture(v.withVersion(writer, value.get(writer))))
+                ).runWithLock(v -> CompletableFuture.completedFuture(v.withVersion(writer, value.get(writer))),
+                        () -> getWriterData(owner, writer))
                 .thenApply(x -> true);
     }
 
