@@ -1095,10 +1095,34 @@ public class UserContext {
                 })
                 .thenCompose(removed -> Futures.reduceAll(needWritingSpace, (Snapshot) null,
                         (s, path) -> splitIntoOwnWritingSpace(PathUtil.get(path), s), (a, b) -> b))
-                .thenCompose(s -> writeSynchronizer.applyComplexComputation(signer.publicKeyHash, signer,
-                        (v, c) -> updateSecretLink(paths, writable, props,
-                                s == null ? v : v.mergeAndOverwriteWith(s), c)))
+                .thenCompose(afterSplits -> commitMembers(paths, writable, props, afterSplits))
                 .thenApply(x -> x.right);
+    }
+
+    /**
+     * Write the new membership, retrying once if the pointer moved under us.
+     *
+     * Splitting a member into its own writing space commits before this does, and the snapshot it
+     * hands back is merged in here to save a read. Anything else writing in between - the app's
+     * own startup, another tab - makes that merged view stale and the commit fails its compare and
+     * swap. The splits are already committed by then, so the retry simply reads the current state
+     * instead of merging a stale one.
+     */
+    private CompletableFuture<Pair<Snapshot, LinkProperties>> commitMembers(List<String> paths,
+                                                                            Set<String> writable,
+                                                                            LinkProperties props,
+                                                                            Snapshot afterSplits) {
+        return Futures.asyncExceptionally(
+                () -> writeSynchronizer.applyComplexComputation(signer.publicKeyHash, signer,
+                        (v, c) -> updateSecretLink(paths, writable, props,
+                                afterSplits == null ? v : v.mergeAndOverwriteWith(afterSplits), c)),
+                t -> {
+                    if (! (Exceptions.getRootCause(t) instanceof PointerCasException))
+                        return Futures.errored(t);
+                    LOG.info("Retrying secret link update after a concurrent write");
+                    return writeSynchronizer.applyComplexComputation(signer.publicKeyHash, signer,
+                            (v, c) -> updateSecretLink(paths, writable, props, v, c));
+                });
     }
 
     private CompletableFuture<Snapshot> splitIntoOwnWritingSpace(Path toFile, Snapshot soFar) {
