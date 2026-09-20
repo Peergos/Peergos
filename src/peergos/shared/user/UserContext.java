@@ -81,15 +81,6 @@ public class UserContext {
      * has to be remembered while it is in hand.
      */
     public Optional<String> linkEntryPath = Optional.empty();
-    /**
-     * Which member of a link an auto-open URL names, keyed by the selector in its fragment.
-     *
-     * The selector is a prefix of the member's map key, so it survives the member being renamed,
-     * moved or reordered - all cases where a URL someone already holds would otherwise open the
-     * wrong file. A selector naming a member that has since been removed simply is not here, and
-     * the link falls back to landing on its first item.
-     */
-    public Map<String, String> linkMemberSelectors = Collections.emptyMap();
 
     // Contact external world
     @JsProperty
@@ -866,11 +857,7 @@ public class UserContext {
         return buildTrieFromCaps(caps, context.entrie, network)
                 .thenApply(built -> {
                     context.entrie = built.left;
-                    context.linkEntryPath = built.right.stream().findFirst();
-                    Map<String, String> selectors = new LinkedHashMap<>();
-                    for (int i = 0; i < caps.size() && i < built.right.size(); i++)
-                        selectors.put(LinkMember.selectorFor(caps.get(i)), built.right.get(i));
-                    context.linkMemberSelectors = selectors;
+                    context.linkEntryPath = built.right.stream().findFirst().map(UserContext::landingPath);
                     return context;
                 });
     }
@@ -895,21 +882,33 @@ public class UserContext {
                         })));
     }
 
-    /** The mounted trie, and each member's real path in the order the caps were given. */
-    private static CompletableFuture<Pair<TrieNode, List<String>>> buildTrieFromCaps(List<AbsoluteCapability> caps,
-                                                                                     TrieNode currentRoot,
-                                                                                     NetworkAccess network) {
+    /**
+     * Where a link lands: the member itself when it is a directory, and its parent when it is a
+     * file, so the file can be listed and opened rather than navigated into.
+     */
+    private static String landingPath(RetrievedEntryPoint first) {
+        String path = first.getPath();
+        if (first.file.isDirectory())
+            return path;
+        int lastSlash = path.lastIndexOf('/');
+        return lastSlash <= 0 ? path : path.substring(0, lastSlash);
+    }
+
+    /** The mounted trie, and each member in the order the caps were given. */
+    private static CompletableFuture<Pair<TrieNode, List<RetrievedEntryPoint>>> buildTrieFromCaps(List<AbsoluteCapability> caps,
+                                                                                                  TrieNode currentRoot,
+                                                                                                  NetworkAccess network) {
         List<CompletableFuture<RetrievedEntryPoint>> retrieved = caps.stream()
                 .map(cap -> NetworkAccess.retrieveEntryPoint(new EntryPoint(cap, ""), network))
                 .collect(Collectors.toList());
-        return Futures.reduceAll(retrieved, new Pair<>(currentRoot, (List<String>) new ArrayList<String>()),
+        return Futures.reduceAll(retrieved, new Pair<>(currentRoot, (List<RetrievedEntryPoint>) new ArrayList<RetrievedEntryPoint>()),
                 (acc, f) -> f.thenCompose(r -> r.entry.isValid(r.getPath(), network)
                         .thenApply(valid -> {
                             if (! valid)
                                 throw new IllegalStateException("Invalid link!");
-                            List<String> paths = new ArrayList<>(acc.right);
-                            paths.add(r.getPath());
-                            return new Pair<>(acc.left.put(r.getPath(), r.entry), paths);
+                            List<RetrievedEntryPoint> members = new ArrayList<>(acc.right);
+                            members.add(r);
+                            return new Pair<>(acc.left.put(r.getPath(), r.entry), members);
                         })),
                 (a, b) -> b);
     }
@@ -920,18 +919,6 @@ public class UserContext {
      * A link is recorded under each path it contains, so the same link appears under several
      * files; they are deduplicated by label here, keeping whichever record knows its members.
      */
-    /**
-     * The member of this link that an auto-open selector names, or "" if it names none.
-     *
-     * A selector that matches nothing is not an error: the member it named may have been removed
-     * from the link since the URL was handed out, and opening some other member instead would be
-     * worse than opening nothing.
-     */
-    @JsMethod
-    public String pathForLinkSelector(String selector) {
-        return linkMemberSelectors.getOrDefault(selector, "");
-    }
-
     @JsMethod
     public CompletableFuture<List<SecretLinkSummary>> getAllSecretLinks() {
         return getUserRoot()
@@ -1037,7 +1024,7 @@ public class UserContext {
                                                               boolean open) {
         SecretLink res = SecretLink.create(signer.publicKeyHash, crypto.random);
         LinkProperties props = LinkProperties.build(res.label, res.linkPassword, userPassword, maxRetrievals,
-                expiry, open, Optional.empty(), Collections.emptyList(), Optional.empty());
+                expiry, open, Optional.empty(), Collections.emptyList());
         return setSecretLinkMembers(paths, writablePaths, props);
     }
 

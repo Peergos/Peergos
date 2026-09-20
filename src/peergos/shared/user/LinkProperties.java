@@ -23,18 +23,16 @@ public class LinkProperties implements Cborable {
      * capability it describes does not.
      */
     public final List<LinkMember> members;
-    /** Which member auto-open opens, when there is a choice. Absent means land on the listing. */
-    public final Optional<String> openSelector;
 
     public LinkProperties(long label, String linkPassword, String userPassword, boolean isLinkWritable,
                           Optional<Integer> maxRetrievals, Optional<LocalDateTime> expiry, boolean open, Optional<Multihash> existing) {
         this(label, linkPassword, userPassword, isLinkWritable, maxRetrievals, expiry, open, existing,
-                Collections.emptyList(), Optional.empty());
+                Collections.emptyList());
     }
 
     public LinkProperties(long label, String linkPassword, String userPassword, boolean isLinkWritable,
                           Optional<Integer> maxRetrievals, Optional<LocalDateTime> expiry, boolean open,
-                          Optional<Multihash> existing, List<LinkMember> members, Optional<String> openSelector) {
+                          Optional<Multihash> existing, List<LinkMember> members) {
         this.label = label;
         this.linkPassword = linkPassword;
         this.userPassword = userPassword;
@@ -44,21 +42,20 @@ public class LinkProperties implements Cborable {
         this.open = open;
         this.existing = existing;
         this.members = members;
-        this.openSelector = openSelector;
     }
 
     /** Writability is a property of the members, not something a caller sets for the whole link. */
     public static LinkProperties build(long label, String linkPassword, String userPassword,
                                        Optional<Integer> maxRetrievals, Optional<LocalDateTime> expiry,
                                        boolean open, Optional<Multihash> existing,
-                                       List<LinkMember> members, Optional<String> openSelector) {
+                                       List<LinkMember> members) {
         boolean anyWritable = members.stream().anyMatch(m -> m.writable);
         return new LinkProperties(label, linkPassword, userPassword, anyWritable, maxRetrievals, expiry,
-                open, existing, members, openSelector);
+                open, existing, members);
     }
 
     public LinkProperties withMembers(List<LinkMember> newMembers) {
-        return build(label, linkPassword, userPassword, maxRetrievals, expiry, open, existing, newMembers, openSelector);
+        return build(label, linkPassword, userPassword, maxRetrievals, expiry, open, existing, newMembers);
     }
 
     @JsMethod
@@ -72,29 +69,13 @@ public class LinkProperties implements Cborable {
     }
 
     @JsMethod
-    public String getOpenSelector() {
-        return openSelector.orElse("");
-    }
-
-    /** Which member auto-open opens; "" for none. The selector comes from {@link LinkMember}. */
-    @JsMethod
-    public LinkProperties withAutoOpenMember(String selector) {
-        return withOpenSelector(selector.isEmpty() ? Optional.empty() : Optional.of(selector));
-    }
-
-    public LinkProperties withOpenSelector(Optional<String> selector) {
-        return new LinkProperties(label, linkPassword, userPassword, isLinkWritable, maxRetrievals, expiry,
-                open, existing, members, selector);
-    }
-
-    @JsMethod
     public LinkProperties with(String userPassword, String maxRetrievals, Optional<LocalDateTime> expiry, boolean newOpen) {
         Optional<Integer> maxRetrievalsOpt = maxRetrievals.isEmpty() ? Optional.empty() : Optional.of(Integer.parseInt(maxRetrievals));
-        return new LinkProperties(label, linkPassword, userPassword, isLinkWritable, maxRetrievalsOpt, expiry, newOpen, existing, members, openSelector);
+        return new LinkProperties(label, linkPassword, userPassword, isLinkWritable, maxRetrievalsOpt, expiry, newOpen, existing, members);
     }
 
     public LinkProperties withExisting(Optional<Multihash> existing) {
-        return new LinkProperties(label, linkPassword, userPassword, isLinkWritable, maxRetrievals, expiry, open, existing, members, openSelector);
+        return new LinkProperties(label, linkPassword, userPassword, isLinkWritable, maxRetrievals, expiry, open, existing, members);
     }
 
     public SecretLink toLink(PublicKeyHash owner) {
@@ -135,7 +116,6 @@ public class LinkProperties implements Cborable {
         // absent on every link written before members existed, which is a one member link
         if (! members.isEmpty())
             state.put("ms", new CborObject.CborList(members));
-        openSelector.ifPresent(sel -> state.put("os", new CborObject.CborString(sel)));
         return CborObject.CborMap.build(state);
     }
 
@@ -151,8 +131,7 @@ public class LinkProperties implements Cborable {
         Optional<Integer> maxCount = m.getOptionalLong("m").map(Long::intValue);
         Optional<LocalDateTime> expiry = m.getOptionalLong("e").map(s -> LocalDateTime.ofEpochSecond(s, 0, ZoneOffset.UTC));
         List<LinkMember> members = m.getList("ms", LinkMember::fromCbor);
-        Optional<String> openSelector = m.getOptional("os", c -> ((CborObject.CborString) c).value);
         return new LinkProperties(label, password, userPassword, isWritable, maxCount, expiry, open,
-                m.getOptional("h", c -> ((CborObject.CborMerkleLink)c).target), members, openSelector);
+                m.getOptional("h", c -> ((CborObject.CborMerkleLink)c).target), members);
     }
 }

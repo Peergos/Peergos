@@ -1224,6 +1224,24 @@ public abstract class UserTests {
         Assert.assertFalse(fromLink.getByPath(username + "/three").join().get().isWritable());
     }
 
+    /** A link to a single file must land where it always did: on the file's parent. */
+    @Test
+    public void aSingleFileLinkLandsOnItsParent() throws Exception {
+        String username = generateUsername();
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, "test", network, crypto);
+        context.getUserRoot().join().mkdir("holder", context.network, false, context.mirrorBatId(), crypto).join();
+        byte[] data = "hello".getBytes();
+        context.getByPath(username + "/holder").join().get()
+                .uploadOrReplaceFile("note.txt", AsyncReader.build(data), data.length,
+                        context.network, crypto, () -> false, l -> {}).join();
+
+        LinkProperties link = context.createSecretLink(username + "/holder/note.txt", false,
+                Optional.empty(), Optional.empty(), "", false).join();
+        UserContext fromLink = UserContext.fromSecretLinkV2(link.toLinkString(context.signer.publicKeyHash),
+                () -> Futures.of(""), network.clear(), crypto).join();
+        Assert.assertEquals("/" + username + "/holder", fromLink.getEntryPath().join());
+    }
+
     /**
      * A recipient lands on the first item in the link, which is the owner's order and not the
      * alphabetical one a directory listing would give. So this names its members backwards.
