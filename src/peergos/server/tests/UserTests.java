@@ -1224,6 +1224,46 @@ public abstract class UserTests {
         Assert.assertFalse(fromLink.getByPath(username + "/three").join().get().isWritable());
     }
 
+    /**
+     * Renaming an item that is in a link. The capability is unaffected, so the link keeps working;
+     * what must also survive is the owner's ability to edit the link afterwards, which re-resolves
+     * every member by path.
+     */
+    @Test
+    public void renamingAMemberKeepsTheLinkEditable() throws Exception {
+        String username = generateUsername();
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, "test", network, crypto);
+        for (String name : Arrays.asList("one", "two", "three"))
+            context.getUserRoot().join().mkdir(name, context.network, false, context.mirrorBatId(), crypto).join();
+
+        LinkProperties link = context.createSecretLink(
+                Arrays.asList(username + "/one", username + "/two"), Collections.emptyList(),
+                Optional.empty(), Optional.empty(), "", false).join();
+        String linkString = link.toLinkString(context.signer.publicKeyHash);
+
+        context.getByPath(username + "/two").join().get()
+                .rename("renamed", context.getUserRoot().join(), PathUtil.get(username, "two"), context).join();
+
+        // the payload holds capabilities, so the link still resolves the renamed item
+        UserContext fromLink = UserContext.fromSecretLinkV2(linkString, () -> Futures.of(""), network.clear(), crypto).join();
+        Assert.assertTrue(fromLink.getByPath(username + "/renamed").join().isPresent());
+
+        // and reading the members reports where it is now, not where it was
+        UserContext owner = PeergosNetworkUtils.ensureSignedUp(username, "test", network, crypto);
+        List<LinkMember> members = owner.getSecretLinkMembers(link).join();
+        Assert.assertEquals(Arrays.asList("/" + username + "/one", "/" + username + "/renamed"),
+                members.stream().map(m -> m.path).collect(Collectors.toList()));
+
+        // so an edit built on that succeeds, where one built on the recorded path used to throw
+        List<String> current = members.stream().map(m -> m.path).collect(Collectors.toList());
+        List<String> grownPaths = new ArrayList<>(current);
+        grownPaths.add(username + "/three");
+        LinkProperties grown = owner.setSecretLinkMembers(grownPaths, Collections.emptyList(), link).join();
+        Assert.assertEquals(3, grown.members.size());
+        Assert.assertEquals("the link string is unchanged by all of this",
+                linkString, grown.toLinkString(context.signer.publicKeyHash));
+    }
+
     /** A link to a single file must land where it always did: on the file's parent. */
     @Test
     public void aSingleFileLinkLandsOnItsParent() throws Exception {

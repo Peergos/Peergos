@@ -942,6 +942,26 @@ public class UserContext {
     }
 
     /**
+     * What a link actually contains, with each member's path as it is right now.
+     *
+     * The payload is the source of truth for membership: it holds capabilities, which point at a
+     * map key rather than a path, so they survive their file being renamed or moved while the
+     * paths recorded alongside the link do not. Reading membership from here rather than from
+     * those recorded strings is what stops a rename breaking every later edit of the link.
+     */
+    @JsMethod
+    public CompletableFuture<List<LinkMember>> getSecretLinkMembers(LinkProperties props) {
+        SecretLink link = props.toLink(signer.publicKeyHash);
+        return network.getSecretLink(link)
+                .thenCompose(retrieved -> retrieved.decryptFromPassword(link.labelString(),
+                        props.linkPassword + props.userPassword, crypto))
+                .thenCompose(caps -> Futures.combineAllInOrder(caps.stream()
+                        .map(cap -> NetworkAccess.retrieveEntryPoint(new EntryPoint(cap, username), network)
+                                .thenApply(r -> new LinkMember(r.getPath(), cap.isWritable())))
+                        .collect(Collectors.toList())));
+    }
+
+    /**
      * Append one file or folder to a link that already exists.
      *
      * The link string does not change, so whoever already holds it gets this item too - which is
