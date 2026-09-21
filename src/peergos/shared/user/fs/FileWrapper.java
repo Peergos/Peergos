@@ -133,7 +133,10 @@ public class FileWrapper {
 
     public CompletableFuture<FileWrapper> getUpdated(Snapshot version, NetworkAccess network) {
         return version.withWriter(owner(), writer(), network).thenCompose(v -> {
-            if (this.version.get(writer()).equals(v.get(writer()))) {
+            if (! v.contains(writer()))
+                throw new IllegalStateException("Couldn't retrieve " + getName() + ": its writing space, "
+                        + writer() + ", has no mutable pointer.");
+            if (this.version.contains(writer()) && this.version.get(writer()).equals(v.get(writer()))) {
                 return CompletableFuture.completedFuture(this);
             }
             return network.getFile(v, pointer.capability, entryWriter, ownername)
