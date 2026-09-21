@@ -1104,17 +1104,33 @@ public class UserContext {
     /**
      * Write the new membership.
      *
-     * Splitting a member into its own writing space commits before this runs, so the state this
-     * reads under the write lock already contains it. Merging the snapshot those splits returned -
-     * as the single file version used to - saves a read but pins a view that anything else writing
-     * in the meantime makes stale, and the commit then fails its compare and swap.
+     * Splitting a member into its own writing space commits before this runs. Merging the snapshot
+     * those splits returned - as the single file version used to - saves a read but pins a view that
+     * anything else writing in the meantime makes stale, and the commit then fails its compare and
+     * swap. Reading under the write lock instead gives a current identity key, but only that one.
      */
     private CompletableFuture<Pair<Snapshot, LinkProperties>> commitMembers(List<String> paths,
                                                                             Set<String> writable,
                                                                             LinkProperties props,
                                                                             Snapshot afterSplits) {
+        Set<PublicKeyHash> split = afterSplits == null ?
+                Collections.emptySet() :
+                afterSplits.versions.keySet();
         return writeSynchronizer.applyComplexComputation(signer.publicKeyHash, signer,
-                (v, c) -> updateSecretLink(paths, writable, props, v, c));
+                (v, c) -> updateSecretLink(paths, writable, props, readAfresh(v, split), c));
+    }
+
+    /** The write lock is on our identity key, so the state it hands back can still pin another
+     *  writer at the version it had before a split moved a member into its own writing space.
+     *  Dropping those lets the path resolution below retrieve them as they are now.
+     */
+    private Snapshot readAfresh(Snapshot v, Set<PublicKeyHash> split) {
+        Snapshot res = v;
+        for (PublicKeyHash w : split) {
+            if (! w.equals(signer.publicKeyHash))
+                res = res.remove(w);
+        }
+        return res;
     }
 
     private CompletableFuture<Snapshot> splitIntoOwnWritingSpace(Path toFile, Snapshot soFar) {
