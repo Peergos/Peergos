@@ -80,14 +80,18 @@ public class Snapshot implements Cborable {
 
     public CommittedWriterData get(PublicKeyHash writer) {
         if (! versions.containsKey(writer))
-            throw new IllegalStateException("writer not present in snapshot!");
+            throw new IllegalStateException(missing(writer));
         return versions.get(writer);
     }
 
     public CommittedWriterData get(SigningPrivateKeyAndPublicHash writer) {
         if (! versions.containsKey(writer.publicKeyHash))
-            throw new IllegalStateException("writer not present in snapshot!");
+            throw new IllegalStateException(missing(writer.publicKeyHash));
         return versions.get(writer.publicKeyHash);
+    }
+
+    private String missing(PublicKeyHash writer) {
+        return "writer " + writer + " not present in snapshot! Present writers: " + versions.keySet();
     }
 
     public Snapshot remove(PublicKeyHash w) {
