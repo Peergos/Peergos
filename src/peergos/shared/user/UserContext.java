@@ -1102,29 +1102,19 @@ public class UserContext {
     }
 
     /**
-     * Write the new membership, retrying once if the pointer moved under us.
+     * Write the new membership.
      *
-     * Splitting a member into its own writing space commits before this does, and the snapshot it
-     * hands back is merged in here to save a read. Anything else writing in between - the app's
-     * own startup, another tab - makes that merged view stale and the commit fails its compare and
-     * swap. The splits are already committed by then, so the retry simply reads the current state
-     * instead of merging a stale one.
+     * Splitting a member into its own writing space commits before this runs, so the state this
+     * reads under the write lock already contains it. Merging the snapshot those splits returned -
+     * as the single file version used to - saves a read but pins a view that anything else writing
+     * in the meantime makes stale, and the commit then fails its compare and swap.
      */
     private CompletableFuture<Pair<Snapshot, LinkProperties>> commitMembers(List<String> paths,
                                                                             Set<String> writable,
                                                                             LinkProperties props,
                                                                             Snapshot afterSplits) {
-        return Futures.asyncExceptionally(
-                () -> writeSynchronizer.applyComplexComputation(signer.publicKeyHash, signer,
-                        (v, c) -> updateSecretLink(paths, writable, props,
-                                afterSplits == null ? v : v.mergeAndOverwriteWith(afterSplits), c)),
-                t -> {
-                    if (! (Exceptions.getRootCause(t) instanceof PointerCasException))
-                        return Futures.errored(t);
-                    LOG.info("Retrying secret link update after a concurrent write");
-                    return writeSynchronizer.applyComplexComputation(signer.publicKeyHash, signer,
-                            (v, c) -> updateSecretLink(paths, writable, props, v, c));
-                });
+        return writeSynchronizer.applyComplexComputation(signer.publicKeyHash, signer,
+                (v, c) -> updateSecretLink(paths, writable, props, v, c));
     }
 
     private CompletableFuture<Snapshot> splitIntoOwnWritingSpace(Path toFile, Snapshot soFar) {
