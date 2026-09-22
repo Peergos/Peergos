@@ -276,11 +276,24 @@ public class Mirror {
                                         UsageStore usagedb,
                                         Hasher hasher) {
         Optional<byte[]> existing = targetPointers.getPointer(writer).join();
+        if (existing.isPresent() && Arrays.equals(existing.get(), newPointer))
+            return;
+        PointerUpdate current = existing.isPresent() ?
+                MutablePointers.parsePointerTarget(existing.get(), owner, writer, storage).join() :
+                PointerUpdate.empty();
+        PointerUpdate update = MutablePointers.parsePointerTarget(newPointer, owner, writer, storage).join();
+        // The CAS below is against the pointer we just read, so without this a stale source (e.g. one fetched
+        // before a concurrent local write) would roll the pointer back
+        boolean isNewer = current.sequence.isEmpty() ||
+                (update.sequence.isPresent() && update.sequence.get() > current.sequence.get());
+        if (existing.isPresent() && ! isNewer) {
+            Logging.LOG().info("Not mirroring pointer for " + writer + " as sequence " + update.sequence
+                    + " is not newer than local " + current.sequence);
+            return;
+        }
         // First pin the new root, then commit updated pointer
-        MaybeMultihash existingTarget = existing.isPresent() ?
-                MutablePointers.parsePointerTarget(existing.get(), owner, writer, storage).join().updated :
-                MaybeMultihash.empty();
-        MaybeMultihash updatedTarget = MutablePointers.parsePointerTarget(newPointer, owner, writer, storage).join().updated;
+        MaybeMultihash existingTarget = current.updated;
+        MaybeMultihash updatedTarget = update.updated;
         // use a mirror call to distinguish from normal pin calls
         TransactionId tid = transactions.startTransaction(owner);
         try {
