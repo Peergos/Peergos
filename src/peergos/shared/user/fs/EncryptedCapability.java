@@ -24,13 +24,21 @@ public class EncryptedCapability implements Cborable {
     }
 
     @JsMethod
-    public CompletableFuture<AbsoluteCapability> decryptFromPassword(String salt, String password, Crypto c) {
+    public CompletableFuture<List<AbsoluteCapability>> decryptFromPassword(String salt, String password, Crypto c) {
         return deriveKey(salt, password, c)
                 .thenApply(this::decrypt);
     }
 
-    private AbsoluteCapability decrypt(SymmetricKey k) {
-        return payload.decrypt(k, AbsoluteCapability::fromCbor);
+    /**
+     * A link carries one capability or several, and the cbor type says which.
+     *
+     * An {@link AbsoluteCapability} is always a map, so a list cannot be mistaken for one and no
+     * version field is needed: every link written before this decodes as a one element list.
+     */
+    private List<AbsoluteCapability> decrypt(SymmetricKey k) {
+        return payload.decrypt(k, cbor -> cbor instanceof CborObject.CborList ?
+                ((CborObject.CborList) cbor).map(AbsoluteCapability::fromCbor) :
+                Collections.singletonList(AbsoluteCapability.fromCbor(cbor)));
     }
 
     private static CompletableFuture<SymmetricKey> deriveKey(String label, String password, Crypto c) {
@@ -38,12 +46,17 @@ public class EncryptedCapability implements Cborable {
                 .thenApply(b -> new TweetNaClKey(b, false, c.symmetricProvider, c.random));
     }
 
-    private static EncryptedCapability create(AbsoluteCapability raw, SymmetricKey k, boolean hasUserPassword) {
-        return new EncryptedCapability(CipherText.build(k, raw), hasUserPassword);
+    private static EncryptedCapability create(List<AbsoluteCapability> raw, SymmetricKey k, boolean hasUserPassword) {
+        if (raw.isEmpty())
+            throw new IllegalStateException("A secret link must have at least one capability!");
+        // One capability is written as a bare map, exactly as before, so a single item link is
+        // byte identical to one written by an older client and stays readable by one
+        Cborable plaintext = raw.size() == 1 ? raw.get(0) : new CborObject.CborList(raw);
+        return new EncryptedCapability(CipherText.build(k, plaintext), hasUserPassword);
     }
 
     @JsMethod
-    public static CompletableFuture<EncryptedCapability> createFromPassword(AbsoluteCapability raw, String salt, String password, boolean hasUserPassword, Crypto c) {
+    public static CompletableFuture<EncryptedCapability> createFromPassword(List<AbsoluteCapability> raw, String salt, String password, boolean hasUserPassword, Crypto c) {
         return deriveKey(salt, password, c)
                 .thenApply(k -> create(raw, k, hasUserPassword));
     }

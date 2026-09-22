@@ -379,8 +379,22 @@ public class SharedWithCache {
                 .thenCompose(sharees -> applyAndCommit(after, current ->
                         current.add(Access.READ, newFilename, sharees.readAccess)
                                 .add(Access.WRITE, newFilename, sharees.writeAccess)
-                                .addLinks(newFilename, current.get(initialFilename).links)
+                                .addLinks(newFilename, withRenamedMember(current.get(initialFilename).links,
+                                        initial.toString(), after.toString()))
                                 .clear(initialFilename), in, committer, network));
+    }
+
+    /**
+     * A link records the path of each item it holds, for the owner's own display. Those strings do
+     * not follow a rename on their own, and every later edit of the link re-resolves them, so a
+     * rename would otherwise make the link uneditable.
+     */
+    private static Set<LinkProperties> withRenamedMember(Set<LinkProperties> links, String from, String to) {
+        return links.stream()
+                .map(l -> l.members.isEmpty() ? l : l.withMembers(l.members.stream()
+                        .map(m -> m.path.equals(from) ? m.withPath(to) : m)
+                        .collect(Collectors.toList())))
+                .collect(Collectors.toSet());
     }
 
     public CompletableFuture<Snapshot> addSecretLink(Path p, LinkProperties link,
