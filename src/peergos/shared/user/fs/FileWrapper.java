@@ -2693,53 +2693,6 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                 .thenApply(caps -> !caps.isEmpty());
     }
 
-    /**
-     * Move this file/dir and subtree to a new signing key pair.
-     * @param signer
-     * @param parent
-     * @param network
-     * @return The updated version of this file/dir and its parent
-     */
-    public CompletableFuture<Pair<FileWrapper, FileWrapper>> changeSigningKey(SigningPrivateKeyAndPublicHash signer,
-                                                                              FileWrapper parent,
-                                                                              NetworkAccess network,
-                                                                              SafeRandom random,
-                                                                              Hasher hasher) {
-        ensureUnmodified();
-        WritableAbsoluteCapability cap = (WritableAbsoluteCapability)getPointer().capability;
-        SymmetricLinkToSigner signerLink = SymmetricLinkToSigner.fromPair(cap.wBaseKey.get(), signer);
-        CryptreeNode fileAccess = getPointer().fileAccess;
-
-        RelativeCapability newParentLink = new RelativeCapability(Optional.of(parent.writer()),
-                parent.getLocation().getMapKey(), parent.writableFilePointer().bat, parent.getParentKey(), Optional.empty());
-        CryptreeNode newFileAccess = fileAccess
-                .withWriterLink(cap.rBaseKey, signerLink)
-                .withParentLink(getParentKey(), newParentLink);
-        WritableAbsoluteCapability ourNewCap = cap.withSigner(signer.publicKeyHash);
-        RetrievedCapability newRetrievedCapability = new RetrievedCapability(ourNewCap, newFileAccess);
-
-        // create the new signing subspace move subtree to it
-        PublicKeyHash owner = owner();
-
-        network.synchronizer.putEmpty(owner, signer.publicKeyHash);
-        return network.synchronizer.applyComplexUpdate(owner, signer, (version, committer) -> IpfsTransaction.call(owner,
-                tid -> network.uploadChunk(version, committer, newFileAccess, owner, getPointer().capability.getMapKey(), signer, tid)
-                        .thenCompose(newVersion -> copyAllChunks(false, cap, signer, tid, hasher, network,
-                                new MovedSubtree(), newVersion, committer))
-                        .thenCompose(copiedVersion -> copiedVersion.withWriter(owner, parent.writer(), network))
-                        .thenCompose(withParent -> parent.getPointer().fileAccess
-                                .updateChildLink(withParent, committer, parent.writableFilePointer(),
-                                        parent.signingPair(),
-                                        getPointer(),
-                                        newRetrievedCapability, network, random, hasher))
-                        .thenCompose(updatedParentVersion -> deleteAllChunks(cap, signingPair(), tid, hasher, network,
-                                updatedParentVersion, committer)),
-                network.dhtClient)
-        ).thenCompose(finalVersion -> parent.getUpdated(finalVersion, network)
-                .thenCompose(updatedParent -> network.getFile(finalVersion, ourNewCap, Optional.of(signer), ownername)
-                .thenApply(updatedUs -> new Pair<>(updatedUs.get(), updatedParent))));
-    }
-
     /** The result of moving a subtree to a new signing key: the source locations that were moved,
      *  along with their values in the source CHAMP, and the roots of any nested writing spaces,
      *  which are left untouched and must be re-parented onto the new signing key by the caller.
@@ -2851,6 +2804,21 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                                               NetworkAccess network,
                                                               Snapshot version,
                                                               Committer committer) {
+        return deleteAllChunks(currentCap, signer, true, tid, hasher, network, version, committer);
+    }
+
+    /** @param removeSigningKeys whether a writing space found in this subtree is going away with it.
+     *                           A rotation that keeps the existing signers rewrites their contents in
+     *                           place, so the old chunks go but the writing spaces themselves stay.
+     */
+    public static CompletableFuture<Snapshot> deleteAllChunks(WritableAbsoluteCapability currentCap,
+                                                              SigningPrivateKeyAndPublicHash signer,
+                                                              boolean removeSigningKeys,
+                                                              TransactionId tid,
+                                                              Hasher hasher,
+                                                              NetworkAccess network,
+                                                              Snapshot version,
+                                                              Committer committer) {
         return version.withWriter(currentCap.owner, currentCap.writer, network)
                 .thenCompose(current -> network.getMetadata(current.get(currentCap.writer), currentCap)
                         .thenCompose(mOpt -> {
@@ -2867,7 +2835,9 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                             boolean normalFile = ! chunk.isDirectory() && streamSecret.isPresent();
                             if (normalFile)
                                 return deleteFileChunks(props.streamSecret.get(), props.chunkCount(), currentCap, ourSigner, tid, hasher, network, current, committer)
-                                        .thenCompose(s -> removeSigningKey(ourSigner, signer, currentCap.owner, network, s, committer));
+                                        .thenCompose(s -> removeSigningKeys ?
+                                                removeSigningKey(ourSigner, signer, currentCap.owner, network, s, committer) :
+                                                Futures.of(s));
                             if (! chunk.isDirectory())
                                 // legacy file without stream secret
                                 return network.deleteChunk(current, committer, chunk, currentCap.owner,
@@ -2875,9 +2845,11 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                                 .thenCompose(deletedVersion -> chunk.getNextChunkLocation(currentCap.rBaseKey, streamSecret,
                                                                 currentCap.getMapKey(), currentCap.bat, hasher)
                                                         .thenCompose(nextChunkMapKeyAndBat ->
-                                                                deleteAllChunks(currentCap.withMapKey(nextChunkMapKeyAndBat.left, nextChunkMapKeyAndBat.right), ourSigner, tid, hasher,
+                                                                deleteAllChunks(currentCap.withMapKey(nextChunkMapKeyAndBat.left, nextChunkMapKeyAndBat.right), ourSigner, removeSigningKeys, tid, hasher,
                                                                         network, deletedVersion, committer)))
-                                        .thenCompose(s -> removeSigningKey(ourSigner, signer, currentCap.owner, network, s, committer));
+                                        .thenCompose(s -> removeSigningKeys ?
+                                                removeSigningKey(ourSigner, signer, currentCap.owner, network, s, committer) :
+                                                Futures.of(s));
                             // Directory: bottom-up. Collect children from ALL chunks first so that
                             // descendants are committed before the directory's own CHAMP entries.
                             // Any partial commit then leaves only reachable entries in the CHAMP.
@@ -2916,7 +2888,7 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                                     // 1. Cross-writer / dir children first
                                                     return Futures.reduceAll(otherCaps, current,
                                                                     (s, cap) -> deleteAllChunks((WritableAbsoluteCapability) cap.cap, ourSigner,
-                                                                            tid, hasher, network, s, committer),
+                                                                            removeSigningKeys, tid, hasher, network, s, committer),
                                                                     (x, y) -> y)
                                                             // 2. Same-writer batchable files second
                                                             .thenCompose(v -> Futures.combineAllInOrder(locationFutures)
@@ -2931,7 +2903,9 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                                             .thenCompose(v -> deleteChunkChain(currentCap, ourSigner, chunk, streamSecret, tid, hasher, network, v, committer));
                                                 });
                                     })
-                                    .thenCompose(s -> removeSigningKey(ourSigner, signer, currentCap.owner, network, s, committer));
+                                    .thenCompose(s -> removeSigningKeys ?
+                                            removeSigningKey(ourSigner, signer, currentCap.owner, network, s, committer) :
+                                            Futures.of(s));
                         }));
     }
 
