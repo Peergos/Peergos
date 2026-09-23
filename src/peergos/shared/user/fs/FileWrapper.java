@@ -2693,53 +2693,6 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                 .thenApply(caps -> !caps.isEmpty());
     }
 
-    /**
-     * Move this file/dir and subtree to a new signing key pair.
-     * @param signer
-     * @param parent
-     * @param network
-     * @return The updated version of this file/dir and its parent
-     */
-    public CompletableFuture<Pair<FileWrapper, FileWrapper>> changeSigningKey(SigningPrivateKeyAndPublicHash signer,
-                                                                              FileWrapper parent,
-                                                                              NetworkAccess network,
-                                                                              SafeRandom random,
-                                                                              Hasher hasher) {
-        ensureUnmodified();
-        WritableAbsoluteCapability cap = (WritableAbsoluteCapability)getPointer().capability;
-        SymmetricLinkToSigner signerLink = SymmetricLinkToSigner.fromPair(cap.wBaseKey.get(), signer);
-        CryptreeNode fileAccess = getPointer().fileAccess;
-
-        RelativeCapability newParentLink = new RelativeCapability(Optional.of(parent.writer()),
-                parent.getLocation().getMapKey(), parent.writableFilePointer().bat, parent.getParentKey(), Optional.empty());
-        CryptreeNode newFileAccess = fileAccess
-                .withWriterLink(cap.rBaseKey, signerLink)
-                .withParentLink(getParentKey(), newParentLink);
-        WritableAbsoluteCapability ourNewCap = cap.withSigner(signer.publicKeyHash);
-        RetrievedCapability newRetrievedCapability = new RetrievedCapability(ourNewCap, newFileAccess);
-
-        // create the new signing subspace move subtree to it
-        PublicKeyHash owner = owner();
-
-        network.synchronizer.putEmpty(owner, signer.publicKeyHash);
-        return network.synchronizer.applyComplexUpdate(owner, signer, (version, committer) -> IpfsTransaction.call(owner,
-                tid -> network.uploadChunk(version, committer, newFileAccess, owner, getPointer().capability.getMapKey(), signer, tid)
-                        .thenCompose(newVersion -> copyAllChunks(false, cap, signer, tid, hasher, network,
-                                new MovedSubtree(), newVersion, committer))
-                        .thenCompose(copiedVersion -> copiedVersion.withWriter(owner, parent.writer(), network))
-                        .thenCompose(withParent -> parent.getPointer().fileAccess
-                                .updateChildLink(withParent, committer, parent.writableFilePointer(),
-                                        parent.signingPair(),
-                                        getPointer(),
-                                        newRetrievedCapability, network, random, hasher))
-                        .thenCompose(updatedParentVersion -> deleteAllChunks(cap, signingPair(), tid, hasher, network,
-                                updatedParentVersion, committer)),
-                network.dhtClient)
-        ).thenCompose(finalVersion -> parent.getUpdated(finalVersion, network)
-                .thenCompose(updatedParent -> network.getFile(finalVersion, ourNewCap, Optional.of(signer), ownername)
-                .thenApply(updatedUs -> new Pair<>(updatedUs.get(), updatedParent))));
-    }
-
     /** The result of moving a subtree to a new signing key: the source locations that were moved,
      *  along with their values in the source CHAMP, and the roots of any nested writing spaces,
      *  which are left untouched and must be re-parented onto the new signing key by the caller.
