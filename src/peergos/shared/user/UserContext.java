@@ -1415,6 +1415,18 @@ public class UserContext {
 
     /**
      *
+     * @param count how many single use signup tokens to create, if we are an admin
+     * @return the new tokens, each of which lets one new user sign up
+     */
+    @JsMethod
+    public CompletableFuture<List<String>> createSignupTokens(int count) {
+        return TimeLimitedClient.signNow(signer.secret)
+                .thenCompose(signedTime -> network.dhtClient.id()
+                        .thenCompose(id -> network.instanceAdmin.createSignupTokens(signer.publicKeyHash, id, signedTime, count)));
+    }
+
+    /**
+     *
      * @param in raw space requests
      * @return raw space requests paired with their decoded request
      */

@@ -18,6 +18,7 @@ public class HttpInstanceAdmin implements InstanceAdmin {
     public static final String APPROVE = "approve";
     public static final String SIGNUPS = "signups";
     public static final String WAIT_LIST = "waitlist";
+    public static final String TOKENS = "tokens";
 
     private final HttpPoster poster;
 
@@ -51,6 +52,20 @@ public class HttpInstanceAdmin implements InstanceAdmin {
                 + "&instance=" + encode(instanceIdentity.toString())
                 + "&req=" + ArrayOps.bytesToHex(signedRequest))
                 .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value);
+    }
+
+    @Override
+    public CompletableFuture<List<String>> createSignupTokens(PublicKeyHash adminIdentity,
+                                                              Multihash instanceIdentity,
+                                                              byte[] signedTime,
+                                                              int count) {
+        return poster.get(Constants.ADMIN_URL + TOKENS
+                + "?admin=" + encode(adminIdentity.toString())
+                + "&instance=" + encode(instanceIdentity.toString())
+                + "&auth=" + ArrayOps.bytesToHex(signedTime)
+                + "&count=" + count)
+                .thenApply(raw -> ((CborObject.CborList)CborObject.fromByteArray(raw))
+                        .map(c -> ((CborObject.CborString) c).value));
     }
 
     @Override

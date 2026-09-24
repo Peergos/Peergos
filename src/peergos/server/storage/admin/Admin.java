@@ -1,6 +1,7 @@
 package peergos.server.storage.admin;
 
 import peergos.server.*;
+import peergos.server.crypto.random.*;
 import peergos.server.util.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
@@ -21,12 +22,15 @@ public class Admin implements InstanceAdmin {
 
     private static final Path waitingList = PathUtil.get("waiting-list.txt");
     private static final int MAX_WAITING = 1_000_000;
+    public static final int MAX_SIGNUP_TOKENS_PER_REQUEST = 100;
 
     private final Set<String> adminUsernames;
     private final QuotaAdmin quotas;
     private final CoreNode core;
     private final ContentAddressedStorage ipfs;
     private final AtomicLong lastPendingRequestTime = new AtomicLong(System.currentTimeMillis());
+    private final AtomicLong lastTokenRequestTime = new AtomicLong(System.currentTimeMillis());
+    private final SafeRandom random = new SafeRandomJava();
     private final boolean enableWaitList;
     private int numberWaiting;
     private final String sourceVersion;
@@ -84,6 +88,28 @@ public class Admin implements InstanceAdmin {
                 throw new IllegalStateException("User is not an admin on this instance!");
             quotas.approveSpaceRequest(adminIdentity, instanceIdentity, signedRequest);
             return Futures.of(true);
+    }
+
+    /** Each token is an account, so the caller proves it holds an admin's key with a freshly signed
+     *  time, which cannot be replayed, before anything is created. */
+    @Override
+    public synchronized CompletableFuture<List<String>> createSignupTokens(PublicKeyHash adminIdentity,
+                                                                           Multihash instanceIdentity,
+                                                                           byte[] signedTime,
+                                                                           int count) {
+        long time = TimeLimited.isAllowedTime(signedTime, 60, ipfs, adminIdentity);
+        String username = core.getUsername(adminIdentity).join();
+        if (! adminUsernames.contains(username))
+            throw new IllegalStateException("User is not an admin on this instance!");
+        if (lastTokenRequestTime.get() >= time)
+            throw new IllegalStateException("Replay attack? Stale auth time for createSignupTokens");
+        lastTokenRequestTime.set(time);
+        if (count < 1 || count > MAX_SIGNUP_TOKENS_PER_REQUEST)
+            throw new IllegalArgumentException("Signup tokens are created 1 to " + MAX_SIGNUP_TOKENS_PER_REQUEST + " at a time");
+        List<String> tokens = new ArrayList<>();
+        for (int i = 0; i < count; i++)
+            tokens.add(generateSignupToken(random));
+        return Futures.of(tokens);
     }
 
     @Override

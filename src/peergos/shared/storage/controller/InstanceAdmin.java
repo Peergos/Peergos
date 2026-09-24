@@ -27,6 +27,13 @@ public interface InstanceAdmin {
                                                    Multihash instanceIdentity,
                                                    byte[] signedRequest);
 
+    /** Single use signup tokens for an admin to hand out: each lets one new user sign up, even
+     *  when the instance is not otherwise accepting signups. */
+    CompletableFuture<List<String>> createSignupTokens(PublicKeyHash adminIdentity,
+                                                       Multihash instanceIdentity,
+                                                       byte[] signedTime,
+                                                       int count);
+
     @JsMethod
     CompletableFuture<AllowedSignups> acceptingSignups();
 

@@ -13,6 +13,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.util.*;
 import java.util.function.*;
+import java.util.stream.*;
 
 public class AdminHandler implements HttpHandler {
 
@@ -67,6 +68,17 @@ public class AdminHandler implements HttpHandler {
                     String email = params.get("email").get(0);
                     boolean result = target.addToWaitList(email).join();
                     reply = new CborObject.CborBoolean(result);
+                    break;
+                }
+                case HttpInstanceAdmin.TOKENS: {
+                    PublicKeyHash admin = PublicKeyHash.fromString(params.get("admin").get(0));
+                    Multihash instance = Cid.decode(params.get("instance").get(0));
+                    byte[] signedTime = ArrayOps.hexToBytes(last.apply("auth"));
+                    int count = Integer.parseInt(last.apply("count"));
+                    List<String> tokens = target.createSignupTokens(admin, instance, signedTime, count).join();
+                    reply = new CborObject.CborList(tokens.stream()
+                            .map(CborObject.CborString::new)
+                            .collect(Collectors.toList()));
                     break;
                 }
                 case HttpInstanceAdmin.SIGNUPS: {

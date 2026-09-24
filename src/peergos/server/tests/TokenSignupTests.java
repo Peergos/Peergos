@@ -7,7 +7,9 @@ import peergos.server.*;
 import peergos.server.storage.admin.*;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.storage.controller.*;
 import peergos.shared.user.*;
+import peergos.shared.util.*;
 
 import java.net.*;
 import java.nio.file.*;
@@ -67,5 +69,62 @@ public class TokenSignupTests {
 
         String token = ((Admin)service.controller).generateSignupToken(crypto.random);
         UserContext.signUp(username, password, token, network, crypto).join();
+    }
+
+    /** The instance is full, so a signup needs a token: the admin can now make them without a
+     *  shell on the server, and each one lets exactly one person in. */
+    @Test
+    public void adminCreatesSingleUseSignupTokens() {
+        UserContext admin = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network, crypto);
+        List<String> tokens = admin.createSignupTokens(2).join();
+        Assert.assertEquals(2, tokens.size());
+        Assert.assertNotEquals(tokens.get(0), tokens.get(1));
+        for (String token : tokens)
+            Assert.assertTrue("a 32 byte token in hex: " + token, token.matches("[0-9a-f]{64}"));
+
+        String password = "test";
+        refused(() -> UserContext.signUp("invitee1", password, "", network, crypto).join(), "not currently accepting new sign ups");
+
+        UserContext.signUp("invitee1", password, tokens.get(0), network, crypto).join();
+        refused(() -> UserContext.signUp("invitee2", password, tokens.get(0), network, crypto).join(), "Invalid signup token");
+        UserContext.signUp("invitee2", password, tokens.get(1), network, crypto).join();
+    }
+
+    @Test
+    public void onlyAnAdminCreatesSignupTokens() {
+        String token = ((Admin)service.controller).generateSignupToken(crypto.random);
+        UserContext user = UserContext.signUp("notadmin", "test", token, network, crypto).join();
+        refused(() -> user.createSignupTokens(1).join(), "not an admin");
+    }
+
+    /** Fails, and for the reason given: a refusal for some other reason would pass unnoticed otherwise. */
+    private static void refused(Runnable call, String reason) {
+        try {
+            call.run();
+        } catch (CompletionException e) {
+            String message = String.valueOf(e.getCause() == null ? e.getMessage() : e.getCause().getMessage());
+            Assert.assertTrue("Refused, but for another reason: " + message, message.contains(reason));
+            return;
+        }
+        Assert.fail("Should have been refused: " + reason);
+    }
+
+    /** Over http, as the web ui calls it: a signed time is good for one request, and the count is bounded. */
+    @Test
+    public void signupTokensOverHttp() throws Exception {
+        UserContext admin = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network, crypto);
+        InstanceAdmin http = new HttpInstanceAdmin(new JavaPoster(new URI("http://localhost:" + args.getArg("port")).toURL(), false));
+        var instance = network.dhtClient.id().join();
+
+        byte[] signedTime = TimeLimitedClient.signNow(admin.signer.secret).join();
+        Assert.assertEquals(3, http.createSignupTokens(admin.signer.publicKeyHash, instance, signedTime, 3).join().size());
+        refused(() -> http.createSignupTokens(admin.signer.publicKeyHash, instance, signedTime, 1).join(), "Replay attack");
+
+        for (int count : new int[] {0, Admin.MAX_SIGNUP_TOKENS_PER_REQUEST + 1}) {
+            Thread.sleep(5);
+            byte[] fresh = TimeLimitedClient.signNow(admin.signer.secret).join();
+            refused(() -> http.createSignupTokens(admin.signer.publicKeyHash, instance, fresh, count).join(),
+                    "created 1 to " + Admin.MAX_SIGNUP_TOKENS_PER_REQUEST);
+        }
     }
 }
