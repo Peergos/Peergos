@@ -97,6 +97,30 @@ public class TokenSignupTests {
         refused(() -> user.createSignupTokens(1).join(), "not an admin");
     }
 
+    /** The admin's key signs times for everyday calls - quota, usage, follow requests - which pass
+     *  through whichever server they log in on. None of those may be spent on signup tokens. */
+    @Test
+    public void everydaySignedTimesDoNotCreateSignupTokens() throws Exception {
+        UserContext admin = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network, crypto);
+        InstanceAdmin http = new HttpInstanceAdmin(new JavaPoster(new URI("http://localhost:" + args.getArg("port")).toURL(), false));
+        var instance = network.dhtClient.id().join();
+
+        Thread.sleep(5);
+        byte[] quotaAuth = TimeLimitedClient.signNow(admin.signer.secret).join();
+        network.spaceUsage.getQuota(admin.signer.publicKeyHash, quotaAuth).join();
+        refused(() -> http.createSignupTokens(admin.signer.publicKeyHash, instance, quotaAuth, 1).join(), "SignedRequest");
+
+        // nor may a request signed for another path
+        byte[] otherPath = new TimeLimitedClient.SignedRequest(Constants.ADMIN_URL + HttpInstanceAdmin.PENDING, System.currentTimeMillis())
+                .sign(admin.signer.secret).join();
+        refused(() -> http.createSignupTokens(admin.signer.publicKeyHash, instance, otherPath, 1).join(), "Illegal path");
+    }
+
+    private static byte[] tokensRequest(UserContext admin) {
+        return new TimeLimitedClient.SignedRequest(Constants.ADMIN_URL + HttpInstanceAdmin.TOKENS, System.currentTimeMillis())
+                .sign(admin.signer.secret).join();
+    }
+
     /** Fails, and for the reason given: a refusal for some other reason would pass unnoticed otherwise. */
     private static void refused(Runnable call, String reason) {
         try {
@@ -109,20 +133,20 @@ public class TokenSignupTests {
         Assert.fail("Should have been refused: " + reason);
     }
 
-    /** Over http, as the web ui calls it: a signed time is good for one request, and the count is bounded. */
+    /** Over http, as the web ui calls it: a signed request is good for one call, and the count is bounded. */
     @Test
     public void signupTokensOverHttp() throws Exception {
         UserContext admin = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network, crypto);
         InstanceAdmin http = new HttpInstanceAdmin(new JavaPoster(new URI("http://localhost:" + args.getArg("port")).toURL(), false));
         var instance = network.dhtClient.id().join();
 
-        byte[] signedTime = TimeLimitedClient.signNow(admin.signer.secret).join();
-        Assert.assertEquals(3, http.createSignupTokens(admin.signer.publicKeyHash, instance, signedTime, 3).join().size());
-        refused(() -> http.createSignupTokens(admin.signer.publicKeyHash, instance, signedTime, 1).join(), "Replay attack");
+        byte[] signed = tokensRequest(admin);
+        Assert.assertEquals(3, http.createSignupTokens(admin.signer.publicKeyHash, instance, signed, 3).join().size());
+        refused(() -> http.createSignupTokens(admin.signer.publicKeyHash, instance, signed, 1).join(), "Replay attack");
 
         for (int count : new int[] {0, Admin.MAX_SIGNUP_TOKENS_PER_REQUEST + 1}) {
             Thread.sleep(5);
-            byte[] fresh = TimeLimitedClient.signNow(admin.signer.secret).join();
+            byte[] fresh = tokensRequest(admin);
             refused(() -> http.createSignupTokens(admin.signer.publicKeyHash, instance, fresh, count).join(),
                     "created 1 to " + Admin.MAX_SIGNUP_TOKENS_PER_REQUEST);
         }

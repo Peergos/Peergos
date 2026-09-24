@@ -28,10 +28,12 @@ public interface InstanceAdmin {
                                                    byte[] signedRequest);
 
     /** Single use signup tokens for an admin to hand out: each lets one new user sign up, even
-     *  when the instance is not otherwise accepting signups. */
+     *  when the instance is not otherwise accepting signups.
+     *
+     *  @param signedRequest a TimeLimitedClient.SignedRequest for Constants.ADMIN_URL + "tokens" */
     CompletableFuture<List<String>> createSignupTokens(PublicKeyHash adminIdentity,
                                                        Multihash instanceIdentity,
-                                                       byte[] signedTime,
+                                                       byte[] signedRequest,
                                                        int count);
 
     @JsMethod

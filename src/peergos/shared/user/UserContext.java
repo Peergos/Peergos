@@ -12,6 +12,7 @@ import peergos.shared.login.mfa.*;
 import peergos.shared.resolution.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.storage.controller.InstanceAdmin;
+import peergos.shared.storage.controller.HttpInstanceAdmin;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.user.fs.transaction.*;
 import peergos.shared.*;
@@ -1420,9 +1421,10 @@ public class UserContext {
      */
     @JsMethod
     public CompletableFuture<List<String>> createSignupTokens(int count) {
-        return TimeLimitedClient.signNow(signer.secret)
-                .thenCompose(signedTime -> network.dhtClient.id()
-                        .thenCompose(id -> network.instanceAdmin.createSignupTokens(signer.publicKeyHash, id, signedTime, count)));
+        return new TimeLimitedClient.SignedRequest(Constants.ADMIN_URL + HttpInstanceAdmin.TOKENS, System.currentTimeMillis())
+                .sign(signer.secret)
+                .thenCompose(signedRequest -> network.dhtClient.id()
+                        .thenCompose(id -> network.instanceAdmin.createSignupTokens(signer.publicKeyHash, id, signedRequest, count)));
     }
 
     /**

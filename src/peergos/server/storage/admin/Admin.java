@@ -90,14 +90,15 @@ public class Admin implements InstanceAdmin {
             return Futures.of(true);
     }
 
-    /** Each token is an account, so the caller proves it holds an admin's key with a freshly signed
-     *  time, which cannot be replayed, before anything is created. */
+    /** Each token is an account, so the caller proves it holds an admin's key before anything is
+     *  created: with a fresh signature over this call's path, spent once. A bare signed time will
+     *  not do, since the same key signs those for everyday calls that pass through other servers. */
     @Override
     public synchronized CompletableFuture<List<String>> createSignupTokens(PublicKeyHash adminIdentity,
                                                                            Multihash instanceIdentity,
-                                                                           byte[] signedTime,
+                                                                           byte[] signedRequest,
                                                                            int count) {
-        long time = TimeLimited.isAllowedTime(signedTime, 60, ipfs, adminIdentity);
+        long time = TimeLimited.isAllowed(Constants.ADMIN_URL + HttpInstanceAdmin.TOKENS, signedRequest, 60, ipfs, adminIdentity);
         String username = core.getUsername(adminIdentity).join();
         if (! adminUsernames.contains(username))
             throw new IllegalStateException("User is not an admin on this instance!");

@@ -57,12 +57,12 @@ public class HttpInstanceAdmin implements InstanceAdmin {
     @Override
     public CompletableFuture<List<String>> createSignupTokens(PublicKeyHash adminIdentity,
                                                               Multihash instanceIdentity,
-                                                              byte[] signedTime,
+                                                              byte[] signedRequest,
                                                               int count) {
         return poster.get(Constants.ADMIN_URL + TOKENS
                 + "?admin=" + encode(adminIdentity.toString())
                 + "&instance=" + encode(instanceIdentity.toString())
-                + "&auth=" + ArrayOps.bytesToHex(signedTime)
+                + "&auth=" + ArrayOps.bytesToHex(signedRequest)
                 + "&count=" + count)
                 .thenApply(raw -> ((CborObject.CborList)CborObject.fromByteArray(raw))
                         .map(c -> ((CborObject.CborString) c).value));

@@ -73,9 +73,9 @@ public class AdminHandler implements HttpHandler {
                 case HttpInstanceAdmin.TOKENS: {
                     PublicKeyHash admin = PublicKeyHash.fromString(params.get("admin").get(0));
                     Multihash instance = Cid.decode(params.get("instance").get(0));
-                    byte[] signedTime = ArrayOps.hexToBytes(last.apply("auth"));
+                    byte[] signedRequest = ArrayOps.hexToBytes(last.apply("auth"));
                     int count = Integer.parseInt(last.apply("count"));
-                    List<String> tokens = target.createSignupTokens(admin, instance, signedTime, count).join();
+                    List<String> tokens = target.createSignupTokens(admin, instance, signedRequest, count).join();
                     reply = new CborObject.CborList(tokens.stream()
                             .map(CborObject.CborString::new)
                             .collect(Collectors.toList()));
