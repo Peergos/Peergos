@@ -70,6 +70,12 @@ public class AdminHandler implements HttpHandler {
                     reply = new CborObject.CborBoolean(result);
                     break;
                 }
+                case HttpInstanceAdmin.IS_ADMIN: {
+                    PublicKeyHash identity = PublicKeyHash.fromString(params.get("admin").get(0));
+                    byte[] signedRequest = ArrayOps.hexToBytes(last.apply("auth"));
+                    reply = new CborObject.CborBoolean(target.isAdmin(identity, signedRequest).join());
+                    break;
+                }
                 case HttpInstanceAdmin.TOKENS: {
                     PublicKeyHash admin = PublicKeyHash.fromString(params.get("admin").get(0));
                     Multihash instance = Cid.decode(params.get("instance").get(0));

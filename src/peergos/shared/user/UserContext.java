@@ -1416,6 +1416,17 @@ public class UserContext {
 
     /**
      *
+     * @return whether we are an admin on the server we are connected to
+     */
+    @JsMethod
+    public CompletableFuture<Boolean> isAdmin() {
+        return new TimeLimitedClient.SignedRequest(Constants.ADMIN_URL + HttpInstanceAdmin.IS_ADMIN, System.currentTimeMillis())
+                .sign(signer.secret)
+                .thenCompose(signedRequest -> network.instanceAdmin.isAdmin(signer.publicKeyHash, signedRequest));
+    }
+
+    /**
+     *
      * @param count how many single use signup tokens to create, if we are an admin
      * @return the new tokens, each of which lets one new user sign up
      */

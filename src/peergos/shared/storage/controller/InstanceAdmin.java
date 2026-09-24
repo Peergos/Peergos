@@ -27,6 +27,12 @@ public interface InstanceAdmin {
                                                    Multihash instanceIdentity,
                                                    byte[] signedRequest);
 
+    /** Whether this identity is an admin here. Only its owner may ask, so who the admins are stays
+     *  hidden, as it does from getPendingSpaceRequests, which gives anyone else an empty list.
+     *
+     *  @param signedRequest a TimeLimitedClient.SignedRequest for Constants.ADMIN_URL + "isadmin" */
+    CompletableFuture<Boolean> isAdmin(PublicKeyHash identity, byte[] signedRequest);
+
     /** Single use signup tokens for an admin to hand out: each lets one new user sign up, even
      *  when the instance is not otherwise accepting signups.
      *

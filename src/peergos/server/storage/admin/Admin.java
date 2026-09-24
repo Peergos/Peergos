@@ -90,6 +90,12 @@ public class Admin implements InstanceAdmin {
             return Futures.of(true);
     }
 
+    @Override
+    public CompletableFuture<Boolean> isAdmin(PublicKeyHash identity, byte[] signedRequest) {
+        TimeLimited.isAllowed(Constants.ADMIN_URL + HttpInstanceAdmin.IS_ADMIN, signedRequest, 60, ipfs, identity);
+        return core.getUsername(identity).thenApply(adminUsernames::contains);
+    }
+
     /** Each token is an account, so the caller proves it holds an admin's key before anything is
      *  created: with a fresh signature over this call's path, spent once. A bare signed time will
      *  not do, since the same key signs those for everyday calls that pass through other servers. */

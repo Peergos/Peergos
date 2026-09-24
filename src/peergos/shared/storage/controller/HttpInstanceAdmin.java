@@ -19,6 +19,7 @@ public class HttpInstanceAdmin implements InstanceAdmin {
     public static final String SIGNUPS = "signups";
     public static final String WAIT_LIST = "waitlist";
     public static final String TOKENS = "tokens";
+    public static final String IS_ADMIN = "isadmin";
 
     private final HttpPoster poster;
 
@@ -52,6 +53,14 @@ public class HttpInstanceAdmin implements InstanceAdmin {
                 + "&instance=" + encode(instanceIdentity.toString())
                 + "&req=" + ArrayOps.bytesToHex(signedRequest))
                 .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> isAdmin(PublicKeyHash identity, byte[] signedRequest) {
+        return poster.get(Constants.ADMIN_URL + IS_ADMIN
+                + "?admin=" + encode(identity.toString())
+                + "&auth=" + ArrayOps.bytesToHex(signedRequest))
+                .thenApply(raw -> ((CborObject.CborBoolean)CborObject.fromByteArray(raw)).value);
     }
 
     @Override

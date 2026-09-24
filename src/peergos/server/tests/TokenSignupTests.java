@@ -97,6 +97,25 @@ public class TokenSignupTests {
         refused(() -> user.createSignupTokens(1).join(), "not an admin");
     }
 
+    /** An admin with nothing pending still has to know it is one, to reach the invites at all. */
+    @Test
+    public void usersLearnOnlyWhetherTheyThemselvesAreAdmins() throws Exception {
+        UserContext admin = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network, crypto);
+        Assert.assertTrue(admin.getPendingSpaceRequests().join().isEmpty());
+        Assert.assertTrue(admin.isAdmin().join());
+
+        String token = ((Admin)service.controller).generateSignupToken(crypto.random);
+        UserContext user = UserContext.signUp("notadmin2", "test", token, network, crypto).join();
+        Assert.assertFalse(user.isAdmin().join());
+
+        // asking about the admin takes the admin's key. A bad signature fails without a message, so
+        // this only asks that it fails
+        InstanceAdmin http = new HttpInstanceAdmin(new JavaPoster(new URI("http://localhost:" + args.getArg("port")).toURL(), false));
+        byte[] signedByUser = new TimeLimitedClient.SignedRequest(Constants.ADMIN_URL + HttpInstanceAdmin.IS_ADMIN, System.currentTimeMillis())
+                .sign(user.signer.secret).join();
+        refused(() -> http.isAdmin(admin.signer.publicKeyHash, signedByUser).join(), "");
+    }
+
     /** The admin's key signs times for everyday calls - quota, usage, follow requests - which pass
      *  through whichever server they log in on. None of those may be spent on signup tokens. */
     @Test
