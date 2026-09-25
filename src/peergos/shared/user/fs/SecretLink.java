@@ -7,6 +7,22 @@ import peergos.shared.io.ipfs.bases.*;
 
 public class SecretLink {
 
+    /** How the server words a link it will not serve, whatever is asked again: the start of each
+     *  message, so a server that words the rest differently still matches. */
+    public static final String MISSING = "No secret link";
+    public static final String EXPIRED = "Secret link expired";
+    public static final String USED_UP = "Maximum link retrievals";
+
+    /** Whether an error is the server refusing a link for good. A browser receives the message still
+     *  url encoded, spaces as plus signs, so both forms are recognised. */
+    public static boolean isRefused(Throwable t) {
+        String message = t == null ? null : t.getMessage();
+        if (message == null)
+            return false;
+        String plain = message.replace('+', ' ');
+        return plain.contains(MISSING) || plain.contains(EXPIRED) || plain.contains(USED_UP);
+    }
+
     public final PublicKeyHash owner;
     public final long label;
     public final String linkPassword;

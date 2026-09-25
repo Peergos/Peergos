@@ -1,5 +1,6 @@
 package peergos.server.tests;
 import java.net.URLDecoder;
+import java.net.URI;
 import java.time.*;
 import java.util.concurrent.atomic.*;
 import java.util.logging.*;
@@ -355,6 +356,43 @@ public abstract class UserTests {
         } catch (Exception e) {
             if (!Exceptions.getRootCause(e).getMessage().contains("User already exists"))
                 Assert.fail("Incorrect error message");
+        }
+    }
+
+    /** A link the server will never serve again fails at once, saying why, rather than after a
+     *  minute of retries: the viewer is on a loading page all that time. Asked over http, as a
+     *  browser asks, since that is the route that retries. */
+    @Test
+    public void refusedSecretLinksFailFast() throws Exception {
+        String username = generateUsername();
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, "password", network, crypto);
+        context.getUserRoot().join().mkdir("linked", network, false, context.mirrorBatId(), crypto).join();
+        String path = username + "/linked";
+
+        LinkProperties once = context.createSecretLink(path, false, Optional.empty(), Optional.of(1), "", false).join();
+        NetworkAccess http = Builder.buildJavaNetworkAccess(new URI("http://localhost:" + getArgs().getArg("port")).toURL(),
+                false, Optional.empty(), Optional.empty()).join();
+        http.dhtClient.getSecretLink(once.toLink(context.signer.publicKeyHash)).join();
+        refusedQuickly(http, once.toLink(context.signer.publicKeyHash), SecretLink.USED_UP);
+
+        LinkProperties expired = context.createSecretLink(path, false, Optional.of(LocalDateTime.now().minusMinutes(1)), Optional.empty(), "", false).join();
+        refusedQuickly(http, expired.toLink(context.signer.publicKeyHash), SecretLink.EXPIRED);
+
+        LinkProperties deleted = context.createSecretLink(path, false, Optional.empty(), Optional.empty(), "", false).join();
+        context.deleteSecretLink(deleted.label, PathUtil.get(path), false).join();
+        refusedQuickly(http, deleted.toLink(context.signer.publicKeyHash), SecretLink.MISSING);
+    }
+
+    private static void refusedQuickly(NetworkAccess http, SecretLink link, String reason) {
+        long start = System.currentTimeMillis();
+        try {
+            http.dhtClient.getSecretLink(link).join();
+            Assert.fail("Should have been refused: " + reason);
+        } catch (CompletionException e) {
+            long took = System.currentTimeMillis() - start;
+            Assert.assertTrue("Refused for another reason: " + e.getMessage(), SecretLink.isRefused(Exceptions.getRootCause(e)));
+            Assert.assertTrue(URLDecoder.decode(Exceptions.getRootCause(e).getMessage(), Charsets.UTF_8).contains(reason));
+            Assert.assertTrue("A refusal took " + took + "ms, as if it were retried", took < 5_000);
         }
     }
 
