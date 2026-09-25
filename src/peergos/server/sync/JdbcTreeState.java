@@ -94,8 +94,13 @@ public class JdbcTreeState implements SyncState {
                     "CREATE INDEX IF NOT EXISTS sync_path_index ON syncstate (path);", conn);
             // a row written before the chunk size existed describes a legacy file, which is
             // what the default says, so there is nothing to migrate beyond the column itself
-            cmds.createTable(cmds.ensureColumnExistsCommand("syncstate", "chunksize",
-                    cmds.sqlInteger() + " DEFAULT " + Chunk.LEGACY_SIZE), conn);
+            try { // sqlite doesn't have an "if not exists" modifier on "add column"
+                cmds.createTable(cmds.ensureColumnExistsCommand("syncstate", "chunksize",
+                        cmds.sqlInteger() + " DEFAULT " + Chunk.LEGACY_SIZE), conn);
+            } catch (SQLException f) {
+                if (!f.getMessage().contains("duplicate column"))
+                    throw new RuntimeException(f);
+            }
             cmds.createTable("CREATE TABLE IF NOT EXISTS syncdone (key text primary key not null, done bool not null);", conn);
             cmds.createTable("CREATE TABLE IF NOT EXISTS syncdirs (path text primary key not null);", conn);
             cmds.createTable("CREATE TABLE IF NOT EXISTS synclocaldeletes (path text primary key not null);", conn);
