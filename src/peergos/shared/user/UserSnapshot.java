@@ -18,6 +18,7 @@ public class UserSnapshot implements Cborable {
     public final List<BatWithId> mirrorBats;
     public final Optional<LoginData> login;
     public final LinkCounts linkCounts;
+    public final List<byte[]> writerQuotas; // signed WriterQuotaRequests
 
     public UserSnapshot(String username,
                         PublicKeyHash owner,
@@ -25,7 +26,8 @@ public class UserSnapshot implements Cborable {
                         List<BlindFollowRequest> pendingFollowReqs,
                         List<BatWithId> mirrorBats,
                         Optional<LoginData> login,
-                        LinkCounts linkCounts) {
+                        LinkCounts linkCounts,
+                        List<byte[]> writerQuotas) {
         this.username = username;
         this.owner = owner;
         this.pointerState = pointerState;
@@ -33,6 +35,7 @@ public class UserSnapshot implements Cborable {
         this.mirrorBats = mirrorBats;
         this.login = login;
         this.linkCounts = linkCounts;
+        this.writerQuotas = writerQuotas;
     }
 
     @Override
@@ -53,6 +56,10 @@ public class UserSnapshot implements Cborable {
         state.put("b", new CborObject.CborList(mirrorBats));
         login.ifPresent(d -> state.put("l", d));
         state.put("lc", linkCounts.toCbor());
+        if (! writerQuotas.isEmpty())
+            state.put("wq", new CborObject.CborList(writerQuotas.stream()
+                    .map(CborObject.CborByteArray::new)
+                    .collect(Collectors.toList())));
         return CborObject.CborMap.build(state);
     }
 
@@ -68,8 +75,9 @@ public class UserSnapshot implements Cborable {
         List<BatWithId> mirrorBats = m.getList("b", BatWithId::fromCbor);
         Optional<LoginData> login = m.getOptional("l", LoginData::fromCbor);
         LinkCounts lc = m.get("lc", LinkCounts::fromCbor);
+        List<byte[]> writerQuotas = m.getList("wq", c -> ((CborObject.CborByteArray) c).value);
 
-        return new UserSnapshot(username, owner, pointerState, pendingFollowReqs, mirrorBats, login, lc);
+        return new UserSnapshot(username, owner, pointerState, pendingFollowReqs, mirrorBats, login, lc, writerQuotas);
     }
 
     @Override
