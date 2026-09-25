@@ -578,6 +578,67 @@ public class MultiNodeNetworkTests {
                 () -> true, getNode(iNode2), crypto));
     }
 
+    private static void assertUploadOverQuotaRejected(UserContext user, Path dir, int size) {
+        try {
+            user.getByPath(dir).join().get().uploadOrReplaceFile("big.bin", AsyncReader.build(new byte[size]), size,
+                    user.network, user.crypto, () -> false, x -> {}).join();
+            Assert.fail("Writer quota wasn't enforced");
+        } catch (CompletionException e) {
+            String message = peergos.shared.util.Exceptions.getRootCause(e).getMessage();
+            Assert.assertTrue(message, message != null && message.contains("Storage quota reached"));
+        }
+    }
+
+    @Test
+    public void writerQuotaViaOtherNode() {
+        UserContext owner = ensureSignedUp(generateUsername(random), randomString(), getNode(iNode2), crypto);
+        UserContext sharee = ensureSignedUp(generateUsername(random), randomString(), getNode(iNode1), crypto);
+        updatePkis();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        owner.getUserRoot().join().mkdir("team", owner.network, false, owner.mirrorBatId(), crypto).join();
+        Path dir = PathUtil.get(owner.username, "team");
+        owner.shareWriteAccessWith(dir, Set.of(sharee.username)).join();
+        owner.setWriteShareQuota(dir, Optional.of(1024L * 1024)).join();
+
+        assertUploadOverQuotaRejected(sharee, dir, 3 * 1024 * 1024);
+        peergos.shared.storage.WriterSpaceInfo space = sharee.getWriteSpaceInfo(sharee.getByPath(dir).join().get()).join();
+        Assert.assertTrue(space.available.isPresent());
+    }
+
+    @Test
+    public void migrateWithWriterQuota() {
+        if (iNode1 == 0 || iNode2 == 0)
+            return; // Don't test migration to/from pki node
+        String username = generateUsername(random);
+        String password = randomString();
+        NetworkAccess node1 = getNode(iNode1);
+        Multihash originalNodeId = node1.dhtClient.id().join();
+        NetworkAccess node2 = getNode(iNode2);
+        Multihash newStorageNodeId = node2.dhtClient.id().join();
+
+        UserContext user = ensureSignedUp(username, password, node1, crypto);
+        UserContext sharee = ensureSignedUp(generateUsername(random), randomString(), node1, crypto);
+        updatePkis();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(user), List.of(sharee));
+        user.getUserRoot().join().mkdir("team", user.network, false, user.mirrorBatId(), crypto).join();
+        Path dir = PathUtil.get(username, "team");
+        user.shareWriteAccessWith(dir, Set.of(sharee.username)).join();
+        long quota = 1024L * 1024;
+        user.setWriteShareQuota(dir, Optional.of(quota)).join();
+
+        List<UserPublicKeyLink> existing = user.network.coreNode.getChain(username).join();
+        List<UserPublicKeyLink> newChain = peergos.shared.user.Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret).join();
+        UserContext userViaNewServer = ensureSignedUp(username, password, node2, crypto);
+        List<BatWithId> bats = node1.batCave.getUserBats(username, userViaNewServer.signer).join();
+        Optional<BatWithId> mirrorBat = Optional.of(bats.get(bats.size() - 1));
+        long usage = user.getSpaceUsage(false).join();
+        userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId, mirrorBat, LocalDateTime.now(), usage, true).join();
+
+        UserContext postMigration = ensureSignedUp(username, password, node2.clear(), crypto);
+        Assert.assertEquals(Optional.of(quota), postMigration.getWriteShareQuota(dir).join().quota);
+        assertUploadOverQuotaRejected(sharee, dir, 3 * 1024 * 1024);
+    }
+
     @Test
     public void internodeFriends() throws Exception {
         String username1 = generateUsername(random);
