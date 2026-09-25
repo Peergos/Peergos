@@ -2710,7 +2710,7 @@ public class UserContext {
         boolean hasGroups = initialReadersToRemove.stream().anyMatch(i -> i.startsWith("."));
         return (hasGroups ?
                 getSocialState().thenCompose(social -> sharedWith(path)
-                        .thenApply(fileSharingState ->
+                        .thenCompose(fileSharingState ->
                                 gatherAllUsernamesToUnshare(social, fileSharingState.readAccess, initialReadersToRemove)
                         )) :
                 Futures.of(initialReadersToRemove))
@@ -2755,7 +2755,7 @@ public class UserContext {
         boolean hasGroups = initialWritersToRemove.stream().anyMatch(i -> i.startsWith("."));
         return (hasGroups ?
                 getSocialState().thenCompose(social -> sharedWith(path)
-                        .thenApply(fileSharingState ->
+                        .thenCompose(fileSharingState ->
                             gatherAllUsernamesToUnshare(social, fileSharingState.writeAccess, initialWritersToRemove)
                         )) :
                 Futures.of(initialWritersToRemove))
@@ -2827,34 +2827,40 @@ public class UserContext {
     }
 
     /*
-        Taking into account currently shared users/groups and users/groups selected for unsharing, build a list that is group aware
-        Note: Only inbuilt groups of friends and followers are currently handled
+        Taking into account currently shared users/groups and users/groups selected for unsharing, build a list that is group aware:
+        unsharing a group also unshares its members who were shared with individually.
+        Followers contain friends, so unsharing followers also unshares the friends group. Custom groups can overlap without
+        either containing the other, so no such rule applies to them.
      */
-    private Set<String> gatherAllUsernamesToUnshare(SocialState social,
-                                                    Set<String> currentSharedWithUsernames,
-                                                    Set<String> usernamesToUnshare) {
-
-        Set<String> followers = social.getFollowers();
-        Set<String> friends = social.getFriends();
-
+    private CompletableFuture<Set<String>> gatherAllUsernamesToUnshare(SocialState social,
+                                                                       Set<String> currentSharedWithUsernames,
+                                                                       Set<String> usernamesToUnshare) {
         String friendGroupUid = social.getFriendsGroupUid();
         String followersGroupUid = social.getFollowersGroupUid();
 
         Set<String> usersToUnshare = new HashSet<>(usernamesToUnshare);
-        if (usernamesToUnshare.contains(friendGroupUid)) {
-            HashSet<String> toAdd = new HashSet<>(currentSharedWithUsernames);
-            toAdd.retainAll(friends);
-            usersToUnshare.addAll(toAdd);
-        }
-        if (usernamesToUnshare.contains(followersGroupUid)) {
-            HashSet<String> toAdd = new HashSet<>(currentSharedWithUsernames);
-            toAdd.retainAll(followers);
-            usersToUnshare.addAll(toAdd);
-            if (currentSharedWithUsernames.contains(friendGroupUid)) {
-                usersToUnshare.add(friendGroupUid);
-            }
-        }
-        return usersToUnshare;
+        if (usernamesToUnshare.contains(followersGroupUid) && currentSharedWithUsernames.contains(friendGroupUid))
+            usersToUnshare.add(friendGroupUid);
+        List<String> groups = usernamesToUnshare.stream()
+                .filter(n -> n.startsWith("."))
+                .collect(Collectors.toList());
+        return Futures.reduceAll(groups, usersToUnshare,
+                (res, groupUid) -> getGroupMembersForUnshare(social, groupUid)
+                        .thenApply(members -> {
+                            HashSet<String> toAdd = new HashSet<>(currentSharedWithUsernames);
+                            toAdd.retainAll(members);
+                            res.addAll(toAdd);
+                            return res;
+                        }),
+                (a, b) -> b);
+    }
+
+    private CompletableFuture<Set<String>> getGroupMembersForUnshare(SocialState social, String groupUid) {
+        if (groupUid.equals(social.getFriendsGroupUid()))
+            return Futures.of(social.getFriends());
+        if (groupUid.equals(social.getFollowersGroupUid()))
+            return Futures.of(social.getFollowers());
+        return getGroupMembers(groupUid);
     }
 
     @JsMethod

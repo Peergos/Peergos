@@ -193,6 +193,26 @@ public class MultiUserTests {
     }
 
     @Test
+    public void customGroupSharing() {
+        PeergosNetworkUtils.customGroupSharing(network, random);
+    }
+
+    @Test
+    public void customGroupUnshare() {
+        PeergosNetworkUtils.customGroupUnshare(network, random);
+    }
+
+    @Test
+    public void customGroupMemberRemoval() {
+        PeergosNetworkUtils.customGroupMemberRemoval(network, random);
+    }
+
+    @Test
+    public void customGroupDelete() {
+        PeergosNetworkUtils.customGroupDelete(network, random);
+    }
+
+    @Test
     public void groupSharing() {
         PeergosNetworkUtils.groupSharing(network, random);
     }
