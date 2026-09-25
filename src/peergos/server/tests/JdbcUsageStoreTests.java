@@ -7,7 +7,9 @@ import peergos.server.sql.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.cbor.*;
 import peergos.shared.io.ipfs.*;
+import peergos.shared.storage.*;
 
 import java.sql.*;
 import java.util.*;
@@ -313,5 +315,91 @@ public class JdbcUsageStoreTests {
                 Set.of(owned), Collections.emptySet(), 1500, 500, false);
 
         Assert.assertTrue(store.getUsage(writer).ownedKeys().contains(owned));
+    }
+
+    private static PublicKeyHash randomKey(Crypto crypto) {
+        return new PublicKeyHash(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, crypto.random.randomBytes(36)));
+    }
+
+    private static MaybeMultihash target(int i) {
+        return MaybeMultihash.of(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, new byte[]{(byte) i}));
+    }
+
+    @Test
+    public void writerQuotaRoundTrips() throws Exception {
+        Crypto crypto = Main.initCrypto();
+        WriterQuotaRequest set = new WriterQuotaRequest(randomKey(crypto), randomKey(crypto), Optional.of(5_000L), 12345);
+        Assert.assertEquals(set, WriterQuotaRequest.fromCbor(CborObject.fromByteArray(set.serialize())));
+        WriterQuotaRequest clear = new WriterQuotaRequest(set.owner, set.writer, Optional.empty(), 12346);
+        Assert.assertEquals(clear, WriterQuotaRequest.fromCbor(CborObject.fromByteArray(clear.serialize())));
+
+        WriterSpaceInfo capped = new WriterSpaceInfo(set.writer, Optional.of(5_000L), 1_000, Optional.of(4_000L));
+        Assert.assertEquals(capped, WriterSpaceInfo.fromCbor(CborObject.fromByteArray(capped.serialize())));
+        WriterSpaceInfo uncapped = new WriterSpaceInfo(set.writer, Optional.empty(), 0, Optional.empty());
+        Assert.assertEquals(uncapped, WriterSpaceInfo.fromCbor(CborObject.fromByteArray(uncapped.serialize())));
+    }
+
+    @Test
+    public void writerQuotas() throws Exception {
+        Crypto crypto = Main.initCrypto();
+        Connection db = new Sqlite.UncloseableConnection(Sqlite.build(":memory:"));
+        JdbcUsageStore store = new JdbcUsageStore(() -> db, new SqliteCommands());
+        String username = "alice";
+        store.addUserIfAbsent(username);
+        PublicKeyHash owner = randomKey(crypto);
+        PublicKeyHash writer = randomKey(crypto);
+        store.addWriter(username, owner);
+        store.addWriter(username, writer);
+
+        Assert.assertTrue(store.setWriterQuota(username, writer, Optional.of(1000L), 10, new byte[]{1}));
+        Assert.assertEquals(Map.of(writer, 1000L), store.getAllWriterQuotas());
+        Assert.assertFalse("replay", store.setWriterQuota(username, writer, Optional.of(2000L), 10, new byte[]{2}));
+        Assert.assertFalse("older", store.setWriterQuota(username, writer, Optional.of(2000L), 9, new byte[]{2}));
+        Assert.assertEquals(Map.of(writer, 1000L), store.getAllWriterQuotas());
+
+        Assert.assertTrue(store.setWriterQuota(username, writer, Optional.of(2000L), 11, new byte[]{3}));
+        Assert.assertEquals(Map.of(writer, 2000L), store.getAllWriterQuotas());
+        Assert.assertArrayEquals(new byte[]{3}, store.getSignedWriterQuotas(username).get(0));
+
+        Assert.assertTrue(store.setWriterQuota(username, writer, Optional.empty(), 12, new byte[]{4}));
+        Assert.assertTrue(store.getAllWriterQuotas().isEmpty());
+        Assert.assertTrue(store.getSignedWriterQuotas(username).isEmpty());
+        Assert.assertFalse("replay after removal", store.setWriterQuota(username, writer, Optional.of(2000L), 11, new byte[]{3}));
+        Assert.assertTrue(store.getAllWriterQuotas().isEmpty());
+
+        store.setWriterQuota(username, writer, Optional.of(3000L), 13, new byte[]{5});
+        store.deleteWriterQuota(writer);
+        Assert.assertTrue(store.getAllWriterQuotas().isEmpty());
+
+        store.setWriterQuota(username, writer, Optional.of(3000L), 14, new byte[]{6});
+        store.removeUser(username);
+        Assert.assertTrue(store.getAllWriterQuotas().isEmpty());
+    }
+
+    @Test
+    public void subtreeUsageAndAncestors() throws Exception {
+        Crypto crypto = Main.initCrypto();
+        Connection db = new Sqlite.UncloseableConnection(Sqlite.build(":memory:"));
+        JdbcUsageStore store = new JdbcUsageStore(() -> db, new SqliteCommands());
+        String username = "alice";
+        store.addUserIfAbsent(username);
+        PublicKeyHash owner = randomKey(crypto);
+        PublicKeyHash share = randomKey(crypto);
+        PublicKeyHash nested = randomKey(crypto);
+        PublicKeyHash sibling = randomKey(crypto);
+        for (PublicKeyHash k : List.of(owner, share, nested, sibling))
+            store.addWriter(username, k);
+        store.updateWriterUsageAtomically(owner, MaybeMultihash.empty(), target(1), Collections.emptySet(), Set.of(share, sibling), 100, 100, false);
+        store.updateWriterUsageAtomically(share, MaybeMultihash.empty(), target(2), Collections.emptySet(), Set.of(nested), 20, 20, false);
+        store.updateWriterUsageAtomically(nested, MaybeMultihash.empty(), target(3), Collections.emptySet(), Collections.emptySet(), 3, 3, false);
+        store.updateWriterUsageAtomically(sibling, MaybeMultihash.empty(), target(4), Collections.emptySet(), Collections.emptySet(), 4000, 4000, false);
+
+        Assert.assertEquals(4123, store.getSubtreeUsage(owner));
+        Assert.assertEquals(23, store.getSubtreeUsage(share));
+        Assert.assertEquals(3, store.getSubtreeUsage(nested));
+
+        Assert.assertEquals(Set.of(share, owner), new HashSet<>(store.getAncestors(nested)));
+        Assert.assertEquals(List.of(owner), store.getAncestors(sibling));
+        Assert.assertTrue(store.getAncestors(owner).isEmpty());
     }
 }

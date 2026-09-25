@@ -49,6 +49,7 @@ public class JdbcUsageStore implements UsageStore {
 
         try (Connection conn = getConnection()) {
             commands.createTable(commands.createUsageTablesCommand(), conn);
+            commands.createTable(commands.createWriterQuotasTableCommand(), conn);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -64,6 +65,7 @@ public class JdbcUsageStore implements UsageStore {
              PreparedStatement getUser = conn.prepareStatement("SELECT id FROM users WHERE name = ?;");
              PreparedStatement deleteUserUsage = conn.prepareStatement("DELETE from userusage where user_id=?;");
              PreparedStatement deletePendingUsage = conn.prepareStatement("DELETE from pendingusage where user_id=?;");
+             PreparedStatement deleteWriterQuotas = conn.prepareStatement("DELETE from writerquotas where user_id=?;");
              PreparedStatement getWriterIds = conn.prepareStatement("SELECT writers.id FROM writers " +
                      "INNER JOIN ownedkeys ON writers.id=ownedkeys.owned_id " +
                      "INNER JOIN writerusage ON ownedkeys.parent_id=writerusage.writer_id " +
@@ -90,6 +92,9 @@ public class JdbcUsageStore implements UsageStore {
 
             deletePendingUsage.setLong(1, uid);
             deletePendingUsage.executeUpdate();
+
+            deleteWriterQuotas.setLong(1, uid);
+            deleteWriterQuotas.executeUpdate();
 
             for (long ownedId : ownedIds) {
                 deleteOwnedKeys.setLong(1, ownedId);
@@ -629,6 +634,118 @@ public class JdbcUsageStore implements UsageStore {
 
             updateOwnedKeys(writerId, removedOwnedKeys, addedOwnedKeys, conn);
             return true;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
+    public boolean setWriterQuota(String username, PublicKeyHash writer, Optional<Long> quota, long utcMillis, byte[] signedRequest) {
+        try (Connection conn = getConnection(true, false);
+             PreparedStatement userSelect = conn.prepareStatement("SELECT id FROM users WHERE name = ?;");
+             PreparedStatement upsert = conn.prepareStatement("INSERT INTO writerquotas (writer_id, user_id, quota, time, signed) " +
+                     "VALUES(?, ?, ?, ?, ?) ON CONFLICT(writer_id) DO UPDATE SET user_id = EXCLUDED.user_id, " +
+                     "quota = EXCLUDED.quota, time = EXCLUDED.time, signed = EXCLUDED.signed " +
+                     "WHERE writerquotas.time < EXCLUDED.time;")) {
+            userSelect.setString(1, username);
+            ResultSet userRes = userSelect.executeQuery();
+            if (! userRes.next())
+                throw new IllegalStateException("Unknown user " + username);
+            int userId = userRes.getInt(1);
+            int writerId = getWriterId(writer, conn);
+            upsert.setInt(1, writerId);
+            upsert.setInt(2, userId);
+            upsert.setLong(3, quota.orElse(-1L));
+            upsert.setLong(4, utcMillis);
+            upsert.setBytes(5, signedRequest);
+            return upsert.executeUpdate() == 1;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
+    public void deleteWriterQuota(PublicKeyHash writer) {
+        try (Connection conn = getConnection(true, false);
+             PreparedStatement delete = conn.prepareStatement("DELETE FROM writerquotas WHERE writer_id = " +
+                     "(SELECT id FROM writers WHERE key_hash = ?);")) {
+            delete.setBytes(1, writer.toBytes());
+            delete.executeUpdate();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
+    public Map<PublicKeyHash, Long> getAllWriterQuotas() {
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement("SELECT w.key_hash, wq.quota FROM writerquotas wq " +
+                     "INNER JOIN writers w ON wq.writer_id = w.id WHERE wq.quota >= 0;")) {
+            Map<PublicKeyHash, Long> res = new HashMap<>();
+            ResultSet resultSet = select.executeQuery();
+            while (resultSet.next())
+                res.put(PublicKeyHash.decode(resultSet.getBytes(1)), resultSet.getLong(2));
+            return res;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
+    public List<byte[]> getSignedWriterQuotas(String username) {
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement("SELECT wq.signed FROM writerquotas wq " +
+                     "INNER JOIN users u ON wq.user_id = u.id WHERE u.name = ? AND wq.quota >= 0;")) {
+            select.setString(1, username);
+            List<byte[]> res = new ArrayList<>();
+            ResultSet resultSet = select.executeQuery();
+            while (resultSet.next())
+                res.add(resultSet.getBytes(1));
+            return res;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
+    public List<PublicKeyHash> getAncestors(PublicKeyHash writer) {
+        // UNION rather than UNION ALL so that a cycle in ownedkeys can't recurse forever
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement("WITH RECURSIVE anc(id) AS (" +
+                     "SELECT o.parent_id FROM ownedkeys o INNER JOIN writers w ON o.owned_id = w.id WHERE w.key_hash = ? " +
+                     "UNION SELECT o.parent_id FROM ownedkeys o INNER JOIN anc a ON o.owned_id = a.id) " +
+                     "SELECT w.key_hash FROM anc a INNER JOIN writers w ON w.id = a.id;")) {
+            select.setBytes(1, writer.toBytes());
+            List<PublicKeyHash> res = new ArrayList<>();
+            ResultSet resultSet = select.executeQuery();
+            while (resultSet.next()) {
+                PublicKeyHash ancestor = PublicKeyHash.decode(resultSet.getBytes(1));
+                if (! ancestor.equals(writer))
+                    res.add(ancestor);
+            }
+            return res;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
+    public long getSubtreeUsage(PublicKeyHash writer) {
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement("WITH RECURSIVE sub(id) AS (" +
+                     "SELECT id FROM writers WHERE key_hash = ? " +
+                     "UNION SELECT o.owned_id FROM ownedkeys o INNER JOIN sub s ON o.parent_id = s.id) " +
+                     "SELECT COALESCE(SUM(wu.direct_size), 0) FROM sub s INNER JOIN writerusage wu ON wu.writer_id = s.id;")) {
+            select.setBytes(1, writer.toBytes());
+            ResultSet resultSet = select.executeQuery();
+            resultSet.next();
+            return resultSet.getLong(1);
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);

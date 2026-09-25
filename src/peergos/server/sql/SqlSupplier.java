@@ -168,6 +168,17 @@ public interface SqlSupplier {
                 ");";
     }
 
+    /** A quota of -1 is a removed cap, kept so that an older signed request can't be replayed. */
+    default String createWriterQuotasTableCommand() {
+        return "CREATE TABLE IF NOT EXISTS writerquotas (" +
+                "writer_id INTEGER REFERENCES writers(id) PRIMARY KEY," +
+                "user_id INTEGER REFERENCES users(id) NOT NULL," +
+                "quota BIGINT NOT NULL," +
+                "time BIGINT NOT NULL," +
+                "signed " + getByteArrayType() + " NOT NULL" +
+                ");";
+    }
+
     default void createTable(String sqlTableCreate, Connection conn) throws SQLException {
         Statement createStmt = conn.createStatement();
         createStmt.executeUpdate(sqlTableCreate);
