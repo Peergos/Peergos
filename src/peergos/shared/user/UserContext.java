@@ -449,6 +449,32 @@ public class UserContext {
                 .thenApply(InstanceAdmin.VersionInfo::toString);
     }
 
+    /** The latest release published under /peergos/releases if it is newer than this server, otherwise null.
+     */
+    @JsMethod
+    public CompletableFuture<Version> newerRelease() {
+        return network.instanceAdmin.getVersionInfo()
+                .thenCompose(current -> getPublicFile(PathUtil.get("peergos", "releases"))
+                        .thenCompose(releases -> releases.isPresent() ?
+                                releases.get().getChildren(crypto.hasher, network) :
+                                Futures.of(Collections.<FileWrapper>emptySet()))
+                        .thenApply(children -> children.stream()
+                                .filter(FileWrapper::isDirectory)
+                                .flatMap(f -> parseReleaseDirName(f.getName()).stream())
+                                .max(Comparator.naturalOrder())
+                                .filter(latest -> current.version.isBefore(latest))
+                                .orElse(null)))
+                .exceptionally(e -> null);
+    }
+
+    private static Optional<Version> parseReleaseDirName(String name) {
+        try {
+            return name.startsWith("v") ? Optional.of(Version.parse(name.substring(1))) : Optional.empty();
+        } catch (RuntimeException e) {
+            return Optional.empty();
+        }
+    }
+
     private static CompletableFuture<byte[]> signSpaceRequest(String username, SigningPrivateKeyAndPublicHash identity, long desiredQuota, boolean annual) {
         SpaceUsage.SpaceRequest req = new SpaceUsage.SpaceRequest(username, desiredQuota, annual, System.currentTimeMillis(), Optional.empty());
         return identity.secret.signMessage(req.serialize());
