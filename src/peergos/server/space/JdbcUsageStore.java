@@ -19,6 +19,7 @@ public class JdbcUsageStore implements UsageStore {
     private Supplier<Connection> conn;
     private final SqlSupplier commands;
     private volatile boolean isClosed;
+    private final List<UsageListener> listeners = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     public JdbcUsageStore(Supplier<Connection> conn, SqlSupplier commands) {
         this.conn = conn;
@@ -53,6 +54,11 @@ public class JdbcUsageStore implements UsageStore {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    @Override
+    public void addUsageListener(UsageListener listener) {
+        listeners.add(listener);
     }
 
     @Override
@@ -633,11 +639,19 @@ public class JdbcUsageStore implements UsageStore {
             }
 
             updateOwnedKeys(writerId, removedOwnedKeys, addedOwnedKeys, conn);
-            return true;
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
         }
+        boolean ownedKeysChanged = ! removedOwnedKeys.isEmpty() || ! addedOwnedKeys.isEmpty();
+        for (UsageListener listener : listeners) {
+            try {
+                listener.usageChanged(writer, delta, ownedKeysChanged);
+            } catch (Exception e) {
+                LOG.log(Level.WARNING, "Usage listener failed for writer " + writer, e);
+            }
+        }
+        return true;
     }
 
     @Override
