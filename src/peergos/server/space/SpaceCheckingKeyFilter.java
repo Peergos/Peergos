@@ -12,6 +12,7 @@ import peergos.server.mutable.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.mutable.*;
@@ -270,10 +271,8 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
             processMutablePointerEvent(usageStore, event.owner, event.writer, pointerUpdate.original, pointerUpdate.updated,
                     mutable, quotaAdmin, dht, hasher);
             // a writing space that is merely orphaned may have been moved, so only drop its cap once its pointer is empty
-            if (! pointerUpdate.updated.isPresent() && writerQuotas.getQuota(event.writer).isPresent()) {
+            if (! pointerUpdate.updated.isPresent() && writerQuotas.getQuota(event.writer).isPresent())
                 usageStore.deleteWriterQuota(event.writer);
-                writerQuotas.setQuota(event.writer, Optional.empty());
-            }
         } catch (Exception e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
         }
@@ -405,6 +404,58 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         String username = core.getUsername(owner).join();
         UserUsage usage = usageStore.getUsage(username);
         return quotaAdmin.requestQuota(owner, signedRequest,  usage.totalUsage());
+    }
+
+    @Override
+    public CompletableFuture<Boolean> setWriterQuota(PublicKeyHash owner, byte[] signedRequest) {
+        String username = usageStore.getOwner(owner);
+        if (! core.getPublicKeyHash(username).join().equals(Optional.of(owner)))
+            throw new IllegalStateException("Only the current identity of " + username + " can set writer quotas");
+        WriterQuotaRequest req = WriterQuotas.verify(signedRequest, owner, username, usageStore, dht);
+        if (Math.abs(System.currentTimeMillis() - req.utcMillis) > 300_000)
+            throw new IllegalStateException("Stale auth time, is your clock accurate?");
+        if (! usageStore.setWriterQuota(username, req.writer, req.bytes, req.utcMillis, signedRequest))
+            throw new IllegalStateException("A newer writer quota has already been set");
+        LOG.info("Set writer quota of " + req.writer + " for " + username + " to " + req.bytes);
+        return Futures.of(true);
+    }
+
+    @Override
+    public CompletableFuture<List<WriterSpaceInfo>> getWriterQuotas(PublicKeyHash owner, byte[] signedTime) {
+        TimeLimited.isAllowedTime(signedTime, 300, dht, owner);
+        String username = usageStore.getOwner(owner);
+        List<WriterSpaceInfo> res = usageStore.getWriterQuotas(username).keySet().stream()
+                .map(this::getWriterSpace)
+                .collect(Collectors.toList());
+        return Futures.of(res);
+    }
+
+    @Override
+    public CompletableFuture<WriterSpaceInfo> getWriterSpace(PublicKeyHash owner, PublicKeyHash writer, byte[] signedTime) {
+        PublicSigningKey writerKey = dht.getSigningKey(owner, writer).join()
+                .orElseThrow(() -> new IllegalStateException("Couldn't retrieve writer key!"));
+        try {
+            TimeLimited.isAllowedTime(signedTime, 300, writerKey);
+        } catch (Exception e) {
+            if (writer.equals(owner))
+                throw e;
+            TimeLimited.isAllowedTime(signedTime, 300, dht, owner);
+        }
+        String username = usageStore.getOwner(owner);
+        if (! username.equals(usageStore.getOwner(writer)))
+            throw new IllegalStateException("Writer is not owned by " + username);
+        return Futures.of(getWriterSpace(writer));
+    }
+
+    private WriterSpaceInfo getWriterSpace(PublicKeyHash writer) {
+        Optional<Long> quota = writerQuotas.getQuota(writer);
+        long used = quota.isPresent() ? writerQuotas.getUsage(writer).totalUsage() : 0;
+        Optional<Long> available = writerQuotas.getCaps(writer).stream()
+                .flatMap(cap -> writerQuotas.getQuota(cap)
+                        .map(q -> Math.max(0, q - writerQuotas.getUsage(cap).totalUsage()))
+                        .stream())
+                .min(Long::compare);
+        return new WriterSpaceInfo(writer, quota, used, available);
     }
 
     private static final LRUCache<Long, Map<String, Long>> quotas = new LRUCache<>(2);

@@ -1,6 +1,9 @@
 package peergos.server.space;
 
+import peergos.shared.cbor.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -27,11 +30,32 @@ public class WriterQuotas implements WriterUsageStore.UsageListener {
         this.quotas = new ConcurrentHashMap<>(store.getAllWriterQuotas());
     }
 
+    /** Check that a writer quota request was signed by the owner, for a writing space of theirs other than the identity.
+     *  The request's time is not checked here, so that caps can be carried over in a migration.
+     */
+    public static WriterQuotaRequest verify(byte[] signedRequest,
+                                            PublicKeyHash owner,
+                                            String username,
+                                            WriterUsageStore store,
+                                            ContentAddressedStorage dht) {
+        PublicSigningKey ownerKey = dht.getSigningKey(owner, owner).join()
+                .orElseThrow(() -> new IllegalStateException("Couldn't retrieve owner key!"));
+        WriterQuotaRequest req = WriterQuotaRequest.fromCbor(CborObject.fromByteArray(ownerKey.unsignMessage(signedRequest).join()));
+        if (! req.owner.equals(owner))
+            throw new IllegalStateException("Writer quota request is for a different owner!");
+        if (req.writer.equals(owner))
+            throw new IllegalStateException("The identity can't have a writer quota, it is covered by the user's quota");
+        if (! username.equals(store.getOwner(req.writer)))
+            throw new IllegalStateException("Writer is not owned by " + username);
+        return req;
+    }
+
     public Optional<Long> getQuota(PublicKeyHash writer) {
         return Optional.ofNullable(quotas.get(writer));
     }
 
-    public void setQuota(PublicKeyHash writer, Optional<Long> quota) {
+    @Override
+    public void writerQuotaChanged(PublicKeyHash writer, Optional<Long> quota) {
         if (quota.isPresent())
             quotas.put(writer, quota.get());
         else

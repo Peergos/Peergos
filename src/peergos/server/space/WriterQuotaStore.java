@@ -18,6 +18,8 @@ public interface WriterQuotaStore {
 
     Map<PublicKeyHash, Long> getAllWriterQuotas();
 
+    Map<PublicKeyHash, Long> getWriterQuotas(String username);
+
     /**
      * @return the signed requests for every cap currently set by this user
      */

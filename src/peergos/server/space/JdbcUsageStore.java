@@ -673,10 +673,23 @@ public class JdbcUsageStore implements UsageStore {
             upsert.setLong(3, quota.orElse(-1L));
             upsert.setLong(4, utcMillis);
             upsert.setBytes(5, signedRequest);
-            return upsert.executeUpdate() == 1;
+            if (upsert.executeUpdate() != 1)
+                return false;
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
+        }
+        notifyWriterQuotaChanged(writer, quota);
+        return true;
+    }
+
+    private void notifyWriterQuotaChanged(PublicKeyHash writer, Optional<Long> quota) {
+        for (UsageListener listener : listeners) {
+            try {
+                listener.writerQuotaChanged(writer, quota);
+            } catch (Exception e) {
+                LOG.log(Level.WARNING, "Usage listener failed for writer quota " + writer, e);
+            }
         }
     }
 
@@ -691,6 +704,7 @@ public class JdbcUsageStore implements UsageStore {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
         }
+        notifyWriterQuotaChanged(writer, Optional.empty());
     }
 
     @Override
@@ -698,6 +712,24 @@ public class JdbcUsageStore implements UsageStore {
         try (Connection conn = getConnection();
              PreparedStatement select = conn.prepareStatement("SELECT w.key_hash, wq.quota FROM writerquotas wq " +
                      "INNER JOIN writers w ON wq.writer_id = w.id WHERE wq.quota >= 0;")) {
+            Map<PublicKeyHash, Long> res = new HashMap<>();
+            ResultSet resultSet = select.executeQuery();
+            while (resultSet.next())
+                res.put(PublicKeyHash.decode(resultSet.getBytes(1)), resultSet.getLong(2));
+            return res;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
+    public Map<PublicKeyHash, Long> getWriterQuotas(String username) {
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement("SELECT w.key_hash, wq.quota FROM writerquotas wq " +
+                     "INNER JOIN writers w ON wq.writer_id = w.id " +
+                     "INNER JOIN users u ON wq.user_id = u.id WHERE u.name = ? AND wq.quota >= 0;")) {
+            select.setString(1, username);
             Map<PublicKeyHash, Long> res = new HashMap<>();
             ResultSet resultSet = select.executeQuery();
             while (resultSet.next())
