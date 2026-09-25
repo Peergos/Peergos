@@ -2171,6 +2171,181 @@ public class UserContext {
                 Cborable.parser(Groups::fromCbor));
     }
 
+    private CompletableFuture<Boolean> setGroupNameMappings(Groups updated) {
+        byte[] raw = updated.serialize();
+        return getByPath(PathUtil.get(username, SHARED_DIR_NAME, GROUPS_FILENAME))
+                .thenCompose(file -> file.get().overwriteFile(AsyncReader.build(raw), raw.length, network, crypto, x -> {}))
+                .thenApply(x -> true);
+    }
+
+    private Path groupDir(String groupUid) {
+        return PathUtil.get(username, SHARED_DIR_NAME, groupUid);
+    }
+
+    private static CompletableFuture<String> validGroupName(String name) {
+        String trimmed = name == null ? "" : name.trim();
+        if (trimmed.isEmpty())
+            return Futures.errored(new IllegalArgumentException("A group needs a name"));
+        if (Groups.isBuiltInName(trimmed))
+            return Futures.errored(new IllegalArgumentException("'" + trimmed + "' is reserved for a built-in group"));
+        return Futures.of(trimmed);
+    }
+
+    private CompletableFuture<Boolean> ensureFollowers(Set<String> usernames) {
+        return getFollowerNames().thenApply(followers -> {
+            Set<String> unknown = new TreeSet<>(usernames);
+            unknown.removeAll(followers);
+            if (! unknown.isEmpty())
+                throw new IllegalArgumentException("Only followers can be added to a group, not: " + unknown);
+            return true;
+        });
+    }
+
+    /** Create a sharing group. The directory and its share are the group, the name is only our label for it,
+     *  so the name is written last: a failure before then leaves an unnamed, invisible directory.
+     *
+     * @return the new group's uid
+     */
+    @JsMethod
+    public CompletableFuture<String> createGroup(String name, Set<String> members) {
+        String uid = Groups.generateUid(crypto.random);
+        return validGroupName(name).thenCompose(groupName -> ensureFollowers(members)
+                .thenCompose(x -> getGroupNameMappings())
+                .thenCompose(groups -> getUserRoot()
+                        .thenCompose(home -> home.getOrMkdirs(PathUtil.get(SHARED_DIR_NAME, uid), network, true, mirrorBatId(), crypto))
+                        .thenCompose(x -> shareReadAccessWith(groupDir(uid), members))
+                        .thenCompose(x -> setGroupNameMappings(groups.withGroup(uid, groupName)))))
+                .thenApply(x -> uid);
+    }
+
+    /** Only changes our label for the group, nothing is shared or rotated.
+     */
+    @JsMethod
+    public CompletableFuture<Boolean> renameGroup(String groupUid, String newName) {
+        return validGroupName(newName).thenCompose(groupName -> getGroupNameMappings().thenCompose(groups -> {
+            if (! groups.uidToGroupName.containsKey(groupUid))
+                throw new IllegalArgumentException("Unknown group " + groupUid);
+            if (groups.isBuiltIn(groupUid))
+                throw new IllegalArgumentException("Built-in groups cannot be renamed");
+            return setGroupNameMappings(groups.withGroup(groupUid, groupName));
+        }));
+    }
+
+    /** The members of a group are whoever its directory is shared with.
+     */
+    @JsMethod
+    public CompletableFuture<Set<String>> getGroupMembers(String groupUid) {
+        return sharedWith(groupDir(groupUid))
+                .thenApply(state -> new TreeSet<>(state.readAccess));
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> addGroupMembers(String groupUid, Set<String> members) {
+        return getGroupNameMappings().thenCompose(groups -> {
+            if (groups.isBuiltIn(groupUid))
+                throw new IllegalArgumentException("Membership of built-in groups is managed automatically");
+            return ensureFollowers(members);
+        }).thenCompose(x -> shareReadAccessWith(groupDir(groupUid), members))
+                .thenApply(x -> true);
+    }
+
+    /** Remove a member from a group. This always rotates the keys of the group directory, so they cannot see
+     *  anything shared with the group from now on. Things shared with the group before which they have already
+     *  retrieved stay readable to them unless revokeShared is set, which also rotates the keys of every one of
+     *  those, in proportion to everything ever shared with the group.
+     */
+    @JsMethod
+    public CompletableFuture<Boolean> removeGroupMember(String groupUid, String member, boolean revokeShared) {
+        return getGroupNameMappings().thenCompose(groups -> {
+            if (groups.isBuiltIn(groupUid))
+                throw new IllegalArgumentException("Membership of built-in groups is managed automatically");
+            return revokeShared ?
+                    removeFromGroup(groupUid, member) :
+                    unShareReadAccess(groupDir(groupUid), member);
+        });
+    }
+
+    /** Delete a custom group. Without revokeShared, members keep access to what was shared with the group before,
+     *  but nothing new reaches them through it. With revokeShared, everything shared with the group is unshared from it
+     *  first, rotating the keys of each.
+     */
+    @JsMethod
+    public CompletableFuture<Boolean> deleteGroup(String groupUid, boolean revokeShared, ProgressConsumer<Long> progress) {
+        return getGroupNameMappings().thenCompose(groups -> {
+            if (! groups.uidToGroupName.containsKey(groupUid))
+                throw new IllegalArgumentException("Unknown group " + groupUid);
+            if (groups.isBuiltIn(groupUid))
+                throw new IllegalArgumentException("Built-in groups cannot be deleted");
+            return (revokeShared ? revokeAllSharedWithGroup(groupUid, progress) : Futures.of(true))
+                    .thenCompose(x -> setGroupNameMappings(groups.withoutGroup(groupUid)))
+                    .thenCompose(x -> forgetGroupInSharedWith(groupUid))
+                    .thenCompose(x -> getSharingFolder())
+                    .thenCompose(sharing -> getByPath(groupDir(groupUid))
+                            .thenCompose(dir -> dir.isPresent() ?
+                                    dir.get().remove(sharing, groupDir(groupUid), this).thenApply(y -> true) :
+                                    Futures.of(true)));
+        });
+    }
+
+    private CompletableFuture<Set<Path>> getAllPathsSharedWith(String name) {
+        return getUserRoot()
+                .thenCompose(home -> sharedWithCache.getAllShares(username, home.version))
+                .thenApply(all -> {
+                    Set<Path> res = new TreeSet<>();
+                    for (Map.Entry<Path, SharedWithState> e : all.entrySet()) {
+                        for (Map.Entry<String, Set<String>> r : e.getValue().readShares().entrySet())
+                            if (r.getValue().contains(name))
+                                res.add(e.getKey().resolve(r.getKey()));
+                        for (Map.Entry<String, Set<String>> w : e.getValue().writeShares().entrySet())
+                            if (w.getValue().contains(name))
+                                res.add(e.getKey().resolve(w.getKey()));
+                    }
+                    return res;
+                });
+    }
+
+    /** The number of files and folders shared with a group, which is how much work revoking them all is.
+     */
+    @JsMethod
+    public CompletableFuture<Integer> countSharedWithGroup(String groupUid) {
+        return getAllPathsSharedWith(groupUid).thenApply(Set::size);
+    }
+
+    private CompletableFuture<Boolean> revokeAllSharedWithGroup(String groupUid, ProgressConsumer<Long> progress) {
+        Set<String> group = Collections.singleton(groupUid);
+        return getAllPathsSharedWith(groupUid)
+                .thenCompose(paths -> Futures.reduceAll(paths, true,
+                        (b, path) -> sharedWith(path)
+                                .thenCompose(state -> state.writeAccess.contains(groupUid) ?
+                                        unShareWriteAccessWithExactly(path, group).thenApply(x -> true) :
+                                        Futures.of(true))
+                                .thenCompose(x -> sharedWith(path))
+                                .thenCompose(state -> state.readAccess.contains(groupUid) ?
+                                        getUserRoot().thenCompose(home -> network.synchronizer.applyComplexUpdate(signer.publicKeyHash, home.signingPair(),
+                                                (s, c) -> unShareReadAccessWith(path, group, s, c))).thenApply(x -> true) :
+                                        Futures.of(true))
+                                .thenApply(x -> {
+                                    progress.accept(1L);
+                                    return true;
+                                }),
+                        (a, b) -> a && b));
+    }
+
+    /* Anything still recording the group would be re-sent to its directory, which is about to go, whenever it is
+       next re-keyed.
+     */
+    private CompletableFuture<Boolean> forgetGroupInSharedWith(String groupUid) {
+        Set<String> group = Collections.singleton(groupUid);
+        return getAllPathsSharedWith(groupUid)
+                .thenCompose(paths -> getUserRoot()
+                        .thenCompose(home -> network.synchronizer.applyComplexUpdate(signer.publicKeyHash, home.signingPair(),
+                                (s, c) -> Futures.reduceAll(paths, s,
+                                        (v, path) -> sharedWithCache.removeSharedWith(SharedWithCache.Access.READ, path, group, v, c, network)
+                                                .thenCompose(v2 -> sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE, path, group, v2, c, network)),
+                                        (a, b) -> b))))
+                .thenApply(x -> true);
+    }
+
     private CompletableFuture<Set<String>> getFriendNames() {
         return getFriendRoots()
                 .thenApply(dirs -> dirs.stream()
@@ -2533,7 +2708,7 @@ public class UserContext {
         boolean hasGroups = initialReadersToRemove.stream().anyMatch(i -> i.startsWith("."));
         return (hasGroups ?
                 getSocialState().thenCompose(social -> sharedWith(path)
-                        .thenApply(fileSharingState ->
+                        .thenCompose(fileSharingState ->
                                 gatherAllUsernamesToUnshare(social, fileSharingState.readAccess, initialReadersToRemove)
                         )) :
                 Futures.of(initialReadersToRemove))
@@ -2578,32 +2753,34 @@ public class UserContext {
         boolean hasGroups = initialWritersToRemove.stream().anyMatch(i -> i.startsWith("."));
         return (hasGroups ?
                 getSocialState().thenCompose(social -> sharedWith(path)
-                        .thenApply(fileSharingState ->
+                        .thenCompose(fileSharingState ->
                             gatherAllUsernamesToUnshare(social, fileSharingState.writeAccess, initialWritersToRemove)
                         )) :
                 Futures.of(initialWritersToRemove))
-                .thenCompose(writersToRemove -> {
-                    // 1. Authorise new writer pair as an owned key to parent's writer
-                    // 2. Rotate all keys (except data keys which are marked as dirty)
-                    // 3. Update link from parent to point to new rotated child
-                    // 4. Delete old file and subtree
-                    // 5. Remove old writer from parent owned keys
-                    String pathString = path.toString();
-                    String absolutePathString = pathString.startsWith("/") ? pathString : "/" + pathString;
-                    return getByPath(absolutePathString).thenCompose(opt -> {
-                        FileWrapper toUnshare = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path " + absolutePathString + " does not exist"));
-                        return getByPath(path.getParent().toString())
-                                .thenCompose(parentOpt -> {
-                                    FileWrapper parent = parentOpt.get();
-                                    return network.synchronizer.applyComplexUpdate(signer.publicKeyHash,
-                                            parent.signingPair(), (s, c) -> rotateAllKeys(toUnshare, parent, true, s, c)
-                                            .thenCompose(s2 ->
-                                                    sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE,
-                                                            path, writersToRemove, s2, c, network))
-                                                    .thenCompose(s3 -> reSendAllSharesAndLinksRecursive(path, s3, c)));
-                                });
+                .thenCompose(writersToRemove -> unShareWriteAccessWithExactly(path, writersToRemove));
+    }
+
+    private CompletableFuture<Snapshot> unShareWriteAccessWithExactly(Path path, Set<String> writersToRemove) {
+        // 1. Authorise new writer pair as an owned key to parent's writer
+        // 2. Rotate all keys (except data keys which are marked as dirty)
+        // 3. Update link from parent to point to new rotated child
+        // 4. Delete old file and subtree
+        // 5. Remove old writer from parent owned keys
+        String pathString = path.toString();
+        String absolutePathString = pathString.startsWith("/") ? pathString : "/" + pathString;
+        return getByPath(absolutePathString).thenCompose(opt -> {
+            FileWrapper toUnshare = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path " + absolutePathString + " does not exist"));
+            return getByPath(path.getParent().toString())
+                    .thenCompose(parentOpt -> {
+                        FileWrapper parent = parentOpt.get();
+                        return network.synchronizer.applyComplexUpdate(signer.publicKeyHash,
+                                parent.signingPair(), (s, c) -> rotateAllKeys(toUnshare, parent, true, s, c)
+                                .thenCompose(s2 ->
+                                        sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE,
+                                                path, writersToRemove, s2, c, network))
+                                        .thenCompose(s3 -> reSendAllSharesAndLinksRecursive(path, s3, c)));
                     });
-                });
+        });
     }
 
     @JsMethod
@@ -2648,34 +2825,40 @@ public class UserContext {
     }
 
     /*
-        Taking into account currently shared users/groups and users/groups selected for unsharing, build a list that is group aware
-        Note: Only inbuilt groups of friends and followers are currently handled
+        Taking into account currently shared users/groups and users/groups selected for unsharing, build a list that is group aware:
+        unsharing a group also unshares its members who were shared with individually.
+        Followers contain friends, so unsharing followers also unshares the friends group. Custom groups can overlap without
+        either containing the other, so no such rule applies to them.
      */
-    private Set<String> gatherAllUsernamesToUnshare(SocialState social,
-                                                    Set<String> currentSharedWithUsernames,
-                                                    Set<String> usernamesToUnshare) {
-
-        Set<String> followers = social.getFollowers();
-        Set<String> friends = social.getFriends();
-
+    private CompletableFuture<Set<String>> gatherAllUsernamesToUnshare(SocialState social,
+                                                                       Set<String> currentSharedWithUsernames,
+                                                                       Set<String> usernamesToUnshare) {
         String friendGroupUid = social.getFriendsGroupUid();
         String followersGroupUid = social.getFollowersGroupUid();
 
         Set<String> usersToUnshare = new HashSet<>(usernamesToUnshare);
-        if (usernamesToUnshare.contains(friendGroupUid)) {
-            HashSet<String> toAdd = new HashSet<>(currentSharedWithUsernames);
-            toAdd.retainAll(friends);
-            usersToUnshare.addAll(toAdd);
-        }
-        if (usernamesToUnshare.contains(followersGroupUid)) {
-            HashSet<String> toAdd = new HashSet<>(currentSharedWithUsernames);
-            toAdd.retainAll(followers);
-            usersToUnshare.addAll(toAdd);
-            if (currentSharedWithUsernames.contains(friendGroupUid)) {
-                usersToUnshare.add(friendGroupUid);
-            }
-        }
-        return usersToUnshare;
+        if (usernamesToUnshare.contains(followersGroupUid) && currentSharedWithUsernames.contains(friendGroupUid))
+            usersToUnshare.add(friendGroupUid);
+        List<String> groups = usernamesToUnshare.stream()
+                .filter(n -> n.startsWith("."))
+                .collect(Collectors.toList());
+        return Futures.reduceAll(groups, usersToUnshare,
+                (res, groupUid) -> getGroupMembersForUnshare(social, groupUid)
+                        .thenApply(members -> {
+                            HashSet<String> toAdd = new HashSet<>(currentSharedWithUsernames);
+                            toAdd.retainAll(members);
+                            res.addAll(toAdd);
+                            return res;
+                        }),
+                (a, b) -> b);
+    }
+
+    private CompletableFuture<Set<String>> getGroupMembersForUnshare(SocialState social, String groupUid) {
+        if (groupUid.equals(social.getFriendsGroupUid()))
+            return Futures.of(social.getFriends());
+        if (groupUid.equals(social.getFollowersGroupUid()))
+            return Futures.of(social.getFollowers());
+        return getGroupMembers(groupUid);
     }
 
     @JsMethod

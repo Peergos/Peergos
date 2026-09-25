@@ -21,6 +21,30 @@ public class Groups implements Cborable {
         return new Groups(uidToNames);
     }
 
+    /* SocialState finds the built-in groups by inverting uid -> name, so a custom group reusing one of
+       these names would be returned in its place.
+     */
+    public static boolean isBuiltInName(String name) {
+        return name.equals(SocialState.FRIENDS_GROUP_NAME) || name.equals(SocialState.FOLLOWERS_GROUP_NAME);
+    }
+
+    public boolean isBuiltIn(String uid) {
+        String name = uidToGroupName.get(uid);
+        return name != null && isBuiltInName(name);
+    }
+
+    public Groups withGroup(String uid, String name) {
+        Map<String, String> updated = new TreeMap<>(uidToGroupName);
+        updated.put(uid, name);
+        return new Groups(updated);
+    }
+
+    public Groups withoutGroup(String uid) {
+        Map<String, String> updated = new TreeMap<>(uidToGroupName);
+        updated.remove(uid);
+        return new Groups(updated);
+    }
+
     /* Generate a uid that cannot clash with a username, but which is a valid filename
      */
     public static String generateUid(SafeRandom r) {

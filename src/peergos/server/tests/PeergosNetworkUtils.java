@@ -2514,6 +2514,206 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(resultFunc.apply(sharer, dirToShare1, fileSharedWithState) == 0);
     }
 
+    private static Path mkdir(UserContext user, String name) {
+        user.getUserRoot().join().mkdir(name, user.network, false, user.mirrorBatId(), user.crypto).join();
+        return PathUtil.get(user.username, name);
+    }
+
+    private static void assertFails(Runnable r) {
+        try {
+            r.run();
+        } catch (Exception e) {
+            return;
+        }
+        Assert.fail("Expected failure");
+    }
+
+    public static void customGroupSharing(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+        String password = "notagoodone";
+        UserContext sharer = ensureSignedUp(generateUsername(random), password, network, crypto);
+        List<UserContext> others = getUserContextsForNode(network.clear(), random, 3, Arrays.asList(password, password, password));
+        UserContext a = others.get(0), b = others.get(1), c = others.get(2);
+        friendBetweenGroups(Arrays.asList(sharer), others);
+
+        String family = sharer.createGroup("family", Set.of(a.username, b.username)).join();
+        Assert.assertEquals(Set.of(a.username, b.username), sharer.getGroupMembers(family).join());
+        SocialState social = sharer.getSocialState().join();
+        Assert.assertEquals("family", social.uidToGroupName.get(family));
+        Assert.assertFalse(social.followerRoots.containsKey(family));
+        Assert.assertFalse(social.getFriends().contains(family));
+        Assert.assertFalse(sharer.getFollowerRoots(false).join().containsKey(family));
+
+        // the names of groups are private to the owner
+        Assert.assertTrue(a.getByPath(PathUtil.get(sharer.username, UserContext.SHARED_DIR_NAME, UserContext.GROUPS_FILENAME)).join().isEmpty());
+
+        // a member cannot enumerate the other members
+        Optional<FileWrapper> groupDir = a.getByPath(PathUtil.get(sharer.username, UserContext.SHARED_DIR_NAME, family)).join();
+        if (groupDir.isPresent())
+            Assert.assertTrue(groupDir.get().getChildren(a.crypto.hasher, a.network).join().stream()
+                    .noneMatch(f -> f.getName().equals(b.username)));
+
+        Path dir = mkdir(sharer, "holidays");
+        sharer.shareReadAccessWith(dir, Set.of(family)).join();
+        Assert.assertEquals(Set.of(family), sharer.sharedWith(dir).join().readAccess);
+        Assert.assertTrue(a.getByPath(dir).join().isPresent());
+        Assert.assertTrue(b.getByPath(dir).join().isPresent());
+        Assert.assertTrue(c.getByPath(dir).join().isEmpty());
+
+        // renaming changes nothing about access
+        sharer.renameGroup(family, "relatives").join();
+        Assert.assertEquals("relatives", sharer.getSocialState().join().uidToGroupName.get(family));
+        Assert.assertEquals(Set.of(a.username, b.username), sharer.getGroupMembers(family).join());
+        Assert.assertTrue(a.getByPath(dir).join().isPresent());
+        Assert.assertTrue(c.getByPath(dir).join().isEmpty());
+
+        // the built-in names are reserved
+        assertFails(() -> sharer.createGroup(SocialState.FRIENDS_GROUP_NAME, Collections.emptySet()).join());
+        assertFails(() -> sharer.createGroup(SocialState.FOLLOWERS_GROUP_NAME, Collections.emptySet()).join());
+        assertFails(() -> sharer.renameGroup(family, SocialState.FRIENDS_GROUP_NAME).join());
+        assertFails(() -> sharer.renameGroup(social.getFriendsGroupUid(), "pals").join());
+        // only followers can be members
+        UserContext stranger = ensureSignedUp(generateUsername(random), password, network, crypto);
+        assertFails(() -> sharer.createGroup("strangers", Set.of(stranger.username)).join());
+
+        // duplicate names are allowed
+        String family2 = sharer.createGroup("relatives", Set.of(c.username)).join();
+        Assert.assertEquals(2, sharer.getSocialState().join().uidToGroupName.values().stream().filter("relatives"::equals).count());
+        Assert.assertEquals(Set.of(c.username), sharer.getGroupMembers(family2).join());
+
+        // an empty group can be created and shared with
+        String empty = sharer.createGroup("empty", Collections.emptySet()).join();
+        Assert.assertTrue(sharer.getGroupMembers(empty).join().isEmpty());
+        Path other = mkdir(sharer, "other");
+        sharer.shareReadAccessWith(other, Set.of(empty)).join();
+        Assert.assertEquals(Set.of(empty), sharer.sharedWith(other).join().readAccess);
+        Assert.assertTrue(a.getByPath(other).join().isEmpty());
+
+        // members added later see what was shared before
+        sharer.addGroupMembers(empty, Set.of(c.username)).join();
+        Assert.assertTrue(c.getByPath(other).join().isPresent());
+    }
+
+    public static void customGroupUnshare(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+        String password = "notagoodone";
+        UserContext sharer = ensureSignedUp(generateUsername(random), password, network, crypto);
+        List<UserContext> others = getUserContextsForNode(network.clear(), random, 3, Arrays.asList(password, password, password));
+        UserContext a = others.get(0), b = others.get(1), c = others.get(2);
+        friendBetweenGroups(Arrays.asList(sharer), others);
+
+        String g1 = sharer.createGroup("one", Set.of(a.username, b.username)).join();
+        String g2 = sharer.createGroup("two", Set.of(b.username, c.username)).join();
+
+        // unsharing a group also unshares its members who were shared with individually
+        Path dir = mkdir(sharer, "dir");
+        sharer.shareReadAccessWith(dir, Set.of(g1)).join();
+        sharer.shareReadAccessWith(dir, Set.of(a.username)).join();
+        Assert.assertTrue(a.getByPath(dir).join().isPresent());
+        sharer.unShareReadAccessWith(dir, Set.of(g1)).join();
+        Assert.assertTrue(sharer.sharedWith(dir).join().readAccess.isEmpty());
+        Assert.assertTrue(a.getByPath(dir).join().isEmpty());
+        Assert.assertTrue(b.getByPath(dir).join().isEmpty());
+
+        // overlapping groups: unsharing one leaves access through the other
+        Path overlap = mkdir(sharer, "overlap");
+        sharer.shareReadAccessWith(overlap, Set.of(g1, g2)).join();
+        Assert.assertTrue(b.getByPath(overlap).join().isPresent());
+        sharer.unShareReadAccessWith(overlap, Set.of(g1)).join();
+        Assert.assertEquals(Set.of(g2), sharer.sharedWith(overlap).join().readAccess);
+        Assert.assertTrue(a.getByPath(overlap).join().isEmpty());
+        Assert.assertTrue(b.getByPath(overlap).join().isPresent());
+        Assert.assertTrue(c.getByPath(overlap).join().isPresent());
+
+        // write access through a group
+        Path writable = mkdir(sharer, "writable");
+        sharer.shareWriteAccessWith(writable, Set.of(g2)).join();
+        Assert.assertTrue(c.getByPath(writable).join().get().isWritable());
+        Assert.assertTrue(a.getByPath(writable).join().isEmpty());
+        sharer.unShareWriteAccessWith(writable, Set.of(g2)).join();
+        Assert.assertTrue(sharer.sharedWith(writable).join().writeAccess.isEmpty());
+        Assert.assertTrue(c.getByPath(writable).join().isEmpty());
+    }
+
+    public static void customGroupMemberRemoval(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+        String password = "notagoodone";
+        UserContext sharer = ensureSignedUp(generateUsername(random), password, network, crypto);
+        List<UserContext> others = getUserContextsForNode(network.clear(), random, 2, Arrays.asList(password, password));
+        UserContext a = others.get(0), b = others.get(1);
+        friendBetweenGroups(Arrays.asList(sharer), others);
+
+        String group = sharer.createGroup("group", Set.of(a.username, b.username)).join();
+        Path before = mkdir(sharer, "before");
+        sharer.shareReadAccessWith(before, Set.of(group)).join();
+        AbsoluteCapability captured = a.getByPath(before).join().get().getPointer().capability;
+
+        sharer.removeGroupMember(group, a.username, false).join();
+        Assert.assertEquals(Set.of(b.username), sharer.getGroupMembers(group).join());
+
+        Path after = mkdir(sharer, "after");
+        sharer.shareReadAccessWith(after, Set.of(group)).join();
+        Assert.assertTrue(a.getByPath(after).join().isEmpty());
+        Assert.assertTrue(b.getByPath(after).join().isPresent());
+        // without revoking, a capability they had already retrieved still works
+        Assert.assertTrue(a.network.clear().getFile(captured, sharer.username).join().isPresent());
+
+        // removing with revocation re-keys everything shared with the group
+        AbsoluteCapability capturedByB = b.getByPath(before).join().get().getPointer().capability;
+        sharer.removeGroupMember(group, b.username, true).join();
+        Assert.assertTrue(sharer.getGroupMembers(group).join().isEmpty());
+        Assert.assertTrue(b.getByPath(before).join().isEmpty());
+        Assert.assertTrue(b.network.clear().getFile(capturedByB, sharer.username).join().isEmpty());
+    }
+
+    public static void customGroupDelete(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+        String password = "notagoodone";
+        UserContext sharer = ensureSignedUp(generateUsername(random), password, network, crypto);
+        List<UserContext> others = getUserContextsForNode(network.clear(), random, 2, Arrays.asList(password, password));
+        UserContext a = others.get(0), b = others.get(1);
+        friendBetweenGroups(Arrays.asList(sharer), others);
+
+        SocialState social = sharer.getSocialState().join();
+        assertFails(() -> sharer.deleteGroup(social.getFriendsGroupUid(), false, x -> {}).join());
+
+        // delete without revoking: members keep what they had, and the group is forgotten
+        String kept = sharer.createGroup("kept", Set.of(a.username)).join();
+        Path dir = mkdir(sharer, "dir");
+        sharer.shareReadAccessWith(dir, Set.of(kept, b.username)).join();
+        AbsoluteCapability captured = a.getByPath(dir).join().get().getPointer().capability;
+        sharer.deleteGroup(kept, false, x -> {}).join();
+        Assert.assertFalse(sharer.getSocialState().join().uidToGroupName.containsKey(kept));
+        Assert.assertTrue(sharer.getByPath(PathUtil.get(sharer.username, UserContext.SHARED_DIR_NAME, kept)).join().isEmpty());
+        Assert.assertEquals(Set.of(b.username), sharer.sharedWith(dir).join().readAccess);
+        Assert.assertTrue(a.network.clear().getFile(captured, sharer.username).join().isPresent());
+        // a later re-key doesn't try to send to the deleted group
+        sharer.unShareReadAccessWith(dir, Set.of(b.username)).join();
+        Assert.assertTrue(a.network.clear().getFile(captured, sharer.username).join().isEmpty());
+
+        // delete and revoke
+        String revoked = sharer.createGroup("revoked", Set.of(a.username, b.username)).join();
+        Path shared1 = mkdir(sharer, "shared1");
+        Path shared2 = mkdir(sharer, "shared2");
+        sharer.shareReadAccessWith(shared1, Set.of(revoked)).join();
+        sharer.shareWriteAccessWith(shared2, Set.of(revoked)).join();
+        sharer.shareReadAccessWith(shared2, Set.of(b.username)).join();
+        Assert.assertEquals(2, (int) sharer.countSharedWithGroup(revoked).join());
+        Assert.assertTrue(a.getByPath(shared1).join().isPresent());
+        Assert.assertTrue(a.getByPath(shared2).join().isPresent());
+
+        List<Long> progress = new ArrayList<>();
+        sharer.deleteGroup(revoked, true, progress::add).join();
+        Assert.assertEquals(2, progress.size());
+        Assert.assertTrue(a.getByPath(shared1).join().isEmpty());
+        Assert.assertTrue(a.getByPath(shared2).join().isEmpty());
+        Optional<FileWrapper> bView = b.getByPath(shared2).join();
+        Assert.assertTrue(bView.isPresent() && ! bView.get().isWritable());
+        FileSharedWithState state = sharer.sharedWith(shared2).join();
+        Assert.assertEquals(Set.of(b.username), state.readAccess);
+        Assert.assertTrue(state.writeAccess.isEmpty());
+    }
+
     public static List<Set<AbsoluteCapability>> getAllChildCapsByChunk(FileWrapper dir, NetworkAccess network) {
         return getAllChildCapsByChunk(dir.getPointer().capability, dir.getPointer().fileAccess, dir.version, network);
     }

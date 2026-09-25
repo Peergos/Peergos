@@ -41,9 +41,10 @@ public class SocialState {
         this.blocked = blocked;
         this.friendAnnotations = friendAnnotations;
         this.uidToGroupName = uidToGroupName;
+        // names of custom groups need not be unique, and the built-in names are reserved for the built-in groups
         this.groupNameToUid = uidToGroupName.entrySet()
                 .stream()
-                .collect(Collectors.toMap(e -> e.getValue(), e -> e.getKey()));
+                .collect(Collectors.toMap(e -> e.getValue(), e -> e.getKey(), (a, b) -> a.compareTo(b) < 0 ? a : b));
     }
 
     public Set<String> getFollowers() {
@@ -66,5 +67,32 @@ public class SocialState {
 
     public String getFollowersGroupUid() {
         return groupNameToUid.get(FOLLOWERS_GROUP_NAME);
+    }
+
+    public Optional<String> getGroupUid(String name) {
+        return Optional.ofNullable(groupNameToUid.get(name));
+    }
+
+    public Optional<String> getGroupName(String uid) {
+        return Optional.ofNullable(uidToGroupName.get(uid));
+    }
+
+    public boolean isBuiltInGroup(String uid) {
+        return uid.equals(getFriendsGroupUid()) || uid.equals(getFollowersGroupUid());
+    }
+
+    /** The built-in groups first, then custom groups ordered by name
+     */
+    public List<String> getGroupUids() {
+        List<String> res = new ArrayList<>();
+        if (getFriendsGroupUid() != null)
+            res.add(getFriendsGroupUid());
+        if (getFollowersGroupUid() != null)
+            res.add(getFollowersGroupUid());
+        uidToGroupName.entrySet().stream()
+                .filter(e -> ! isBuiltInGroup(e.getKey()))
+                .sorted(Comparator.comparing((Map.Entry<String, String> e) -> e.getValue()).thenComparing(e -> e.getKey()))
+                .forEach(e -> res.add(e.getKey()));
+        return res;
     }
 }

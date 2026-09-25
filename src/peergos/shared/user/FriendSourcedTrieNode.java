@@ -115,8 +115,10 @@ public class FriendSourcedTrieNode implements TrieNode {
                     }
                     if (newGroups.isEmpty())
                         return Futures.of(p);
+                    // recording the groups can hand back an older version of the friend than the one just processed
                     return Futures.reduceAll(newGroups, p.left, (b, cap) -> groupAdder.add(cap, ownerName, network, b, c), (a, b) -> b)
-                            .thenCompose(res -> ensureUptodate(res, c, crypto, network));
+                            .thenCompose(res -> getLatestVersion(network)
+                                    .thenCompose(latest -> ensureUptodate(res.mergeAndOverwriteWith(latest), c, crypto, network)));
                 });
     }
 
@@ -130,7 +132,8 @@ public class FriendSourcedTrieNode implements TrieNode {
                     .thenApply(opt -> opt.map(f -> f.withTrieNode(this)));
         Path file = PathUtil.get(ownerName + path);
         return network.synchronizer.applyComplexUpdate(cache.owner(), cache.signingPair(), (v, c) -> getLatestVersion(network)
-                .thenCompose(s -> updateIncludingGroups(v.mergeAndOverwriteWith(s), c, network)).thenApply(p -> p.left))
+                .thenCompose(s -> updateIncludingGroups(v.mergeAndOverwriteWith(s), c, network)
+                        .thenApply(p -> p.left.mergeAndOverwriteWith(s))))
                 .thenCompose(v -> cache.getByPath(file, v, hasher, network))
                 .thenApply(opt -> opt.map(f -> convert(f, path)))
                 .exceptionally(t ->  Optional.empty());
@@ -163,7 +166,8 @@ public class FriendSourcedTrieNode implements TrieNode {
         FileProperties.ensureValidPath(path);
         Path dir = PathUtil.get(ownerName + path);
         return network.synchronizer.applyComplexUpdate(cache.owner(), cache.signingPair(), (v, c) -> getLatestVersion(network)
-                .thenCompose(s -> updateIncludingGroups(v.mergeAndOverwriteWith(s), c, network)).thenApply(p -> p.left))
+                .thenCompose(s -> updateIncludingGroups(v.mergeAndOverwriteWith(s), c, network)
+                        .thenApply(p -> p.left.mergeAndOverwriteWith(s))))
                 .thenCompose(v -> cache.getChildren(dir, v, hasher, network))
                 .thenApply(children -> children.stream()
                         .map(f -> convert(f, canonicalise(path) + "/" + f.getName()))
