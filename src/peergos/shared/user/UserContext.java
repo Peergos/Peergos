@@ -12,6 +12,7 @@ import peergos.shared.login.mfa.*;
 import peergos.shared.resolution.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.storage.controller.InstanceAdmin;
+import peergos.shared.storage.controller.HttpInstanceAdmin;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.user.fs.transaction.*;
 import peergos.shared.*;
@@ -1411,6 +1412,53 @@ public class UserContext {
         return TimeLimitedClient.signNow(signer.secret)
                 .thenCompose(signedTime -> network.dhtClient.id()
                         .thenCompose(id -> network.instanceAdmin.getPendingSpaceRequests(signer.publicKeyHash, id, signedTime)));
+    }
+
+    /**
+     *
+     * @return the signup tokens nobody has used yet, if we are an admin
+     */
+    @JsMethod
+    public CompletableFuture<List<String>> listSignupTokens() {
+        return new TimeLimitedClient.SignedRequest(Constants.ADMIN_URL + HttpInstanceAdmin.LIST_TOKENS, System.currentTimeMillis())
+                .sign(signer.secret)
+                .thenCompose(signedRequest -> network.instanceAdmin.listSignupTokens(signer.publicKeyHash, signedRequest));
+    }
+
+    /**
+     *
+     * @param token an unused signup token to withdraw, if we are an admin
+     * @return whether there was such a token
+     */
+    @JsMethod
+    public CompletableFuture<Boolean> revokeSignupToken(String token) {
+        return new TimeLimitedClient.SignedRequest(Constants.ADMIN_URL + HttpInstanceAdmin.REVOKE_TOKEN + "/" + token, System.currentTimeMillis())
+                .sign(signer.secret)
+                .thenCompose(signedRequest -> network.instanceAdmin.revokeSignupToken(signer.publicKeyHash, token, signedRequest));
+    }
+
+    /**
+     *
+     * @return whether we are an admin on the server we are connected to
+     */
+    @JsMethod
+    public CompletableFuture<Boolean> isAdmin() {
+        return new TimeLimitedClient.SignedRequest(Constants.ADMIN_URL + HttpInstanceAdmin.IS_ADMIN, System.currentTimeMillis())
+                .sign(signer.secret)
+                .thenCompose(signedRequest -> network.instanceAdmin.isAdmin(signer.publicKeyHash, signedRequest));
+    }
+
+    /**
+     *
+     * @param count how many single use signup tokens to create, if we are an admin
+     * @return the new tokens, each of which lets one new user sign up
+     */
+    @JsMethod
+    public CompletableFuture<List<String>> createSignupTokens(int count) {
+        return new TimeLimitedClient.SignedRequest(Constants.ADMIN_URL + HttpInstanceAdmin.TOKENS, System.currentTimeMillis())
+                .sign(signer.secret)
+                .thenCompose(signedRequest -> network.dhtClient.id()
+                        .thenCompose(id -> network.instanceAdmin.createSignupTokens(signer.publicKeyHash, id, signedRequest, count)));
     }
 
     /**

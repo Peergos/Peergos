@@ -1,6 +1,7 @@
 package peergos.server.storage.admin;
 
 import peergos.server.*;
+import peergos.server.crypto.random.*;
 import peergos.server.util.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
@@ -21,12 +22,17 @@ public class Admin implements InstanceAdmin {
 
     private static final Path waitingList = PathUtil.get("waiting-list.txt");
     private static final int MAX_WAITING = 1_000_000;
+    public static final int MAX_SIGNUP_TOKENS_PER_REQUEST = 100;
 
     private final Set<String> adminUsernames;
     private final QuotaAdmin quotas;
     private final CoreNode core;
     private final ContentAddressedStorage ipfs;
     private final AtomicLong lastPendingRequestTime = new AtomicLong(System.currentTimeMillis());
+    private final AtomicLong lastTokenRequestTime = new AtomicLong(System.currentTimeMillis());
+    private final AtomicLong lastTokenListTime = new AtomicLong(System.currentTimeMillis());
+    private final AtomicLong lastTokenRevokeTime = new AtomicLong(System.currentTimeMillis());
+    private final SafeRandom random = new SafeRandomJava();
     private final boolean enableWaitList;
     private int numberWaiting;
     private final String sourceVersion;
@@ -84,6 +90,54 @@ public class Admin implements InstanceAdmin {
                 throw new IllegalStateException("User is not an admin on this instance!");
             quotas.approveSpaceRequest(adminIdentity, instanceIdentity, signedRequest);
             return Futures.of(true);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> isAdmin(PublicKeyHash identity, byte[] signedRequest) {
+        TimeLimited.isAllowed(Constants.ADMIN_URL + HttpInstanceAdmin.IS_ADMIN, signedRequest, 60, ipfs, identity);
+        return core.getUsername(identity).thenApply(adminUsernames::contains);
+    }
+
+    /** Each token is an account, so the caller proves it holds an admin's key before anything is
+     *  created: with a fresh signature over this call's path, spent once. A bare signed time will
+     *  not do, since the same key signs those for everyday calls that pass through other servers. */
+    @Override
+    public synchronized CompletableFuture<List<String>> createSignupTokens(PublicKeyHash adminIdentity,
+                                                                           Multihash instanceIdentity,
+                                                                           byte[] signedRequest,
+                                                                           int count) {
+        spendAdminRequest(Constants.ADMIN_URL + HttpInstanceAdmin.TOKENS, signedRequest, adminIdentity, lastTokenRequestTime);
+        if (count < 1 || count > MAX_SIGNUP_TOKENS_PER_REQUEST)
+            throw new IllegalArgumentException("Signup tokens are created 1 to " + MAX_SIGNUP_TOKENS_PER_REQUEST + " at a time");
+        List<String> tokens = new ArrayList<>();
+        for (int i = 0; i < count; i++)
+            tokens.add(generateSignupToken(random));
+        return Futures.of(tokens);
+    }
+
+    @Override
+    public synchronized CompletableFuture<List<String>> listSignupTokens(PublicKeyHash adminIdentity, byte[] signedRequest) {
+        spendAdminRequest(Constants.ADMIN_URL + HttpInstanceAdmin.LIST_TOKENS, signedRequest, adminIdentity, lastTokenListTime);
+        return Futures.of(quotas.listTokens());
+    }
+
+    /** The token is part of the signed path, so a request to withdraw one cannot withdraw another. */
+    @Override
+    public synchronized CompletableFuture<Boolean> revokeSignupToken(PublicKeyHash adminIdentity, String token, byte[] signedRequest) {
+        spendAdminRequest(Constants.ADMIN_URL + HttpInstanceAdmin.REVOKE_TOKEN + "/" + token, signedRequest, adminIdentity, lastTokenRevokeTime);
+        return Futures.of(quotas.removeToken(token));
+    }
+
+    /** Checks a request is fresh, signed by an admin for this path, and newer than the last one to
+     *  this call, which it then becomes. */
+    private void spendAdminRequest(String path, byte[] signedRequest, PublicKeyHash adminIdentity, AtomicLong lastTime) {
+        long time = TimeLimited.isAllowed(path, signedRequest, 60, ipfs, adminIdentity);
+        String username = core.getUsername(adminIdentity).join();
+        if (! adminUsernames.contains(username))
+            throw new IllegalStateException("User is not an admin on this instance!");
+        if (lastTime.get() >= time)
+            throw new IllegalStateException("Replay attack? Stale auth time for an admin request");
+        lastTime.set(time);
     }
 
     @Override

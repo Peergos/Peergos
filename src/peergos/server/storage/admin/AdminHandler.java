@@ -13,6 +13,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.util.*;
 import java.util.function.*;
+import java.util.stream.*;
 
 public class AdminHandler implements HttpHandler {
 
@@ -67,6 +68,39 @@ public class AdminHandler implements HttpHandler {
                     String email = params.get("email").get(0);
                     boolean result = target.addToWaitList(email).join();
                     reply = new CborObject.CborBoolean(result);
+                    break;
+                }
+                case HttpInstanceAdmin.IS_ADMIN: {
+                    PublicKeyHash identity = PublicKeyHash.fromString(params.get("admin").get(0));
+                    byte[] signedRequest = ArrayOps.hexToBytes(last.apply("auth"));
+                    reply = new CborObject.CborBoolean(target.isAdmin(identity, signedRequest).join());
+                    break;
+                }
+                case HttpInstanceAdmin.TOKENS: {
+                    PublicKeyHash admin = PublicKeyHash.fromString(params.get("admin").get(0));
+                    Multihash instance = Cid.decode(params.get("instance").get(0));
+                    byte[] signedRequest = ArrayOps.hexToBytes(last.apply("auth"));
+                    int count = Integer.parseInt(last.apply("count"));
+                    List<String> tokens = target.createSignupTokens(admin, instance, signedRequest, count).join();
+                    reply = new CborObject.CborList(tokens.stream()
+                            .map(CborObject.CborString::new)
+                            .collect(Collectors.toList()));
+                    break;
+                }
+                case HttpInstanceAdmin.LIST_TOKENS: {
+                    PublicKeyHash admin = PublicKeyHash.fromString(params.get("admin").get(0));
+                    byte[] signedRequest = ArrayOps.hexToBytes(last.apply("auth"));
+                    List<String> tokens = target.listSignupTokens(admin, signedRequest).join();
+                    reply = new CborObject.CborList(tokens.stream()
+                            .map(CborObject.CborString::new)
+                            .collect(Collectors.toList()));
+                    break;
+                }
+                case HttpInstanceAdmin.REVOKE_TOKEN: {
+                    PublicKeyHash admin = PublicKeyHash.fromString(params.get("admin").get(0));
+                    String token = last.apply("token");
+                    byte[] signedRequest = ArrayOps.hexToBytes(last.apply("auth"));
+                    reply = new CborObject.CborBoolean(target.revokeSignupToken(admin, token, signedRequest).join());
                     break;
                 }
                 case HttpInstanceAdmin.SIGNUPS: {

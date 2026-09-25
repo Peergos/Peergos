@@ -18,6 +18,10 @@ public class HttpInstanceAdmin implements InstanceAdmin {
     public static final String APPROVE = "approve";
     public static final String SIGNUPS = "signups";
     public static final String WAIT_LIST = "waitlist";
+    public static final String TOKENS = "tokens";
+    public static final String IS_ADMIN = "isadmin";
+    public static final String LIST_TOKENS = "listtokens";
+    public static final String REVOKE_TOKEN = "revoketoken";
 
     private final HttpPoster poster;
 
@@ -51,6 +55,46 @@ public class HttpInstanceAdmin implements InstanceAdmin {
                 + "&instance=" + encode(instanceIdentity.toString())
                 + "&req=" + ArrayOps.bytesToHex(signedRequest))
                 .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> isAdmin(PublicKeyHash identity, byte[] signedRequest) {
+        return poster.get(Constants.ADMIN_URL + IS_ADMIN
+                + "?admin=" + encode(identity.toString())
+                + "&auth=" + ArrayOps.bytesToHex(signedRequest))
+                .thenApply(raw -> ((CborObject.CborBoolean)CborObject.fromByteArray(raw)).value);
+    }
+
+    @Override
+    public CompletableFuture<List<String>> listSignupTokens(PublicKeyHash adminIdentity, byte[] signedRequest) {
+        return poster.get(Constants.ADMIN_URL + LIST_TOKENS
+                + "?admin=" + encode(adminIdentity.toString())
+                + "&auth=" + ArrayOps.bytesToHex(signedRequest))
+                .thenApply(raw -> ((CborObject.CborList)CborObject.fromByteArray(raw))
+                        .map(c -> ((CborObject.CborString) c).value));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> revokeSignupToken(PublicKeyHash adminIdentity, String token, byte[] signedRequest) {
+        return poster.get(Constants.ADMIN_URL + REVOKE_TOKEN
+                + "?admin=" + encode(adminIdentity.toString())
+                + "&token=" + encode(token)
+                + "&auth=" + ArrayOps.bytesToHex(signedRequest))
+                .thenApply(raw -> ((CborObject.CborBoolean)CborObject.fromByteArray(raw)).value);
+    }
+
+    @Override
+    public CompletableFuture<List<String>> createSignupTokens(PublicKeyHash adminIdentity,
+                                                              Multihash instanceIdentity,
+                                                              byte[] signedRequest,
+                                                              int count) {
+        return poster.get(Constants.ADMIN_URL + TOKENS
+                + "?admin=" + encode(adminIdentity.toString())
+                + "&instance=" + encode(instanceIdentity.toString())
+                + "&auth=" + ArrayOps.bytesToHex(signedRequest)
+                + "&count=" + count)
+                .thenApply(raw -> ((CborObject.CborList)CborObject.fromByteArray(raw))
+                        .map(c -> ((CborObject.CborString) c).value));
     }
 
     @Override
