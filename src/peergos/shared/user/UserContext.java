@@ -1416,6 +1416,29 @@ public class UserContext {
 
     /**
      *
+     * @return the signup tokens nobody has used yet, if we are an admin
+     */
+    @JsMethod
+    public CompletableFuture<List<String>> listSignupTokens() {
+        return new TimeLimitedClient.SignedRequest(Constants.ADMIN_URL + HttpInstanceAdmin.LIST_TOKENS, System.currentTimeMillis())
+                .sign(signer.secret)
+                .thenCompose(signedRequest -> network.instanceAdmin.listSignupTokens(signer.publicKeyHash, signedRequest));
+    }
+
+    /**
+     *
+     * @param token an unused signup token to withdraw, if we are an admin
+     * @return whether there was such a token
+     */
+    @JsMethod
+    public CompletableFuture<Boolean> revokeSignupToken(String token) {
+        return new TimeLimitedClient.SignedRequest(Constants.ADMIN_URL + HttpInstanceAdmin.REVOKE_TOKEN + "/" + token, System.currentTimeMillis())
+                .sign(signer.secret)
+                .thenCompose(signedRequest -> network.instanceAdmin.revokeSignupToken(signer.publicKeyHash, token, signedRequest));
+    }
+
+    /**
+     *
      * @return whether we are an admin on the server we are connected to
      */
     @JsMethod

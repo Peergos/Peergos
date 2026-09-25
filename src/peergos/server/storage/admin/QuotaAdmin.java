@@ -30,6 +30,15 @@ public interface QuotaAdmin extends QuotaControl {
 
     boolean consumeToken(String username, String token);
 
+    /** The signup tokens not yet used. A quota store on another server cannot list them from here. */
+    default List<String> listTokens() {
+        throw new UnsupportedOperationException("This server's quota store cannot list signup tokens");
+    }
+
+    default boolean removeToken(String token) {
+        throw new UnsupportedOperationException("This server's quota store cannot remove signup tokens");
+    }
+
     default void setPki(CoreNode core) {}
 
     default String generateToken(SafeRandom rnd) {

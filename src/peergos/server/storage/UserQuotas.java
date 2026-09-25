@@ -155,6 +155,16 @@ public class UserQuotas implements QuotaAdmin {
     }
 
     @Override
+    public List<String> listTokens() {
+        return quotas.listTokens();
+    }
+
+    @Override
+    public boolean removeToken(String token) {
+        return quotas.removeToken(token);
+    }
+
+    @Override
     public long getQuota(String username) {
         return quotas.getQuota(username);
     }

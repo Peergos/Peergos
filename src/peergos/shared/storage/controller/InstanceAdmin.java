@@ -42,6 +42,16 @@ public interface InstanceAdmin {
                                                        byte[] signedRequest,
                                                        int count);
 
+    /** The signup tokens not yet used, which are as good as accounts, so each request is spent once.
+     *
+     *  @param signedRequest a TimeLimitedClient.SignedRequest for Constants.ADMIN_URL + "listtokens" */
+    CompletableFuture<List<String>> listSignupTokens(PublicKeyHash adminIdentity, byte[] signedRequest);
+
+    /** Withdraws a signup token nobody has used yet.
+     *
+     *  @param signedRequest a TimeLimitedClient.SignedRequest for Constants.ADMIN_URL + "revoketoken/" + token */
+    CompletableFuture<Boolean> revokeSignupToken(PublicKeyHash adminIdentity, String token, byte[] signedRequest);
+
     @JsMethod
     CompletableFuture<AllowedSignups> acceptingSignups();
 

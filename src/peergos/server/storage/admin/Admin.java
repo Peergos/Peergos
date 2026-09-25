@@ -30,6 +30,8 @@ public class Admin implements InstanceAdmin {
     private final ContentAddressedStorage ipfs;
     private final AtomicLong lastPendingRequestTime = new AtomicLong(System.currentTimeMillis());
     private final AtomicLong lastTokenRequestTime = new AtomicLong(System.currentTimeMillis());
+    private final AtomicLong lastTokenListTime = new AtomicLong(System.currentTimeMillis());
+    private final AtomicLong lastTokenRevokeTime = new AtomicLong(System.currentTimeMillis());
     private final SafeRandom random = new SafeRandomJava();
     private final boolean enableWaitList;
     private int numberWaiting;
@@ -104,19 +106,38 @@ public class Admin implements InstanceAdmin {
                                                                            Multihash instanceIdentity,
                                                                            byte[] signedRequest,
                                                                            int count) {
-        long time = TimeLimited.isAllowed(Constants.ADMIN_URL + HttpInstanceAdmin.TOKENS, signedRequest, 60, ipfs, adminIdentity);
-        String username = core.getUsername(adminIdentity).join();
-        if (! adminUsernames.contains(username))
-            throw new IllegalStateException("User is not an admin on this instance!");
-        if (lastTokenRequestTime.get() >= time)
-            throw new IllegalStateException("Replay attack? Stale auth time for createSignupTokens");
-        lastTokenRequestTime.set(time);
+        spendAdminRequest(Constants.ADMIN_URL + HttpInstanceAdmin.TOKENS, signedRequest, adminIdentity, lastTokenRequestTime);
         if (count < 1 || count > MAX_SIGNUP_TOKENS_PER_REQUEST)
             throw new IllegalArgumentException("Signup tokens are created 1 to " + MAX_SIGNUP_TOKENS_PER_REQUEST + " at a time");
         List<String> tokens = new ArrayList<>();
         for (int i = 0; i < count; i++)
             tokens.add(generateSignupToken(random));
         return Futures.of(tokens);
+    }
+
+    @Override
+    public synchronized CompletableFuture<List<String>> listSignupTokens(PublicKeyHash adminIdentity, byte[] signedRequest) {
+        spendAdminRequest(Constants.ADMIN_URL + HttpInstanceAdmin.LIST_TOKENS, signedRequest, adminIdentity, lastTokenListTime);
+        return Futures.of(quotas.listTokens());
+    }
+
+    /** The token is part of the signed path, so a request to withdraw one cannot withdraw another. */
+    @Override
+    public synchronized CompletableFuture<Boolean> revokeSignupToken(PublicKeyHash adminIdentity, String token, byte[] signedRequest) {
+        spendAdminRequest(Constants.ADMIN_URL + HttpInstanceAdmin.REVOKE_TOKEN + "/" + token, signedRequest, adminIdentity, lastTokenRevokeTime);
+        return Futures.of(quotas.removeToken(token));
+    }
+
+    /** Checks a request is fresh, signed by an admin for this path, and newer than the last one to
+     *  this call, which it then becomes. */
+    private void spendAdminRequest(String path, byte[] signedRequest, PublicKeyHash adminIdentity, AtomicLong lastTime) {
+        long time = TimeLimited.isAllowed(path, signedRequest, 60, ipfs, adminIdentity);
+        String username = core.getUsername(adminIdentity).join();
+        if (! adminUsernames.contains(username))
+            throw new IllegalStateException("User is not an admin on this instance!");
+        if (lastTime.get() >= time)
+            throw new IllegalStateException("Replay attack? Stale auth time for an admin request");
+        lastTime.set(time);
     }
 
     @Override

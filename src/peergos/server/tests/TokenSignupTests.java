@@ -116,6 +116,58 @@ public class TokenSignupTests {
         refused(() -> http.isAdmin(admin.signer.publicKeyHash, signedByUser).join(), "");
     }
 
+    /** Unused invites stay listed until someone signs up with them or the admin withdraws them. */
+    @Test
+    public void adminListsAndRevokesUnusedSignupTokens() {
+        UserContext admin = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network, crypto);
+        List<String> made = admin.createSignupTokens(3).join();
+        Assert.assertTrue(admin.listSignupTokens().join().containsAll(made));
+
+        Assert.assertTrue(admin.revokeSignupToken(made.get(0)).join());
+        Assert.assertFalse(admin.listSignupTokens().join().contains(made.get(0)));
+        refused(() -> UserContext.signUp("invitee3", "test", made.get(0), network, crypto).join(), "Invalid signup token");
+        Assert.assertFalse("already gone", admin.revokeSignupToken(made.get(0)).join());
+
+        UserContext.signUp("invitee3", "test", made.get(1), network, crypto).join();
+        List<String> left = admin.listSignupTokens().join();
+        Assert.assertFalse("a used token leaves the list", left.contains(made.get(1)));
+        Assert.assertTrue(left.contains(made.get(2)));
+    }
+
+    @Test
+    public void onlyAnAdminListsOrRevokesSignupTokens() {
+        UserContext admin = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network, crypto);
+        String token = admin.createSignupTokens(1).join().get(0);
+        String other = ((Admin)service.controller).generateSignupToken(crypto.random);
+        UserContext user = UserContext.signUp("notadmin3", "test", other, network, crypto).join();
+        refused(() -> user.listSignupTokens().join(), "not an admin");
+        refused(() -> user.revokeSignupToken(token).join(), "not an admin");
+        Assert.assertTrue(admin.listSignupTokens().join().contains(token));
+    }
+
+    /** Over http: a list request is spent once, and a request to withdraw one token withdraws no other. */
+    @Test
+    public void listAndRevokeRequestsAreBound() throws Exception {
+        UserContext admin = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network, crypto);
+        InstanceAdmin http = new HttpInstanceAdmin(new JavaPoster(new URI("http://localhost:" + args.getArg("port")).toURL(), false));
+        List<String> made = admin.createSignupTokens(2).join();
+
+        Thread.sleep(5);
+        byte[] list = new TimeLimitedClient.SignedRequest(Constants.ADMIN_URL + HttpInstanceAdmin.LIST_TOKENS, System.currentTimeMillis())
+                .sign(admin.signer.secret).join();
+        Assert.assertTrue(http.listSignupTokens(admin.signer.publicKeyHash, list).join().containsAll(made));
+        refused(() -> http.listSignupTokens(admin.signer.publicKeyHash, list).join(), "Replay attack");
+
+        Thread.sleep(5);
+        byte[] revokeFirst = new TimeLimitedClient.SignedRequest(Constants.ADMIN_URL + HttpInstanceAdmin.REVOKE_TOKEN + "/" + made.get(0), System.currentTimeMillis())
+                .sign(admin.signer.secret).join();
+        refused(() -> http.revokeSignupToken(admin.signer.publicKeyHash, made.get(1), revokeFirst).join(), "Illegal path");
+        Assert.assertTrue(http.revokeSignupToken(admin.signer.publicKeyHash, made.get(0), revokeFirst).join());
+        List<String> left = admin.listSignupTokens().join();
+        Assert.assertFalse(left.contains(made.get(0)));
+        Assert.assertTrue(left.contains(made.get(1)));
+    }
+
     /** The admin's key signs times for everyday calls - quota, usage, follow requests - which pass
      *  through whichever server they log in on. None of those may be spent on signup tokens. */
     @Test

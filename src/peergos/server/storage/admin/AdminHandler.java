@@ -87,6 +87,22 @@ public class AdminHandler implements HttpHandler {
                             .collect(Collectors.toList()));
                     break;
                 }
+                case HttpInstanceAdmin.LIST_TOKENS: {
+                    PublicKeyHash admin = PublicKeyHash.fromString(params.get("admin").get(0));
+                    byte[] signedRequest = ArrayOps.hexToBytes(last.apply("auth"));
+                    List<String> tokens = target.listSignupTokens(admin, signedRequest).join();
+                    reply = new CborObject.CborList(tokens.stream()
+                            .map(CborObject.CborString::new)
+                            .collect(Collectors.toList()));
+                    break;
+                }
+                case HttpInstanceAdmin.REVOKE_TOKEN: {
+                    PublicKeyHash admin = PublicKeyHash.fromString(params.get("admin").get(0));
+                    String token = last.apply("token");
+                    byte[] signedRequest = ArrayOps.hexToBytes(last.apply("auth"));
+                    reply = new CborObject.CborBoolean(target.revokeSignupToken(admin, token, signedRequest).join());
+                    break;
+                }
                 case HttpInstanceAdmin.SIGNUPS: {
                     reply = target.acceptingSignups().join();
                     break;
