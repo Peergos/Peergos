@@ -59,18 +59,18 @@ public class SecretLinkStorage extends DelegatingDeletableStorage {
 
         WriterData wd = WriterData.getWriterData(owner, owner, pointers, target).join().props.get();
         if (wd.secretLinks.isEmpty())
-            throw new IllegalStateException("No secret link published!");
+            throw new IllegalStateException(SecretLink.MISSING + " published!");
         List<BatWithId> mirrorBats = batstore.getUserBats(username, new byte[0]).join();
         SecretLinkChamp champ = buildLinkChamp(owner, (Cid) wd.secretLinks.get(), mirrorBats);
         Optional<SecretLinkTarget> res = champ.get(owner, link.label).join();
         if (res.isEmpty())
-            throw new IllegalStateException("No secret link present!");
+            throw new IllegalStateException(SecretLink.MISSING + " present!");
         SecretLinkTarget target = res.get();
         if (target.expiry.isPresent()) {
             LocalDateTime now = LocalDateTime.now();
             if (target.expiry.get().isBefore(now)) {
                 LOG.info("Expired secret link: " + owner + "-" + link.label + " " + target.expiry.get() + " < " + now);
-                throw new IllegalStateException("Secret link expired!");
+                throw new IllegalStateException(SecretLink.EXPIRED + "!");
             }
         }
 
@@ -78,7 +78,7 @@ public class SecretLinkStorage extends DelegatingDeletableStorage {
             long retrievals = counter.getCount(username, link.label);
             if (retrievals >= target.maxRetrievals.get()) {
                 LOG.info("Unavailable secret link: " + owner + "-" + link.label + " " + target.maxRetrievals.get() + " >= " + retrievals);
-                throw new IllegalStateException("Maximum link retrievals exceed!");
+                throw new IllegalStateException(SecretLink.USED_UP + " exceeded!");
             }
         }
         counter.increment(username, link.label);

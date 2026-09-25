@@ -69,6 +69,10 @@ public class RetryStorage implements ContentAddressedStorage {
                             res.completeExceptionally(e);
                         } else if (e.getMessage() != null && e.getMessage().contains("Champ+root+not+present")) {
                             res.completeExceptionally(e);
+                        } else if (SecretLink.isRefused(e)) {
+                            // an expired, used up or deleted link stays that way, and a viewer
+                            // waits on a loading page for as long as the retries take
+                            res.completeExceptionally(e);
                         } else {
                             retryAfter(() -> recurse(retriesLeft - 1, maxAttempts, f)
                                             .thenAccept(res::complete)
