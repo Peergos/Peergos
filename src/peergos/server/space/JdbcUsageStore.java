@@ -708,15 +708,15 @@ public class JdbcUsageStore implements UsageStore {
     }
 
     @Override
-    public Map<PublicKeyHash, Long> getAllWriterQuotas() {
+    public Optional<Long> getWriterQuota(PublicKeyHash writer) {
         try (Connection conn = getConnection();
-             PreparedStatement select = conn.prepareStatement("SELECT w.key_hash, wq.quota FROM writerquotas wq " +
-                     "INNER JOIN writers w ON wq.writer_id = w.id WHERE wq.quota >= 0;")) {
-            Map<PublicKeyHash, Long> res = new HashMap<>();
+             PreparedStatement select = conn.prepareStatement("SELECT wq.quota FROM writerquotas wq " +
+                     "INNER JOIN writers w ON wq.writer_id = w.id WHERE w.key_hash = ? AND wq.quota >= 0;")) {
+            select.setBytes(1, writer.toBytes());
             ResultSet resultSet = select.executeQuery();
-            while (resultSet.next())
-                res.put(PublicKeyHash.decode(resultSet.getBytes(1)), resultSet.getLong(2));
-            return res;
+            if (! resultSet.next())
+                return Optional.empty();
+            return Optional.of(resultSet.getLong(1));
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);

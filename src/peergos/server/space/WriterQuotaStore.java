@@ -16,7 +16,7 @@ public interface WriterQuotaStore {
     /** Forget a writer's cap completely, for when its writing space is gone */
     void deleteWriterQuota(PublicKeyHash writer);
 
-    Map<PublicKeyHash, Long> getAllWriterQuotas();
+    Optional<Long> getWriterQuota(PublicKeyHash writer);
 
     Map<PublicKeyHash, Long> getWriterQuotas(String username);
 

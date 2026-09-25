@@ -352,28 +352,28 @@ public class JdbcUsageStoreTests {
         store.addWriter(username, writer);
 
         Assert.assertTrue(store.setWriterQuota(username, writer, Optional.of(1000L), 10, new byte[]{1}));
-        Assert.assertEquals(Map.of(writer, 1000L), store.getAllWriterQuotas());
+        Assert.assertEquals(Optional.of(1000L), store.getWriterQuota(writer));
         Assert.assertFalse("replay", store.setWriterQuota(username, writer, Optional.of(2000L), 10, new byte[]{2}));
         Assert.assertFalse("older", store.setWriterQuota(username, writer, Optional.of(2000L), 9, new byte[]{2}));
-        Assert.assertEquals(Map.of(writer, 1000L), store.getAllWriterQuotas());
+        Assert.assertEquals(Optional.of(1000L), store.getWriterQuota(writer));
 
         Assert.assertTrue(store.setWriterQuota(username, writer, Optional.of(2000L), 11, new byte[]{3}));
-        Assert.assertEquals(Map.of(writer, 2000L), store.getAllWriterQuotas());
+        Assert.assertEquals(Optional.of(2000L), store.getWriterQuota(writer));
         Assert.assertArrayEquals(new byte[]{3}, store.getSignedWriterQuotas(username).get(0));
 
         Assert.assertTrue(store.setWriterQuota(username, writer, Optional.empty(), 12, new byte[]{4}));
-        Assert.assertTrue(store.getAllWriterQuotas().isEmpty());
+        Assert.assertTrue(store.getWriterQuota(writer).isEmpty());
         Assert.assertTrue(store.getSignedWriterQuotas(username).isEmpty());
         Assert.assertFalse("replay after removal", store.setWriterQuota(username, writer, Optional.of(2000L), 11, new byte[]{3}));
-        Assert.assertTrue(store.getAllWriterQuotas().isEmpty());
+        Assert.assertTrue(store.getWriterQuota(writer).isEmpty());
 
         store.setWriterQuota(username, writer, Optional.of(3000L), 13, new byte[]{5});
         store.deleteWriterQuota(writer);
-        Assert.assertTrue(store.getAllWriterQuotas().isEmpty());
+        Assert.assertTrue(store.getWriterQuota(writer).isEmpty());
 
         store.setWriterQuota(username, writer, Optional.of(3000L), 14, new byte[]{6});
         store.removeUser(username);
-        Assert.assertTrue(store.getAllWriterQuotas().isEmpty());
+        Assert.assertTrue(store.getWriterQuota(writer).isEmpty());
     }
 
     @Test
