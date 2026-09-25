@@ -108,12 +108,11 @@ public class TokenSignupTests {
         UserContext user = UserContext.signUp("notadmin2", "test", token, network, crypto).join();
         Assert.assertFalse(user.isAdmin().join());
 
-        // asking about the admin takes the admin's key. A bad signature fails without a message, so
-        // this only asks that it fails
+        // asking about the admin takes the admin's key
         InstanceAdmin http = new HttpInstanceAdmin(new JavaPoster(new URI("http://localhost:" + args.getArg("port")).toURL(), false));
         byte[] signedByUser = new TimeLimitedClient.SignedRequest(Constants.ADMIN_URL + HttpInstanceAdmin.IS_ADMIN, System.currentTimeMillis())
                 .sign(user.signer.secret).join();
-        refused(() -> http.isAdmin(admin.signer.publicKeyHash, signedByUser).join(), "");
+        refused(() -> http.isAdmin(admin.signer.publicKeyHash, signedByUser).join(), "InvalidSignatureException");
     }
 
     /** Unused invites stay listed until someone signs up with them or the admin withdraws them. */
