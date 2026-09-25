@@ -64,20 +64,20 @@ public class ProxyingSpaceUsage implements SpaceUsage {
     }
 
     @Override
-    public CompletableFuture<List<WriterSpaceInfo>> getWriterQuotas(PublicKeyHash owner, byte[] signedTime) {
+    public CompletableFuture<List<WriterUsageInfo>> getWriterQuotas(PublicKeyHash owner, byte[] signedRequest) {
         return Proxy.redirectCall(core,
                 serverIds,
                 owner,
-                () -> local.getWriterQuotas(owner, signedTime),
-                targetServer -> p2p.getWriterQuotas(targetServer, owner, signedTime));
+                () -> local.getWriterQuotas(owner, signedRequest),
+                targetServer -> p2p.getWriterQuotas(targetServer, owner, signedRequest));
     }
 
     @Override
-    public CompletableFuture<WriterSpaceInfo> getWriterSpace(PublicKeyHash owner, PublicKeyHash writer, byte[] signedTime) {
+    public CompletableFuture<WriterUsageInfo> getWriterUsage(PublicKeyHash owner, PublicKeyHash writer, byte[] signedRequest) {
         return Proxy.redirectCall(core,
                 serverIds,
                 owner,
-                () -> local.getWriterSpace(owner, writer, signedTime),
-                targetServer -> p2p.getWriterSpace(targetServer, owner, writer, signedTime));
+                () -> local.getWriterUsage(owner, writer, signedRequest),
+                targetServer -> p2p.getWriterUsage(targetServer, owner, writer, signedRequest));
     }
 }

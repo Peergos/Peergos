@@ -56,20 +56,24 @@ public class TimeLimited {
             Optional<PublicSigningKey> ownerOpt = ipfs.getSigningKey(owner, owner).join();
             if (! ownerOpt.isPresent())
                 throw new IllegalStateException("Couldn't retrieve owner key!");
-            byte[] raw = ownerOpt.get().unsignMessage(signedReq).join();
-            CborObject cbor = CborObject.fromByteArray(raw);
-
-            TimeLimitedClient.SignedRequest req = TimeLimitedClient.SignedRequest.fromCbor(cbor);
-            long utcMillis = req.createdEpochMillis;
-            long now = System.currentTimeMillis();
-            if (Math.abs(now - utcMillis) > durationSeconds * 1_000)
-                throw new IllegalStateException("Stale auth time, is your clock accurate?");
-            if (! expectedPath.equals(req.path))
-                throw new IllegalStateException("Illegal path for signed request: " + req.path);
-            // This is a valid request
-            return utcMillis;
+            return isAllowed(expectedPath, signedReq, durationSeconds, ownerOpt.get());
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public static long isAllowed(String expectedPath, byte[] signedReq, int durationSeconds, PublicSigningKey pubKey) {
+        byte[] raw = pubKey.unsignMessage(signedReq).join();
+        CborObject cbor = CborObject.fromByteArray(raw);
+
+        TimeLimitedClient.SignedRequest req = TimeLimitedClient.SignedRequest.fromCbor(cbor);
+        long utcMillis = req.createdEpochMillis;
+        long now = System.currentTimeMillis();
+        if (Math.abs(now - utcMillis) > durationSeconds * 1_000)
+            throw new IllegalStateException("Stale auth time, is your clock accurate?");
+        if (! expectedPath.equals(req.path))
+            throw new IllegalStateException("Illegal path for signed request: " + req.path);
+        // This is a valid request
+        return utcMillis;
     }
 }

@@ -120,36 +120,36 @@ public class HttpSpaceUsage implements SpaceUsageProxy {
     }
 
     @Override
-    public CompletableFuture<List<WriterSpaceInfo>> getWriterQuotas(PublicKeyHash owner, byte[] signedTime) {
-        return getWriterQuotas("", direct, owner, signedTime);
+    public CompletableFuture<List<WriterUsageInfo>> getWriterQuotas(PublicKeyHash owner, byte[] signedRequest) {
+        return getWriterQuotas("", direct, owner, signedRequest);
     }
 
     @Override
-    public CompletableFuture<List<WriterSpaceInfo>> getWriterQuotas(Multihash targetServerId, PublicKeyHash owner, byte[] signedTime) {
-        return getWriterQuotas(getProxyUrlPrefix(targetServerId), p2p, owner, signedTime);
+    public CompletableFuture<List<WriterUsageInfo>> getWriterQuotas(Multihash targetServerId, PublicKeyHash owner, byte[] signedRequest) {
+        return getWriterQuotas(getProxyUrlPrefix(targetServerId), p2p, owner, signedRequest);
     }
 
-    private CompletableFuture<List<WriterSpaceInfo>> getWriterQuotas(String urlPrefix, HttpPoster poster, PublicKeyHash owner, byte[] signedTime) {
+    private CompletableFuture<List<WriterUsageInfo>> getWriterQuotas(String urlPrefix, HttpPoster poster, PublicKeyHash owner, byte[] signedRequest) {
         return poster.get(urlPrefix + Constants.SPACE_USAGE_URL + "writer-quotas?owner=" + encode(owner.toString())
-                + "&auth=" + ArrayOps.bytesToHex(signedTime))
-                .thenApply(res -> ((CborObject.CborList)CborObject.fromByteArray(res)).map(WriterSpaceInfo::fromCbor));
+                + "&auth=" + ArrayOps.bytesToHex(signedRequest))
+                .thenApply(res -> ((CborObject.CborList)CborObject.fromByteArray(res)).map(WriterUsageInfo::fromCbor));
     }
 
     @Override
-    public CompletableFuture<WriterSpaceInfo> getWriterSpace(PublicKeyHash owner, PublicKeyHash writer, byte[] signedTime) {
-        return getWriterSpace("", direct, owner, writer, signedTime);
+    public CompletableFuture<WriterUsageInfo> getWriterUsage(PublicKeyHash owner, PublicKeyHash writer, byte[] signedRequest) {
+        return getWriterUsage("", direct, owner, writer, signedRequest);
     }
 
     @Override
-    public CompletableFuture<WriterSpaceInfo> getWriterSpace(Multihash targetServerId, PublicKeyHash owner, PublicKeyHash writer, byte[] signedTime) {
-        return getWriterSpace(getProxyUrlPrefix(targetServerId), p2p, owner, writer, signedTime);
+    public CompletableFuture<WriterUsageInfo> getWriterUsage(Multihash targetServerId, PublicKeyHash owner, PublicKeyHash writer, byte[] signedRequest) {
+        return getWriterUsage(getProxyUrlPrefix(targetServerId), p2p, owner, writer, signedRequest);
     }
 
-    private CompletableFuture<WriterSpaceInfo> getWriterSpace(String urlPrefix, HttpPoster poster, PublicKeyHash owner, PublicKeyHash writer, byte[] signedTime) {
-        return poster.get(urlPrefix + Constants.SPACE_USAGE_URL + "writer-space?owner=" + encode(owner.toString())
+    private CompletableFuture<WriterUsageInfo> getWriterUsage(String urlPrefix, HttpPoster poster, PublicKeyHash owner, PublicKeyHash writer, byte[] signedRequest) {
+        return poster.get(urlPrefix + Constants.SPACE_USAGE_URL + "writer-usage?owner=" + encode(owner.toString())
                 + "&writer=" + encode(writer.toString())
-                + "&auth=" + ArrayOps.bytesToHex(signedTime))
-                .thenApply(res -> WriterSpaceInfo.fromCbor(CborObject.fromByteArray(res)));
+                + "&auth=" + ArrayOps.bytesToHex(signedRequest))
+                .thenApply(res -> WriterUsageInfo.fromCbor(CborObject.fromByteArray(res)));
     }
 
     private static String encode(String component) {

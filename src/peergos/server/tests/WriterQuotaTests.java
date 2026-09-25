@@ -95,10 +95,10 @@ public class WriterQuotaTests {
         // the owner's own writes count towards the cap, which allows 1 MiB of slack once a write has been rejected
         assertUploadRejected(owner, dir, "big", 1800 * KiB);
 
-        WriterSpaceInfo ownerView = owner.getWriteShareQuota(dir).join();
+        WriterUsageInfo ownerView = owner.getWriteShareQuota(dir).join();
         Assert.assertEquals(Optional.of(1024L * KiB), ownerView.quota);
         Assert.assertTrue(ownerView.used >= 400 * KiB);
-        WriterSpaceInfo shareeView = sharee.getWriteSpaceInfo(sharee.getByPath(dir).join().get()).join();
+        WriterUsageInfo shareeView = sharee.getWriteUsageInfo(sharee.getByPath(dir).join().get()).join();
         Assert.assertTrue(shareeView.available.isPresent());
         Assert.assertTrue(shareeView.available.get() <= 624 * KiB);
         Assert.assertEquals(1, owner.getWriteShareQuotas().join().size());
@@ -131,7 +131,7 @@ public class WriterQuotaTests {
         assertUploadRejected(sharee, dir, "file", 600 * KiB);
 
         // a nested sharee sees how much space is left, but not how much the enclosing folder holds
-        WriterSpaceInfo nestedView = nestedSharee.getWriteSpaceInfo(nestedSharee.getByPath(nested).join().get()).join();
+        WriterUsageInfo nestedView = nestedSharee.getWriteUsageInfo(nestedSharee.getByPath(nested).join().get()).join();
         Assert.assertTrue(nestedView.quota.isEmpty());
         Assert.assertEquals(0, nestedView.used);
         Assert.assertTrue(nestedView.available.isPresent());
@@ -168,8 +168,15 @@ public class WriterQuotaTests {
         Assert.assertTrue(owner.getWriteShareQuotas().join().isEmpty());
 
         // a sharee can only query space with the writer key
-        byte[] unrelatedTime = TimeLimitedClient.signNow(sharee.signer.secret).join();
-        assertRejected(() -> network.spaceUsage.getWriterSpace(ownerKey, writer, unrelatedTime).join());
+        assertRejected(() -> network.spaceUsage.getWriterUsage(ownerKey, writer, sharee.signer.secret).join());
+
+        // a signed request can't be replayed for another path
+        byte[] forQuotas = new TimeLimitedClient.SignedRequest(SpaceUsage.writerQuotasPath(), System.currentTimeMillis())
+                .sign(owner.signer.secret).join();
+        Assert.assertNotNull(network.spaceUsage.getWriterQuotas(ownerKey, forQuotas).join());
+        assertRejected(() -> network.spaceUsage.getWriterUsage(ownerKey, writer, forQuotas).join());
+        byte[] timeOnly = TimeLimitedClient.signNow(owner.signer.secret).join();
+        assertRejected(() -> network.spaceUsage.getWriterQuotas(ownerKey, timeOnly).join());
     }
 
     private static void assertRejected(Runnable r) {

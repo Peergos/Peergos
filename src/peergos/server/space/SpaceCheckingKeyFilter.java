@@ -421,33 +421,34 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     }
 
     @Override
-    public CompletableFuture<List<WriterSpaceInfo>> getWriterQuotas(PublicKeyHash owner, byte[] signedTime) {
-        TimeLimited.isAllowedTime(signedTime, 300, dht, owner);
+    public CompletableFuture<List<WriterUsageInfo>> getWriterQuotas(PublicKeyHash owner, byte[] signedRequest) {
+        TimeLimited.isAllowed(SpaceUsage.writerQuotasPath(), signedRequest, 300, dht, owner);
         String username = usageStore.getOwner(owner);
-        List<WriterSpaceInfo> res = usageStore.getWriterQuotas(username).keySet().stream()
-                .map(this::getWriterSpace)
+        List<WriterUsageInfo> res = usageStore.getWriterQuotas(username).keySet().stream()
+                .map(this::getWriterUsage)
                 .collect(Collectors.toList());
         return Futures.of(res);
     }
 
     @Override
-    public CompletableFuture<WriterSpaceInfo> getWriterSpace(PublicKeyHash owner, PublicKeyHash writer, byte[] signedTime) {
+    public CompletableFuture<WriterUsageInfo> getWriterUsage(PublicKeyHash owner, PublicKeyHash writer, byte[] signedRequest) {
         PublicSigningKey writerKey = dht.getSigningKey(owner, writer).join()
                 .orElseThrow(() -> new IllegalStateException("Couldn't retrieve writer key!"));
+        String path = SpaceUsage.writerUsagePath(owner, writer);
         try {
-            TimeLimited.isAllowedTime(signedTime, 300, writerKey);
+            TimeLimited.isAllowed(path, signedRequest, 300, writerKey);
         } catch (Exception e) {
             if (writer.equals(owner))
                 throw e;
-            TimeLimited.isAllowedTime(signedTime, 300, dht, owner);
+            TimeLimited.isAllowed(path, signedRequest, 300, dht, owner);
         }
         String username = usageStore.getOwner(owner);
         if (! username.equals(usageStore.getOwner(writer)))
             throw new IllegalStateException("Writer is not owned by " + username);
-        return Futures.of(getWriterSpace(writer));
+        return Futures.of(getWriterUsage(writer));
     }
 
-    private WriterSpaceInfo getWriterSpace(PublicKeyHash writer) {
+    private WriterUsageInfo getWriterUsage(PublicKeyHash writer) {
         Optional<Long> quota = writerQuotas.getQuota(writer);
         long used = quota.isPresent() ? writerQuotas.getUsage(writer).totalUsage() : 0;
         Optional<Long> available = writerQuotas.getCaps(writer).stream()
@@ -455,7 +456,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                         .map(q -> Math.max(0, q - writerQuotas.getUsage(cap).totalUsage()))
                         .stream())
                 .min(Long::compare);
-        return new WriterSpaceInfo(writer, quota, used, available);
+        return new WriterUsageInfo(writer, quota, used, available);
     }
 
     private static final LRUCache<Long, Map<String, Long>> quotas = new LRUCache<>(2);

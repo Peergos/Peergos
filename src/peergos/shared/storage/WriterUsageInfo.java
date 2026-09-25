@@ -11,13 +11,13 @@ import java.util.*;
  *  quota and used describe the writer's own subtree, and are only present if the writer itself is capped.
  *  available is the least space left under any cap that applies to the writer, including those of its ancestors.
  */
-public class WriterSpaceInfo implements Cborable {
+public class WriterUsageInfo implements Cborable {
     public final PublicKeyHash writer;
     public final Optional<Long> quota;
     public final long used;
     public final Optional<Long> available;
 
-    public WriterSpaceInfo(PublicKeyHash writer, Optional<Long> quota, long used, Optional<Long> available) {
+    public WriterUsageInfo(PublicKeyHash writer, Optional<Long> quota, long used, Optional<Long> available) {
         this.writer = writer;
         this.quota = quota;
         this.used = used;
@@ -59,22 +59,22 @@ public class WriterSpaceInfo implements Cborable {
         return CborObject.CborMap.build(props);
     }
 
-    public static WriterSpaceInfo fromCbor(Cborable cbor) {
+    public static WriterUsageInfo fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
-            throw new IllegalStateException("Invalid cbor for WriterSpaceInfo! " + cbor);
+            throw new IllegalStateException("Invalid cbor for WriterUsageInfo! " + cbor);
         CborObject.CborMap map = (CborObject.CborMap) cbor;
         PublicKeyHash writer = map.get("w", PublicKeyHash::fromCbor);
         Optional<Long> quota = map.getOptionalLong("q");
         long used = map.getLong("u");
         Optional<Long> available = map.getOptionalLong("a");
-        return new WriterSpaceInfo(writer, quota, used, available);
+        return new WriterUsageInfo(writer, quota, used, available);
     }
 
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-        WriterSpaceInfo that = (WriterSpaceInfo) o;
+        WriterUsageInfo that = (WriterUsageInfo) o;
         return used == that.used && writer.equals(that.writer) && quota.equals(that.quota) && available.equals(that.available);
     }
 

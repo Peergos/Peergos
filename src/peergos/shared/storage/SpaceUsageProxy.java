@@ -21,7 +21,7 @@ public interface SpaceUsageProxy extends SpaceUsage {
 
     CompletableFuture<Boolean> setWriterQuota(Multihash targetServerId, PublicKeyHash owner, byte[] signedRequest);
 
-    CompletableFuture<List<WriterSpaceInfo>> getWriterQuotas(Multihash targetServerId, PublicKeyHash owner, byte[] signedTime);
+    CompletableFuture<List<WriterUsageInfo>> getWriterQuotas(Multihash targetServerId, PublicKeyHash owner, byte[] signedRequest);
 
-    CompletableFuture<WriterSpaceInfo> getWriterSpace(Multihash targetServerId, PublicKeyHash owner, PublicKeyHash writer, byte[] signedTime);
+    CompletableFuture<WriterUsageInfo> getWriterUsage(Multihash targetServerId, PublicKeyHash owner, PublicKeyHash writer, byte[] signedRequest);
 }

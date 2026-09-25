@@ -80,14 +80,14 @@ public class SpaceHandler implements HttpHandler {
                     break;
                 }
                 case "writer-quotas": {
-                    byte[] signedTime = ArrayOps.hexToBytes(last.apply("auth"));
-                    result = new CborObject.CborList(spaceUsage.getWriterQuotas(owner, signedTime).join());
+                    byte[] signedRequest = ArrayOps.hexToBytes(last.apply("auth"));
+                    result = new CborObject.CborList(spaceUsage.getWriterQuotas(owner, signedRequest).join());
                     break;
                 }
-                case "writer-space": {
-                    byte[] signedTime = ArrayOps.hexToBytes(last.apply("auth"));
+                case "writer-usage": {
+                    byte[] signedRequest = ArrayOps.hexToBytes(last.apply("auth"));
                     PublicKeyHash writer = PublicKeyHash.fromString(last.apply("writer"));
-                    result = spaceUsage.getWriterSpace(owner, writer, signedTime).join();
+                    result = spaceUsage.getWriterUsage(owner, writer, signedRequest).join();
                     break;
                 }
                 default:

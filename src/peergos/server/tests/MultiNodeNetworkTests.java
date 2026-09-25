@@ -601,7 +601,7 @@ public class MultiNodeNetworkTests {
         owner.setWriteShareQuota(dir, Optional.of(1024L * 1024)).join();
 
         assertUploadOverQuotaRejected(sharee, dir, 3 * 1024 * 1024);
-        peergos.shared.storage.WriterSpaceInfo space = sharee.getWriteSpaceInfo(sharee.getByPath(dir).join().get()).join();
+        peergos.shared.storage.WriterUsageInfo space = sharee.getWriteUsageInfo(sharee.getByPath(dir).join().get()).join();
         Assert.assertTrue(space.available.isPresent());
     }
 

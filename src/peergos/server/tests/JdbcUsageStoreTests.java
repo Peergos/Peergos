@@ -333,10 +333,10 @@ public class JdbcUsageStoreTests {
         WriterQuotaRequest clear = new WriterQuotaRequest(set.owner, set.writer, Optional.empty(), 12346);
         Assert.assertEquals(clear, WriterQuotaRequest.fromCbor(CborObject.fromByteArray(clear.serialize())));
 
-        WriterSpaceInfo capped = new WriterSpaceInfo(set.writer, Optional.of(5_000L), 1_000, Optional.of(4_000L));
-        Assert.assertEquals(capped, WriterSpaceInfo.fromCbor(CborObject.fromByteArray(capped.serialize())));
-        WriterSpaceInfo uncapped = new WriterSpaceInfo(set.writer, Optional.empty(), 0, Optional.empty());
-        Assert.assertEquals(uncapped, WriterSpaceInfo.fromCbor(CborObject.fromByteArray(uncapped.serialize())));
+        WriterUsageInfo capped = new WriterUsageInfo(set.writer, Optional.of(5_000L), 1_000, Optional.of(4_000L));
+        Assert.assertEquals(capped, WriterUsageInfo.fromCbor(CborObject.fromByteArray(capped.serialize())));
+        WriterUsageInfo uncapped = new WriterUsageInfo(set.writer, Optional.empty(), 0, Optional.empty());
+        Assert.assertEquals(uncapped, WriterUsageInfo.fromCbor(CborObject.fromByteArray(uncapped.serialize())));
     }
 
     @Test

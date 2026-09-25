@@ -2861,19 +2861,17 @@ public class UserContext {
      * @return the limit on, and usage of, a folder we have shared with write access
      */
     @JsMethod
-    public CompletableFuture<WriterSpaceInfo> getWriteShareQuota(Path path) {
+    public CompletableFuture<WriterUsageInfo> getWriteShareQuota(Path path) {
         return getWriteShareRoot(path)
-                .thenCompose(file -> TimeLimitedClient.signNow(signer.secret)
-                        .thenCompose(signedTime -> network.spaceUsage.getWriterSpace(signer.publicKeyHash, file.writer(), signedTime)));
+                .thenCompose(file -> network.spaceUsage.getWriterUsage(signer.publicKeyHash, file.writer(), signer.secret));
     }
 
     /**
      * @return every writing space of ours with a limit on its space
      */
     @JsMethod
-    public CompletableFuture<List<WriterSpaceInfo>> getWriteShareQuotas() {
-        return TimeLimitedClient.signNow(signer.secret)
-                .thenCompose(signedTime -> network.spaceUsage.getWriterQuotas(signer.publicKeyHash, signedTime));
+    public CompletableFuture<List<WriterUsageInfo>> getWriteShareQuotas() {
+        return network.spaceUsage.getWriterQuotas(signer);
     }
 
     /** For someone we have shared a folder with, with write access.
@@ -2881,11 +2879,10 @@ public class UserContext {
      * @return how much space is left in a writable folder, if its owner has limited it
      */
     @JsMethod
-    public CompletableFuture<WriterSpaceInfo> getWriteSpaceInfo(FileWrapper file) {
+    public CompletableFuture<WriterUsageInfo> getWriteUsageInfo(FileWrapper file) {
         if (! file.isWritable())
             return Futures.errored(new IllegalStateException("Not writable: " + file.getName()));
-        return TimeLimitedClient.signNow(file.signingPair().secret)
-                .thenCompose(signedTime -> network.spaceUsage.getWriterSpace(file.owner(), file.writer(), signedTime));
+        return network.spaceUsage.getWriterUsage(file.owner(), file.writer(), file.signingPair().secret);
     }
 
     @JsMethod
