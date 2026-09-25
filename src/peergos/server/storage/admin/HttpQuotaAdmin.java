@@ -8,6 +8,8 @@ import peergos.shared.storage.controller.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
@@ -23,6 +25,8 @@ public class HttpQuotaAdmin implements QuotaAdmin {
     public static final String REMOVE_DESIRED = "remove-desired-quota";
     public static final String TOKEN_ADD = "token-add";
     public static final String TOKEN_REMOVE = "token-remove";
+    public static final String TOKEN_LIST = "token-list";
+    public static final String TOKEN_DELETE = "token-delete";
     public static final String QUOTA_PRIVATE = "quota-by-name";
     public static final String QUOTA_PRIVATE_REMOVE = "quota-remove";
     public static final String QUOTA_PRIVATE_TIME = "quota-by-name-time";
@@ -85,6 +89,26 @@ public class HttpQuotaAdmin implements QuotaAdmin {
     @Override
     public boolean consumeToken(String username, String token) {
         return poster.get(QUOTA_URL + TOKEN_REMOVE + "?username=" + username + "&token=" + token)
+                .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value).join();
+    }
+
+    /** The unused tokens, for an admin to see. A quota service without this call fails it, and the
+     *  admin panel then says to copy new invites straight away. */
+    @Override
+    public List<String> listTokens() {
+        return poster.get(QUOTA_URL + TOKEN_LIST)
+                .thenApply(res -> ((CborObject.CborList)CborObject.fromByteArray(res)).value
+                        .stream()
+                        .map(x -> ((CborObject.CborString)x).value)
+                        .collect(Collectors.toList()))
+                .join();
+    }
+
+    /** Withdraws an unused token. Unlike consumeToken, no one is given quota for it. */
+    @Override
+    public boolean removeToken(String token) {
+        // encoded: unlike the tokens this server makes, this one is whatever the admin sent
+        return poster.get(QUOTA_URL + TOKEN_DELETE + "?token=" + URLEncoder.encode(token, StandardCharsets.UTF_8))
                 .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value).join();
     }
 
