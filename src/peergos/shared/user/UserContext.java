@@ -2182,13 +2182,13 @@ public class UserContext {
         return PathUtil.get(username, SHARED_DIR_NAME, groupUid);
     }
 
-    private static String validGroupName(String name) {
+    private static CompletableFuture<String> validGroupName(String name) {
         String trimmed = name == null ? "" : name.trim();
         if (trimmed.isEmpty())
-            throw new IllegalArgumentException("A group needs a name");
+            return Futures.errored(new IllegalArgumentException("A group needs a name"));
         if (Groups.isBuiltInName(trimmed))
-            throw new IllegalArgumentException("'" + trimmed + "' is reserved for a built-in group");
-        return trimmed;
+            return Futures.errored(new IllegalArgumentException("'" + trimmed + "' is reserved for a built-in group"));
+        return Futures.of(trimmed);
     }
 
     private CompletableFuture<Boolean> ensureFollowers(Set<String> usernames) {
@@ -2208,14 +2208,13 @@ public class UserContext {
      */
     @JsMethod
     public CompletableFuture<String> createGroup(String name, Set<String> members) {
-        String groupName = validGroupName(name);
         String uid = Groups.generateUid(crypto.random);
-        return ensureFollowers(members)
+        return validGroupName(name).thenCompose(groupName -> ensureFollowers(members)
                 .thenCompose(x -> getGroupNameMappings())
                 .thenCompose(groups -> getUserRoot()
                         .thenCompose(home -> home.getOrMkdirs(PathUtil.get(SHARED_DIR_NAME, uid), network, true, mirrorBatId(), crypto))
                         .thenCompose(x -> shareReadAccessWith(groupDir(uid), members))
-                        .thenCompose(x -> setGroupNameMappings(groups.withGroup(uid, groupName))))
+                        .thenCompose(x -> setGroupNameMappings(groups.withGroup(uid, groupName)))))
                 .thenApply(x -> uid);
     }
 
@@ -2223,14 +2222,13 @@ public class UserContext {
      */
     @JsMethod
     public CompletableFuture<Boolean> renameGroup(String groupUid, String newName) {
-        String groupName = validGroupName(newName);
-        return getGroupNameMappings().thenCompose(groups -> {
+        return validGroupName(newName).thenCompose(groupName -> getGroupNameMappings().thenCompose(groups -> {
             if (! groups.uidToGroupName.containsKey(groupUid))
                 throw new IllegalArgumentException("Unknown group " + groupUid);
             if (groups.isBuiltIn(groupUid))
                 throw new IllegalArgumentException("Built-in groups cannot be renamed");
             return setGroupNameMappings(groups.withGroup(groupUid, groupName));
-        });
+        }));
     }
 
     /** The members of a group are whoever its directory is shared with.
