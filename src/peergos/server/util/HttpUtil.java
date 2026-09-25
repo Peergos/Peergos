@@ -51,11 +51,11 @@ public class HttpUtil {
     public static void replyError(HttpExchange exchange, Throwable t) {
         try {
             Logging.LOG().log(Level.WARNING, t.getMessage(), t);
-            Throwable cause = t.getCause();
-            if (cause != null)
-                exchange.getResponseHeaders().set("Trailer", URLEncoder.encode(cause.getMessage(), "UTF-8"));
-            else
-                exchange.getResponseHeaders().set("Trailer", URLEncoder.encode(t.getMessage(), "UTF-8"));
+            Throwable reported = t.getCause() != null ? t.getCause() : t;
+            // some exceptions carry no message, a bad signature among them: encoding null would throw
+            // before any reply was sent, and the client would see only a dropped connection
+            String message = reported.getMessage() != null ? reported.getMessage() : reported.getClass().getSimpleName();
+            exchange.getResponseHeaders().set("Trailer", URLEncoder.encode(message, "UTF-8"));
 
             exchange.getResponseHeaders().set("Content-Type", "text/plain");
             exchange.sendResponseHeaders(400, 0);
