@@ -391,7 +391,7 @@ public class BulkCommitStorage extends DelegatingStorage {
                             // leaves a user who is over quota unable to get back under. Charge it
                             // against what the commit will actually leave stored.
                             int size = w.inlineSize();
-                            if (! quota.allow(owner, w.writer, size, () -> deltaFor(owner, updates.get(i), cborInCall)))
+                            if (! quota.allow(owner, w.writer, size, () -> deltaFor(owner, updates.get(i), blocksInCall(commit, cborInCall))))
                                 throw new IllegalStateException("Key not allowed to write to this server: " + w.writer);
                             return writeBlocks(owner, w, tid).thenApply(cids -> {
                                 written.addAll(cids);
@@ -400,6 +400,15 @@ public class BulkCommitStorage extends DelegatingStorage {
                         },
                         (x, y) -> x && y)
                 .thenApply(x -> written);
+    }
+
+    /** Every block in the call by hash, raw ones included: a new file's chunks travel in the same call as the tree naming them */
+    private Map<Cid, byte[]> blocksInCall(BulkCommit commit, Map<Cid, byte[]> cborInCall) {
+        Map<Cid, byte[]> all = new HashMap<>(cborInCall);
+        for (WriterCommit w : commit.writers)
+            for (byte[] raw : w.rawBlocks)
+                all.put(hasher.hash(raw, true).join(), raw);
+        return all;
     }
 
     /** The change in stored bytes this writer's pointer update will cause, measured against what we
