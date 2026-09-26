@@ -2812,12 +2812,20 @@ public class UserContext {
                         .collect(Collectors.toMap(i -> i.writer, i -> i.quota.get())));
     }
 
-    /** A capped writing space whose signer has been rotated keeps its cap */
+    /** A capped writing space whose signer has been rotated keeps its cap.
+     *  The old signer is only de-authorised, not emptied, so the server can't tell it has gone and its cap is removed here.
+     */
     private CompletableFuture<Boolean> carryOverWriterQuotas(Map<PublicKeyHash, Long> quotas,
                                                              Map<PublicKeyHash, PublicKeyHash> rotatedSigners) {
         return Futures.reduceAll(rotatedSigners.entrySet(), true,
                 (b, e) -> quotas.containsKey(e.getKey()) ?
-                        network.spaceUsage.setWriterQuota(signer, e.getValue(), Optional.of(quotas.get(e.getKey()))) :
+                        network.spaceUsage.setWriterQuota(signer, e.getValue(), Optional.of(quotas.get(e.getKey())))
+                                .thenCompose(set -> network.spaceUsage.setWriterQuota(signer, e.getKey(), Optional.empty())
+                                        .exceptionally(t -> {
+                                            LOG.log(Level.WARNING, "Couldn't remove the cap of rotated signer " + e.getKey(), t);
+                                            return false;
+                                        })
+                                        .thenApply(removed -> set)) :
                         Futures.of(b),
                 (a, b) -> a && b);
     }

@@ -187,6 +187,39 @@ public class WriterQuotaTests {
     }
 
     @Test
+    public void capOnRotatedNestedSpaceCountsItsContents() {
+        UserContext owner = signUp();
+        UserContext outer = signUp();
+        UserContext inner = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(outer, inner));
+        Path dir = sharedDir(owner, "team", outer);
+        owner.getByPath(dir).join().get().mkdir("nested", owner.network, false, owner.mirrorBatId(), crypto).join();
+        Path nested = dir.resolve("nested");
+        owner.getByPath(nested).join().get().mkdir("sub", owner.network, false, owner.mirrorBatId(), crypto).join();
+        upload(owner, nested.resolve("sub"), "subfile", 20 * KiB);
+        owner.shareWriteAccessWith(nested, Set.of(inner.username)).join();
+        upload(owner, nested, "file", 200 * KiB);
+        awaitUsageUpdate();
+        // rotate the nested space on its own first
+        owner.unShareWriteAccessWith(nested, Set.of(inner.username)).join();
+        upload(owner, nested, "file2", 200 * KiB);
+        owner.setWriteShareQuota(nested, Optional.of(4096L * KiB)).join();
+        upload(outer, nested.resolve("sub"), "fromOuter", 100 * KiB);
+        owner.setWriteShareQuota(nested, Optional.empty()).join();
+        awaitUsageUpdate();
+
+        // revoking the outer share rotates the nested writing space too
+        owner.unShareWriteAccessWith(dir, Set.of(outer.username)).join();
+        awaitUsageUpdate();
+        owner.setWriteShareQuota(nested, Optional.of(200L * KiB)).join();
+        awaitUsageUpdate();
+
+        WriterUsageInfo info = owner.getWriteShareQuota(nested).join();
+        Assert.assertTrue("rotated space reports " + info.used + " bytes used", info.used >= 500 * KiB);
+        assertUploadRejected(owner, nested, "more", 10 * KiB);
+    }
+
+    @Test
     public void capSurvivesRevokingWriteAccess() {
         UserContext owner = signUp();
         UserContext remaining = signUp();
@@ -205,6 +238,8 @@ public class WriterQuotaTests {
         Assert.assertNotEquals(originalWriter, rotated.writer());
         Assert.assertEquals(Optional.of(1024L * KiB), owner.getWriteShareQuota(dir).join().quota);
         Assert.assertEquals(Optional.of(512L * KiB), owner.getWriteShareQuota(nested).join().quota);
+        // the caps moved to the new signers rather than being copied
+        Assert.assertEquals(2, owner.getWriteShareQuotas().join().size());
 
         assertUploadRejected(remaining, dir, "big", 1200 * KiB);
         assertUploadRejected(remaining, nested, "big", 600 * KiB);
