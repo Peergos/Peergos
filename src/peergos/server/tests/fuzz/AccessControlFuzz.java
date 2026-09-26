@@ -61,17 +61,20 @@ public class AccessControlFuzz {
         final String username;
         final Level lostLevel;
         final UserContext context;
+        final Optional<Path> sharedFile;
         final Path folder;
         final FileWrapper folderHandle;
         final Set<String> namesAtRevocation;
         final Map<Path, FileWrapper> fileHandles;
         final Map<Path, byte[]> contentsAtRevocation;
 
-        Stale(String username, Level lostLevel, UserContext context, Path folder, FileWrapper folderHandle,
-              Set<String> namesAtRevocation, Map<Path, FileWrapper> fileHandles, Map<Path, byte[]> contentsAtRevocation) {
+        Stale(String username, Level lostLevel, UserContext context, Optional<Path> sharedFile, Path folder,
+              FileWrapper folderHandle, Set<String> namesAtRevocation, Map<Path, FileWrapper> fileHandles,
+              Map<Path, byte[]> contentsAtRevocation) {
             this.username = username;
             this.lostLevel = lostLevel;
             this.context = context;
+            this.sharedFile = sharedFile;
             this.folder = folder;
             this.folderHandle = folderHandle;
             this.namesAtRevocation = namesAtRevocation;
@@ -115,6 +118,8 @@ public class AccessControlFuzz {
     private final List<String> log = new ArrayList<>();
     private final List<Folder> folders = new ArrayList<>();
     private final Map<Path, byte[]> files = new HashMap<>();
+    /** Shares of single files, on top of what the folders above them grant */
+    private final Map<Path, Map<String, Level>> fileGrants = new HashMap<>();
     private final Map<String, UserContext> sessions = new LinkedHashMap<>();
     private final List<String> friends = new ArrayList<>();
     private final List<Stale> stale = new ArrayList<>();
@@ -260,7 +265,8 @@ public class AccessControlFuzz {
                 else if (op < 79) actorOverwrite();
                 else if (op < 83) actorDelete();
                 else if (op < 86) actorRename();
-                else if (op < 96) staleAttack();
+                else if (op < 92) staleAttack();
+                else if (op < 97) batProbe();
                 else audit();
             }
             audit();
@@ -305,6 +311,23 @@ public class AccessControlFuzz {
                 best = l;
         }
         return best;
+    }
+
+    /** The access a user has to a file: through a folder above it, or a share of the file itself */
+    private Level fileLevel(String username, Path file) {
+        Level viaFolder = level(username, file.getParent());
+        Level direct = fileGrants.getOrDefault(file, Map.of()).getOrDefault(username, Level.NONE);
+        return direct.ordinal() > viaFolder.ordinal() ? direct : viaFolder;
+    }
+
+    private boolean isSharedOnItsOwn(Path file) {
+        return ! fileGrants.getOrDefault(file, Map.of()).isEmpty();
+    }
+
+    /** Renaming or deleting a file shared on its own would leave its shares pointing elsewhere, which the model doesn't
+     *  follow, so those only happen to files that aren't */
+    private List<Path> unsharedFiles() {
+        return files.keySet().stream().filter(f -> ! isSharedOnItsOwn(f)).collect(Collectors.toList());
     }
 
     private byte[] randomContents() {
@@ -466,9 +489,10 @@ public class AccessControlFuzz {
     }
 
     private void ownerDelete() {
-        if (files.isEmpty())
+        List<Path> candidates = unsharedFiles();
+        if (candidates.isEmpty())
             return;
-        Path file = pick(new ArrayList<>(files.keySet()));
+        Path file = pick(candidates);
         record("owner delete " + file);
         byte[] old = files.get(file);
         boolean ok = attempt(owner, () -> delete(owner, file));
@@ -503,9 +527,10 @@ public class AccessControlFuzz {
     }
 
     private void ownerRename() {
-        if (files.isEmpty())
+        List<Path> candidates = unsharedFiles();
+        if (candidates.isEmpty())
             return;
-        Path file = pick(new ArrayList<>(files.keySet()));
+        Path file = pick(candidates);
         Path to = file.getParent().resolve("r" + counter++);
         record("owner rename " + file + " -> " + to);
         byte[] contents = files.get(file);
@@ -516,6 +541,10 @@ public class AccessControlFuzz {
     }
 
     private void share(Level level) {
+        if (! files.isEmpty() && rnd.nextInt(10) < 3) {
+            shareFile(level);
+            return;
+        }
         Folder f = pick(folders);
         String friend = pick(friends);
         if (f.grants.getOrDefault(friend, Level.NONE) != Level.NONE)
@@ -531,6 +560,25 @@ public class AccessControlFuzz {
         }
         f.grants.put(friend, level);
         // a share into a folder that just became its own writing space rewrites links, which older sessions miss
+        freshSession(friend);
+        audit();
+    }
+
+    private void shareFile(Level level) {
+        Path file = pick(new ArrayList<>(files.keySet()));
+        String friend = pick(friends);
+        Map<String, Level> grants = fileGrants.computeIfAbsent(file, k -> new HashMap<>());
+        if (grants.getOrDefault(friend, Level.NONE) != Level.NONE)
+            return;
+        record("owner share " + level + " file " + file + " with " + friend);
+        Runnable doShare = () -> await(level == Level.WRITE ?
+                sessions.get(owner).shareWriteAccessWith(file, Set.of(friend)) :
+                sessions.get(owner).shareReadAccessWith(file, Set.of(friend)));
+        if (! attempt(owner, doShare)) {
+            count("share/retried");
+            retry(doShare);
+        }
+        grants.put(friend, level);
         freshSession(friend);
         audit();
     }
@@ -552,6 +600,15 @@ public class AccessControlFuzz {
     }
 
     private void revoke(Level level) {
+        List<Pair<Path, String>> fileShares = new ArrayList<>();
+        for (Map.Entry<Path, Map<String, Level>> f : fileGrants.entrySet())
+            for (Map.Entry<String, Level> e : f.getValue().entrySet())
+                if (e.getValue() == level)
+                    fileShares.add(new Pair<>(f.getKey(), e.getKey()));
+        if (! fileShares.isEmpty() && rnd.nextInt(10) < 3) {
+            revokeFile(level, pick(fileShares));
+            return;
+        }
         List<Pair<Folder, String>> grants = new ArrayList<>();
         for (Folder f : folders)
             for (Map.Entry<String, Level> e : f.grants.entrySet())
@@ -595,7 +652,37 @@ public class AccessControlFuzz {
         Level levelAfter = level(friend, f.path);
         // only a revocation that actually took access away leaves handles that must stop working
         if (folderHandle.isPresent() && levelAfter.ordinal() < levelBefore.ordinal())
-            stale.add(new Stale(friend, levelBefore, before, f.path, folderHandle.get(), names, handles, contents));
+            stale.add(new Stale(friend, levelBefore, before, Optional.empty(), f.path, folderHandle.get(), names, handles, contents));
+        for (String u : friends)
+            freshSession(u);
+        audit();
+    }
+
+    private void revokeFile(Level level, Pair<Path, String> share) {
+        Path file = share.left;
+        String friend = share.right;
+        record("owner revoke " + level + " file " + file + " from " + friend);
+        UserContext before = sessions.get(friend);
+        Level levelBefore = fileLevel(friend, file);
+        Optional<FileWrapper> parentHandle = find(before, file.getParent());
+        Optional<FileWrapper> fileHandle = find(before, file);
+        Set<String> names = parentHandle.map(h -> childNames(before, h)).orElse(Set.of());
+
+        Runnable doRevoke = () -> await(level == Level.WRITE ?
+                sessions.get(owner).unShareWriteAccessWith(file, Set.of(friend)) :
+                sessions.get(owner).unShareReadAccessWith(file, Set.of(friend)));
+        if (! attempt(owner, doRevoke)) {
+            count("revoke/retried");
+            if (stillShared(file, friend, level))
+                retry(doRevoke);
+        }
+        if (stillShared(file, friend, level))
+            throw new AssertionError("Revoking " + level + " from " + friend + " on " + file + " left it shared");
+        fileGrants.get(file).remove(friend);
+
+        if (parentHandle.isPresent() && fileHandle.isPresent() && fileLevel(friend, file).ordinal() < levelBefore.ordinal())
+            stale.add(new Stale(friend, levelBefore, before, Optional.of(file), file.getParent(), parentHandle.get(), names,
+                    Map.of(file, fileHandle.get()), Map.of(file, files.get(file))));
         for (String u : friends)
             freshSession(u);
         audit();
@@ -620,7 +707,7 @@ public class AccessControlFuzz {
             return;
         String actor = nonOwner();
         Path file = pick(new ArrayList<>(files.keySet()));
-        Level l = level(actor, file.getParent());
+        Level l = fileLevel(actor, file);
         record(actor + " read " + file + " [" + l + "]");
         UserContext ctx = sessions.get(actor);
         Optional<FileWrapper> found = find(ctx, file);
@@ -700,18 +787,32 @@ public class AccessControlFuzz {
         if (found.isEmpty())
             throw new AssertionError(actor + " with " + l + " access can't see " + f.path + "; " + reach(ctx, f.path));
         Set<String> names = childNames(ctx, found.get());
-        if (! names.equals(expectedChildren(f.path)))
-            throw new AssertionError(actor + " lists " + f.path + " as " + names + ", expected " + expectedChildren(f.path));
+        if (! names.equals(expectedChildren(f.path))) {
+            StringBuilder each = new StringBuilder();
+            for (String child : expectedChildren(f.path)) {
+                Optional<FileWrapper> c = find(ctx, f.path.resolve(child));
+                each.append("\n  ").append(child).append(": ")
+                        .append(c.isPresent() ? "found" : "missing" + (lastFindError == null ? "" :
+                                " (" + peergos.shared.util.Exceptions.getRootCause(lastFindError) + ")"));
+            }
+            throw new AssertionError(actor + " lists " + f.path + " as " + names + ", expected " + expectedChildren(f.path)
+                    + ". Looked up one by one:" + each);
+        }
         count("list/allowed");
     }
 
-    /** The children of a folder that lead to a folder the user has access to */
+    /** The children of a folder that lead to a folder or file the user has access to */
     private Set<String> leadingTo(String username, Path folder) {
         Set<String> res = new HashSet<>();
         for (Folder f : folders) {
             if (! isUnder(f.path, folder) || level(username, f.path) == Level.NONE)
                 continue;
             res.add(f.path.getName(folder.getNameCount()).toString());
+        }
+        for (Path file : files.keySet()) {
+            if (! isUnder(file, folder) || fileLevel(username, file) == Level.NONE)
+                continue;
+            res.add(file.getName(folder.getNameCount()).toString());
         }
         return res;
     }
@@ -741,7 +842,7 @@ public class AccessControlFuzz {
             return;
         String actor = nonOwner();
         Path file = pick(new ArrayList<>(files.keySet()));
-        Level l = level(actor, file.getParent());
+        Level l = fileLevel(actor, file);
         byte[] old = files.get(file), data = randomContents();
         record(actor + " overwrite " + file + " with " + data.length + " [" + l + "]");
         if (l != Level.WRITE) {
@@ -762,8 +863,10 @@ public class AccessControlFuzz {
         String actor = nonOwner();
         Path file = pick(new ArrayList<>(files.keySet()));
         Level l = level(actor, file.getParent());
+        if (l == Level.WRITE && isSharedOnItsOwn(file))
+            return;
         byte[] old = files.get(file);
-        record(actor + " delete " + file + " [" + l + "]");
+        record(actor + " delete " + file + " [" + l + ", file " + fileLevel(actor, file) + "]");
         if (l != Level.WRITE) {
             forbidden(actor + " with " + l + " access deleting " + file, () -> delete(actor, file));
             resolveWrite(file, Optional.of(old), Optional.of(old), false);
@@ -782,6 +885,8 @@ public class AccessControlFuzz {
         String actor = nonOwner();
         Path file = pick(new ArrayList<>(files.keySet()));
         Level l = level(actor, file.getParent());
+        if (l == Level.WRITE && isSharedOnItsOwn(file))
+            return;
         Path to = file.getParent().resolve("r" + counter++);
         byte[] contents = files.get(file);
         record(actor + " rename " + file + " -> " + to + " [" + l + "]");
@@ -803,7 +908,8 @@ public class AccessControlFuzz {
         if (stale.isEmpty())
             return;
         Stale s = pick(stale);
-        Level now = level(s.username, s.folder);
+        Level now = s.sharedFile.map(f -> files.containsKey(f) ? fileLevel(s.username, f) : Level.NONE)
+                .orElseGet(() -> level(s.username, s.folder));
         int kind = rnd.nextInt(3);
         if (kind == 0 && ! s.fileHandles.isEmpty()) {
             Path file = pick(new ArrayList<>(s.fileHandles.keySet()));
@@ -816,7 +922,7 @@ public class AccessControlFuzz {
                 return;
             }
             byte[] then = s.contentsAtRevocation.get(file);
-            if (! Arrays.equals(got, then) && now == Level.NONE)
+            if (! Arrays.equals(got, then) && (! files.containsKey(file) || fileLevel(s.username, file) == Level.NONE))
                 throw new AssertionError("ACCESS VIOLATION: stale session of " + s.username + " read " + file
                         + " as " + describe(Optional.of(got)) + ", which it never had access to");
             count("stale-read/old-contents");
@@ -831,10 +937,35 @@ public class AccessControlFuzz {
             }
             Set<String> learned = new HashSet<>(names);
             learned.removeAll(s.namesAtRevocation);
+            // anything shared with them since is theirs to see
+            learned.removeAll(leadingTo(s.username, s.folder));
             if (! learned.isEmpty() && now == Level.NONE)
                 throw new AssertionError("ACCESS VIOLATION: stale session of " + s.username + " sees " + learned
                         + " added to " + s.folder + " after its access was revoked");
             count("stale-list/nothing-new");
+        } else if (s.sharedFile.isPresent()) {
+            Path file = s.sharedFile.get();
+            if (s.lostLevel != Level.WRITE || ! files.containsKey(file) || fileLevel(s.username, file) == Level.WRITE)
+                return;
+            byte[] data = randomContents(), current = files.get(file);
+            record("stale " + s.username + " (lost WRITE on the file) overwrite " + file);
+            boolean accepted;
+            try {
+                await(s.folderHandle.uploadOrReplaceFile(file.getFileName().toString(), AsyncReader.build(data), data.length,
+                        s.context.network, crypto, () -> false, x -> {}));
+                accepted = true;
+            } catch (Exception e) {
+                accepted = false;
+            }
+            UserContext a = auditor();
+            Optional<byte[]> now2 = find(a, file).map(f -> read(a, f));
+            if (! same(now2, Optional.of(current)))
+                throw new AssertionError("ACCESS VIOLATION: stale session of " + s.username + " changed " + file
+                        + " after its write access to it was revoked");
+            if (accepted)
+                throw new AssertionError("ACCESS VIOLATION: the server accepted a write from " + s.username
+                        + "'s revoked key for " + file + ", into space the owner can no longer reach");
+            count("stale-file-write/refused");
         } else {
             if (s.lostLevel != Level.WRITE || now == Level.WRITE)
                 return;
@@ -857,6 +988,116 @@ public class AccessControlFuzz {
             throw new AssertionError("ACCESS VIOLATION: the server accepted a write from " + s.username
                     + "'s revoked writing key, into space the owner can no longer reach");
         }
+    }
+
+    // ---- ciphertext: asking the server for blocks directly ----
+
+    private static final int MAX_FRAGMENT_PROBES = 3;
+
+    private static Optional<BatWithId> withId(Optional<Bat> bat) {
+        return bat.map(b -> new BatWithId(b, await(b.calculateId(crypto.hasher)).id));
+    }
+
+    /** Ask the server for a block as any client could, without the Peergos client in the way. Empty if refused. */
+    private static Optional<byte[]> fetch(PublicKeyHash owner, Cid block, Optional<BatWithId> bat) {
+        try {
+            return block.isRaw() ?
+                    await(service.storage.getRaw(owner, block, bat)) :
+                    await(service.storage.get(owner, block, bat)).map(CborObject::serialize);
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
+    /** A block that lists BATs may only be returned to a request presenting one of them */
+    private void checkReturned(String who, Cid block, byte[] data, Optional<BatWithId> presented, String what) {
+        List<BatId> bats = Bat.getBlockBats(block, data);
+        if (bats.isEmpty()) {
+            count("bat/unprotected-block");
+            return;
+        }
+        if (presented.isPresent() && bats.contains(presented.get().id()))
+            return;
+        throw new AssertionError("ACCESS VIOLATION: " + who + " fetched " + (block.isRaw() ? "data" : "metadata")
+                + " block " + block + " presenting " + what + ", which isn't one of its BATs " + bats);
+    }
+
+    /** The metadata block of a file or folder and some of its data blocks, as the owner sees them now */
+    private List<Cid> blocksOf(UserContext auditor, Path target) {
+        FileWrapper t = find(auditor, target).orElseThrow(() -> new AssertionError("The owner can't see " + target));
+        PublicKeyHash ownerKey = t.owner();
+        Cid meta = (Cid) t.getPointer().fileAccess.committedHash().get();
+        byte[] data = fetch(ownerKey, meta, withId(t.getPointer().capability.bat))
+                .orElseThrow(() -> new AssertionError("The owner can't fetch the block of " + target + " with its own BAT"));
+        List<Cid> res = new ArrayList<>();
+        res.add(meta);
+        CborObject.fromByteArray(data).links().stream()
+                .filter(h -> h instanceof Cid && ((Cid) h).isRaw())
+                .map(h -> (Cid) h)
+                .limit(MAX_FRAGMENT_PROBES)
+                .forEach(res::add);
+        return res;
+    }
+
+    private void batProbe() {
+        List<Path> targets = new ArrayList<>(files.keySet());
+        folders.forEach(f -> targets.add(f.path));
+        Path target = pick(targets);
+        String actor = nonOwner();
+        boolean isFile = files.containsKey(target);
+        Level l = isFile ? fileLevel(actor, target) : level(actor, target);
+        UserContext a = auditor();
+        PublicKeyHash ownerKey = find(a, target).get().owner();
+        List<Cid> blocks = blocksOf(a, target);
+
+        // the BATs the actor holds for other things it can reach, none of which should open this
+        UserContext ctx = sessions.get(actor);
+        List<Pair<String, Optional<BatWithId>>> presented = new ArrayList<>();
+        presented.add(new Pair<>("no BAT", Optional.empty()));
+        presented.add(new Pair<>("a random BAT", withId(Optional.of(Bat.random(crypto.random)))));
+        List<Path> reachable = new ArrayList<>();
+        files.keySet().stream().filter(f -> ! f.equals(target) && fileLevel(actor, f) != Level.NONE).forEach(reachable::add);
+        folders.stream().filter(f -> ! f.path.equals(target) && level(actor, f.path) != Level.NONE).forEach(f -> reachable.add(f.path));
+        Collections.shuffle(reachable, rnd);
+        for (Path other : reachable.subList(0, Math.min(3, reachable.size())))
+            find(ctx, other).ifPresent(h -> presented.add(new Pair<>("its BAT for " + other, withId(h.getPointer().capability.bat))));
+
+        record(actor + " fetches the blocks of " + target + " directly [" + l + "] with " + presented.size() + " BATs");
+        for (Cid block : blocks) {
+            count(block.isRaw() ? "bat/data-block" : "bat/metadata-block");
+            for (Pair<String, Optional<BatWithId>> bat : presented) {
+                Optional<byte[]> got = fetch(ownerKey, block, bat.right);
+                if (got.isEmpty())
+                    count("bat/refused");
+                got.ifPresent(data -> checkReturned(actor, block, data, bat.right, bat.left));
+            }
+        }
+
+        // someone with access gets the block with the BAT they were given
+        if (l != Level.NONE) {
+            Optional<FileWrapper> own = find(ctx, target);
+            if (own.isPresent() && fetch(ownerKey, blocks.get(0), withId(own.get().getPointer().capability.bat)).isEmpty())
+                throw new AssertionError(actor + " with " + l + " access can't fetch the block of " + target + " with its own BAT");
+            if (own.isPresent())
+                count("bat/own-bat-works");
+        }
+
+        // BATs kept from before a revocation must not open what the file holds now
+        for (Stale st : stale) {
+            if (! st.username.equals(actor))
+                continue;
+            for (Map.Entry<Path, FileWrapper> h : st.fileHandles.entrySet()) {
+                Path file = h.getKey();
+                if (! files.containsKey(file) || fileLevel(actor, file) != Level.NONE)
+                    continue;
+                Optional<BatWithId> old = withId(h.getValue().getPointer().capability.bat);
+                count("bat/stale-bat-checked");
+                for (Cid block : blocksOf(a, file))
+                    fetch(ownerKey, block, old).ifPresent(data -> checkReturned("stale session of " + actor, block, data,
+                            Optional.empty(), "its BAT from before the revocation of " + file));
+            }
+        }
+        count("bat/probe");
     }
 
     // ---- audit ----
