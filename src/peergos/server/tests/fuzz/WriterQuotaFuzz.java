@@ -57,6 +57,7 @@ public class WriterQuotaFuzz {
     private UserContext owner;
     private int fileCounter = 0;
     private final Map<String, Integer> outcomes = new TreeMap<>();
+    private final Set<String> everRevoked = new HashSet<>();
 
     public WriterQuotaFuzz() {
         String seedEnv = System.getenv("FUZZ_SEED");
@@ -206,6 +207,8 @@ public class WriterQuotaFuzz {
         owner.shareWriteAccessWith(f.path, Set.of(sharee)).join();
         f.sharedWith.add(sharee);
         f.isWritingSpace = true;
+        if (everRevoked.contains(sharee))
+            freshSession(sharee);
     }
 
     private void unshare() {
@@ -224,7 +227,16 @@ public class WriterQuotaFuzz {
         record("unshare " + f.path + " from " + sharee);
         owner.unShareWriteAccessWith(f.path, Set.of(sharee)).join();
         f.sharedWith.remove(sharee);
+        everRevoked.add(sharee);
+        // a session opened before the keys were rotated doesn't follow them, which is not what's being tested here
+        for (String u : new ArrayList<>(users.keySet()))
+            if (! u.equals(owner.username))
+                freshSession(u);
         checkCapsPreserved();
+    }
+
+    private void freshSession(String username) {
+        users.put(username, PeergosNetworkUtils.ensureSignedUp(username, "password", network(), crypto));
     }
 
     private void setCap() {
