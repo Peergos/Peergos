@@ -950,11 +950,35 @@ public class FileWrapper {
                                                               byte[] firstChunkMapKey,
                                                               Optional<Bat> firstChunkBat,
                                                               Optional<BatId> mirrorBat) {
+        if (isWritable())
+            return replaceFile(filename, fileData, length, false, network, crypto, isCancelled, monitor,
+                    firstChunkMapKey, firstChunkBat, mirrorBat);
         return uploadFileSection(filename, fileData, false, 0, length, Optional.empty(),
                 true, network, crypto, isCancelled, monitor, firstChunkMapKey, Optional.empty(), firstChunkBat, mirrorBat)
                 .thenCompose(f -> f.getChild(filename, crypto.hasher, network)
                         .thenCompose(childOpt -> childOpt.get().truncate(length, network, crypto))
                         .thenCompose(c -> f.getUpdated(f.version.mergeAndOverwriteWith(c.version), network)));
+    }
+
+    /** Write a file's new contents and cut off any old tail in one update, so a failure part way leaves the old
+     *  version rather than the new contents followed by the end of the old ones.
+     */
+    private CompletableFuture<FileWrapper> replaceFile(String filename,
+                                                       AsyncReader fileData,
+                                                       long length,
+                                                       boolean isHidden,
+                                                       NetworkAccess network,
+                                                       Crypto crypto,
+                                                       Supplier<Boolean> isCancelled,
+                                                       ProgressConsumer<Long> monitor,
+                                                       byte[] firstChunkMapKey,
+                                                       Optional<Bat> firstChunkBat,
+                                                       Optional<BatId> mirrorBat) {
+        return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (current, committer) ->
+                        uploadFileSection(current, committer, filename, fileData, isHidden, 0, length, Optional.empty(),
+                                false, true, true, network, crypto, isCancelled, monitor, firstChunkMapKey,
+                                Optional.empty(), firstChunkBat, mirrorBat))
+                .thenCompose(finalBase -> getUpdated(finalBase, network));
     }
 
     public CompletableFuture<Snapshot> uploadOrReplaceFile(String filename,
@@ -994,6 +1018,11 @@ public class FileWrapper {
                                                               Optional<BatId> mirrorBat,
                                                               NetworkAccess network,
                                                               Crypto crypto) {
+        if (isWritable())
+            return replaceFile(filename, fileData, length, isHidden, network, crypto, isCancelled, progressMonitor,
+                    crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), mirrorBat)
+                    .thenCompose(f -> f.getChild(filename, crypto.hasher, network))
+                    .thenApply(Optional::get);
         return uploadFileSection(filename, fileData, isHidden, 0, length, Optional.empty(),
                 true, network, crypto, isCancelled, progressMonitor, crypto.random.randomBytes(32), Optional.empty(),
                 Optional.of(Bat.random(crypto.random)), mirrorBat)
