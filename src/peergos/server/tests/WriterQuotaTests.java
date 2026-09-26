@@ -220,6 +220,37 @@ public class WriterQuotaTests {
     }
 
     @Test
+    public void sharingAnEnclosingFolderKeepsNestedUsage() {
+        UserContext owner = signUp();
+        UserContext a = signUp();
+        UserContext b = signUp();
+        UserContext c = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(a, b, c));
+        owner.getUserRoot().join().mkdir("outer", owner.network, false, owner.mirrorBatId(), crypto).join();
+        Path outer = PathUtil.get(owner.username, "outer");
+        owner.getByPath(outer).join().get().mkdir("middle", owner.network, false, owner.mirrorBatId(), crypto).join();
+        Path middle = outer.resolve("middle");
+        owner.getByPath(middle).join().get().mkdir("inner", owner.network, false, owner.mirrorBatId(), crypto).join();
+        Path inner = middle.resolve("inner");
+        upload(owner, inner, "file", 400 * KiB);
+
+        // share from the inside out, so each share moves writing spaces that already exist
+        owner.shareWriteAccessWith(middle, Set.of(a.username)).join();
+        owner.shareWriteAccessWith(inner, Set.of(b.username)).join();
+        awaitUsageUpdate();
+        long before = owner.getSpaceUsage(false).join();
+        owner.shareWriteAccessWith(outer, Set.of(c.username)).join();
+        awaitUsageUpdate();
+        long after = owner.getSpaceUsage(false).join();
+        Assert.assertTrue("usage went from " + before + " to " + after, after >= 400 * KiB);
+
+        owner.setWriteShareQuota(inner, Optional.of(200L * KiB)).join();
+        awaitUsageUpdate();
+        long used = owner.getWriteShareQuota(inner).join().used;
+        Assert.assertTrue("inner space reports " + used + " bytes used", used >= 400 * KiB);
+    }
+
+    @Test
     public void capSurvivesRevokingWriteAccess() {
         UserContext owner = signUp();
         UserContext remaining = signUp();

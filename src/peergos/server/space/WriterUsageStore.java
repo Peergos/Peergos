@@ -30,6 +30,11 @@ public interface WriterUsageStore {
 
     PublicKeyHash getOwnerKey(PublicKeyHash writer);
 
+    /**
+     * @return the keys that directly own this writer
+     */
+    Set<PublicKeyHash> getParents(PublicKeyHash writer);
+
     PublicKeyHash getOwnerKey(String username);
 
     String getOwner(PublicKeyHash writer);

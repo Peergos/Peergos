@@ -461,6 +461,24 @@ public class JdbcUsageStore implements UsageStore {
         }
     }
 
+    @Override
+    public Set<PublicKeyHash> getParents(PublicKeyHash writer) {
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement("SELECT p.key_hash FROM ownedkeys o " +
+                     "INNER JOIN writers p ON o.parent_id = p.id " +
+                     "INNER JOIN writers c ON o.owned_id = c.id WHERE c.key_hash = ?;")) {
+            select.setBytes(1, writer.toBytes());
+            Set<PublicKeyHash> res = new HashSet<>();
+            ResultSet resultSet = select.executeQuery();
+            while (resultSet.next())
+                res.add(PublicKeyHash.decode(resultSet.getBytes(1)));
+            return res;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
     public PublicKeyHash getOwnerKey(PublicKeyHash writer) {
         try (Connection conn = getConnection()) {
             return getOwnerKey(writer, conn);
@@ -569,14 +587,16 @@ public class JdbcUsageStore implements UsageStore {
                                  Set<PublicKeyHash> addedOwnedKeys,
                                  Connection conn) throws SQLException {
         try (PreparedStatement writerSelect = conn.prepareStatement("SELECT id FROM writers WHERE key_hash = ?;");
-             PreparedStatement deleteOwned = conn.prepareStatement("DELETE FROM ownedkeys WHERE owned_id = ?;");
+             PreparedStatement deleteOwned = conn.prepareStatement("DELETE FROM ownedkeys WHERE parent_id = ? AND owned_id = ?;");
              PreparedStatement insertOwned = conn.prepareStatement("INSERT INTO ownedkeys (parent_id, owned_id) VALUES(?, ?);")) {
             for (PublicKeyHash removed : removedOwnedKeys) {
                 writerSelect.setBytes(1, removed.toBytes());
                 ResultSet writerRes = writerSelect.executeQuery();
                 writerRes.next();
                 int ownedId = writerRes.getInt(1);
-                deleteOwned.setInt(1, ownedId);
+                // only this parent's edge: a key moved to another parent may already be owned there
+                deleteOwned.setInt(1, writerId);
+                deleteOwned.setInt(2, ownedId);
                 deleteOwned.executeUpdate();
             }
             for (PublicKeyHash added : addedOwnedKeys) {

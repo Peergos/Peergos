@@ -300,8 +300,9 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 return; // already processed by another thread
             if (! newRoot.isPresent()) {
                 LOG.info("Removing usage for (" + owner + ", " + writer + ") from " + current.directRetainedStorage());
+                // drop its edges too, so if it is re-owned later its children are counted again as newly added
                 state.updateWriterUsageAtomically(writer, current.target(), MaybeMultihash.empty(),
-                        Collections.emptySet(), Collections.emptySet(), 0,
+                        current.ownedKeys(), Collections.emptySet(), 0,
                         -current.directRetainedStorage(), state.getUsage(current.owner).isErrored());
                 if (existingRoot.isPresent()) {
                     try {
@@ -309,7 +310,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                         Set<PublicKeyHash> updatedOwned =
                                 DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, existingRoot,
                                         (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht),  dht, hasher).join();
-                        processRemovedOwnedKeys(state, owner, updatedOwned, mutable, quotaAdmin, dht, hasher);
+                        processRemovedOwnedKeys(state, owner, writer, updatedOwned, mutable, quotaAdmin, dht, hasher);
                     } catch (Exception e) {
                         LOG.log(Level.WARNING, e.getMessage(), e);
                     }
@@ -336,7 +337,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
 
                 HashSet<PublicKeyHash> removedChildren = new HashSet<>(current.ownedKeys());
                 removedChildren.removeAll(updatedOwned);
-                processRemovedOwnedKeys(state, owner, removedChildren, mutable, quotaAdmin, dht, hasher);
+                processRemovedOwnedKeys(state, owner, writer, removedChildren, mutable, quotaAdmin, dht, hasher);
                 HashSet<PublicKeyHash> addedOwnedKeys = new HashSet<>(updatedOwned);
                 addedOwnedKeys.removeAll(current.ownedKeys());
                 boolean updated = state.updateWriterUsageAtomically(writer, current.target(), newRoot,
@@ -362,6 +363,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
 
     private static void processRemovedOwnedKeys(UsageStore state,
                                                 PublicKeyHash owner,
+                                                PublicKeyHash parent,
                                                 Set<PublicKeyHash> removed,
                                                 MutablePointers mutable,
                                                 QuotaAdmin quotaAdmin,
@@ -369,6 +371,11 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                                                 Hasher hasher) {
         for (PublicKeyHash ownedKey : removed) {
             try {
+                // a key that has been moved to another parent is still in use, not orphaned
+                Set<PublicKeyHash> otherParents = new HashSet<>(state.getParents(ownedKey));
+                otherParents.remove(parent);
+                if (! otherParents.isEmpty())
+                    continue;
                 MaybeMultihash currentTarget = mutable.getPointerTarget(owner, ownedKey, dht).get().updated;
                 processMutablePointerEvent(state, owner, ownedKey, currentTarget, MaybeMultihash.empty(), mutable, quotaAdmin, dht, hasher);
             } catch (Exception e) {
