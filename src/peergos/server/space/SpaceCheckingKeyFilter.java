@@ -581,7 +581,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
      *
      * @param delta computes the change in stored bytes, only called when the write would be rejected
      */
-    public boolean allowCommit(PublicKeyHash owner, PublicKeyHash writer, int written, Supplier<Long> delta) {
+    public boolean allowCommit(PublicKeyHash owner, PublicKeyHash writer, int written, Supplier<Map<PublicKeyHash, Long>> deltas) {
         try {
             return allowWrite(owner, writer, written);
         } catch (IllegalStateException e) {
@@ -590,15 +590,23 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
             if (message == null || ! message.startsWith("Storage quota reached"))
                 throw e;
             String username = usageStore.getOwner(writer);
-            long change = delta.get();
+            Map<PublicKeyHash, Long> changes = deltas.get();
+            long change = changes.values().stream().mapToLong(x -> x).sum();
             long quota = getQuota(username, quotaAdmin);
             UserUsage usage = getUsage(username, usageStore);
             if (usage.totalUsage() + change > quota)
                 throw e;
-            // a commit that shrinks a capped space is allowed, even if it is still over its cap afterwards
+            // a commit that shrinks a capped space is allowed, even if it is still over its cap afterwards. It is judged
+            // by everything the commit does under the cap, as a rotation grows one writer by what it frees in another
             for (PublicKeyHash cap : writerQuotas.getCaps(writer)) {
                 Optional<Long> capQuota = writerQuotas.getQuota(cap);
-                if (capQuota.isPresent() && change > 0 && writerQuotas.getUsage(cap).totalUsage() + change > capQuota.get())
+                if (capQuota.isEmpty())
+                    continue;
+                long capChange = changes.entrySet().stream()
+                        .filter(c -> c.getKey().equals(cap) || writerQuotas.getCaps(c.getKey()).contains(cap))
+                        .mapToLong(Map.Entry::getValue)
+                        .sum();
+                if (capChange > 0 && writerQuotas.getUsage(cap).totalUsage() + capChange > capQuota.get())
                     throw e;
             }
             LOG.info("Allowing a commit for " + username + " over quota: it frees " + (-change) + " bytes");

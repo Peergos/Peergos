@@ -207,8 +207,11 @@ public class WriterQuotaFuzz {
         try {
             owner.shareWriteAccessWith(f.path, Set.of(sharee)).join();
         } catch (Exception e) {
-            // moving a folder into its own writing space rewrites it, which a full cap above it refuses: known
-            if (! isQuotaRejection(e) || f.isWritingSpace)
+            // sharing a folder for the first time gives it a writing space of its own, which is a little new metadata,
+            // and a cap that's full refuses any growth. Revoking has no such excuse: it rewrites what's already there.
+            boolean mayBeFull = ! f.isWritingSpace && capsOver(f).stream()
+                    .anyMatch(c -> upperBoundUnder(c) + FOLDER_OVERHEAD > c.cap.get());
+            if (! isQuotaRejection(e) || ! mayBeFull)
                 throw e;
             outcomes.merge("share/refused-full", 1, Integer::sum);
             return;
@@ -224,13 +227,6 @@ public class WriterQuotaFuzz {
         if (shared.isEmpty())
             return;
         Folder f = pick(shared);
-        // revoking rewrites the subtree under new keys before deleting the old copy, which needs room under every cap.
-        // Without it the revocation is refused, which is a known problem rather than something to find again here.
-        long rewrite = upperBoundUnder(f);
-        if (! capsOver(f).stream().allMatch(c -> upperBoundUnder(c) + rewrite <= c.cap.get())) {
-            outcomes.merge("unshare/skipped-no-room", 1, Integer::sum);
-            return;
-        }
         String sharee = pick(new ArrayList<>(f.sharedWith));
         record("unshare " + f.path + " from " + sharee);
         owner.unShareWriteAccessWith(f.path, Set.of(sharee)).join();

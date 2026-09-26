@@ -28,10 +28,10 @@ import java.util.stream.*;
  */
 public class BulkCommitStorage extends DelegatingStorage {
 
-    /** Whether a commit may be applied, given the bytes it writes and, if that alone would be
-     *  refused, the net change in stored bytes its pointer updates will cause. */
+    /** Whether a commit may be applied, given the bytes a writer writes and, if that alone would be
+     *  refused, the net change in stored bytes each writer's pointer update in the commit will cause. */
     public interface CommitQuota {
-        boolean allow(PublicKeyHash owner, PublicKeyHash writer, int written, Supplier<Long> delta);
+        boolean allow(PublicKeyHash owner, PublicKeyHash writer, int written, Supplier<Map<PublicKeyHash, Long>> deltas);
     }
 
     private final ContentAddressedStorage target;
@@ -384,6 +384,19 @@ public class BulkCommitStorage extends DelegatingStorage {
                                                      TransactionId tid) {
         List<Cid> written = new ArrayList<>();
         List<Integer> indices = IntStream.range(0, commit.writers.size()).boxed().collect(Collectors.toList());
+        // A rotation writes a subtree under a new key and deletes it under the old one in the same commit, so only
+        // the commit as a whole says whether it frees space. Measured once, and only if a writer needs it.
+        Map<PublicKeyHash, Long>[] deltas = new Map[1];
+        Supplier<Map<PublicKeyHash, Long>> allDeltas = () -> {
+            if (deltas[0] == null) {
+                Map<Cid, byte[]> inCall = blocksInCall(commit, cborInCall);
+                Map<PublicKeyHash, Long> res = new HashMap<>();
+                for (int j = 0; j < commit.writers.size(); j++)
+                    res.merge(commit.writers.get(j).writer, deltaFor(owner, updates.get(j), inCall), Long::sum);
+                deltas[0] = res;
+            }
+            return deltas[0];
+        };
         return Futures.reduceAll(indices, true,
                         (done, i) -> {
                             WriterCommit w = commit.writers.get(i);
@@ -391,7 +404,7 @@ public class BulkCommitStorage extends DelegatingStorage {
                             // leaves a user who is over quota unable to get back under. Charge it
                             // against what the commit will actually leave stored.
                             int size = w.inlineSize();
-                            if (! quota.allow(owner, w.writer, size, () -> deltaFor(owner, updates.get(i), blocksInCall(commit, cborInCall))))
+                            if (! quota.allow(owner, w.writer, size, allDeltas))
                                 throw new IllegalStateException("Key not allowed to write to this server: " + w.writer);
                             return writeBlocks(owner, w, tid).thenApply(cids -> {
                                 written.addAll(cids);
