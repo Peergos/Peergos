@@ -204,7 +204,15 @@ public class WriterQuotaFuzz {
             return;
         String sharee = pick(sharees);
         record("share " + f.path + " with " + sharee);
-        owner.shareWriteAccessWith(f.path, Set.of(sharee)).join();
+        try {
+            owner.shareWriteAccessWith(f.path, Set.of(sharee)).join();
+        } catch (Exception e) {
+            // moving a folder into its own writing space rewrites it, which a full cap above it refuses: known
+            if (! isQuotaRejection(e) || f.isWritingSpace)
+                throw e;
+            outcomes.merge("share/refused-full", 1, Integer::sum);
+            return;
+        }
         f.sharedWith.add(sharee);
         f.isWritingSpace = true;
         if (everRevoked.contains(sharee))
