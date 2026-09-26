@@ -115,6 +115,25 @@ public class WriterQuotaTests {
     }
 
     @Test
+    public void deletesWorkWhenACapIsLoweredBelowUsage() {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        Path dir = sharedDir(owner, "team", sharee);
+        for (int i = 0; i < 4; i++)
+            upload(sharee, dir, "file" + i, 200 * KiB);
+        awaitUsageUpdate();
+
+        // no write has been refused, so nothing has marked the space as over its cap
+        owner.setWriteShareQuota(dir, Optional.of(100L * KiB)).join();
+        for (int i = 0; i < 4; i++) {
+            delete(sharee, dir.resolve("file" + i));
+            awaitUsageUpdate();
+        }
+        Assert.assertTrue(sharee.getByPath(dir).join().get().getChildren(crypto.hasher, sharee.network).join().isEmpty());
+    }
+
+    @Test
     public void nestedWritingSpacesCountTowardsCap() {
         UserContext owner = signUp();
         UserContext sharee = signUp();

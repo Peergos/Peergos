@@ -24,12 +24,24 @@ public class Exceptions {
      *  as "Unimplemented+call%21". Matching the encoded spelling too is what lets the fallbacks fire
      *  in the browser and on Android, rather than surfacing the error to the user.
      */
+    /** Whether the number appears on its own, rather than as part of a longer one, such as a byte count */
+    private static boolean containsNumber(String text, String number) {
+        for (int i = text.indexOf(number); i >= 0; i = text.indexOf(number, i + 1)) {
+            boolean digitBefore = i > 0 && Character.isDigit(text.charAt(i - 1));
+            int end = i + number.length();
+            boolean digitAfter = end < text.length() && Character.isDigit(text.charAt(end));
+            if (! digitBefore && ! digitAfter)
+                return true;
+        }
+        return false;
+    }
+
     public static boolean isUnimplemented(Throwable t) {
         String msg = getRootCause(t).getMessage();
         if (msg == null)
             return false;
         String decoded = msg.replace('+', ' ');
-        return decoded.contains("404")
+        return containsNumber(decoded, "404")
                 || decoded.contains("Not Found")
                 // the trailing ! is percent encoded, so match up to it
                 || decoded.contains("Unimplemented call");
