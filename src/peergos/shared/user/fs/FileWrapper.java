@@ -953,11 +953,32 @@ public class FileWrapper {
         if (isWritable())
             return replaceFile(filename, fileData, length, false, network, crypto, isCancelled, monitor,
                     firstChunkMapKey, firstChunkBat, mirrorBat);
-        return uploadFileSection(filename, fileData, false, 0, length, Optional.empty(),
-                true, network, crypto, isCancelled, monitor, firstChunkMapKey, Optional.empty(), firstChunkBat, mirrorBat)
-                .thenCompose(f -> f.getChild(filename, crypto.hasher, network)
-                        .thenCompose(childOpt -> childOpt.get().truncate(length, network, crypto))
-                        .thenCompose(c -> f.getUpdated(f.version.mergeAndOverwriteWith(c.version), network)));
+        return replaceChild(filename, fileData, length, network, crypto, monitor);
+    }
+
+    /** Replace the contents of a file we can write in a directory we can't: the file keeps its place, so only its own
+     *  writing space changes. Truncating and writing happen in one update, as in replaceFile.
+     */
+    private CompletableFuture<FileWrapper> replaceChild(String filename,
+                                                        AsyncReader fileData,
+                                                        long length,
+                                                        NetworkAccess network,
+                                                        Crypto crypto,
+                                                        ProgressConsumer<Long> monitor) {
+        return getChild(filename, crypto.hasher, network)
+                .thenCompose(c -> {
+                    if (c.isEmpty())
+                        return Futures.errored(new IllegalStateException("Cannot upload a file to a directory without write access!"));
+                    FileWrapper child = c.get();
+                    if (! child.isWritable())
+                        return Futures.errored(new IllegalStateException("Cannot overwrite a file without write access!"));
+                    return network.synchronizer.applyComplexUpdate(owner(), child.signingPair(),
+                                    (current, committer) -> child.truncate(current, committer, length, network, crypto)
+                                            .thenCompose(truncated -> child.getUpdated(truncated, network)
+                                                    .thenCompose(updatedChild -> updateExistingChild(truncated, committer,
+                                                            updatedChild, fileData, 0, length, network, crypto, monitor))))
+                            .thenApply(childVersion -> withVersion(version.mergeAndOverwriteWith(childVersion)));
+                });
     }
 
     /** Write a file's new contents and cut off any old tail in one update, so a failure part way leaves the old
@@ -1023,11 +1044,9 @@ public class FileWrapper {
                     crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), mirrorBat)
                     .thenCompose(f -> f.getChild(filename, crypto.hasher, network))
                     .thenApply(Optional::get);
-        return uploadFileSection(filename, fileData, isHidden, 0, length, Optional.empty(),
-                true, network, crypto, isCancelled, progressMonitor, crypto.random.randomBytes(32), Optional.empty(),
-                Optional.of(Bat.random(crypto.random)), mirrorBat)
-                .thenCompose(f -> f.getChild(filename, crypto.hasher, network)
-                        .thenCompose(childOpt -> childOpt.get().truncate(length, network, crypto)));
+        return replaceChild(filename, fileData, length, network, crypto, progressMonitor)
+                .thenCompose(f -> f.getChild(filename, crypto.hasher, network))
+                .thenApply(Optional::get);
     }
 
     @JsMethod
