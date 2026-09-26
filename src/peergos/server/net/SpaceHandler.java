@@ -74,6 +74,22 @@ public class SpaceHandler implements HttpHandler {
                     result = spaceUsage.requestQuota(owner, signedReq,  0).join();
                     break;
                 }
+                case "set-writer-quota": {
+                    byte[] signedReq = ArrayOps.hexToBytes(last.apply("req"));
+                    result = new CborObject.CborBoolean(spaceUsage.setWriterQuota(owner, signedReq).join());
+                    break;
+                }
+                case "writer-quotas": {
+                    byte[] signedRequest = ArrayOps.hexToBytes(last.apply("auth"));
+                    result = new CborObject.CborList(spaceUsage.getWriterQuotas(owner, signedRequest).join());
+                    break;
+                }
+                case "writer-usage": {
+                    byte[] signedRequest = ArrayOps.hexToBytes(last.apply("auth"));
+                    PublicKeyHash writer = PublicKeyHash.fromString(last.apply("writer"));
+                    result = spaceUsage.getWriterUsage(owner, writer, signedRequest).join();
+                    break;
+                }
                 default:
                     throw new IOException("Unknown method in StorageHandler!");
             }

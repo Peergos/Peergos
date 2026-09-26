@@ -9,6 +9,15 @@ import java.util.*;
 
 public interface WriterUsageStore {
 
+    interface UsageListener {
+        void usageChanged(PublicKeyHash writer, long delta, boolean ownedKeysChanged);
+
+        default void writerQuotaChanged(PublicKeyHash writer, Optional<Long> quota) {}
+    }
+
+    /** The listener is called after each successful updateWriterUsageAtomically, and each change to a writer quota */
+    void addUsageListener(UsageListener listener);
+
     void addWriter(String owner, PublicKeyHash writer);
 
     Set<PublicKeyHash> getAllWriters();

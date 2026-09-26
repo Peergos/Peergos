@@ -8,6 +8,7 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.logging.*;
 
@@ -100,6 +101,55 @@ public class HttpSpaceUsage implements SpaceUsageProxy {
                 + "&req=" + ArrayOps.bytesToHex(signedRequest)).thenApply(res -> {
             return PaymentProperties.fromCbor(CborObject.fromByteArray(res));
         });
+    }
+
+    @Override
+    public CompletableFuture<Boolean> setWriterQuota(PublicKeyHash owner, byte[] signedRequest) {
+        return setWriterQuota("", direct, owner, signedRequest);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> setWriterQuota(Multihash targetServerId, PublicKeyHash owner, byte[] signedRequest) {
+        return setWriterQuota(getProxyUrlPrefix(targetServerId), p2p, owner, signedRequest);
+    }
+
+    private CompletableFuture<Boolean> setWriterQuota(String urlPrefix, HttpPoster poster, PublicKeyHash owner, byte[] signedRequest) {
+        return poster.get(urlPrefix + Constants.SPACE_USAGE_URL + "set-writer-quota?owner=" + encode(owner.toString())
+                + "&req=" + ArrayOps.bytesToHex(signedRequest))
+                .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value);
+    }
+
+    @Override
+    public CompletableFuture<List<WriterUsageInfo>> getWriterQuotas(PublicKeyHash owner, byte[] signedRequest) {
+        return getWriterQuotas("", direct, owner, signedRequest);
+    }
+
+    @Override
+    public CompletableFuture<List<WriterUsageInfo>> getWriterQuotas(Multihash targetServerId, PublicKeyHash owner, byte[] signedRequest) {
+        return getWriterQuotas(getProxyUrlPrefix(targetServerId), p2p, owner, signedRequest);
+    }
+
+    private CompletableFuture<List<WriterUsageInfo>> getWriterQuotas(String urlPrefix, HttpPoster poster, PublicKeyHash owner, byte[] signedRequest) {
+        return poster.get(urlPrefix + Constants.SPACE_USAGE_URL + "writer-quotas?owner=" + encode(owner.toString())
+                + "&auth=" + ArrayOps.bytesToHex(signedRequest))
+                .thenApply(res -> ((CborObject.CborList)CborObject.fromByteArray(res)).map(WriterUsageInfo::fromCbor));
+    }
+
+    @Override
+    public CompletableFuture<WriterUsageInfo> getWriterUsage(PublicKeyHash owner, PublicKeyHash writer, byte[] signedRequest) {
+        return getWriterUsage("", direct, owner, writer, signedRequest);
+    }
+
+    @Override
+    public CompletableFuture<WriterUsageInfo> getWriterUsage(Multihash targetServerId, PublicKeyHash owner, PublicKeyHash writer, byte[] signedRequest) {
+        return getWriterUsage(getProxyUrlPrefix(targetServerId), p2p, owner, writer, signedRequest);
+    }
+
+    private CompletableFuture<WriterUsageInfo> getWriterUsage(String urlPrefix, HttpPoster poster, PublicKeyHash owner, PublicKeyHash writer, byte[] signedRequest) {
+        return poster.get(urlPrefix + Constants.SPACE_USAGE_URL + "writer-usage?owner=" + encode(owner.toString())
+                + "&writer=" + encode(writer.toString())
+                + "&auth=" + ArrayOps.bytesToHex(signedRequest))
+                .thenApply(res -> WriterUsageInfo.fromCbor(CborObject.fromByteArray(res)));
     }
 
     private static String encode(String component) {

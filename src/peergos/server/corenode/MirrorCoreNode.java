@@ -604,7 +604,8 @@ public class MirrorCoreNode implements CoreNode {
                 in.pendingFollowReqs,
                 in.mirrorBats,
                 in.login,
-                in.linkCounts);
+                in.linkCounts,
+                in.writerQuotas);
     }
 
     public static CompletableFuture<Map<PublicKeyHash, byte[]>> getUserSnapshotRecursive(List<Multihash> peerIds,
@@ -684,7 +685,8 @@ public class MirrorCoreNode implements CoreNode {
                     .thenApply(pointers -> new UserSnapshot(n, owner, pointers,
                             localSocial.getAndParseFollowRequests(owner),
                             batCave.getUserBats(n, new byte[0]).join(),
-                            rawAccount.getLoginData(n), linkCounts.getUpdatedCounts(n, latestLinkCountUpdate)));
+                            rawAccount.getLoginData(n), linkCounts.getUpdatedCounts(n, latestLinkCountUpdate),
+                            usageStore.getSignedWriterQuotas(n)));
                 })
                 .map(CompletableFuture::join)
                 .toList());
@@ -718,7 +720,8 @@ public class MirrorCoreNode implements CoreNode {
                             pointers,
                             localSocial.getAndParseFollowRequests(owner),
                             batCave.getUserBats(username, new byte[0]).join(),
-                            rawAccount.getLoginData(username), updated)).join();
+                            rawAccount.getLoginData(username), updated,
+                            usageStore.getSignedWriterQuotas(username))).join();
             if (commitToPki)
                 updateChain(username, newChain, work, "").join();
             // from this point on new writes are proxied to the new storage server if we committed to the PKI
@@ -771,9 +774,26 @@ public class MirrorCoreNode implements CoreNode {
             Set<PublicKeyHash> allUserKeys = DeletableContentAddressedStorage.getOwnedKeysRecursive(owner, owner, routingPointers,
                     (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, true, ourNodeId, hasher, ipfs), ipfs, hasher).join();
             SpaceCheckingKeyFilter.processCorenodeEvent(username, owner, allUserKeys, usageStore, quotas, ipfs, routingPointers, hasher);
+            importWriterQuotas(res.writerQuotas, username, owner, allUserKeys);
             return Futures.of(res);
         } else // Proxy call to their target storage server
             return writeTarget.migrateUser(username, newChain, migrationTargetNode, mirrorBat, latestLinkCountUpdate, currentUsage, commitToPki);
+    }
+
+    private void importWriterQuotas(List<byte[]> signedQuotas,
+                                    String username,
+                                    PublicKeyHash owner,
+                                    Set<PublicKeyHash> allUserKeys) {
+        for (byte[] signed : signedQuotas) {
+            try {
+                WriterQuotaRequest req = WriterQuotas.verify(signed, owner, username, usageStore, ipfs);
+                if (! allUserKeys.contains(req.writer))
+                    continue;
+                usageStore.setWriterQuota(username, req.writer, req.bytes, req.utcMillis, signed);
+            } catch (Exception e) {
+                LOG.log(Level.WARNING, "Dropping invalid writer quota of " + username, e);
+            }
+        }
     }
 
     private void commitUpdate(UserSnapshot res,

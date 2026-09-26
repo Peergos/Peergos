@@ -430,6 +430,22 @@ public class BulkCommitStorage extends DelegatingStorage {
                     return Futures.of(BlockMetadataStore.extractMetadata(block, raw));
                 return unfiltered.getBlockMetadata(owner, block);
             }
+
+            @Override
+            public CompletableFuture<Optional<Integer>> getSize(PublicKeyHash owner, Multihash block) {
+                byte[] raw = block instanceof Cid c ? cborInCall.get(c) : null;
+                if (raw != null)
+                    return Futures.of(Optional.of(raw.length));
+                return unfiltered.getSize(owner, block);
+            }
+
+            @Override
+            public CompletableFuture<List<Cid>> getLinks(PublicKeyHash owner, Cid root, List<Multihash> peerids) {
+                byte[] raw = cborInCall.get(root);
+                if (raw != null)
+                    return Futures.of(BlockMetadataStore.extractMetadata(root, raw).links);
+                return unfiltered.getLinks(owner, root, peerids);
+            }
         };
     }
 

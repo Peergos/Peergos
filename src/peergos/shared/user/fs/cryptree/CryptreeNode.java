@@ -638,6 +638,7 @@ public class CryptreeNode implements Cborable {
             CapAndSigner currentParent,
             CapAndSigner newParent,
             boolean rotateSigner,
+            Map<PublicKeyHash, PublicKeyHash> rotatedSigners,
             NetworkAccess network,
             Crypto crypto,
             Snapshot version,
@@ -659,8 +660,11 @@ public class CryptreeNode implements Cborable {
         }
         SigningKeyPair newSignerPair = SigningKeyPair.random(crypto.random, crypto.signer);
         return initAndAuthoriseSigner(currentChild.cap.owner, newParent.signer, newSignerPair, network, version, committer)
-                .thenApply(p -> new Pair<>(p.left, new CapAndSigner(new WritableAbsoluteCapability(currentChild.cap.owner,
-                    p.right.publicKeyHash, newMapKey, newBat, baseRead, baseWrite), p.right)));
+                .thenApply(p -> {
+                    rotatedSigners.put(currentChild.cap.writer, p.right.publicKeyHash);
+                    return new Pair<>(p.left, new CapAndSigner(new WritableAbsoluteCapability(currentChild.cap.owner,
+                            p.right.publicKeyHash, newMapKey, newBat, baseRead, baseWrite), p.right));
+                });
     }
 
     public static CompletableFuture<Pair<Snapshot, SigningPrivateKeyAndPublicHash>> initAndAuthoriseSigner(
@@ -706,6 +710,7 @@ public class CryptreeNode implements Cborable {
     /** Rotate the base read key, base write key, map key and signing key of a file or directory recursively
      *  This operation requires size(file/subtree)/1000 free space to complete
      *
+     * @param rotatedSigners collects the new signer of each nested writing space whose signer is rotated
      * @param network
      * @param crypto
      * @param version
@@ -722,6 +727,7 @@ public class CryptreeNode implements Cborable {
             Optional<byte[]> fileStreamSecret,
             Optional<BatId> mirrorBat,
             boolean rotateSigner,
+            Map<PublicKeyHash, PublicKeyHash> rotatedSigners,
             NetworkAccess network,
             Crypto crypto,
             Snapshot version,
@@ -773,6 +779,7 @@ public class CryptreeNode implements Cborable {
                                             streamSecret,
                                             mirrorBat,
                                             rotateSigner,
+                                            rotatedSigners,
                                             network,
                                             crypto,
                                             s,
@@ -790,7 +797,7 @@ public class CryptreeNode implements Cborable {
                                                             Optional.of(us.signer));
                                                     CapAndSigner child = new CapAndSigner((WritableAbsoluteCapability) c.capability,
                                                             childSigner);
-                                                    return generateNewChildCap(child, us, newUs, rotateSigner, network, crypto, p.left, committer)
+                                                    return generateNewChildCap(child, us, newUs, rotateSigner, rotatedSigners, network, crypto, p.left, committer)
                                                             .thenCompose(newChild -> c.fileAccess.rotateAllKeys(
                                                                     true,
                                                                     child,
@@ -801,6 +808,7 @@ public class CryptreeNode implements Cborable {
                                                                     Optional.empty(),
                                                                     mirrorBat,
                                                                     rotateSigner,
+                                                                    rotatedSigners,
                                                                     network,
                                                                     crypto,
                                                                     newChild.left,

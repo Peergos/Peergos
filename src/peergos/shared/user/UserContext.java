@@ -2600,6 +2600,18 @@ public class UserContext {
                                                       boolean rotateSigners,
                                                       Snapshot initial,
                                                       Committer c) {
+        return rotateAllKeys(file, parent, rotateSigners, new HashMap<>(), initial, c);
+    }
+
+    /**
+     * @param rotatedSigners collects the new signer for each old one, when rotating signers
+     */
+    private CompletableFuture<Snapshot> rotateAllKeys(FileWrapper file,
+                                                      FileWrapper parent,
+                                                      boolean rotateSigners,
+                                                      Map<PublicKeyHash, PublicKeyHash> rotatedSigners,
+                                                      Snapshot initial,
+                                                      Committer c) {
         // 1) rotate all the symmetric keys and optionally signers
         // 2) if parent signer is different, add a link node pointing to the new child
         // 2) update parent pointer to new child/link
@@ -2615,6 +2627,8 @@ public class UserContext {
                         SigningKeyPair.random(crypto.random, crypto.signer), network, initial, c) :
                 Futures.of(new Pair<>(initial, file.signingPair())))
                 .thenCompose(p -> {
+                    if (rotateSigners)
+                        rotatedSigners.put(file.writer(), p.right.publicKeyHash);
                     Optional<RelativeCapability> newParentLink = Optional.of(
                             rotateSigners ?
                                     new RelativeCapability(
@@ -2648,6 +2662,7 @@ public class UserContext {
                             Optional.empty(),
                             mirrorBatId(),
                             rotateSigners,
+                            rotatedSigners,
                             network,
                             crypto,
                             p.left,
@@ -2773,14 +2788,101 @@ public class UserContext {
             return getByPath(path.getParent().toString())
                     .thenCompose(parentOpt -> {
                         FileWrapper parent = parentOpt.get();
-                        return network.synchronizer.applyComplexUpdate(signer.publicKeyHash,
-                                parent.signingPair(), (s, c) -> rotateAllKeys(toUnshare, parent, true, s, c)
+                        Map<PublicKeyHash, PublicKeyHash> rotatedSigners = new HashMap<>();
+                        return getWriterQuotas(toUnshare.owner()).thenCompose(quotas ->
+                                network.synchronizer.applyComplexUpdate(signer.publicKeyHash,
+                                parent.signingPair(), (s, c) -> rotateAllKeys(toUnshare, parent, true, rotatedSigners, s, c)
                                 .thenCompose(s2 ->
                                         sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE,
                                                 path, writersToRemove, s2, c, network))
-                                        .thenCompose(s3 -> reSendAllSharesAndLinksRecursive(path, s3, c)));
+                                        .thenCompose(s3 -> reSendAllSharesAndLinksRecursive(path, s3, c)))
+                                .thenCompose(res -> carryOverWriterQuotas(quotas, rotatedSigners)
+                                        .thenApply(x -> res)));
                     });
         });
+    }
+
+    /** The caps on our writing spaces, empty if we don't own them */
+    private CompletableFuture<Map<PublicKeyHash, Long>> getWriterQuotas(PublicKeyHash owner) {
+        if (! owner.equals(signer.publicKeyHash))
+            return Futures.of(Collections.emptyMap());
+        return getWriteShareQuotas()
+                .thenApply(infos -> infos.stream()
+                        .filter(i -> i.quota.isPresent())
+                        .collect(Collectors.toMap(i -> i.writer, i -> i.quota.get())));
+    }
+
+    /** A capped writing space whose signer has been rotated keeps its cap */
+    private CompletableFuture<Boolean> carryOverWriterQuotas(Map<PublicKeyHash, Long> quotas,
+                                                             Map<PublicKeyHash, PublicKeyHash> rotatedSigners) {
+        return Futures.reduceAll(rotatedSigners.entrySet(), true,
+                (b, e) -> quotas.containsKey(e.getKey()) ?
+                        network.spaceUsage.setWriterQuota(signer, e.getValue(), Optional.of(quotas.get(e.getKey()))) :
+                        Futures.of(b),
+                (a, b) -> a && b);
+    }
+
+    /** The root of a writing space which has been shared with write access */
+    private CompletableFuture<FileWrapper> getWriteShareRoot(Path path) {
+        return getByPath(path.getParent())
+                .thenCompose(parentOpt -> parentOpt
+                        .map(parent -> parent.getChild(path.getFileName().toString(), crypto.hasher, network)
+                                .thenApply(fileOpt -> {
+                                    FileWrapper file = fileOpt.orElseThrow(() -> new IllegalStateException("Unable to read " + path));
+                                    if (! file.owner().equals(signer.publicKeyHash))
+                                        throw new IllegalStateException("Only the owner can limit the space of a shared folder");
+                                    if (file.writer().equals(parent.writer()))
+                                        throw new IllegalStateException("Share with write access first");
+                                    return file;
+                                }))
+                        .orElseGet(() -> Futures.errored(new IllegalStateException("Unable to read " + path.getParent()))));
+    }
+
+    /** Limit the space that a folder shared with write access, and everything in it, can use
+     *
+     * @param bytes the new limit, or empty to remove it
+     */
+    public CompletableFuture<Boolean> setWriteShareQuota(Path path, Optional<Long> bytes) {
+        return getWriteShareRoot(path)
+                .thenCompose(file -> network.spaceUsage.setWriterQuota(signer, file.writer(), bytes));
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> setWriteShareQuota(Path path, double bytes) {
+        return setWriteShareQuota(path, Optional.of((long) bytes));
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> removeWriteShareQuota(Path path) {
+        return setWriteShareQuota(path, Optional.empty());
+    }
+
+    /**
+     * @return the limit on, and usage of, a folder we have shared with write access
+     */
+    @JsMethod
+    public CompletableFuture<WriterUsageInfo> getWriteShareQuota(Path path) {
+        return getWriteShareRoot(path)
+                .thenCompose(file -> network.spaceUsage.getWriterUsage(signer.publicKeyHash, file.writer(), signer.secret));
+    }
+
+    /**
+     * @return every writing space of ours with a limit on its space
+     */
+    @JsMethod
+    public CompletableFuture<List<WriterUsageInfo>> getWriteShareQuotas() {
+        return network.spaceUsage.getWriterQuotas(signer);
+    }
+
+    /** For someone we have shared a folder with, with write access.
+     *
+     * @return how much space is left in a writable folder, if its owner has limited it
+     */
+    @JsMethod
+    public CompletableFuture<WriterUsageInfo> getWriteUsageInfo(FileWrapper file) {
+        if (! file.isWritable())
+            return Futures.errored(new IllegalStateException("Not writable: " + file.getName()));
+        return network.spaceUsage.getWriterUsage(file.owner(), file.writer(), file.signingPair().secret);
     }
 
     @JsMethod

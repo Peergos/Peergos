@@ -53,4 +53,31 @@ public class ProxyingSpaceUsage implements SpaceUsage {
     public CompletableFuture<PaymentProperties> requestQuota(PublicKeyHash owner, byte[] signedRequest, long usage) {
         return local.requestQuota(owner, signedRequest, usage);
     }
+
+    @Override
+    public CompletableFuture<Boolean> setWriterQuota(PublicKeyHash owner, byte[] signedRequest) {
+        return Proxy.redirectCall(core,
+                serverIds,
+                owner,
+                () -> local.setWriterQuota(owner, signedRequest),
+                targetServer -> p2p.setWriterQuota(targetServer, owner, signedRequest));
+    }
+
+    @Override
+    public CompletableFuture<List<WriterUsageInfo>> getWriterQuotas(PublicKeyHash owner, byte[] signedRequest) {
+        return Proxy.redirectCall(core,
+                serverIds,
+                owner,
+                () -> local.getWriterQuotas(owner, signedRequest),
+                targetServer -> p2p.getWriterQuotas(targetServer, owner, signedRequest));
+    }
+
+    @Override
+    public CompletableFuture<WriterUsageInfo> getWriterUsage(PublicKeyHash owner, PublicKeyHash writer, byte[] signedRequest) {
+        return Proxy.redirectCall(core,
+                serverIds,
+                owner,
+                () -> local.getWriterUsage(owner, writer, signedRequest),
+                targetServer -> p2p.getWriterUsage(targetServer, owner, writer, signedRequest));
+    }
 }
