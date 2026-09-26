@@ -61,6 +61,30 @@ public class LocalS3ServerTest {
     }
 
     @Test
+    public void putWithABodyOtherThanTheSignedHashIsRefused() throws Exception {
+        String key = BUCKET + "/blocks/mismatch";
+        byte[] data = "hello world".getBytes();
+        String sha = ArrayOps.bytesToHex(Hash.sha256(data));
+
+        PresignedUrl put = S3Request.preSignPut(key, data.length, sha, Optional.empty(), false,
+                S3AdminRequests.asAwsDate(ZonedDateTime.now()), host,
+                new HashMap<>(), config.region, config.accessKey, config.secretKey, false, hasher).join();
+        byte[] other = "HELLO WORLD".getBytes();
+        try {
+            HttpUtil.putWithVersion(put, other);
+            Assert.fail("A body that doesn't match the signed hash was stored");
+        } catch (Exception expected) {}
+
+        PresignedUrl get = S3Request.preSignGet(key, Optional.of(600), Optional.empty(),
+                S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, config.region,
+                Optional.empty(), config.accessKey, config.secretKey, false, hasher).join();
+        try {
+            HttpUtil.get(get);
+            Assert.fail("A refused write left an object behind");
+        } catch (Exception expected) {}
+    }
+
+    @Test
     public void head() throws Exception {
         String key = BUCKET + "/blocks/headtest";
         byte[] data = "headdata".getBytes();
