@@ -20,6 +20,9 @@ public interface WriterUsageStore {
 
     void addWriter(String owner, PublicKeyHash writer);
 
+    /** Forget a writer that nothing owns any more, so it can't write again without proving it is owned */
+    void removeWriter(PublicKeyHash writer);
+
     Set<PublicKeyHash> getAllWriters();
 
     Set<PublicKeyHash> getAllWriters(PublicKeyHash owner);

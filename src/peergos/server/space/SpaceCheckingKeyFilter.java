@@ -378,6 +378,9 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     continue;
                 MaybeMultihash currentTarget = mutable.getPointerTarget(owner, ownedKey, dht).get().updated;
                 processMutablePointerEvent(state, owner, ownedKey, currentTarget, MaybeMultihash.empty(), mutable, quotaAdmin, dht, hasher);
+                // Revoking write access leaves the old key with its signature intact but owned by nothing. Forgetting it
+                // means any further write with it has to prove it is owned, which it can't.
+                state.removeWriter(ownedKey);
             } catch (Exception e) {
                 LOG.log(Level.WARNING, e.getMessage(), e);
             }
@@ -503,6 +506,18 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
             usageByHour.put(username, usage);
         }
         return usage;
+    }
+
+    /** Whether a writer may update its pointer: the owner's identity, or a key the owner still owns */
+    public boolean isOwnedWriter(PublicKeyHash owner, PublicKeyHash writer) {
+        if (writer.equals(owner))
+            return true;
+        try {
+            usageStore.getOwner(writer);
+            return true;
+        } catch (IllegalStateException e) {
+            return registerMissedWriters(owner, writer);
+        }
     }
 
     public boolean allowWrite(PublicKeyHash owner, PublicKeyHash writer, int size) {

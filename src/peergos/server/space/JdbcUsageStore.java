@@ -462,6 +462,35 @@ public class JdbcUsageStore implements UsageStore {
     }
 
     @Override
+    public void removeWriter(PublicKeyHash writer) {
+        try (Connection conn = getConnection(true, false);
+             PreparedStatement select = conn.prepareStatement("SELECT id FROM writers WHERE key_hash = ?;");
+             PreparedStatement ownedKeys = conn.prepareStatement("DELETE FROM ownedkeys WHERE owned_id = ? OR parent_id = ?;");
+             PreparedStatement pending = conn.prepareStatement("DELETE FROM pendingusage WHERE writer_id = ?;");
+             PreparedStatement quotas = conn.prepareStatement("DELETE FROM writerquotas WHERE writer_id = ?;");
+             PreparedStatement usage = conn.prepareStatement("DELETE FROM writerusage WHERE writer_id = ?;");
+             PreparedStatement writers = conn.prepareStatement("DELETE FROM writers WHERE id = ?;")) {
+            owners.remove(writer);
+            select.setBytes(1, writer.toBytes());
+            ResultSet res = select.executeQuery();
+            if (! res.next())
+                return;
+            int id = res.getInt(1);
+            ownedKeys.setInt(1, id);
+            ownedKeys.setInt(2, id);
+            ownedKeys.executeUpdate();
+            for (PreparedStatement byWriter : List.of(pending, quotas, usage, writers)) {
+                byWriter.setInt(1, id);
+                byWriter.executeUpdate();
+            }
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+        notifyWriterQuotaChanged(writer, Optional.empty());
+    }
+
+    @Override
     public Set<PublicKeyHash> getParents(PublicKeyHash writer) {
         try (Connection conn = getConnection();
              PreparedStatement select = conn.prepareStatement("SELECT p.key_hash FROM ownedkeys o " +

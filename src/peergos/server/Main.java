@@ -984,7 +984,8 @@ public class Main extends Builder {
 
             Path blacklistPath = a.fromPeergosDir("blacklist_file", "blacklist.txt");
             PublicKeyBlackList blacklist = new UserBasedBlacklist(blacklistPath, core, localMutable, localStorage, hasher);
-            MutablePointers blockingMutablePointers = new BlockingMutablePointers(localMutable, blacklist);
+            MutablePointers blockingMutablePointers = new BlockingMutablePointers(
+                    new OwnedWriterPointers(localMutable, spaceChecker::isOwnedWriter), blacklist);
 
             int blockCacheSize = a.getInt("max-cached-blocks", 1000);
             int maxCachedBlockSize = a.getInt("max-cached-block-size", 50 * 1024);
