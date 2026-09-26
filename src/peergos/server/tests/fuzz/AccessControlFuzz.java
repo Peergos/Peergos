@@ -638,8 +638,11 @@ public class AccessControlFuzz {
             count("read/refused");
             return;
         }
-        if (found.isEmpty())
-            throw new AssertionError(actor + " with " + l + " access can't see " + file + "; " + reach(ctx, file), lastFindError);
+        if (found.isEmpty()) {
+            boolean secondTry = find(ctx, file).isPresent();
+            throw new AssertionError(actor + " with " + l + " access can't see " + file + " (a second direct try "
+                    + (secondTry ? "finds it" : "doesn't") + "); " + reach(ctx, file), lastFindError);
+        }
         byte[] got = read(ctx, found.get());
         if (! Arrays.equals(got, files.get(file)))
             throw new AssertionError(actor + " read the wrong contents of " + file + ": " + describe(Optional.of(got))
