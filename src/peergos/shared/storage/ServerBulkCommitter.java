@@ -82,6 +82,10 @@ public class ServerBulkCommitter implements BulkCommitter {
 
     private static boolean isUnsupported(Throwable t) {
         String msg = Exceptions.getRootCause(t).getMessage();
+        // a refusal on quota is the server answering, and falling back would lose the bulk commit's allowance for
+        // commits that free space
+        if (msg != null && msg.replace('+', ' ').contains("Storage quota reached"))
+            return false;
         return Exceptions.isUnimplemented(t) || (msg != null && msg.contains("Cannot bulk commit"));
     }
 

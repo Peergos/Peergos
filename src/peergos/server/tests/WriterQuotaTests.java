@@ -115,6 +115,82 @@ public class WriterQuotaTests {
     }
 
     @Test
+    public void deletesWorkWhenACapIsLoweredBelowUsage() {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        Path dir = sharedDir(owner, "team", sharee);
+        for (int i = 0; i < 4; i++)
+            upload(sharee, dir, "file" + i, 200 * KiB);
+        awaitUsageUpdate();
+
+        // no write has been refused, so nothing has marked the space as over its cap
+        owner.setWriteShareQuota(dir, Optional.of(100L * KiB)).join();
+        for (int i = 0; i < 4; i++) {
+            delete(sharee, dir.resolve("file" + i));
+            awaitUsageUpdate();
+        }
+        Assert.assertTrue(sharee.getByPath(dir).join().get().getChildren(crypto.hasher, sharee.network).join().isEmpty());
+    }
+
+    @Test
+    public void canRevokeFromAFullCappedFolder() {
+        UserContext owner = signUp();
+        UserContext kept = signUp();
+        UserContext revoked = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(kept, revoked));
+        Path dir = sharedDir(owner, "team", kept, revoked);
+        upload(kept, dir, "file", 400 * KiB);
+        awaitUsageUpdate();
+        owner.setWriteShareQuota(dir, Optional.of(200L * KiB)).join();
+
+        owner.unShareWriteAccessWith(dir, Set.of(revoked.username)).join();
+        Assert.assertEquals(Optional.of(200L * KiB), owner.getWriteShareQuota(dir).join().quota);
+        Assert.assertEquals(400 * KiB, read(owner, dir.resolve("file")).length);
+    }
+
+    @Test
+    public void canRevokeInsideAFullCappedFolder() {
+        UserContext owner = signUp();
+        UserContext outer = signUp();
+        UserContext revoked = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(outer, revoked));
+        Path dir = sharedDir(owner, "team", outer);
+        owner.getByPath(dir).join().get().mkdir("inner", owner.network, false, owner.mirrorBatId(), crypto).join();
+        Path inner = dir.resolve("inner");
+        owner.shareWriteAccessWith(inner, Set.of(revoked.username)).join();
+        upload(revoked, inner, "file", 400 * KiB);
+        awaitUsageUpdate();
+        owner.setWriteShareQuota(dir, Optional.of(200L * KiB)).join();
+
+        owner.unShareWriteAccessWith(inner, Set.of(revoked.username)).join();
+        Assert.assertEquals(400 * KiB, read(owner, inner.resolve("file")).length);
+    }
+
+    @Test
+    public void canShareInsideAFullCappedFolder() {
+        UserContext owner = signUp();
+        UserContext outer = signUp();
+        UserContext innerSharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(outer, innerSharee));
+        Path dir = sharedDir(owner, "team", outer);
+        owner.getByPath(dir).join().get().mkdir("inner", owner.network, false, owner.mirrorBatId(), crypto).join();
+        Path inner = dir.resolve("inner");
+        upload(outer, inner, "file", 400 * KiB);
+        awaitUsageUpdate();
+        owner.setWriteShareQuota(dir, Optional.of(200L * KiB)).join();
+
+        // moving the folder into its own writing space copies it under a new key and frees the old copy
+        owner.shareWriteAccessWith(inner, Set.of(innerSharee.username)).join();
+        Assert.assertEquals(400 * KiB, read(innerSharee, inner.resolve("file")).length);
+    }
+
+    private static byte[] read(UserContext user, Path file) {
+        FileWrapper f = user.getByPath(file).join().get();
+        return Serialize.readFully(f.getInputStream(user.network, crypto, x -> {}).join(), f.getSize()).join();
+    }
+
+    @Test
     public void nestedWritingSpacesCountTowardsCap() {
         UserContext owner = signUp();
         UserContext sharee = signUp();
@@ -187,6 +263,70 @@ public class WriterQuotaTests {
     }
 
     @Test
+    public void capOnRotatedNestedSpaceCountsItsContents() {
+        UserContext owner = signUp();
+        UserContext outer = signUp();
+        UserContext inner = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(outer, inner));
+        Path dir = sharedDir(owner, "team", outer);
+        owner.getByPath(dir).join().get().mkdir("nested", owner.network, false, owner.mirrorBatId(), crypto).join();
+        Path nested = dir.resolve("nested");
+        owner.getByPath(nested).join().get().mkdir("sub", owner.network, false, owner.mirrorBatId(), crypto).join();
+        upload(owner, nested.resolve("sub"), "subfile", 20 * KiB);
+        owner.shareWriteAccessWith(nested, Set.of(inner.username)).join();
+        upload(owner, nested, "file", 200 * KiB);
+        awaitUsageUpdate();
+        // rotate the nested space on its own first
+        owner.unShareWriteAccessWith(nested, Set.of(inner.username)).join();
+        upload(owner, nested, "file2", 200 * KiB);
+        owner.setWriteShareQuota(nested, Optional.of(4096L * KiB)).join();
+        upload(outer, nested.resolve("sub"), "fromOuter", 100 * KiB);
+        owner.setWriteShareQuota(nested, Optional.empty()).join();
+        awaitUsageUpdate();
+
+        // revoking the outer share rotates the nested writing space too
+        owner.unShareWriteAccessWith(dir, Set.of(outer.username)).join();
+        awaitUsageUpdate();
+        owner.setWriteShareQuota(nested, Optional.of(200L * KiB)).join();
+        awaitUsageUpdate();
+
+        WriterUsageInfo info = owner.getWriteShareQuota(nested).join();
+        Assert.assertTrue("rotated space reports " + info.used + " bytes used", info.used >= 500 * KiB);
+        assertUploadRejected(owner, nested, "more", 10 * KiB);
+    }
+
+    @Test
+    public void sharingAnEnclosingFolderKeepsNestedUsage() {
+        UserContext owner = signUp();
+        UserContext a = signUp();
+        UserContext b = signUp();
+        UserContext c = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(a, b, c));
+        owner.getUserRoot().join().mkdir("outer", owner.network, false, owner.mirrorBatId(), crypto).join();
+        Path outer = PathUtil.get(owner.username, "outer");
+        owner.getByPath(outer).join().get().mkdir("middle", owner.network, false, owner.mirrorBatId(), crypto).join();
+        Path middle = outer.resolve("middle");
+        owner.getByPath(middle).join().get().mkdir("inner", owner.network, false, owner.mirrorBatId(), crypto).join();
+        Path inner = middle.resolve("inner");
+        upload(owner, inner, "file", 400 * KiB);
+
+        // share from the inside out, so each share moves writing spaces that already exist
+        owner.shareWriteAccessWith(middle, Set.of(a.username)).join();
+        owner.shareWriteAccessWith(inner, Set.of(b.username)).join();
+        awaitUsageUpdate();
+        long before = owner.getSpaceUsage(false).join();
+        owner.shareWriteAccessWith(outer, Set.of(c.username)).join();
+        awaitUsageUpdate();
+        long after = owner.getSpaceUsage(false).join();
+        Assert.assertTrue("usage went from " + before + " to " + after, after >= 400 * KiB);
+
+        owner.setWriteShareQuota(inner, Optional.of(200L * KiB)).join();
+        awaitUsageUpdate();
+        long used = owner.getWriteShareQuota(inner).join().used;
+        Assert.assertTrue("inner space reports " + used + " bytes used", used >= 400 * KiB);
+    }
+
+    @Test
     public void capSurvivesRevokingWriteAccess() {
         UserContext owner = signUp();
         UserContext remaining = signUp();
@@ -205,6 +345,8 @@ public class WriterQuotaTests {
         Assert.assertNotEquals(originalWriter, rotated.writer());
         Assert.assertEquals(Optional.of(1024L * KiB), owner.getWriteShareQuota(dir).join().quota);
         Assert.assertEquals(Optional.of(512L * KiB), owner.getWriteShareQuota(nested).join().quota);
+        // the caps moved to the new signers rather than being copied
+        Assert.assertEquals(2, owner.getWriteShareQuotas().join().size());
 
         assertUploadRejected(remaining, dir, "big", 1200 * KiB);
         assertUploadRejected(remaining, nested, "big", 600 * KiB);

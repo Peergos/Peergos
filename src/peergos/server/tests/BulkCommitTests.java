@@ -263,6 +263,34 @@ public class BulkCommitTests {
         }
     }
 
+    /** A quota refusal carries byte counts, and one of them containing 404 was taken for a missing endpoint. That
+     *  dropped the owner to the per block path for the session, which has no allowance for commits that free space.
+     */
+    @Test
+    public void errorsThatOnlyMentionFourOhFourDontFallBack() {
+        List<String> notMissingEndpoints = Arrays.asList(
+                "Storage quota reached for this shared folder! \nUsed 380052 out of 215404 bytes. Rejecting write of size 10542.",
+                "Storage quota reached! \nUsed 404 out of 1000 bytes. Rejecting write of size 700.",
+                "Invalid block 4040");
+
+        for (String message : notMissingEndpoints) {
+            PublicKeyHash writer = randomWriter();
+            BulkCommit commit = new BulkCommit(Optional.empty(), Arrays.asList(new WriterCommit(writer,
+                    Arrays.asList(random(64)), Collections.emptyList(), Collections.emptyList(),
+                    Optional.of(new SignedPointerUpdate(writer, random(64))), Optional.empty())));
+            CommitContext context = new CommitContext(Collections.emptyMap(), Collections.emptySet(),
+                    Collections.emptyMap(), Collections.emptyMap());
+            BulkCommitter committer = new ServerBulkCommitter(unimplemented(message), refusingFallback(), crypto.hasher);
+            try {
+                committer.commit(writer, commit, context).join();
+                Assert.fail("A failed commit reported success: " + message);
+            } catch (CompletionException e) {
+                Assert.assertEquals("fell back for: " + message, message,
+                        peergos.shared.util.Exceptions.getRootCause(e).getMessage());
+            }
+        }
+    }
+
     private static ContentAddressedStorage unimplemented(String message) {
         return new DelegatingStorage(null) {
             @Override

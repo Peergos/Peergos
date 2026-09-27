@@ -2620,6 +2620,9 @@ public class UserContext {
         SigningPrivateKeyAndPublicHash parentSigner = parent.signingPair();
         AbsoluteCapability parentCap = parent.getPointer().capability;
         AbsoluteCapability originalCap = file.getPointer().capability;
+        // A file in a writing space of its own is reached through a link in its parent's, whether or not this rotation
+        // replaces its signer. Rotating one without the link pointed it at its parent as if they shared a writer.
+        boolean ownWritingSpace = rotateSigners || ! file.writer().equals(parent.writer());
         return (rotateSigners ?
                 CryptreeNode.initAndAuthoriseSigner(
                         owner,
@@ -2630,7 +2633,7 @@ public class UserContext {
                     if (rotateSigners)
                         rotatedSigners.put(file.writer(), p.right.publicKeyHash);
                     Optional<RelativeCapability> newParentLink = Optional.of(
-                            rotateSigners ?
+                            ownWritingSpace ?
                                     new RelativeCapability(
                                             Optional.of(parent.writer()),
                                             crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
@@ -2669,7 +2672,7 @@ public class UserContext {
                             c)
                             .thenCompose(rotated -> {
                                 // add a link in same writing space as parent to restrict rename access
-                                if (rotateSigners) {
+                                if (ownWritingSpace) {
                                     SymmetricKey linkRBase = SymmetricKey.random();
                                     SymmetricKey linkParent = newParentLink.get().rBaseKey;
                                     SymmetricKey linkWBase = SymmetricKey.random();
@@ -2812,12 +2815,20 @@ public class UserContext {
                         .collect(Collectors.toMap(i -> i.writer, i -> i.quota.get())));
     }
 
-    /** A capped writing space whose signer has been rotated keeps its cap */
+    /** A capped writing space whose signer has been rotated keeps its cap.
+     *  The old signer is only de-authorised, not emptied, so the server can't tell it has gone and its cap is removed here.
+     */
     private CompletableFuture<Boolean> carryOverWriterQuotas(Map<PublicKeyHash, Long> quotas,
                                                              Map<PublicKeyHash, PublicKeyHash> rotatedSigners) {
         return Futures.reduceAll(rotatedSigners.entrySet(), true,
                 (b, e) -> quotas.containsKey(e.getKey()) ?
-                        network.spaceUsage.setWriterQuota(signer, e.getValue(), Optional.of(quotas.get(e.getKey()))) :
+                        network.spaceUsage.setWriterQuota(signer, e.getValue(), Optional.of(quotas.get(e.getKey())))
+                                .thenCompose(set -> network.spaceUsage.setWriterQuota(signer, e.getKey(), Optional.empty())
+                                        .exceptionally(t -> {
+                                            LOG.log(Level.WARNING, "Couldn't remove the cap of rotated signer " + e.getKey(), t);
+                                            return false;
+                                        })
+                                        .thenApply(removed -> set)) :
                         Futures.of(b),
                 (a, b) -> a && b);
     }

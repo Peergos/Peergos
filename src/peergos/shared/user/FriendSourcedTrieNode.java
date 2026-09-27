@@ -131,9 +131,7 @@ public class FriendSourcedTrieNode implements TrieNode {
             return getFriendRoot(network)
                     .thenApply(opt -> opt.map(f -> f.withTrieNode(this)));
         Path file = PathUtil.get(ownerName + path);
-        return network.synchronizer.applyComplexUpdate(cache.owner(), cache.signingPair(), (v, c) -> getLatestVersion(network)
-                .thenCompose(s -> updateIncludingGroups(v.mergeAndOverwriteWith(s), c, network)
-                        .thenApply(p -> p.left.mergeAndOverwriteWith(s))))
+        return updatedCache(network)
                 .thenCompose(v -> cache.getByPath(file, v, hasher, network))
                 .thenApply(opt -> opt.map(f -> convert(f, path)))
                 .exceptionally(t ->  Optional.empty());
@@ -153,6 +151,19 @@ public class FriendSourcedTrieNode implements TrieNode {
                 .thenApply(opt -> opt.map(f -> convert(f, path)));
     }
 
+    /** Bring our cache of this friend's shares up to date. Another session of ours can be doing the same, and its commit
+     *  landing first makes ours fail as a concurrent modification. That's no reason to report a file as missing, so try
+     *  again from the new state, and failing that read the cache as it stands.
+     */
+    private CompletableFuture<Snapshot> updatedCache(NetworkAccess network) {
+        Supplier<CompletableFuture<Snapshot>> update = () -> network.synchronizer.applyComplexUpdate(cache.owner(),
+                cache.signingPair(), (v, c) -> getLatestVersion(network)
+                        .thenCompose(s -> updateIncludingGroups(v.mergeAndOverwriteWith(s), c, network)
+                                .thenApply(p -> p.left.mergeAndOverwriteWith(s))));
+        return Futures.asyncExceptionally(update,
+                t -> Futures.asyncExceptionally(update, t2 -> getLatestVersion(network)));
+    }
+
     private static String canonicalise(String path) {
         if (path.endsWith("/"))
             return path.substring(0, path.length() - 1);
@@ -165,9 +176,7 @@ public class FriendSourcedTrieNode implements TrieNode {
                                                                         NetworkAccess network) {
         FileProperties.ensureValidPath(path);
         Path dir = PathUtil.get(ownerName + path);
-        return network.synchronizer.applyComplexUpdate(cache.owner(), cache.signingPair(), (v, c) -> getLatestVersion(network)
-                .thenCompose(s -> updateIncludingGroups(v.mergeAndOverwriteWith(s), c, network)
-                        .thenApply(p -> p.left.mergeAndOverwriteWith(s))))
+        return updatedCache(network)
                 .thenCompose(v -> cache.getChildren(dir, v, hasher, network))
                 .thenApply(children -> children.stream()
                         .map(f -> convert(f, canonicalise(path) + "/" + f.getName()))

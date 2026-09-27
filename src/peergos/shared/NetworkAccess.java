@@ -476,7 +476,7 @@ public class NetworkAccess {
                     List<AbsoluteCapability> remaining = new ArrayList<>();
                     for (AbsoluteCapability link : links) {
                         Pair<Multihash, ByteArrayWrapper> cacheKey = new Pair<>(v.get(writer).props.get().tree.get(), new ByteArrayWrapper(link.getMapKey()));
-                        Optional<CryptreeNode> cached = cache.get(cacheKey);
+                        Optional<CryptreeNode> cached = cache.get(cacheKey, link.rBaseKey);
                         if (cached != null && cached.isPresent())
                             fromCache.add(new RetrievedCapability(link, cached.get()));
                         else
@@ -684,8 +684,8 @@ public class NetworkAccess {
             return Futures.of(Optional.empty());
         Multihash root = base.props.get().tree.get();
         Pair<Multihash, ByteArrayWrapper> cacheKey = new Pair<>(root, new ByteArrayWrapper(cap.getMapKey()));
-        if (cache.containsKey(cacheKey))
-            return Futures.of(cache.get(cacheKey));
+        if (cache.containsKey(cacheKey, cap.rBaseKey))
+            return Futures.of(cache.get(cacheKey, cap.rBaseKey));
         return calculateBat(cap, hasher)
                 .thenCompose(bat -> Futures.asyncExceptionally(
                             () -> dhtClient.getChampLookup(cap.owner, (Cid) root, Arrays.asList(new ChunkMirrorCap(cap.getMapKey(), bat)), committedRoot),
@@ -735,8 +735,8 @@ public class NetworkAccess {
             return Futures.of(Optional.empty());
         Multihash root = base.props.get().tree.get();
         Pair<Multihash, ByteArrayWrapper> cacheKey = new Pair<>(root, new ByteArrayWrapper(cap.getMapKey()));
-        if (cache.containsKey(cacheKey))
-            return Futures.of(cache.get(cacheKey));
+        if (cache.containsKey(cacheKey, cap.rBaseKey))
+            return Futures.of(cache.get(cacheKey, cap.rBaseKey));
         return Futures.asyncExceptionally(
                         () -> ChampWrapper.create(cap.owner, (Cid) root, Optional.empty(), x -> Futures.of(x.data), champStorage, hasher, c -> (CborObject.CborMerkleLink) c),
                         t -> fallback.getChampRoot(committedRoot, (Cid) root, cap.owner, fallback)
@@ -750,11 +750,11 @@ public class NetworkAccess {
                                 .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, btreeValue.get())))
                                 .thenApply(res -> {
                                     if (res.isPresent())
-                                        cache.put(cacheKey, res);
+                                        cache.putParsed(cacheKey, cap.rBaseKey, res.get());
                                     return res;
                                 });
                     }
-                    cache.put(cacheKey, Optional.empty());
+                    cache.putAbsent(cacheKey);
                     return CompletableFuture.completedFuture(Optional.empty());
                 });
     }

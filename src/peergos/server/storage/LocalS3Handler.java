@@ -137,6 +137,14 @@ class LocalS3Handler implements HttpHandler {
     private void handlePut(HttpExchange exchange, String rawPath) throws IOException {
         Path file = keyToPath(rawPath);
         byte[] body = exchange.getRequestBody().readAllBytes();
+        // As S3 does: a presigned write binds the content by its hash, so a different body must be refused rather
+        // than stored under a key that claims otherwise
+        String claimed = firstHeader(exchange, "x-amz-content-sha256");
+        if (claimed != null && claimed.matches("[0-9a-fA-F]{64}") && ! claimed.equalsIgnoreCase(hex(sha256(body)))) {
+            sendXmlError(exchange, 400, "XAmzContentSHA256Mismatch",
+                    "The provided 'x-amz-content-sha256' header does not match what was computed.");
+            return;
+        }
         Files.createDirectories(file.getParent());
         // Publish atomically. Files.write truncates in place, so a GET concurrent with
         // a re-PUT of the same key could read an empty or half written object — and

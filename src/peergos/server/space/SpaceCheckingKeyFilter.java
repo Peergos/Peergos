@@ -300,8 +300,9 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 return; // already processed by another thread
             if (! newRoot.isPresent()) {
                 LOG.info("Removing usage for (" + owner + ", " + writer + ") from " + current.directRetainedStorage());
+                // drop its edges too, so if it is re-owned later its children are counted again as newly added
                 state.updateWriterUsageAtomically(writer, current.target(), MaybeMultihash.empty(),
-                        Collections.emptySet(), Collections.emptySet(), 0,
+                        current.ownedKeys(), Collections.emptySet(), 0,
                         -current.directRetainedStorage(), state.getUsage(current.owner).isErrored());
                 if (existingRoot.isPresent()) {
                     try {
@@ -309,7 +310,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                         Set<PublicKeyHash> updatedOwned =
                                 DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, existingRoot,
                                         (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht),  dht, hasher).join();
-                        processRemovedOwnedKeys(state, owner, updatedOwned, mutable, quotaAdmin, dht, hasher);
+                        processRemovedOwnedKeys(state, owner, writer, updatedOwned, mutable, quotaAdmin, dht, hasher);
                     } catch (Exception e) {
                         LOG.log(Level.WARNING, e.getMessage(), e);
                     }
@@ -336,7 +337,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
 
                 HashSet<PublicKeyHash> removedChildren = new HashSet<>(current.ownedKeys());
                 removedChildren.removeAll(updatedOwned);
-                processRemovedOwnedKeys(state, owner, removedChildren, mutable, quotaAdmin, dht, hasher);
+                processRemovedOwnedKeys(state, owner, writer, removedChildren, mutable, quotaAdmin, dht, hasher);
                 HashSet<PublicKeyHash> addedOwnedKeys = new HashSet<>(updatedOwned);
                 addedOwnedKeys.removeAll(current.ownedKeys());
                 boolean updated = state.updateWriterUsageAtomically(writer, current.target(), newRoot,
@@ -362,6 +363,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
 
     private static void processRemovedOwnedKeys(UsageStore state,
                                                 PublicKeyHash owner,
+                                                PublicKeyHash parent,
                                                 Set<PublicKeyHash> removed,
                                                 MutablePointers mutable,
                                                 QuotaAdmin quotaAdmin,
@@ -369,8 +371,16 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                                                 Hasher hasher) {
         for (PublicKeyHash ownedKey : removed) {
             try {
+                // a key that has been moved to another parent is still in use, not orphaned
+                Set<PublicKeyHash> otherParents = new HashSet<>(state.getParents(ownedKey));
+                otherParents.remove(parent);
+                if (! otherParents.isEmpty())
+                    continue;
                 MaybeMultihash currentTarget = mutable.getPointerTarget(owner, ownedKey, dht).get().updated;
                 processMutablePointerEvent(state, owner, ownedKey, currentTarget, MaybeMultihash.empty(), mutable, quotaAdmin, dht, hasher);
+                // Revoking write access leaves the old key with its signature intact but owned by nothing. Forgetting it
+                // means any further write with it has to prove it is owned, which it can't.
+                state.removeWriter(ownedKey);
             } catch (Exception e) {
                 LOG.log(Level.WARNING, e.getMessage(), e);
             }
@@ -498,6 +508,28 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         return usage;
     }
 
+    /** Whether a writer may update its pointer: the owner's identity, or a key the owner still owns */
+    public boolean isOwnedWriter(PublicKeyHash owner, PublicKeyHash writer) {
+        if (writer.equals(owner))
+            return true;
+        String username;
+        try {
+            username = usageStore.getOwner(writer);
+        } catch (IllegalStateException e) {
+            return registerMissedWriters(owner, writer);
+        }
+        return username.equals(usernameOf(owner));
+    }
+
+    /** The user an owner's identity belongs to */
+    private String usernameOf(PublicKeyHash owner) {
+        try {
+            return usageStore.getOwner(owner);
+        } catch (IllegalStateException e) {
+            return core.getUsername(owner).join();
+        }
+    }
+
     public boolean allowWrite(PublicKeyHash owner, PublicKeyHash writer, int size) {
         String username;
         try {
@@ -509,6 +541,9 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 throw e;
             username = usageStore.getOwner(writer);
         }
+        // a writer of one user writes nothing into another's space, whatever it signs
+        if (! writer.equals(owner) && ! username.equals(usernameOf(owner)))
+            throw new IllegalStateException("Writer " + writer + " is not owned by " + owner);
         long quota = getQuota(username, quotaAdmin);
 
         UserUsage usage = getUsage(username, usageStore);
@@ -574,7 +609,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
      *
      * @param delta computes the change in stored bytes, only called when the write would be rejected
      */
-    public boolean allowCommit(PublicKeyHash owner, PublicKeyHash writer, int written, Supplier<Long> delta) {
+    public boolean allowCommit(PublicKeyHash owner, PublicKeyHash writer, int written, Supplier<Map<PublicKeyHash, Long>> deltas) {
         try {
             return allowWrite(owner, writer, written);
         } catch (IllegalStateException e) {
@@ -583,15 +618,23 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
             if (message == null || ! message.startsWith("Storage quota reached"))
                 throw e;
             String username = usageStore.getOwner(writer);
-            long change = delta.get();
+            Map<PublicKeyHash, Long> changes = deltas.get();
+            long change = changes.values().stream().mapToLong(x -> x).sum();
             long quota = getQuota(username, quotaAdmin);
             UserUsage usage = getUsage(username, usageStore);
             if (usage.totalUsage() + change > quota)
                 throw e;
-            // a commit that shrinks a capped space is allowed, even if it is still over its cap afterwards
+            // a commit that shrinks a capped space is allowed, even if it is still over its cap afterwards. It is judged
+            // by everything the commit does under the cap, as a rotation grows one writer by what it frees in another
             for (PublicKeyHash cap : writerQuotas.getCaps(writer)) {
                 Optional<Long> capQuota = writerQuotas.getQuota(cap);
-                if (capQuota.isPresent() && change > 0 && writerQuotas.getUsage(cap).totalUsage() + change > capQuota.get())
+                if (capQuota.isEmpty())
+                    continue;
+                long capChange = changes.entrySet().stream()
+                        .filter(c -> c.getKey().equals(cap) || writerQuotas.getCaps(c.getKey()).contains(cap))
+                        .mapToLong(Map.Entry::getValue)
+                        .sum();
+                if (capChange > 0 && writerQuotas.getUsage(cap).totalUsage() + capChange > capQuota.get())
                     throw e;
             }
             LOG.info("Allowing a commit for " + username + " over quota: it frees " + (-change) + " bytes");
