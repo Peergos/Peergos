@@ -512,11 +512,21 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     public boolean isOwnedWriter(PublicKeyHash owner, PublicKeyHash writer) {
         if (writer.equals(owner))
             return true;
+        String username;
         try {
-            usageStore.getOwner(writer);
-            return true;
+            username = usageStore.getOwner(writer);
         } catch (IllegalStateException e) {
             return registerMissedWriters(owner, writer);
+        }
+        return username.equals(usernameOf(owner));
+    }
+
+    /** The user an owner's identity belongs to */
+    private String usernameOf(PublicKeyHash owner) {
+        try {
+            return usageStore.getOwner(owner);
+        } catch (IllegalStateException e) {
+            return core.getUsername(owner).join();
         }
     }
 
@@ -531,6 +541,9 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 throw e;
             username = usageStore.getOwner(writer);
         }
+        // a writer of one user writes nothing into another's space, whatever it signs
+        if (! writer.equals(owner) && ! username.equals(usernameOf(owner)))
+            throw new IllegalStateException("Writer " + writer + " is not owned by " + owner);
         long quota = getQuota(username, quotaAdmin);
 
         UserUsage usage = getUsage(username, usageStore);
