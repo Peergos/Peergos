@@ -1,6 +1,20 @@
 package peergos.server;
 
 import com.webauthn4j.data.client.Origin;
+import identify.pb.IdentifyOuterClass;
+import io.libp2p.core.Host;
+import io.libp2p.core.PeerId;
+import io.libp2p.core.crypto.KeyKt;
+import io.libp2p.core.multiformats.Multiaddr;
+import io.libp2p.protocol.Identify;
+import io.libp2p.security.InvalidRemotePubKey;
+import org.peergos.HostBuilder;
+import org.peergos.RamAddressBook;
+import org.peergos.protocol.IdentifyBuilder;
+import org.peergos.protocol.dht.Kademlia;
+import org.peergos.protocol.dht.KademliaEngine;
+import org.peergos.protocol.dht.RamProviderStore;
+import org.peergos.protocol.dht.RamRecordStore;
 import peergos.server.corenode.IpfsCoreNode;
 import peergos.server.corenode.JdbcIpnsAndSocial;
 import peergos.server.corenode.UserRepository;
@@ -16,6 +30,8 @@ import peergos.server.sql.SqliteCommands;
 import peergos.server.storage.*;
 import peergos.server.storage.admin.QuotaAdmin;
 import peergos.server.storage.auth.*;
+import peergos.server.util.AddressUtil;
+import peergos.server.util.Args;
 import peergos.server.util.JavaPoster;
 import peergos.shared.Crypto;
 import peergos.shared.MaybeMultihash;
@@ -23,6 +39,8 @@ import peergos.shared.corenode.CoreNode;
 import peergos.shared.corenode.HTTPCoreNode;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.MultiAddress;
+import peergos.shared.io.ipfs.api.JSONParser;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.login.mfa.MultiFactorAuthMethod;
 import peergos.shared.mutable.HttpMutablePointers;
@@ -38,11 +56,15 @@ import peergos.shared.util.ArrayOps;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -390,6 +412,172 @@ public class ServerAdmin {
             Arrays.asList(STATS, RECALCULATE)
     );
 
+    public static final Command<Boolean> DIAL = new Command<>("dial",
+            "Dial a peer, ask for its id and check it matches: admin dial <peerid>",
+            a -> {
+                Optional<String> arg = a.head();
+                if (arg.isEmpty()) {
+                    System.out.println("Usage: peergos admin dial <peerid>");
+                    System.exit(1);
+                }
+                PeerId expected = new PeerId(Cid.decodePeerId(arg.get()).bareMultihash().toBytes());
+                int timeoutSeconds = a.getInt("timeout");
+                URL gateway = AddressUtil.getAddress(new MultiAddress(a.getArg("ipfs-gateway-address")));
+                boolean ok = isListening(gateway) ?
+                        dialViaLocalNabu(gateway, expected, timeoutSeconds) :
+                        dialDirect(a, expected, timeoutSeconds);
+                // the dht and netty leave non daemon threads behind
+                System.exit(ok ? 0 : 1);
+                return ok;
+            },
+            Arrays.asList(
+                    new Command.Arg("ipfs-gateway-address", "The p2p proxy of a running Nabu, used if something is listening on it", false, "/ip4/127.0.0.1/tcp/8080"),
+                    new Command.Arg("addrs", "Comma separated multiaddrs to dial instead of looking the peer up in the DHT (only without a running Nabu)", false),
+                    new Command.Arg(IpfsWrapper.IPFS_BOOTSTRAP_NODES, "Bootstrap nodes for the DHT lookup (only without a running Nabu)", false),
+                    new Command.Arg("timeout", "Seconds to wait for each dial", false, "30")
+            )
+    );
+
+    private static boolean isListening(URL address) {
+        try (Socket s = new Socket()) {
+            s.connect(new InetSocketAddress(address.getHost(), address.getPort()), 1_000);
+            return true;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /** The proxy only reaches the peer over a secure channel bound to its peerid, so this also
+     *  checks the answering Peergos server is the one behind that peerid. */
+    private static boolean dialViaLocalNabu(URL gateway, PeerId expected, int timeoutSeconds) {
+        System.out.println("Dialling " + expected.toBase58() + " via the local Nabu p2p proxy at " + gateway);
+        JavaPoster p2p = new JavaPoster(gateway, false);
+        String prefix = "/p2p/" + expected.toBase58() + "/http/" + ContentAddressedStorage.HTTP.apiPrefix;
+        long start = System.currentTimeMillis();
+        try {
+            PeerId claimed = parsePeerId(JSONParser.parse(new String(p2p.get(prefix + ContentAddressedStorage.HTTP.ID)
+                    .orTimeout(timeoutSeconds, TimeUnit.SECONDS).join())), "ID");
+            long millis = System.currentTimeMillis() - start;
+            if (claimed.equals(expected)) {
+                System.out.println("OK       id matches, " + millis + " ms");
+                return true;
+            }
+            System.out.println("MISMATCH answered as " + claimed.toBase58());
+            return false;
+        } catch (Exception e) {
+            System.out.println("FAIL     " + rootMessage(e));
+            return false;
+        }
+    }
+
+    private static PeerId parsePeerId(Object json, String key) {
+        return new PeerId(Cid.decodePeerId((String) ((Map) json).get(key)).bareMultihash().toBytes());
+    }
+
+    /** Without a local Nabu, stand up a throwaway node and identify the peer on each of its
+     *  addresses in turn, so a dead transport doesn't hide behind a working one. */
+    private static boolean dialDirect(Args a, PeerId expected, int timeoutSeconds) {
+        System.out.println("No Nabu p2p proxy running, dialling " + expected.toBase58() + " from a temporary node");
+        HostBuilder builder = new HostBuilder(new RamAddressBook())
+                .generateIdentity()
+                .listen(List.of(new io.ipfs.multiaddr.MultiAddress("/ip6/::/tcp/0"),
+                        new io.ipfs.multiaddr.MultiAddress("/ip6/::/udp/0/quic-v1")));
+        io.ipfs.multihash.Multihash us = io.ipfs.multihash.Multihash.deserialize(builder.getPeerId().getBytes());
+        Kademlia dht = new Kademlia(new KademliaEngine(us, new RamProviderStore(1_000), new RamRecordStore(), Optional.empty()),
+                false, true, true);
+        Host host = builder.addProtocols(List.of(dht)).build();
+        host.start().join();
+        try {
+            IdentifyBuilder.addIdentifyProtocol(host, List.of());
+            List<Multiaddr> addrs = a.getOptionalArg("addrs")
+                    .map(s -> Arrays.stream(s.split(","))
+                            .filter(x -> ! x.isBlank())
+                            .map(Multiaddr::fromString)
+                            .collect(Collectors.toList()))
+                    .orElseGet(() -> findAddresses(a, dht, host, expected));
+            if (addrs.isEmpty()) {
+                System.out.println("FAIL     couldn't find any addresses for " + expected.toBase58() + " in the DHT");
+                return false;
+            }
+            int ok = 0, mismatched = 0;
+            for (Multiaddr addr : addrs) {
+                switch (identify(host, expected, addr, timeoutSeconds)) {
+                    case OK -> ok++;
+                    case MISMATCH -> mismatched++;
+                    case FAIL -> {}
+                }
+            }
+            System.out.println(ok + " of " + addrs.size() + " addresses answered as " + expected.toBase58()
+                    + (mismatched > 0 ? ", " + mismatched + " answered as a different peer" : ""));
+            return ok > 0 && mismatched == 0;
+        } finally {
+            host.stop();
+        }
+    }
+
+    private static List<Multiaddr> findAddresses(Args a, Kademlia dht, Host host, PeerId target) {
+        String bootstrap = a.getOptionalArg(IpfsWrapper.IPFS_BOOTSTRAP_NODES)
+                .filter(s -> ! s.isBlank())
+                .orElse(IpfsWrapper.DEFAULT_BOOTSTRAP_LIST);
+        List<io.ipfs.multiaddr.MultiAddress> nodes = Arrays.stream(bootstrap.split(","))
+                .filter(s -> ! s.isBlank())
+                .map(io.ipfs.multiaddr.MultiAddress::new)
+                .collect(Collectors.toList());
+        dht.bootstrapRoutingTable(host, nodes, addr -> ! addr.contains("/wss/"));
+        byte[] key = target.getBytes();
+        List<Multiaddr> found = dht.findClosestPeers(io.ipfs.multihash.Multihash.deserialize(key), 1, host).stream()
+                .filter(p -> Arrays.equals(p.peerId.toBytes(), key))
+                .flatMap(p -> p.addresses.stream())
+                .distinct()
+                .collect(Collectors.toList());
+        System.out.println("Found " + found.size() + " addresses in the DHT");
+        return found;
+    }
+
+    private enum DialResult { OK, MISMATCH, FAIL }
+
+    private static DialResult identify(Host host, PeerId expected, Multiaddr addr, int timeoutSeconds) {
+        // connect() hands back any existing connection, which would test the address it was made on
+        for (var existing : host.getNetwork().getConnections())
+            if (existing.secureSession().getRemoteId().equals(expected))
+                host.getNetwork().disconnect(existing).join();
+        long start = System.currentTimeMillis();
+        try {
+            var conn = host.getNetwork().connect(expected, addr)
+                    .orTimeout(timeoutSeconds, TimeUnit.SECONDS).join();
+            IdentifyOuterClass.Identify id = conn.muxerSession().createStream(new Identify()).getController()
+                    .orTimeout(timeoutSeconds, TimeUnit.SECONDS).join()
+                    .id()
+                    .orTimeout(timeoutSeconds, TimeUnit.SECONDS).join();
+            long millis = System.currentTimeMillis() - start;
+            PeerId claimed = PeerId.fromPubKey(KeyKt.unmarshalPublicKey(id.getPublicKey().toByteArray()));
+            if (! claimed.equals(expected)) {
+                System.out.println("MISMATCH " + addr + " identify key is for " + claimed.toBase58());
+                return DialResult.MISMATCH;
+            }
+            System.out.println("OK       " + addr + " " + millis + " ms, agent: " + id.getAgentVersion());
+            return DialResult.OK;
+        } catch (Exception e) {
+            if (rootCause(e) instanceof InvalidRemotePubKey) {
+                System.out.println("MISMATCH " + addr + " a different peer completed the handshake");
+                return DialResult.MISMATCH;
+            }
+            System.out.println("FAIL     " + addr + " " + rootMessage(e));
+            return DialResult.FAIL;
+        }
+    }
+
+    private static Throwable rootCause(Throwable t) {
+        while (t.getCause() != null && t.getCause() != t)
+            t = t.getCause();
+        return t;
+    }
+
+    private static String rootMessage(Throwable t) {
+        Throwable root = rootCause(t);
+        return root instanceof TimeoutException ? "timed out" : root.toString();
+    }
+
     public static final Command<Boolean> SERVER_ADMIN = new Command<>("admin",
             "Manage users on this server",
             args -> {
@@ -397,6 +585,6 @@ public class ServerAdmin {
                 return null;
             },
             Arrays.asList(),
-            Arrays.asList(BAT, STORAGE, MFA, DELETE)
+            Arrays.asList(BAT, STORAGE, MFA, DELETE, DIAL)
     );
 }
