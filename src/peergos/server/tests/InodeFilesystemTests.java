@@ -50,12 +50,12 @@ public class InodeFilesystemTests {
 
         String path1 = "username/webroot";
         AbsoluteCapability cap = randomCap(owner, r);
-        current = current.addCap(owner, user, path1, cap, tid).join();
+        current = current.addCap(owner, user, path1, cap, Optional.empty(), tid).join();
         state.put(path1, cap);
 
         String profileElement = "username/.profile/webroot";
         AbsoluteCapability cap2 = randomCap(owner, r);
-        current = current.addCap(owner, user, profileElement, cap2, tid).join();
+        current = current.addCap(owner, user, profileElement, cap2, Optional.empty(), tid).join();
         state.put(profileElement, cap2);
 
         checkAllMappings(state, current);
@@ -67,7 +67,7 @@ public class InodeFilesystemTests {
 
         String p3 = "username/.profile/webroot/somedir";
         AbsoluteCapability cap3 = randomCap(owner, r);
-        current = current.addCap(owner, user, p3, cap3, tid).join();
+        current = current.addCap(owner, user, p3, cap3, Optional.empty(), tid).join();
         state.put(p3, cap3);
         checkAllMappings(state, current);
         Assert.assertTrue(current.inodeCount == 4);
@@ -93,13 +93,13 @@ public class InodeFilesystemTests {
 
         String path = randomPath(r, 3);
         AbsoluteCapability cap = randomCap(owner, r);
-        current = current.addCap(owner, user, path, cap, tid).join();
+        current = current.addCap(owner, user, path, cap, Optional.empty(), tid).join();
         state.put(path, cap);
         checkAllMappings(state, current);
 
         // Update the mapping to a new cap
         AbsoluteCapability newCap = randomCap(owner, r);
-        current = current.addCap(owner, user, path, newCap, tid).join();
+        current = current.addCap(owner, user, path, newCap, Optional.empty(), tid).join();
         state.put(path, newCap);
         checkAllMappings(state, current);
 
@@ -134,7 +134,7 @@ public class InodeFilesystemTests {
         for (int i = 0; i < nKeys; i++) {
             String path = randomPath(r, 3);
             AbsoluteCapability cap = randomCap(owner, r);
-            current = current.addCap(owner, user, path, cap, tid).join();
+            current = current.addCap(owner, user, path, cap, Optional.empty(), tid).join();
             state.put(path, cap);
         }
 
@@ -144,7 +144,7 @@ public class InodeFilesystemTests {
         for (int i = 0; i < 100; i++) {
             String path = randomPath(r, 3);
             AbsoluteCapability cap = randomCap(owner, r);
-            InodeFileSystem added = current.addCap(owner, user, path, cap, tid).join();
+            InodeFileSystem added = current.addCap(owner, user, path, cap, Optional.empty(), tid).join();
             InodeFileSystem removed = added.removeCap(owner, user, path, tid).join();
             checkAllMappings(state, removed);
             if (! removed.getRoot().equals(current.getRoot()))
@@ -160,7 +160,7 @@ public class InodeFilesystemTests {
             dirContents.add(child);
             String path = "user/dir/" + child;
             AbsoluteCapability cap = randomCap(owner, r);
-            current = current.addCap(owner, user, path, cap, tid).join();
+            current = current.addCap(owner, user, path, cap, Optional.empty(), tid).join();
             state.put(path, cap);
         }
         checkAllMappings(state, current);

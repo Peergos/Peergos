@@ -2154,6 +2154,42 @@ public abstract class UserTests {
     }
 
     @Test
+    public void publishedFileResolvesThroughItsLink() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+
+        String filename = "afile.bin";
+        byte[] data = new byte[1024];
+        random.nextBytes(data);
+        uploadFileSection(userRoot, filename, new AsyncReader.ArrayBacked(data), 0, data.length,
+                context.network, context.crypto, l -> {}).get();
+        Path path = PathUtil.get(username, filename);
+        context.makePublic(context.getByPath(path).join().get()).join();
+
+        SecretLink link = UserContext.getPublishedLink(path, network).join();
+        UserContext viaLink = UserContext.fromSecretLinkV2(link.toLink(), () -> Futures.of(""), network, crypto).join();
+        FileWrapper linked = viaLink.getByPath(path).join().get();
+        byte[] returnedData = Serialize.readFully(linked.getInputStream(network, crypto, x -> {}).join(), data.length).join();
+        Assert.assertTrue("Correct data through the published link", Arrays.equals(data, returnedData));
+
+        context.makePublic(context.getByPath(path).join().get()).join();
+        Assert.assertEquals("Republishing unchanged keeps its link", link.toLink(),
+                UserContext.getPublishedLink(path, network).join().toLink());
+
+        context.unPublishFile(path).join();
+        try {
+            UserContext.fromSecretLinkV2(link.toLink(), () -> Futures.of(""), network, crypto).join();
+            Assert.fail("Unpublishing should delete the link");
+        } catch (Exception e) {
+            // the ram storage throws synchronously, not inside the future
+            Throwable cause = e instanceof CompletionException ? e.getCause() : e;
+            Assert.assertTrue(cause.getMessage(), cause.getMessage().startsWith(SecretLink.MISSING));
+        }
+    }
+
+    @Test
     public void publicLinkToFile() throws Exception {
         PeergosNetworkUtils.publicLinkToFile(random, network, network, () -> {});
     }

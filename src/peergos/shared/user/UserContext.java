@@ -1284,6 +1284,21 @@ public class UserContext {
     }
 
     public static CompletableFuture<AbsoluteCapability> getPublicCapability(Path originalPath, NetworkAccess network) {
+        return getPublished(originalPath, network).thenApply(p -> p.right.cap.get());
+    }
+
+    /** The link the closest published ancestor of this path is published through. */
+    public static CompletableFuture<SecretLink> getPublishedLink(Path originalPath, NetworkAccess network) {
+        return getPublished(originalPath, network).thenApply(p -> {
+            if (p.right.link.isEmpty())
+                throw new IllegalStateException(originalPath.getName(0) + " published this before public links existed,"
+                        + " and has to publish it again");
+            return p.right.link.get().toLink(p.left);
+        });
+    }
+
+    /** The owner, and the closest published ancestor of this path. */
+    private static CompletableFuture<Pair<PublicKeyHash, InodeCap>> getPublished(Path originalPath, NetworkAccess network) {
         String ownerName = originalPath.getName(0).toString();
 
         return network.coreNode.getPublicKeyHash(ownerName).thenCompose(ownerOpt -> {
@@ -1301,7 +1316,7 @@ public class UserContext {
                         .thenApply(resOpt -> {
                             if (resOpt.isEmpty() || resOpt.get().left.cap.isEmpty())
                                 throw new IllegalStateException("User " + ownerName + " has not published a file at " + originalPath);
-                            return resOpt.get().left.cap.get();
+                            return new Pair<>(owner, resOpt.get().left);
                         });
             });
         });
@@ -2008,52 +2023,102 @@ public class UserContext {
 
     private CompletableFuture<CommittedWriterData> removePublicCap(String path) {
         return writeSynchronizer.applyComplexUpdate(signer.publicKeyHash, signer,
-                (s, c) -> IpfsTransaction.call(signer.publicKeyHash, tid -> {
+                (s, c) -> IpfsTransaction.<Pair<Snapshot, Optional<PublishedLink>>>call(signer.publicKeyHash, tid -> {
                     CommittedWriterData current = s.get(signer);
                     WriterData wd = current.props.get();
                     Optional<Multihash> publicData = wd.publicData;
                     if (publicData.isEmpty())
-                        return Futures.of(s);
+                        return Futures.of(new Pair<>(s, Optional.<PublishedLink>empty()));
                     return network.dhtClient.get(signer.publicKeyHash, (Cid) publicData.get(), Optional.empty())
                             .thenCompose(rootCbor -> InodeFileSystem.build(signer.publicKeyHash, rootCbor.get(), crypto.hasher, network.dhtClient))
-                            .thenCompose(pubCaps -> pubCaps.removeCap(signer.publicKeyHash, signer, path, tid))
-                            .thenCompose(updated -> network.dhtClient.put(signer.publicKeyHash, signer, updated.serialize(), crypto.hasher, tid))
-                            // nothing was published there, and committing an unchanged root is a noop pointer update
-                            .thenCompose(newRoot -> publicData.get().equals(newRoot) ?
-                                    Futures.of(s) :
-                                    c.commit(signer.publicKeyHash, signer, wd.withPublicRoot(newRoot), current, tid));
-                }, network.dhtClient))
+                            .thenCompose(pubCaps -> publishedAt(pubCaps, PathUtil.get(path))
+                                    .thenCompose(removed -> pubCaps.removeCap(signer.publicKeyHash, signer, path, tid)
+                                            .thenCompose(updated -> network.dhtClient.put(signer.publicKeyHash, signer, updated.serialize(), crypto.hasher, tid))
+                                            // nothing was published there, and committing an unchanged root is a noop pointer update
+                                            .thenCompose(newRoot -> publicData.get().equals(newRoot) ?
+                                                    Futures.of(s) :
+                                                    c.commit(signer.publicKeyHash, signer, wd.withPublicRoot(newRoot), current, tid))
+                                            .thenApply(res -> new Pair<>(res, removed.<PublishedLink>flatMap(r -> r.link)))));
+                }, network.dhtClient)
+                        .thenCompose(p -> dropPublishedLink(p.right, PathUtil.get(path), p.left, c)))
                 .thenApply(v -> v.get(signer));
     }
 
+    /** Publishing is through a read only secret link, which is what the public file handler redirects to. */
     public CompletableFuture<CommittedWriterData> makePublic(FileWrapper file) {
         if (! file.getOwnerName().equals(username))
             return Futures.errored(new IllegalStateException("Only the owner of a file can make it public!"));
         if (file.isUserRoot())
             return Futures.errored(new IllegalStateException("You cannot publish your home directory!"));
+        ensureAllowedToShare(file, username, false);
+        AbsoluteCapability cap = file.getPointer().capability.readOnly();
+        return file.getPath(network).thenCompose(path -> publishedAt(PathUtil.get(path))
+                .thenCompose(existing -> {
+                    // the profile republishes on every change, which mustn't mint a new link each time
+                    if (existing.isPresent() && existing.get().cap.equals(Optional.of(cap)) && existing.get().link.isPresent())
+                        return writeSynchronizer.getValue(signer.publicKeyHash, signer.publicKeyHash)
+                                .thenApply(s -> s.get(signer));
+                    return createSecretLink(path, false, Optional.empty(), Optional.empty(), "", false)
+                            .thenCompose(props -> {
+                                PublishedLink link = new PublishedLink(props.label, props.linkPassword);
+                                return Futures.asyncExceptionally(() -> publish(path, cap, link),
+                                        // a link nothing publishes would linger as a share of its own
+                                        t -> deleteSecretLinkFrom(link.label, Collections.singletonList(path))
+                                                .thenApply(x -> true)
+                                                .exceptionally(e -> false)
+                                                .thenCompose(x -> Futures.<CommittedWriterData>errored(t)));
+                            });
+                }));
+    }
+
+    private CompletableFuture<CommittedWriterData> publish(String path, AbsoluteCapability cap, PublishedLink link) {
         return writeSynchronizer.applyComplexUpdate(signer.publicKeyHash, signer,
-                (s, c) -> IpfsTransaction.call(signer.publicKeyHash, tid -> {
+                (s, c) -> IpfsTransaction.<Pair<Snapshot, Optional<PublishedLink>>>call(signer.publicKeyHash, tid -> {
                     CommittedWriterData current = s.get(signer);
                     WriterData wd = current.props.get();
-                    return file.getPath(network).thenCompose(path -> {
-                        ensureAllowedToShare(file, username, false);
-                        Optional<Multihash> publicData = wd.publicData;
-
-                        CompletableFuture<InodeFileSystem> publicCaps = publicData.isPresent() ?
-                                network.dhtClient.get(signer.publicKeyHash, (Cid) publicData.get(), Optional.empty())
-                                        .thenCompose(rootCbor -> InodeFileSystem.build(signer.publicKeyHash, rootCbor.get(), crypto.hasher, network.dhtClient)) :
-                                InodeFileSystem.createEmpty(signer.publicKeyHash, signer, network.dhtClient, crypto.hasher, tid);
-
-                        AbsoluteCapability cap = file.getPointer().capability.readOnly();
-                        return publicCaps.thenCompose(pubCaps -> pubCaps.addCap(signer.publicKeyHash, signer, path, cap, tid))
-                                .thenCompose(updated -> network.dhtClient.put(signer.publicKeyHash, signer, updated.serialize(), crypto.hasher, tid))
-                                // already published at this capability, and committing an unchanged root is a noop pointer update
-                                .thenCompose(newRoot -> publicData.isPresent() && publicData.get().equals(newRoot) ?
-                                        Futures.of(s) :
-                                        c.commit(signer.publicKeyHash, signer, wd.withPublicRoot(newRoot), current, tid));
-                    });
-                }, network.dhtClient))
+                    Optional<Multihash> publicData = wd.publicData;
+                    CompletableFuture<InodeFileSystem> publicCaps = publicData.isPresent() ?
+                            network.dhtClient.get(signer.publicKeyHash, (Cid) publicData.get(), Optional.empty())
+                                    .thenCompose(rootCbor -> InodeFileSystem.build(signer.publicKeyHash, rootCbor.get(), crypto.hasher, network.dhtClient)) :
+                            InodeFileSystem.createEmpty(signer.publicKeyHash, signer, network.dhtClient, crypto.hasher, tid);
+                    return publicCaps.thenCompose(pubCaps -> publishedAt(pubCaps, PathUtil.get(path))
+                            .thenCompose(previous -> pubCaps.addCap(signer.publicKeyHash, signer, path, cap, Optional.of(link), tid)
+                                    .thenCompose(updated -> network.dhtClient.put(signer.publicKeyHash, signer, updated.serialize(), crypto.hasher, tid))
+                                    .thenCompose(newRoot -> c.commit(signer.publicKeyHash, signer, wd.withPublicRoot(newRoot), current, tid))
+                                    .thenApply(res -> new Pair<>(res, previous.<PublishedLink>flatMap(p -> p.link)))));
+                }, network.dhtClient)
+                        .thenCompose(p -> dropPublishedLink(p.right, PathUtil.get(path), p.left, c)))
                 .thenApply(v -> v.get(signer));
+    }
+
+    /** A link replaced or unpublished would otherwise keep opening the file, and keep showing as a share. */
+    private CompletableFuture<Snapshot> dropPublishedLink(Optional<PublishedLink> link, Path path, Snapshot s, Committer c) {
+        if (link.isEmpty())
+            return Futures.of(s);
+        long label = link.get().label;
+        return deleteSecretLink(label, path, s, c)
+                .thenCompose(s2 -> sharedWithCache.removeSecretLink(path, label, s2, c, network));
+    }
+
+    /** What is published at exactly this path, where getByPath stops at the closest published ancestor. */
+    private CompletableFuture<Optional<InodeCap>> publishedAt(Path path) {
+        return writeSynchronizer.getValue(signer.publicKeyHash, signer.publicKeyHash)
+                .thenCompose(s -> {
+                    Optional<Multihash> publicData = s.get(signer).props.get().publicData;
+                    if (publicData.isEmpty())
+                        return Futures.of(Optional.<InodeCap>empty());
+                    return network.dhtClient.get(signer.publicKeyHash, (Cid) publicData.get(), Optional.empty())
+                            .thenCompose(rootCbor -> InodeFileSystem.build(signer.publicKeyHash, rootCbor.get(), crypto.hasher, network.dhtClient))
+                            .thenCompose(pubCaps -> publishedAt(pubCaps, path));
+                });
+    }
+
+    private static CompletableFuture<Optional<InodeCap>> publishedAt(InodeFileSystem pubCaps, Path path) {
+        String name = path.getFileName().toString();
+        return pubCaps.listDirectory(path.getParent().toString())
+                .thenApply(children -> children.stream()
+                        .filter(child -> child.inode.name.name.equals(name))
+                        .findFirst());
     }
 
     private static void ensureAllowedToShare(FileWrapper file, String ourname, boolean isWrite) {
