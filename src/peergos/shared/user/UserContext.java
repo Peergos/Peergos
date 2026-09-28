@@ -2023,7 +2023,7 @@ public class UserContext {
 
     private CompletableFuture<CommittedWriterData> removePublicCap(String path) {
         return writeSynchronizer.applyComplexUpdate(signer.publicKeyHash, signer,
-                (s, c) -> IpfsTransaction.call(signer.publicKeyHash, tid -> {
+                (s, c) -> IpfsTransaction.<Pair<Snapshot, Optional<PublishedLink>>>call(signer.publicKeyHash, tid -> {
                     CommittedWriterData current = s.get(signer);
                     WriterData wd = current.props.get();
                     Optional<Multihash> publicData = wd.publicData;
@@ -2038,7 +2038,7 @@ public class UserContext {
                                             .thenCompose(newRoot -> publicData.get().equals(newRoot) ?
                                                     Futures.of(s) :
                                                     c.commit(signer.publicKeyHash, signer, wd.withPublicRoot(newRoot), current, tid))
-                                            .thenApply(res -> new Pair<>(res, removed.flatMap(r -> r.link)))));
+                                            .thenApply(res -> new Pair<>(res, removed.<PublishedLink>flatMap(r -> r.link)))));
                 }, network.dhtClient)
                         .thenCompose(p -> dropPublishedLink(p.right, PathUtil.get(path), p.left, c)))
                 .thenApply(v -> v.get(signer));
@@ -2073,7 +2073,7 @@ public class UserContext {
 
     private CompletableFuture<CommittedWriterData> publish(String path, AbsoluteCapability cap, PublishedLink link) {
         return writeSynchronizer.applyComplexUpdate(signer.publicKeyHash, signer,
-                (s, c) -> IpfsTransaction.call(signer.publicKeyHash, tid -> {
+                (s, c) -> IpfsTransaction.<Pair<Snapshot, Optional<PublishedLink>>>call(signer.publicKeyHash, tid -> {
                     CommittedWriterData current = s.get(signer);
                     WriterData wd = current.props.get();
                     Optional<Multihash> publicData = wd.publicData;
@@ -2085,7 +2085,7 @@ public class UserContext {
                             .thenCompose(previous -> pubCaps.addCap(signer.publicKeyHash, signer, path, cap, Optional.of(link), tid)
                                     .thenCompose(updated -> network.dhtClient.put(signer.publicKeyHash, signer, updated.serialize(), crypto.hasher, tid))
                                     .thenCompose(newRoot -> c.commit(signer.publicKeyHash, signer, wd.withPublicRoot(newRoot), current, tid))
-                                    .thenApply(res -> new Pair<>(res, previous.flatMap(p -> p.link)))));
+                                    .thenApply(res -> new Pair<>(res, previous.<PublishedLink>flatMap(p -> p.link)))));
                 }, network.dhtClient)
                         .thenCompose(p -> dropPublishedLink(p.right, PathUtil.get(path), p.left, c)))
                 .thenApply(v -> v.get(signer));
