@@ -2182,7 +2182,11 @@ public abstract class UserTests {
         try {
             UserContext.fromSecretLinkV2(link.toLink(), () -> Futures.of(""), network, crypto).join();
             Assert.fail("Unpublishing should delete the link");
-        } catch (CompletionException expected) {}
+        } catch (Exception e) {
+            // the ram storage throws synchronously, not inside the future
+            Throwable cause = e instanceof CompletionException ? e.getCause() : e;
+            Assert.assertTrue(cause.getMessage(), cause.getMessage().startsWith(SecretLink.MISSING));
+        }
     }
 
     @Test
