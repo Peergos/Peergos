@@ -44,15 +44,15 @@ public class PublicFileHandler implements HttpHandler {
             path = path.substring(PATH_PREFIX.length());
             String originalPath = path;
 
-            AbsoluteCapability cap = UserContext.getPublicCapability(PathUtil.get(originalPath), network).join();
+            SecretLink link = UserContext.getPublishedLink(PathUtil.get(originalPath), network).join();
 
             boolean open = contains(httpExchange.getRequestURI().getQuery(), "open=true");
-            String link = "/#{\"secretLink\":true%2c\"path\":\""
-                    + URLEncoder.encode("/" + originalPath, "UTF-8")
-                    + (open ? "\"%2c\"open\":true" : "\"")
-                    + "%2c\"link\":\"" + cap.toLink() + "\"}";
+            // the web ui reads these from the query after the link password in the fragment
+            String location = "/" + link.toLink()
+                    + "?path=" + URLEncoder.encode("/" + originalPath, "UTF-8")
+                    + (open ? "&open=true" : "");
 
-            httpExchange.getResponseHeaders().add("Location", link);
+            httpExchange.getResponseHeaders().add("Location", location);
             httpExchange.sendResponseHeaders(302, 0); // temporary redirect
             httpExchange.close();
         } catch (Exception e) {

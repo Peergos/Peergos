@@ -61,6 +61,7 @@ public class InodeFileSystem implements Cborable {
                                                      SigningPrivateKeyAndPublicHash writer,
                                                      String path,
                                                      AbsoluteCapability cap,
+                                                     Optional<PublishedLink> link,
                                                      TransactionId tid) {
         String canonPath = TrieNode.canonicalise(path);
         String[] elements = canonPath.split("/");
@@ -68,7 +69,7 @@ public class InodeFileSystem implements Cborable {
             throw new IllegalStateException("You cannot publish your root directory!");
         Inode rootKey = rootKey();
         return getOrMkdir(owner, writer, Optional.empty(), rootKey, tid)
-                .thenCompose(p -> p.left.addCapRecurse(owner, writer, rootKey, p.right, elements, cap, tid));
+                .thenCompose(p -> p.left.addCapRecurse(owner, writer, rootKey, p.right, elements, cap, link, tid));
     }
 
     public static Inode rootKey() {
@@ -175,6 +176,7 @@ public class InodeFileSystem implements Cborable {
                                                              DirectoryInode dir,
                                                              String[] remainingPath,
                                                              AbsoluteCapability cap,
+                                                             Optional<PublishedLink> link,
                                                              TransactionId tid) {
         if (remainingPath.length == 1) {
             // add the cap to this directory
@@ -182,7 +184,7 @@ public class InodeFileSystem implements Cborable {
                     .thenCompose(existing -> {
                         Inode childKey = existing.map(ic -> ic.inode)
                                 .orElseGet(() -> new Inode(inodeCount, remainingPath[0]));
-                        return dir.addChild(new InodeCap(childKey, Optional.of(cap)), owner, writer, tid)
+                        return dir.addChild(new InodeCap(childKey, Optional.of(cap), link), owner, writer, tid)
                                 .thenCompose(updatedDir -> putValue(owner, writer, dirKey, Optional.of(dir), updatedDir, tid));
                     });
         }
@@ -193,7 +195,7 @@ public class InodeFileSystem implements Cborable {
                                 .thenCompose(childOpt -> {
                                     if (childOpt.isPresent())
                                         return addCapRecurse(owner, writer, childCapOpt.get().inode,
-                                                childOpt.get(), tail(remainingPath), cap, tid);
+                                                childOpt.get(), tail(remainingPath), cap, link, tid);
                                     // Here a cap was published to a child dir, but not to any descendants of it yet.
                                     // Give that entry a directory of its own rather than minting a second inode for
                                     // the same name: the parent still links to the first, so a new one would be an
@@ -202,11 +204,11 @@ public class InodeFileSystem implements Cborable {
                                     // parent is absent so we don't overwrite existing entry there
                                     Optional<Pair<Inode, DirectoryInode>> parent = Optional.empty();
                                     return getOrMkdir(owner, writer, parent, existingDir, tid)
-                                            .thenCompose(p -> p.left.addCapRecurse(owner, writer, existingDir, p.right, tail(remainingPath), cap, tid));
+                                            .thenCompose(p -> p.left.addCapRecurse(owner, writer, existingDir, p.right, tail(remainingPath), cap, link, tid));
                                 });
                     Inode newDir = new Inode(inodeCount, remainingPath[0]);
                     return getOrMkdir(owner, writer, Optional.of(new Pair<>(dirKey, dir)), newDir, tid)
-                            .thenCompose(p -> p.left.addCapRecurse(owner, writer, newDir, p.right, tail(remainingPath), cap, tid));
+                            .thenCompose(p -> p.left.addCapRecurse(owner, writer, newDir, p.right, tail(remainingPath), cap, link, tid));
                 });
     }
 
