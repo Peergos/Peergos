@@ -314,14 +314,9 @@ public class IpfsWrapper implements AutoCloseable {
 
     public static IpfsWrapper launch(Args args) {
         SqlSupplier sqlCommands = Builder.getSqlCommands(args);
-        Supplier<Connection> dbConn = Builder.getDBConnector(args, "bat-store");
-        BatCave batStore = new JdbcBatCave(dbConn, sqlCommands);
         Crypto crypto = Builder.initCrypto();
-        Hasher hasher = crypto.hasher;
-        BlockRequestAuthoriser blockAuth = Builder.blockAuthoriser(args, batStore, hasher);
-        BlockMetadataStore metaDB = Builder.buildBlockMetadata(args);
         JdbcServerIdentityStore ids = JdbcServerIdentityStore.build(Builder.getDBConnector(args, "serverids-file"), sqlCommands, crypto);
-        return launch(args, blockAuth, metaDB, ids);
+        return launch(args, ids);
     }
 
     private void startIdPublisher(ServerIdentityStore ids) {
@@ -380,8 +375,6 @@ public class IpfsWrapper implements AutoCloseable {
     }
 
     public static IpfsWrapper launch(Args args,
-                                     BlockRequestAuthoriser blockAuth,
-                                     BlockMetadataStore metaDB,
                                      ServerIdentityStore ids) {
         Path ipfsDir = getIpfsDir(args);
         LOG.info("Using IPFS dir " + ipfsDir);
@@ -406,16 +399,6 @@ public class IpfsWrapper implements AutoCloseable {
         }
 
         LOG.info("Starting Nabu version: " + APIHandler.CURRENT_VERSION + ", peerid: " + config.identity.peerId);
-        org.peergos.BlockRequestAuthoriser authoriser = (c, p, auth) -> {
-            peergos.shared.io.ipfs.Cid source = peergos.shared.io.ipfs.Cid.decodePeerId(p.toString());
-            peergos.shared.io.ipfs.Cid cid = peergos.shared.io.ipfs.Cid.decode(c.toString());
-            Optional<BlockMetadata> blockMetadata = metaDB.get(cid);
-            if (blockMetadata.isEmpty())
-                return Futures.of(false);
-            List<BatId> bats = blockMetadata.get().batids;
-            return blockAuth.allowRead(cid, bats, source, auth)
-                .exceptionally(ex -> false);
-        };
 
         Path datastorePath = ipfsWrapper.ipfsDir.resolve("datastore").resolve("records.sqlite");
         datastorePath.getParent().toFile().mkdirs();

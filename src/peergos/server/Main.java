@@ -127,15 +127,6 @@ public class Main extends Builder {
                     new Command.Arg("collect-metrics", "Export aggregated metrics", false, "false"),
                     new Command.Arg("metrics.address", "Listen address for serving aggregated metrics", false, "localhost"),
                     new Command.Arg("ipfs.metrics.port", "Port for serving aggregated ipfs metrics", false, "8101"),
-                    new Command.Arg("s3.path", "Path of data store in S3", false),
-                    new Command.Arg("s3.bucket", "S3 bucket name", false),
-                    new Command.Arg("s3.region", "S3 region", false),
-                    new Command.Arg("s3.accessKey", "S3 access key", false),
-                    new Command.Arg("s3.secretKey", "S3 secret key", false),
-                    new Command.Arg("s3.region.endpoint", "Base url for S3 service", false),
-                    new Command.Arg("block-store-filter", "Indicate blockstore filter type. Can be 'none', 'bloom', 'infini'", false),
-                    new Command.Arg("block-store-filter-false-positive-rate", "The false positive rate to apply to the block-store-filter. ", false),
-                    ARG_BAT_STORE,
                     ServerIdentity.ARG_SERVERIDS_SQL_FILE
                     )
     );
@@ -856,7 +847,7 @@ public class Main extends Builder {
             BlockRequestAuthoriser blockAuth = blockAuthoriser(a, batStore, hasher);
             BlockMetadataStore meta = buildBlockMetadata(a);
             JdbcServerIdentityStore ids = JdbcServerIdentityStore.build(getDBConnector(a, "serverids-file", dbConnectionPool), sqlCommands, crypto);
-            IpfsWrapper ipfsWrapper = useIPFS ? IpfsWrapper.launch(a, blockAuth, meta, ids) : null;
+            IpfsWrapper ipfsWrapper = useIPFS ? IpfsWrapper.launch(a, ids) : null;
             if (ids.getIdentities().isEmpty()) {
                 // initialise id db with our current peerid and sign an ipns record
                 HostBuilder builder = new HostBuilder(new RamAddressBook()).generateIdentity();
