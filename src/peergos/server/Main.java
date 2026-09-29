@@ -114,7 +114,7 @@ public class Main extends Builder {
 
     public static Command<IpfsWrapper> IPFS = new Command<>("ipfs",
             "Configure and start IPFS daemon",
-            Main::startIpfs,
+            Main::startStandaloneIpfs,
             Arrays.asList(
                     new Command.Arg("IPFS_PATH", "Path to IPFS directory. Defaults to $PEERGOS_PATH/.ipfs, or ~/.peergos/.ipfs", false),
                     ARG_IPFS_API_ADDRESS,
@@ -1295,6 +1295,16 @@ public class Main extends Builder {
             throw new IllegalStateException("IPFS is already running on api " + ipfsApiAddress);
         }
         return IpfsWrapper.launch(a);
+    }
+
+    public static IpfsWrapper startStandaloneIpfs(Args a) {
+        IpfsWrapper ipfs = startIpfs(a);
+        // otherwise a restart generates a new identity, which doesn't match the one in the server identity db
+        if (!a.hasArg("ipfs.identity.peerid"))
+            a.with("ipfs.identity.peerid", ipfs.ipfsConfigParams.identity.get().peerId.toBase58())
+                    .with("ipfs.identity.priv-key", Base64.getEncoder().encodeToString(ipfs.ipfsConfigParams.identity.get().privKeyProtobuf))
+                    .saveToFile();
+        return ipfs;
     }
 
     public static Boolean startShell(Args args) {
