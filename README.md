@@ -364,7 +364,9 @@ You will also need to set the cors.xml for the bucket to the following:
   </CORSRule>
 </CORSConfiguration>
 ```
-
+```
+s3cmd setcors cors.xml s3://bucket
+```
 
 Usage - self hosting (with Postgres instead of sqlite)
 -----
