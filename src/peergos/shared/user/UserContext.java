@@ -2637,7 +2637,11 @@ public class UserContext {
                 if (alreadyFollowing) {
                     return Futures.errored(new Exception("User " + targetUsername +" is already a follower!"));
                 }
-                return getPublicKeys(targetUsername).thenCompose(targetUserOpt -> {
+                // asking to follow someone we have blocked means we want to follow them again
+                return getBlocked().thenCompose(blocked -> blocked.contains(targetUsername) ?
+                                unblock(targetUsername) :
+                                Futures.of(true))
+                        .thenCompose(unblocked -> getPublicKeys(targetUsername)).thenCompose(targetUserOpt -> {
                     if (! targetUserOpt.isPresent()) {
                         return Futures.errored(new Exception("User " + targetUsername + " does not exist!"));
                     }
