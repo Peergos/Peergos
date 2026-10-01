@@ -55,6 +55,7 @@ public class UserContext {
     public static final String ENTRY_POINTS_FROM_FRIENDS_FILENAME = ".from-friends.cborstream";
     public static final String ENTRY_POINTS_FROM_FRIENDS_GROUPS_FILENAME = ".groups-from-friends.cborstream";
     public static final String SOCIAL_STATE_FILENAME = ".social-state.cbor";
+    private static final String REMOVING_FOLLOWER_PREFIX = ".removing-";
     public static final String BLOCKED_USERNAMES_FILE = ".blocked-usernames.txt";
 
     @JsProperty
@@ -3901,22 +3902,70 @@ public class UserContext {
     @JsMethod
     public CompletableFuture<Boolean> removeFollower(String usernameToRemove) {
         LOG.info("Remove follower: " + usernameToRemove);
-        // remove /$us/shared/$them
-        Path sharingDir = PathUtil.get(this.username, SHARED_DIR_NAME, usernameToRemove);
-        return removeFromFriendGroup(usernameToRemove)
-                .thenCompose(x1 -> removeFromFollowersGroup(usernameToRemove))
-                .thenCompose(x2 -> unshareItemsInSharingFolder(usernameToRemove, usernameToRemove)) // revoke access to everything ever shared with this user!
-                .thenCompose(x3 -> getSharingFolder())
-                .thenCompose(sharing -> getByPath(sharingDir)
-                        .thenCompose(dir -> dir.get().remove(sharing, sharingDir, this)))
-                .thenApply(x4 -> true);
+        return revokeFollower(usernameToRemove);
+    }
+
+    /** Their sharing dir is first hidden, by renaming it, so they stop being listed as a follower in one step and the
+     *  rest of the removal can be completed by reconcileGroups if this fails part way.
+     */
+    private CompletableFuture<Boolean> revokeFollower(String usernameToRemove) {
+        return completeFollowerRemoval(usernameToRemove) // in case an earlier removal was interrupted
+                .thenCompose(x -> getSharingFolder())
+                .thenCompose(sharing -> sharing.getChild(usernameToRemove, crypto.hasher, network)
+                        .thenCompose(dir -> dir.isEmpty() ?
+                                Futures.of(true) :
+                                dir.get().rename(REMOVING_FOLLOWER_PREFIX + usernameToRemove, sharing,
+                                        PathUtil.get(username, SHARED_DIR_NAME, usernameToRemove), this)
+                                        .thenApply(y -> true)))
+                .thenCompose(x -> completeFollowerRemoval(usernameToRemove));
+    }
+
+    private CompletableFuture<Boolean> completeFollowerRemoval(String usernameToRemove) {
+        String hiddenName = REMOVING_FOLLOWER_PREFIX + usernameToRemove;
+        Path hiddenDir = PathUtil.get(this.username, SHARED_DIR_NAME, hiddenName);
+        return getByPath(hiddenDir)
+                .thenCompose(dirOpt -> dirOpt.isEmpty() ?
+                        Futures.of(true) :
+                        unshareItemsInSharingFolder(hiddenName, usernameToRemove) // revoke access to everything ever shared with this user!
+                                .thenCompose(x -> getSharingFolder())
+                                .thenCompose(sharing -> getByPath(hiddenDir)
+                                        .thenCompose(dir -> dir.get().remove(sharing, hiddenDir, this)))
+                                .thenApply(x -> true))
+                // they may have become a follower again since an interrupted removal
+                .thenCompose(x -> getSharingFolder())
+                .thenCompose(sharing -> sharing.hasChild(usernameToRemove, crypto.hasher, network))
+                .thenCompose(isFollower -> isFollower ?
+                        Futures.of(true) :
+                        removeFromBuiltInGroups(usernameToRemove));
+    }
+
+    private CompletableFuture<Boolean> removeFromBuiltInGroups(String usernameToRemove) {
+        Set<String> toRemove = Collections.singleton(usernameToRemove);
+        return getGroupUid(SocialState.FRIENDS_GROUP_NAME)
+                .thenCompose(friendsUid -> friendsUid.isPresent() ?
+                        removeMembersFromGroup(friendsUid.get(), toRemove) :
+                        Futures.of(true))
+                .thenCompose(x -> getGroupUid(SocialState.FOLLOWERS_GROUP_NAME))
+                .thenCompose(followersUid -> followersUid.isPresent() ?
+                        removeMembersFromGroup(followersUid.get(), toRemove) :
+                        Futures.of(true));
     }
 
     /** Remove anyone from the built in groups who no longer belongs there: followers we no longer have a sharing dir
      *  for (e.g. after an interrupted removeFollower), and friends who are no longer mutual because they removed us.
      */
     private CompletableFuture<Boolean> reconcileGroups() {
-        return getFollowerRoots(false).thenCompose(dirs -> getFollowing().thenCompose(following ->
+        return getSharingFolder()
+                .thenCompose(sharing -> sharing.getChildren(crypto.hasher, network))
+                .thenCompose(children -> Futures.reduceAll(children.stream()
+                                .map(FileWrapper::getName)
+                                .filter(n -> n.startsWith(REMOVING_FOLLOWER_PREFIX))
+                                .map(n -> n.substring(REMOVING_FOLLOWER_PREFIX.length()))
+                                .collect(Collectors.toList()),
+                        true,
+                        (b, name) -> completeFollowerRemoval(name),
+                        (a, b) -> a && b))
+                .thenCompose(done -> getFollowerRoots(false)).thenCompose(dirs -> getFollowing().thenCompose(following ->
                 getGroupUid(SocialState.FOLLOWERS_GROUP_NAME).thenCompose(followersUid ->
                         getGroupUid(SocialState.FRIENDS_GROUP_NAME).thenCompose(friendsUid -> {
                             if (followersUid.isEmpty() || friendsUid.isEmpty())
@@ -3990,20 +4039,6 @@ public class UserContext {
                             (b, u) -> unshareItemsInSharingFolder(groupUid, u),
                             (a, b) -> a && b));
         });
-    }
-
-    private CompletableFuture<Boolean> removeFromFriendGroup(String usernameToRemove) {
-        return getGroupUid(SocialState.FRIENDS_GROUP_NAME)
-                .thenCompose(friendsUid -> friendsUid.isPresent() ?
-                        removeFromGroup(friendsUid.get(), usernameToRemove) :
-                        Futures.of(true));
-    }
-
-    private CompletableFuture<Boolean> removeFromFollowersGroup(String usernameToRemove) {
-        return getGroupUid(SocialState.FOLLOWERS_GROUP_NAME)
-                .thenCompose(followersUid -> followersUid.isPresent() ?
-                        removeFromGroup(followersUid.get(), usernameToRemove) :
-                        Futures.of(true));
     }
 
     /** Remove a user from a group. This involves rotating the keys to the group sharing dir,
