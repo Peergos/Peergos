@@ -70,6 +70,8 @@ public class UserContext {
     private final IncomingCapCache capCache;
     private final Optional<BatWithId> mirrorBat;
     public final SharedWithCache sharedWithCache;
+    // when we last checked whether each friend we can't see has removed us, as it waits on their server
+    private final Map<String, Long> lastUnfollowCheck = new HashMap<>();
 
     // The root of the global filesystem as viewed by this context
     @JsProperty
@@ -2471,23 +2473,24 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<SocialState> getSocialState() {
+        // retrieving friend roots waits on each friend's server, so only do it once
         return processFollowRequests()
-                .thenCompose(pendingIncoming -> reconcileGroups()
+                .thenCompose(pendingIncoming -> getFriendRoots().thenCompose(followingRoots -> reconcileGroups(followingRoots.stream()
+                                .map(FileWrapper::getOwnerName)
+                                .collect(Collectors.toSet()))
                         .exceptionally(t -> {
                             LOG.log(Level.WARNING, "Couldn't reconcile social groups", t);
                             return false;
-                        }).thenApply(x -> pendingIncoming))
-                .thenCompose(pendingIncoming -> getPendingOutgoingFollowRequests()
+                        })
+                        .thenCompose(x -> getPendingOutgoingFollowRequests())
                         .thenCompose(pendingOutgoing -> getFollowerRoots(pendingOutgoing.pendingOutgoingFollowRequests)
-                                .thenCompose(followerRoots -> getFriendRoots().thenCompose(
-                                        followingRoots -> getFollowerNames().thenCompose(
-                                                followers -> getBlocked().thenCompose(
-                                                        blocked -> getFriendAnnotations().thenCompose(
-                                                                annotations -> getGroupNameMappings().thenApply(
-                                                                        groups -> new SocialState(pendingIncoming,
-                                                                                pendingOutgoing.pendingOutgoingFollowRequests,
-                                                                                followers, followerRoots, followingRoots,
-                                                                                blocked, annotations, groups.uidToGroupName)))))))));
+                                .thenCompose(followerRoots -> getBlocked().thenCompose(
+                                        blocked -> getFriendAnnotations().thenCompose(
+                                                annotations -> getGroupNameMappings().thenApply(
+                                                        groups -> new SocialState(pendingIncoming,
+                                                                pendingOutgoing.pendingOutgoingFollowRequests,
+                                                                followerRoots.keySet(), followerRoots, followingRoots,
+                                                                blocked, annotations, groups.uidToGroupName))))))));
     }
 
     @JsMethod
@@ -3448,7 +3451,10 @@ public class UserContext {
                                                 .exceptionally(t -> Optional.empty()))
                                         .collect(Collectors.toList()))
                                 .thenApply(opts -> opts.stream().flatMap(Optional::stream).collect(Collectors.toList()))
-                                .thenCompose(withDecrypted -> getFollowing().thenCompose(following -> {
+                                .thenCompose(withDecrypted -> (withDecrypted.stream()
+                                        .allMatch(p -> pendingOut.pendingOutgoingFollowRequests.contains(p.req.entry.get().ownerName)) ?
+                                        Futures.of(Collections.<String>emptySet()) : // only needed for requests which aren't replies
+                                        getFollowing()).thenCompose(following -> {
 
                             // Classify by message content where possible rather than by our local state alone, because a
                             // failure part way through sending or replying leaves that state half updated.
@@ -3972,7 +3978,7 @@ public class UserContext {
      *  and friends who are no longer mutual, e.g. because they removed us, and add those who are missing, e.g. after
      *  unblocking a friend.
      */
-    private CompletableFuture<Boolean> reconcileGroups() {
+    private CompletableFuture<Boolean> reconcileGroups(Set<String> following) {
         return getSharingFolder()
                 .thenCompose(sharing -> sharing.getChildren(crypto.hasher, network))
                 .thenCompose(children -> Futures.reduceAll(children.stream()
@@ -3983,7 +3989,7 @@ public class UserContext {
                         true,
                         (b, name) -> completeFollowerRemoval(name),
                         (a, b) -> a && b))
-                .thenCompose(done -> getFollowerRoots(false)).thenCompose(dirs -> getFollowing().thenCompose(following ->
+                .thenCompose(done -> getFollowerRoots(false)).thenCompose(dirs ->
                 getGroupUid(SocialState.FOLLOWERS_GROUP_NAME).thenCompose(followersUid ->
                         getGroupUid(SocialState.FRIENDS_GROUP_NAME).thenCompose(friendsUid -> {
                             if (followersUid.isEmpty() || friendsUid.isEmpty())
@@ -3998,7 +4004,7 @@ public class UserContext {
                                         Set<String> suspects = new TreeSet<>(friends);
                                         suspects.retainAll(dirs.keySet());
                                         suspects.removeAll(following);
-                                        return definitelyNotFollowing(suspects).thenCompose(unfollowed -> {
+                                        return definitelyNotFollowing(dueForUnfollowCheck(suspects)).thenCompose(unfollowed -> {
                                             staleFriends.addAll(unfollowed);
                                             return removeMembersFromGroup(friendsUid.get(), staleFriends)
                                                     .thenCompose(x -> removeMembersFromGroup(followersUid.get(), staleFollowers))
@@ -4016,7 +4022,23 @@ public class UserContext {
                                                     });
                                         });
                                     }));
-                        }))));
+                        })));
+    }
+
+    private static final long UNFOLLOW_CHECK_INTERVAL_MILLIS = 10 * 60_000;
+
+    /** A friend whose server is unreachable looks the same as one who removed us until we ask their server, so
+     *  don't make every getSocialState wait on it.
+     */
+    private Set<String> dueForUnfollowCheck(Set<String> suspects) {
+        long now = System.currentTimeMillis();
+        synchronized (lastUnfollowCheck) {
+            Set<String> due = suspects.stream()
+                    .filter(name -> lastUnfollowCheck.getOrDefault(name, 0L) + UNFOLLOW_CHECK_INTERVAL_MILLIS <= now)
+                    .collect(Collectors.toSet());
+            due.forEach(name -> lastUnfollowCheck.put(name, now));
+            return due;
+        }
     }
 
     /** The users for whom none of our entry points from them can be retrieved any more. A failure to retrieve, as
