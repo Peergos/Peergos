@@ -2601,6 +2601,18 @@ public class UserContext {
                 .thenCompose(blindRequest -> network.social.sendFollowRequest(targetIdentity, blindRequest.serialize()));
     }
 
+    /** A request that reached them but whose response was lost is harmless to resend, whereas rolling back
+     *  our pending state for it would leave their reply unrecognised. */
+    private CompletableFuture<Boolean> blindAndSendFollowRequest(PublicKeyHash targetIdentity,
+                                                                 PublicBoxingKey targetBoxer,
+                                                                 FollowRequest req,
+                                                                 int attempts) {
+        return Futures.asyncExceptionally(() -> blindAndSendFollowRequest(targetIdentity, targetBoxer, req),
+                t -> attempts <= 1 ?
+                        Futures.errored(t) :
+                        blindAndSendFollowRequest(targetIdentity, targetBoxer, req, attempts - 1));
+    }
+
     public CompletableFuture<Boolean> sendFollowRequest(String targetUsername, SymmetricKey requestedKey) {
         return getSharingFolder().thenCompose(sharing -> {
             // check for them not reciprocating
@@ -2624,18 +2636,22 @@ public class UserContext {
                                 FollowRequest followReq = new FollowRequest(Optional.of(entry), Optional.ofNullable(requestedKey));
 
                                 PublicKeyHash targetSigner = targetUserOpt.get().left;
+                                // Record the pending request before sending it, otherwise their reply can't be recognised.
+                                // If sending fails, roll back so the UI lets the user try again.
                                 return getPendingOutgoingFollowRequests()
-                                        .thenCompose(pending -> blindAndSendFollowRequest(targetSigner, targetUser, followReq)
-                                                .thenCompose(b -> {
-                                                    // note that we have a pending request sent to them
+                                        .thenCompose(pending -> Futures.asyncExceptionally(
+                                                () -> {
                                                     PendingSocialState updated = pending.withPending(targetUsername);
                                                     byte[] raw = updated.toCbor().serialize();
                                                     return getUserRoot().thenCompose(home -> home.uploadFileSection(
                                                                     SOCIAL_STATE_FILENAME, AsyncReader.build(raw), true, 0, raw.length, Optional.empty(),
                                                                     true, network, crypto, () -> false, x -> {}, crypto.random.randomBytes(32),
                                                                     Optional.empty(), Optional.of(Bat.random(crypto.random)), mirrorBatId()))
-                                                            .thenApply(x -> b);
-                                                }));
+                                                            .thenCompose(x -> blindAndSendFollowRequest(targetSigner, targetUser, followReq, 3));
+                                                },
+                                                t -> removeFromPendingOutgoing(targetUsername)
+                                                        .handle((r, rollbackError) -> Futures.<Boolean>errored(t))
+                                                        .thenCompose(f -> f)));
                             });
                 });
             });
