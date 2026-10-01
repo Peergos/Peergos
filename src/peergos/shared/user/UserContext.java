@@ -2631,25 +2631,28 @@ public class UserContext {
                     PublicBoxingKey targetUser = targetUserOpt.get().right;
                     PublicKeyHash targetSigner = targetUserOpt.get().left;
                     // Record the pending request before sending it, otherwise their reply can't be recognised.
-                    // If anything fails, roll back so the UI lets the user try again.
+                    // If anything fails, roll back what this call added so the UI lets the user try again.
                     return sharing.hasChild(targetUsername, crypto.hasher, network)
-                            .thenCompose(dirExisted -> Futures.<Boolean>asyncExceptionally(
-                                    () -> sharing.getOrMkdirs(PathUtil.get(targetUsername), network, true, mirrorBatId(), crypto)
-                                            .<Boolean>thenCompose(friendRoot -> {
-                                                EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(), username);
-                                                FollowRequest followReq = new FollowRequest(Optional.of(entry), Optional.ofNullable(requestedKey));
-                                                return getPendingOutgoingFollowRequests().thenCompose(pending -> {
+                            .thenCompose(dirExisted -> getPendingOutgoingFollowRequests().thenCompose(pending -> {
+                                boolean wasPending = pending.pendingOutgoingFollowRequests.contains(targetUsername);
+                                return Futures.<Boolean>asyncExceptionally(
+                                        () -> sharing.getOrMkdirs(PathUtil.get(targetUsername), network, true, mirrorBatId(), crypto)
+                                                .<Boolean>thenCompose(friendRoot -> {
+                                                    EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(), username);
+                                                    FollowRequest followReq = new FollowRequest(Optional.of(entry), Optional.ofNullable(requestedKey));
                                                     PendingSocialState updated = pending.withPending(targetUsername);
                                                     byte[] raw = updated.toCbor().serialize();
                                                     return getUserRoot().thenCompose(home -> home.uploadFileSection(
-                                                            SOCIAL_STATE_FILENAME, AsyncReader.build(raw), true, 0, raw.length, Optional.empty(),
-                                                            true, network, crypto, () -> false, x -> {}, crypto.random.randomBytes(32),
-                                                            Optional.empty(), Optional.of(Bat.random(crypto.random)), mirrorBatId()));
-                                                }).<Boolean>thenCompose(x -> blindAndSendFollowRequest(targetSigner, targetUser, followReq, 3));
-                                            }),
-                                    t -> rollbackFollowRequest(targetUsername, ! dirExisted)
-                                            .exceptionally(rollbackError -> false)
-                                            .<Boolean>thenCompose(x -> Futures.errored(t))));
+                                                                    SOCIAL_STATE_FILENAME, AsyncReader.build(raw), true, 0, raw.length, Optional.empty(),
+                                                                    true, network, crypto, () -> false, x -> {}, crypto.random.randomBytes(32),
+                                                                    Optional.empty(), Optional.of(Bat.random(crypto.random)), mirrorBatId()))
+                                                            .<Boolean>thenCompose(x -> blindAndSendFollowRequest(targetSigner, targetUser, followReq, 3));
+                                                }),
+                                        // an earlier request to them may still be answered, so leave its state alone
+                                        t -> (wasPending ? Futures.of(true) : rollbackFollowRequest(targetUsername, ! dirExisted))
+                                                .exceptionally(rollbackError -> false)
+                                                .<Boolean>thenCompose(x -> Futures.errored(t)));
+                            }));
                 });
             });
         });
