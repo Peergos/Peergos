@@ -2509,6 +2509,13 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<Boolean> sendReplyFollowRequest(FollowRequestWithCipherText initialRequestAndRaw, boolean accept, boolean reciprocate) {
+        String theirUsername = initialRequestAndRaw.req.entry.get().ownerName;
+        // they may have a sharing dir already, e.g. from an earlier attempt to accept this request which failed part way
+        return (accept ? Futures.of(true) : revokeFollower(theirUsername))
+                .thenCompose(x -> replyToFollowRequest(initialRequestAndRaw, accept, reciprocate));
+    }
+
+    private CompletableFuture<Boolean> replyToFollowRequest(FollowRequestWithCipherText initialRequestAndRaw, boolean accept, boolean reciprocate) {
         FollowRequest initialRequest = initialRequestAndRaw.req;
         String theirUsername = initialRequest.entry.get().ownerName;
         // if accept, create directory to share with them, note in entry points (they follow us)
