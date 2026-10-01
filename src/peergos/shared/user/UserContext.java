@@ -3441,17 +3441,16 @@ public class UserContext {
 
                             // Classify by message content where possible rather than by our local state alone, because a
                             // failure part way through sending or replying leaves that state half updated.
-                            List<FollowRequestWithCipherText> replies = new ArrayList<>();
+                            Map<String, FollowRequestWithCipherText> latestReplies = new LinkedHashMap<>();
                             Map<String, FollowRequestWithCipherText> initial = new LinkedHashMap<>();
                             List<FollowRequestWithCipherText> toDiscard = new ArrayList<>();
-                            Set<String> repliedFrom = new HashSet<>();
                             for (FollowRequestWithCipherText p : withDecrypted) {
                                 String from = p.req.entry.get().ownerName;
                                 if (pendingOut.pendingOutgoingFollowRequests.contains(from)) {
-                                    if (repliedFrom.add(from))
-                                        replies.add(p);
-                                    else
-                                        toDiscard.add(p); // duplicate reply
+                                    // they may have replied more than once, e.g. rejecting after an accept failed part way
+                                    FollowRequestWithCipherText earlier = latestReplies.put(from, p);
+                                    if (earlier != null)
+                                        toDiscard.add(earlier);
                                     continue;
                                 }
                                 // an initial request always has a key and an entry point, so this is an unauthenticated
@@ -3476,7 +3475,9 @@ public class UserContext {
                                             CompletableFuture.completedFuture(root) : // ignore responses claiming to be owned by us
                                             addExternalEntryPoint(freq.entry.get())
                                                     .thenCompose(x -> removeFromPendingOutgoing(freq.entry.get().ownerName))
-                                                    .thenCompose(x -> retrieveAndAddEntryPointToTrie(root, freq.entry.get()));
+                                                    // their dir may already be gone, e.g. if they removed us again
+                                                    .thenCompose(x -> retrieveAndAddEntryPointToTrie(root, freq.entry.get())
+                                                            .exceptionally(t -> root));
                                     return updatedRoot.thenCompose(newRoot -> {
                                         entrie = newRoot;
                                         // clear their response follow req too
@@ -3532,7 +3533,7 @@ public class UserContext {
                                                     .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed))
                                                     .exceptionally(t -> false),
                                             (a, b) -> a)
-                                    .thenCompose(x -> Futures.reduceAll(replies, entrie, mozart, (a, b) -> a))
+                                    .thenCompose(x -> Futures.reduceAll(latestReplies.values(), entrie, mozart, (a, b) -> a))
                                     .thenApply(newRoot -> {
                                         entrie = newRoot;
                                         return new ArrayList<>(initial.values());
