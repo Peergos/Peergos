@@ -2471,6 +2471,11 @@ public class UserContext {
     @JsMethod
     public CompletableFuture<SocialState> getSocialState() {
         return processFollowRequests()
+                .thenCompose(pendingIncoming -> reconcileGroups()
+                        .exceptionally(t -> {
+                            LOG.log(Level.WARNING, "Couldn't reconcile social groups", t);
+                            return false;
+                        }).thenApply(x -> pendingIncoming))
                 .thenCompose(pendingIncoming -> getPendingOutgoingFollowRequests()
                         .thenCompose(pendingOutgoing -> getFollowerRoots(pendingOutgoing.pendingOutgoingFollowRequests)
                                 .thenCompose(followerRoots -> getFriendRoots().thenCompose(
@@ -3905,6 +3910,86 @@ public class UserContext {
                 .thenCompose(sharing -> getByPath(sharingDir)
                         .thenCompose(dir -> dir.get().remove(sharing, sharingDir, this)))
                 .thenApply(x4 -> true);
+    }
+
+    /** Remove anyone from the built in groups who no longer belongs there: followers we no longer have a sharing dir
+     *  for (e.g. after an interrupted removeFollower), and friends who are no longer mutual because they removed us.
+     */
+    private CompletableFuture<Boolean> reconcileGroups() {
+        return getFollowerRoots(false).thenCompose(dirs -> getFollowing().thenCompose(following ->
+                getGroupUid(SocialState.FOLLOWERS_GROUP_NAME).thenCompose(followersUid ->
+                        getGroupUid(SocialState.FRIENDS_GROUP_NAME).thenCompose(friendsUid -> {
+                            if (followersUid.isEmpty() || friendsUid.isEmpty())
+                                return Futures.of(true);
+                            return getGroupMembers(followersUid.get()).thenCompose(followers ->
+                                    getGroupMembers(friendsUid.get()).thenCompose(friends -> {
+                                        Set<String> staleFollowers = new TreeSet<>(followers);
+                                        staleFollowers.removeAll(dirs.keySet());
+                                        Set<String> staleFriends = new TreeSet<>(friends);
+                                        staleFriends.removeAll(dirs.keySet());
+                                        // only check friends we can't currently see, as that is usually nobody
+                                        Set<String> suspects = new TreeSet<>(friends);
+                                        suspects.retainAll(dirs.keySet());
+                                        suspects.removeAll(following);
+                                        return definitelyNotFollowing(suspects).thenCompose(unfollowed -> {
+                                            staleFriends.addAll(unfollowed);
+                                            return removeMembersFromGroup(friendsUid.get(), staleFriends)
+                                                    .thenCompose(x -> removeMembersFromGroup(followersUid.get(), staleFollowers));
+                                        });
+                                    }));
+                        }))));
+    }
+
+    /** The users for whom none of our entry points from them can be retrieved any more. A failure to retrieve, as
+     *  opposed to it not being there, means we can't tell, so they are not included.
+     */
+    private CompletableFuture<Set<String>> definitelyNotFollowing(Set<String> usernames) {
+        if (usernames.isEmpty())
+            return Futures.of(Collections.emptySet());
+        return getUserRoot().thenCompose(this::getFriendsEntryPoints)
+                .thenCompose(entries -> Futures.combineAllInOrder(usernames.stream()
+                                .map(name -> Futures.combineAllInOrder(entries.stream()
+                                                .filter(e -> e.ownerName.equals(name))
+                                                .map(this::isEntryPointGone)
+                                                .collect(Collectors.toList()))
+                                        .thenApply(gone -> gone.stream().allMatch(g -> g) ?
+                                                Optional.of(name) :
+                                                Optional.<String>empty()))
+                                .collect(Collectors.toList()))
+                        .thenApply(res -> res.stream()
+                                .flatMap(Optional::stream)
+                                .collect(Collectors.toSet())));
+    }
+
+    private CompletableFuture<Boolean> isEntryPointGone(EntryPoint e) {
+        return network.coreNode.getPublicKeyHash(e.ownerName)
+                .thenCompose(id -> {
+                    // if they have changed identity key we can't tell from this entry point
+                    if (id.isEmpty() || ! id.get().equals(e.pointer.owner))
+                        return Futures.of(false);
+                    return network.synchronizer.readOnlyValue(e.pointer.owner, e.pointer.writer)
+                            .thenCompose(v -> network.getFile(v, e.pointer, Optional.empty(), e.ownerName))
+                            .thenApply(Optional::isEmpty);
+                }).exceptionally(t -> false);
+    }
+
+    /** Removing from a group rotates its keys and re-shares with the remaining members, so only do it for actual
+     *  members, and all at once, as the re-share fails for any remaining member without a sharing dir.
+     */
+    private CompletableFuture<Boolean> removeMembersFromGroup(String groupUid, Set<String> usernames) {
+        if (usernames.isEmpty())
+            return Futures.of(true);
+        return getGroupMembers(groupUid).thenCompose(members -> {
+            Set<String> toRemove = new TreeSet<>(usernames);
+            toRemove.retainAll(members);
+            if (toRemove.isEmpty())
+                return Futures.of(true);
+            LOG.info("Removing " + toRemove + " from group " + groupUid);
+            return unShareReadAccessWith(groupDir(groupUid), toRemove)
+                    .thenCompose(x -> Futures.reduceAll(toRemove, true,
+                            (b, u) -> unshareItemsInSharingFolder(groupUid, u),
+                            (a, b) -> a && b));
+        });
     }
 
     private CompletableFuture<Boolean> removeFromFriendGroup(String usernameToRemove) {
