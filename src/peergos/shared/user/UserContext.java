@@ -2629,33 +2629,43 @@ public class UserContext {
                         return Futures.errored(new Exception("User " + targetUsername + " does not exist!"));
                     }
                     PublicBoxingKey targetUser = targetUserOpt.get().right;
-                    return sharing.getOrMkdirs(PathUtil.get(targetUsername), network, true, mirrorBatId(), crypto)
-                            .thenCompose(friendRoot -> {
-
-                                EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(), username);
-                                FollowRequest followReq = new FollowRequest(Optional.of(entry), Optional.ofNullable(requestedKey));
-
-                                PublicKeyHash targetSigner = targetUserOpt.get().left;
-                                // Record the pending request before sending it, otherwise their reply can't be recognised.
-                                // If sending fails, roll back so the UI lets the user try again.
-                                return getPendingOutgoingFollowRequests()
-                                        .thenCompose(pending -> Futures.asyncExceptionally(
-                                                () -> {
+                    PublicKeyHash targetSigner = targetUserOpt.get().left;
+                    // Record the pending request before sending it, otherwise their reply can't be recognised.
+                    // If anything fails, roll back so the UI lets the user try again.
+                    return sharing.hasChild(targetUsername, crypto.hasher, network)
+                            .thenCompose(dirExisted -> Futures.asyncExceptionally(
+                                    () -> sharing.getOrMkdirs(PathUtil.get(targetUsername), network, true, mirrorBatId(), crypto)
+                                            .thenCompose(friendRoot -> {
+                                                EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(), username);
+                                                FollowRequest followReq = new FollowRequest(Optional.of(entry), Optional.ofNullable(requestedKey));
+                                                return getPendingOutgoingFollowRequests().thenCompose(pending -> {
                                                     PendingSocialState updated = pending.withPending(targetUsername);
                                                     byte[] raw = updated.toCbor().serialize();
                                                     return getUserRoot().thenCompose(home -> home.uploadFileSection(
-                                                                    SOCIAL_STATE_FILENAME, AsyncReader.build(raw), true, 0, raw.length, Optional.empty(),
-                                                                    true, network, crypto, () -> false, x -> {}, crypto.random.randomBytes(32),
-                                                                    Optional.empty(), Optional.of(Bat.random(crypto.random)), mirrorBatId()))
-                                                            .thenCompose(x -> blindAndSendFollowRequest(targetSigner, targetUser, followReq, 3));
-                                                },
-                                                t -> removeFromPendingOutgoing(targetUsername)
-                                                        .handle((r, rollbackError) -> Futures.<Boolean>errored(t))
-                                                        .thenCompose(f -> f)));
-                            });
+                                                            SOCIAL_STATE_FILENAME, AsyncReader.build(raw), true, 0, raw.length, Optional.empty(),
+                                                            true, network, crypto, () -> false, x -> {}, crypto.random.randomBytes(32),
+                                                            Optional.empty(), Optional.of(Bat.random(crypto.random)), mirrorBatId()));
+                                                }).thenCompose(x -> blindAndSendFollowRequest(targetSigner, targetUser, followReq, 3));
+                                            }),
+                                    t -> rollbackFollowRequest(targetUsername, ! dirExisted)
+                                            .handle((r, rollbackError) -> Futures.<Boolean>errored(t))
+                                            .thenCompose(f -> f)));
                 });
             });
         });
+    }
+
+    /** Pending is cleared before the dir is removed, so a failure in between leaves them looking like a follower
+     *  until the request is resent, rather than pending with no dir. */
+    private CompletableFuture<Boolean> rollbackFollowRequest(String targetUsername, boolean removeDir) {
+        return removeFromPendingOutgoing(targetUsername)
+                .thenCompose(x -> ! removeDir ?
+                        Futures.of(true) :
+                        getSharingFolder().thenCompose(sharing -> sharing.getChild(targetUsername, crypto.hasher, network)
+                                .thenCompose(dir -> dir.isEmpty() ?
+                                        Futures.of(true) :
+                                        dir.get().remove(sharing, PathUtil.get(username, SHARED_DIR_NAME, targetUsername), this)
+                                                .thenApply(y -> true))));
     }
 
     @JsMethod
