@@ -3451,6 +3451,7 @@ public class UserContext {
                             Map<String, FollowRequestWithCipherText> latestReplies = new LinkedHashMap<>();
                             Map<String, FollowRequestWithCipherText> initial = new LinkedHashMap<>();
                             List<FollowRequestWithCipherText> toDiscard = new ArrayList<>();
+                            List<FollowRequestWithCipherText> toReaffirm = new ArrayList<>();
                             for (FollowRequestWithCipherText p : withDecrypted) {
                                 String from = p.req.entry.get().ownerName;
                                 if (pendingOut.pendingOutgoingFollowRequests.contains(from)) {
@@ -3463,9 +3464,14 @@ public class UserContext {
                                 // an initial request always has a key and an entry point, so this is an unauthenticated
                                 // reply to a request we are no longer waiting on
                                 boolean replyShaped = p.req.key.isEmpty() || p.req.entry.get().pointer.isNull();
-                                boolean alreadyMutual = followerRoots.containsKey(from) && following.contains(from);
-                                if (replyShaped || alreadyMutual) {
+                                if (replyShaped) {
                                     toDiscard.add(p);
+                                    continue;
+                                }
+                                // They are waiting on a reply, e.g. after unfollowing and asking again. Accepting grants
+                                // nothing they don't already have.
+                                if (followerRoots.containsKey(from) && following.contains(from)) {
+                                    toReaffirm.add(p);
                                     continue;
                                 }
                                 // A request from someone we already have a sharing dir for is still surfaced, so that a reply
@@ -3540,6 +3546,9 @@ public class UserContext {
                                                     .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed))
                                                     .exceptionally(t -> false),
                                             (a, b) -> a)
+                                    .thenCompose(x -> Futures.reduceAll(toReaffirm, true,
+                                            (b, p) -> replyToFollowRequest(p, true, true).exceptionally(t -> false),
+                                            (a, b) -> a))
                                     .thenCompose(x -> Futures.reduceAll(latestReplies.values(), entrie, mozart, (a, b) -> a))
                                     .thenApply(newRoot -> {
                                         entrie = newRoot;
