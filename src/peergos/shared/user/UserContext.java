@@ -3494,16 +3494,11 @@ public class UserContext {
                                 FollowRequest freq = p.req;
                                 // delete our folder if they didn't reciprocate
                                 String theirName = freq.entry.get().ownerName;
-                                FileWrapper ourDirForThem = followerRoots.get(theirName);
                                 Optional<byte[]> keyFromResponse = freq.key.map(Cborable::serialize);
                                 if (keyFromResponse.isEmpty()) {
-                                    // They didn't reciprocate (follow us)
-                                    // our dir may already be gone if a previous attempt failed before clearing pending
-                                    CompletableFuture<?> removeDir = ourDirForThem == null ?
-                                            Futures.of(true) :
-                                            ourDirForThem.remove(sharing, PathUtil.get(username, SHARED_DIR_NAME, theirName), this);
-
-                                    return removeDir.thenCompose(x -> removeFromPendingOutgoing(freq.entry.get().ownerName))
+                                    // They didn't reciprocate (follow us). They may already have been a follower, using
+                                    // the same dir, so revoke them fully rather than only removing the dir.
+                                    return revokeFollower(theirName).thenCompose(x -> removeFromPendingOutgoing(freq.entry.get().ownerName))
                                             .thenCompose(b -> addToStatic.apply(trie, p));
                                 } else if (freq.entry.get().pointer.isNull()) {
                                     // They reciprocated, but didn't accept (they follow us, but we can't follow them)
