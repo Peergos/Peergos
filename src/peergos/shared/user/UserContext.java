@@ -2633,9 +2633,9 @@ public class UserContext {
                     // Record the pending request before sending it, otherwise their reply can't be recognised.
                     // If anything fails, roll back so the UI lets the user try again.
                     return sharing.hasChild(targetUsername, crypto.hasher, network)
-                            .thenCompose(dirExisted -> Futures.asyncExceptionally(
+                            .thenCompose(dirExisted -> Futures.<Boolean>asyncExceptionally(
                                     () -> sharing.getOrMkdirs(PathUtil.get(targetUsername), network, true, mirrorBatId(), crypto)
-                                            .thenCompose(friendRoot -> {
+                                            .<Boolean>thenCompose(friendRoot -> {
                                                 EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(), username);
                                                 FollowRequest followReq = new FollowRequest(Optional.of(entry), Optional.ofNullable(requestedKey));
                                                 return getPendingOutgoingFollowRequests().thenCompose(pending -> {
@@ -2645,11 +2645,11 @@ public class UserContext {
                                                             SOCIAL_STATE_FILENAME, AsyncReader.build(raw), true, 0, raw.length, Optional.empty(),
                                                             true, network, crypto, () -> false, x -> {}, crypto.random.randomBytes(32),
                                                             Optional.empty(), Optional.of(Bat.random(crypto.random)), mirrorBatId()));
-                                                }).thenCompose(x -> blindAndSendFollowRequest(targetSigner, targetUser, followReq, 3));
+                                                }).<Boolean>thenCompose(x -> blindAndSendFollowRequest(targetSigner, targetUser, followReq, 3));
                                             }),
                                     t -> rollbackFollowRequest(targetUsername, ! dirExisted)
-                                            .handle((r, rollbackError) -> Futures.<Boolean>errored(t))
-                                            .thenCompose(f -> f)));
+                                            .exceptionally(rollbackError -> false)
+                                            .<Boolean>thenCompose(x -> Futures.errored(t))));
                 });
             });
         });
