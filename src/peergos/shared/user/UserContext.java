@@ -2603,6 +2603,19 @@ public class UserContext {
         });
     }
 
+    /** Answer a request from an existing mutual friend. They already have everything an accept would give them, so
+     *  only send the reply, which also means nothing accumulates if it has to be retried.
+     */
+    private CompletableFuture<Boolean> reaffirmFollowRequest(FollowRequestWithCipherText request, FileWrapper ourDirForThem) {
+        EntryPoint theirs = request.req.entry.get();
+        EntryPoint ours = new EntryPoint(ourDirForThem.getPointer().capability.readOnly(), username);
+        FollowRequest reply = new FollowRequest(Optional.of(ours), Optional.of(theirs.pointer.rBaseKey));
+        return getPublicKeys(theirs.ownerName)
+                .thenCompose(keys -> blindAndSendFollowRequest(theirs.pointer.owner, keys.get().right, reply))
+                .thenCompose(b -> signer.secret.signMessage(request.cipher.serialize()))
+                .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed));
+    }
+
     /**
      * Send details to allow friend to follow us, and optionally let us follow them
      * create a tmp keypair whose public key we can prepend to the request without leaking information
@@ -3557,7 +3570,8 @@ public class UserContext {
                                                     .exceptionally(t -> false),
                                             (a, b) -> a)
                                     .thenCompose(x -> Futures.reduceAll(toReaffirm, true,
-                                            (b, p) -> replyToFollowRequest(p, true, true).exceptionally(t -> false),
+                                            (b, p) -> reaffirmFollowRequest(p, followerRoots.get(p.req.entry.get().ownerName))
+                                                    .exceptionally(t -> false),
                                             (a, b) -> a))
                                     .thenCompose(x -> Futures.reduceAll(latestReplies.values(), entrie, mozart, (a, b) -> a))
                                     .thenApply(newRoot -> {
