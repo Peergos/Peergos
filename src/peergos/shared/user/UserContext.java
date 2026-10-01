@@ -3433,21 +3433,19 @@ public class UserContext {
                                 // delete our folder if they didn't reciprocate
                                 String theirName = freq.entry.get().ownerName;
                                 FileWrapper ourDirForThem = followerRoots.get(theirName);
-                                byte[] ourKeyForThem = ourDirForThem.getKey().serialize();
                                 Optional<byte[]> keyFromResponse = freq.key.map(Cborable::serialize);
                                 if (keyFromResponse.isEmpty()) {
                                     // They didn't reciprocate (follow us)
-                                    CompletableFuture<FileWrapper> removeDir = ourDirForThem.remove(sharing,
-                                            PathUtil.get(username, SHARED_DIR_NAME, theirName), this);
+                                    // our dir may already be gone if a previous attempt failed before clearing pending
+                                    CompletableFuture<?> removeDir = ourDirForThem == null ?
+                                            Futures.of(true) :
+                                            ourDirForThem.remove(sharing, PathUtil.get(username, SHARED_DIR_NAME, theirName), this);
 
                                     return removeDir.thenCompose(x -> removeFromPendingOutgoing(freq.entry.get().ownerName))
                                             .thenCompose(b -> addToStatic.apply(trie, p));
                                 } else if (freq.entry.get().pointer.isNull()) {
                                     // They reciprocated, but didn't accept (they follow us, but we can't follow them)
-                                    // add entry point to static data to signify their acceptance
                                     // and finally remove the follow request
-                                    EntryPoint entryWeSentToThem = new EntryPoint(ourDirForThem.getPointer().capability.readOnly(),
-                                            username);
                                     // add them to followers group
                                     return getGroupUid(SocialState.FOLLOWERS_GROUP_NAME)
                                             .thenCompose(followersUidOpt -> shareReadAccessWith(PathUtil.get(username,
@@ -3457,10 +3455,6 @@ public class UserContext {
                                             .thenApply(x -> trie);
                                 } else {
                                     // they accepted and reciprocated
-                                    // add entry point to static data to signify their acceptance
-                                    EntryPoint entryWeSentToThem = new EntryPoint(ourDirForThem.getPointer().capability.readOnly(),
-                                            username);
-
                                     // add new entry point to tree root
                                     EntryPoint entry = freq.entry.get();
                                     if (entry.ownerName.equals(username))
