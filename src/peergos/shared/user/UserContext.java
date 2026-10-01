@@ -3954,8 +3954,10 @@ public class UserContext {
                         Futures.of(true));
     }
 
-    /** Remove anyone from the built in groups who no longer belongs there: followers we no longer have a sharing dir
-     *  for (e.g. after an interrupted removeFollower), and friends who are no longer mutual because they removed us.
+    /** Keep the built in groups in line with who our followers and friends are. Membership of them is managed
+     *  automatically, so remove followers we no longer have a sharing dir for (e.g. after an interrupted removeFollower)
+     *  and friends who are no longer mutual, e.g. because they removed us, and add those who are missing, e.g. after
+     *  unblocking a friend.
      */
     private CompletableFuture<Boolean> reconcileGroups() {
         return getSharingFolder()
@@ -3986,7 +3988,19 @@ public class UserContext {
                                         return definitelyNotFollowing(suspects).thenCompose(unfollowed -> {
                                             staleFriends.addAll(unfollowed);
                                             return removeMembersFromGroup(friendsUid.get(), staleFriends)
-                                                    .thenCompose(x -> removeMembersFromGroup(followersUid.get(), staleFollowers));
+                                                    .thenCompose(x -> removeMembersFromGroup(followersUid.get(), staleFollowers))
+                                                    .thenCompose(x -> getPendingOutgoingFollowRequests())
+                                                    .thenCompose(pending -> {
+                                                        Set<String> current = new TreeSet<>(dirs.keySet());
+                                                        current.removeAll(pending.pendingOutgoingFollowRequests);
+                                                        Set<String> missingFollowers = new TreeSet<>(current);
+                                                        missingFollowers.removeAll(followers);
+                                                        Set<String> missingFriends = new TreeSet<>(current);
+                                                        missingFriends.retainAll(following);
+                                                        missingFriends.removeAll(friends);
+                                                        return addMembersToGroup(followersUid.get(), missingFollowers)
+                                                                .thenCompose(y -> addMembersToGroup(friendsUid.get(), missingFriends));
+                                                    });
                                         });
                                     }));
                         }))));
@@ -4023,6 +4037,13 @@ public class UserContext {
                             .thenCompose(v -> network.getFile(v, e.pointer, Optional.empty(), e.ownerName))
                             .thenApply(Optional::isEmpty);
                 }).exceptionally(t -> false);
+    }
+
+    private CompletableFuture<Boolean> addMembersToGroup(String groupUid, Set<String> usernames) {
+        if (usernames.isEmpty())
+            return Futures.of(true);
+        LOG.info("Adding " + usernames + " to group " + groupUid);
+        return shareReadAccessWith(groupDir(groupUid), usernames).thenApply(x -> true);
     }
 
     /** Removing from a group rotates its keys and re-shares with the remaining members, so only do it for actual
