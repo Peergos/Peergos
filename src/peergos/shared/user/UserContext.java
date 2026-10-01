@@ -3417,11 +3417,38 @@ public class UserContext {
                                                 .thenApply(decrypted -> Optional.of(new FollowRequestWithCipherText(decrypted, b)))
                                                 .exceptionally(t -> Optional.empty()))
                                         .collect(Collectors.toList()))
-                                .thenApply(opts -> opts.stream().flatMap(Optional::stream).collect(Collectors.toList())).thenCompose(withDecrypted -> {
+                                .thenApply(opts -> opts.stream().flatMap(Optional::stream).collect(Collectors.toList()))
+                                .thenCompose(withDecrypted -> getFollowing().thenCompose(following -> {
 
-                            List<FollowRequestWithCipherText> replies = withDecrypted.stream()
-                                    .filter(p -> pendingOut.pendingOutgoingFollowRequests.contains(p.req.entry.get().ownerName))
-                                    .collect(Collectors.toList());
+                            // Classify by message content where possible rather than by our local state alone, because a
+                            // failure part way through sending or replying leaves that state half updated.
+                            List<FollowRequestWithCipherText> replies = new ArrayList<>();
+                            Map<String, FollowRequestWithCipherText> initial = new LinkedHashMap<>();
+                            List<FollowRequestWithCipherText> toDiscard = new ArrayList<>();
+                            Set<String> repliedFrom = new HashSet<>();
+                            for (FollowRequestWithCipherText p : withDecrypted) {
+                                String from = p.req.entry.get().ownerName;
+                                if (pendingOut.pendingOutgoingFollowRequests.contains(from)) {
+                                    if (repliedFrom.add(from))
+                                        replies.add(p);
+                                    else
+                                        toDiscard.add(p); // duplicate reply
+                                    continue;
+                                }
+                                // an initial request always has a key and an entry point, so this is an unauthenticated
+                                // reply to a request we are no longer waiting on
+                                boolean replyShaped = p.req.key.isEmpty() || p.req.entry.get().pointer.isNull();
+                                boolean alreadyMutual = followerRoots.containsKey(from) && following.contains(from);
+                                if (replyShaped || alreadyMutual) {
+                                    toDiscard.add(p);
+                                    continue;
+                                }
+                                // A request from someone we already have a sharing dir for is still surfaced, so that a reply
+                                // which failed part way can be completed. Only the latest from each sender is kept.
+                                FollowRequestWithCipherText previous = initial.put(from, p);
+                                if (previous != null)
+                                    toDiscard.add(previous);
+                            }
 
                             BiFunction<TrieNode, FollowRequestWithCipherText, CompletableFuture<TrieNode>> addToStatic = (root, p) -> {
                                 FollowRequest freq = p.req;
@@ -3486,15 +3513,17 @@ public class UserContext {
                                             .exceptionally(t -> trie);
                                 }
                             };
-                            List<FollowRequestWithCipherText> initialRequests = withDecrypted.stream()
-                                    .filter(p -> !followerRoots.containsKey(p.req.entry.get().ownerName))
-                                    .collect(Collectors.toList());
-                            return Futures.reduceAll(replies, entrie, mozart, (a, b) -> a)
+                            return Futures.reduceAll(toDiscard, true,
+                                            (b, p) -> signer.secret.signMessage(p.cipher.serialize())
+                                                    .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed))
+                                                    .exceptionally(t -> false),
+                                            (a, b) -> a)
+                                    .thenCompose(x -> Futures.reduceAll(replies, entrie, mozart, (a, b) -> a))
                                     .thenApply(newRoot -> {
                                         entrie = newRoot;
-                                        return initialRequests;
+                                        return new ArrayList<>(initial.values());
                                     });
-                        }))
+                        })))
                 ));
     }
 
