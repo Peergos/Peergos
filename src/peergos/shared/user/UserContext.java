@@ -4047,8 +4047,14 @@ public class UserContext {
                     if (id.isEmpty() || ! id.get().equals(e.pointer.owner))
                         return Futures.of(false);
                     return network.synchronizer.readOnlyValue(e.pointer.owner, e.pointer.writer)
-                            .thenCompose(v -> network.getFile(v, e.pointer, Optional.empty(), e.ownerName))
-                            .thenApply(Optional::isEmpty);
+                            .thenCompose(v -> {
+                                // No pointer, e.g. their server is unreachable and an offline cache doesn't have it,
+                                // looks the same as their dir having gone, so only trust its absence from a real tree
+                                if (! v.contains(e.pointer.writer) || v.get(e.pointer.writer).props.flatMap(wd -> wd.tree).isEmpty())
+                                    return Futures.of(false);
+                                return network.getFile(v, e.pointer, Optional.empty(), e.ownerName)
+                                        .thenApply(Optional::isEmpty);
+                            });
                 }).exceptionally(t -> false);
     }
 
