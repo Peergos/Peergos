@@ -3945,7 +3945,10 @@ public class UserContext {
      *  rest of the removal can be completed by reconcileGroups if this fails part way.
      */
     private CompletableFuture<Boolean> revokeFollower(String usernameToRemove) {
-        return completeFollowerRemoval(usernameToRemove) // in case an earlier removal was interrupted
+        // revoking their access re-shares with everyone else, which fails for a stale group member
+        return getFollowerRoots(false)
+                .thenCompose(dirs -> removeGroupMembersWithoutSharingDirs(dirs.keySet()))
+                .thenCompose(x -> completeFollowerRemoval(usernameToRemove)) // in case an earlier removal was interrupted
                 .thenCompose(x -> getSharingFolder())
                 .thenCompose(sharing -> sharing.getChild(usernameToRemove, crypto.hasher, network)
                         .thenCompose(dir -> dir.isEmpty() ?
@@ -3972,25 +3975,22 @@ public class UserContext {
                 .thenCompose(sharing -> sharing.hasChild(usernameToRemove, crypto.hasher, network))
                 .thenCompose(isFollower -> isFollower ?
                         Futures.of(true) :
-                        removeFromBuiltInGroups(usernameToRemove));
+                        removeFromAllGroups(usernameToRemove));
     }
 
-    private CompletableFuture<Boolean> removeFromBuiltInGroups(String usernameToRemove) {
+    /** Remove them from every group they are in, built in or not. */
+    private CompletableFuture<Boolean> removeFromAllGroups(String usernameToRemove) {
         Set<String> toRemove = Collections.singleton(usernameToRemove);
-        return getGroupUid(SocialState.FRIENDS_GROUP_NAME)
-                .thenCompose(friendsUid -> friendsUid.isPresent() ?
-                        removeMembersFromGroup(friendsUid.get(), toRemove) :
-                        Futures.of(true))
-                .thenCompose(x -> getGroupUid(SocialState.FOLLOWERS_GROUP_NAME))
-                .thenCompose(followersUid -> followersUid.isPresent() ?
-                        removeMembersFromGroup(followersUid.get(), toRemove) :
-                        Futures.of(true));
+        return getGroupNameMappings()
+                .thenCompose(groups -> Futures.reduceAll(groups.uidToGroupName.keySet(), true,
+                        (b, uid) -> removeMembersFromGroup(uid, toRemove),
+                        (a, b) -> a && b));
     }
 
     /** Keep the built in groups in line with who our followers and friends are. Membership of them is managed
      *  automatically, so remove followers we no longer have a sharing dir for (e.g. after an interrupted removeFollower)
      *  and friends who are no longer mutual, e.g. because they removed us, and add those who are missing, e.g. after
-     *  unblocking a friend.
+     *  unblocking a friend. Also remove anyone we no longer have a sharing dir for from our other groups.
      */
     private CompletableFuture<Boolean> reconcileGroups(Set<String> following) {
         return getSharingFolder()
@@ -4022,6 +4022,7 @@ public class UserContext {
                                             staleFriends.addAll(unfollowed);
                                             return removeMembersFromGroup(friendsUid.get(), staleFriends)
                                                     .thenCompose(x -> removeMembersFromGroup(followersUid.get(), staleFollowers))
+                                                    .thenCompose(x -> removeGroupMembersWithoutSharingDirs(dirs.keySet()))
                                                     .thenCompose(x -> getPendingOutgoingFollowRequests())
                                                     .thenCompose(pending -> {
                                                         Set<String> current = new TreeSet<>(dirs.keySet());
@@ -4092,6 +4093,21 @@ public class UserContext {
                                         .thenApply(Optional::isEmpty);
                             });
                 }).exceptionally(t -> false);
+    }
+
+    /** Only followers can be in a group, and removing anyone from a group fails while it has a member we no longer
+     *  have a sharing dir for, e.g. left by an older client.
+     */
+    private CompletableFuture<Boolean> removeGroupMembersWithoutSharingDirs(Set<String> followerDirs) {
+        return getGroupNameMappings()
+                .thenCompose(groups -> Futures.reduceAll(groups.uidToGroupName.keySet(),
+                        true,
+                        (b, uid) -> getGroupMembers(uid).thenCompose(members -> {
+                            Set<String> stale = new TreeSet<>(members);
+                            stale.removeAll(followerDirs);
+                            return removeMembersFromGroup(uid, stale);
+                        }),
+                        (a, b) -> a && b));
     }
 
     private CompletableFuture<Boolean> addMembersToGroup(String groupUid, Set<String> usernames) {
