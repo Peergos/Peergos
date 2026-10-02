@@ -55,6 +55,7 @@ public class UserContext {
     public static final String ENTRY_POINTS_FROM_FRIENDS_FILENAME = ".from-friends.cborstream";
     public static final String ENTRY_POINTS_FROM_FRIENDS_GROUPS_FILENAME = ".groups-from-friends.cborstream";
     public static final String SOCIAL_STATE_FILENAME = ".social-state.cbor";
+    private static final String REMOVING_FOLLOWER_PREFIX = ".removing-";
     public static final String BLOCKED_USERNAMES_FILE = ".blocked-usernames.txt";
 
     @JsProperty
@@ -69,6 +70,8 @@ public class UserContext {
     private final IncomingCapCache capCache;
     private final Optional<BatWithId> mirrorBat;
     public final SharedWithCache sharedWithCache;
+    // when we last checked whether each friend we can't see has removed us, as it waits on their server
+    private final Map<String, Long> lastUnfollowCheck = new HashMap<>();
 
     // The root of the global filesystem as viewed by this context
     @JsProperty
@@ -2470,18 +2473,24 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<SocialState> getSocialState() {
+        // retrieving friend roots waits on each friend's server, so only do it once
         return processFollowRequests()
-                .thenCompose(pendingIncoming -> getPendingOutgoingFollowRequests()
+                .thenCompose(pendingIncoming -> getFriendRoots().thenCompose(followingRoots -> reconcileGroups(followingRoots.stream()
+                                .map(FileWrapper::getOwnerName)
+                                .collect(Collectors.toSet()))
+                        .exceptionally(t -> {
+                            LOG.log(Level.WARNING, "Couldn't reconcile social groups", t);
+                            return false;
+                        })
+                        .thenCompose(x -> getPendingOutgoingFollowRequests())
                         .thenCompose(pendingOutgoing -> getFollowerRoots(pendingOutgoing.pendingOutgoingFollowRequests)
-                                .thenCompose(followerRoots -> getFriendRoots().thenCompose(
-                                        followingRoots -> getFollowerNames().thenCompose(
-                                                followers -> getBlocked().thenCompose(
-                                                        blocked -> getFriendAnnotations().thenCompose(
-                                                                annotations -> getGroupNameMappings().thenApply(
-                                                                        groups -> new SocialState(pendingIncoming,
-                                                                                pendingOutgoing.pendingOutgoingFollowRequests,
-                                                                                followers, followerRoots, followingRoots,
-                                                                                blocked, annotations, groups.uidToGroupName)))))))));
+                                .thenCompose(followerRoots -> getBlocked().thenCompose(
+                                        blocked -> getFriendAnnotations().thenCompose(
+                                                annotations -> getGroupNameMappings().thenApply(
+                                                        groups -> new SocialState(pendingIncoming,
+                                                                pendingOutgoing.pendingOutgoingFollowRequests,
+                                                                followerRoots.keySet(), followerRoots, followingRoots,
+                                                                blocked, annotations, groups.uidToGroupName))))))));
     }
 
     @JsMethod
@@ -2503,6 +2512,13 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<Boolean> sendReplyFollowRequest(FollowRequestWithCipherText initialRequestAndRaw, boolean accept, boolean reciprocate) {
+        String theirUsername = initialRequestAndRaw.req.entry.get().ownerName;
+        // they may have a sharing dir already, e.g. from an earlier attempt to accept this request which failed part way
+        return (accept ? Futures.of(true) : revokeFollower(theirUsername))
+                .thenCompose(x -> replyToFollowRequest(initialRequestAndRaw, accept, reciprocate));
+    }
+
+    private CompletableFuture<Boolean> replyToFollowRequest(FollowRequestWithCipherText initialRequestAndRaw, boolean accept, boolean reciprocate) {
         FollowRequest initialRequest = initialRequestAndRaw.req;
         String theirUsername = initialRequest.entry.get().ownerName;
         // if accept, create directory to share with them, note in entry points (they follow us)
@@ -2587,6 +2603,19 @@ public class UserContext {
         });
     }
 
+    /** Answer a request from an existing mutual friend. They already have everything an accept would give them, so
+     *  only send the reply, which also means nothing accumulates if it has to be retried.
+     */
+    private CompletableFuture<Boolean> reaffirmFollowRequest(FollowRequestWithCipherText request, FileWrapper ourDirForThem) {
+        EntryPoint theirs = request.req.entry.get();
+        EntryPoint ours = new EntryPoint(ourDirForThem.getPointer().capability.readOnly(), username);
+        FollowRequest reply = new FollowRequest(Optional.of(ours), Optional.of(theirs.pointer.rBaseKey));
+        return getPublicKeys(theirs.ownerName)
+                .thenCompose(keys -> blindAndSendFollowRequest(theirs.pointer.owner, keys.get().right, reply))
+                .thenCompose(b -> signer.secret.signMessage(request.cipher.serialize()))
+                .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed));
+    }
+
     /**
      * Send details to allow friend to follow us, and optionally let us follow them
      * create a tmp keypair whose public key we can prepend to the request without leaking information
@@ -2601,6 +2630,18 @@ public class UserContext {
                 .thenCompose(blindRequest -> network.social.sendFollowRequest(targetIdentity, blindRequest.serialize()));
     }
 
+    /** A request that reached them but whose response was lost is harmless to resend, whereas rolling back
+     *  our pending state for it would leave their reply unrecognised. */
+    private CompletableFuture<Boolean> blindAndSendFollowRequest(PublicKeyHash targetIdentity,
+                                                                 PublicBoxingKey targetBoxer,
+                                                                 FollowRequest req,
+                                                                 int attempts) {
+        return Futures.asyncExceptionally(() -> blindAndSendFollowRequest(targetIdentity, targetBoxer, req),
+                t -> attempts <= 1 ?
+                        Futures.errored(t) :
+                        blindAndSendFollowRequest(targetIdentity, targetBoxer, req, attempts - 1));
+    }
+
     public CompletableFuture<Boolean> sendFollowRequest(String targetUsername, SymmetricKey requestedKey) {
         return getSharingFolder().thenCompose(sharing -> {
             // check for them not reciprocating
@@ -2612,34 +2653,55 @@ public class UserContext {
                 if (alreadyFollowing) {
                     return Futures.errored(new Exception("User " + targetUsername +" is already a follower!"));
                 }
-                return getPublicKeys(targetUsername).thenCompose(targetUserOpt -> {
+                // asking to follow someone we have blocked means we want to follow them again
+                return getBlocked().thenCompose(blocked -> blocked.contains(targetUsername) ?
+                                unblock(targetUsername) :
+                                Futures.of(true))
+                        .thenCompose(unblocked -> getPublicKeys(targetUsername)).thenCompose(targetUserOpt -> {
                     if (! targetUserOpt.isPresent()) {
                         return Futures.errored(new Exception("User " + targetUsername + " does not exist!"));
                     }
                     PublicBoxingKey targetUser = targetUserOpt.get().right;
-                    return sharing.getOrMkdirs(PathUtil.get(targetUsername), network, true, mirrorBatId(), crypto)
-                            .thenCompose(friendRoot -> {
-
-                                EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(), username);
-                                FollowRequest followReq = new FollowRequest(Optional.of(entry), Optional.ofNullable(requestedKey));
-
-                                PublicKeyHash targetSigner = targetUserOpt.get().left;
-                                return getPendingOutgoingFollowRequests()
-                                        .thenCompose(pending -> blindAndSendFollowRequest(targetSigner, targetUser, followReq)
-                                                .thenCompose(b -> {
-                                                    // note that we have a pending request sent to them
+                    PublicKeyHash targetSigner = targetUserOpt.get().left;
+                    // Record the pending request before sending it, otherwise their reply can't be recognised.
+                    // If anything fails, roll back what this call added so the UI lets the user try again.
+                    return sharing.hasChild(targetUsername, crypto.hasher, network)
+                            .thenCompose(dirExisted -> getPendingOutgoingFollowRequests().thenCompose(pending -> {
+                                boolean wasPending = pending.pendingOutgoingFollowRequests.contains(targetUsername);
+                                return Futures.<Boolean>asyncExceptionally(
+                                        () -> sharing.getOrMkdirs(PathUtil.get(targetUsername), network, true, mirrorBatId(), crypto)
+                                                .<Boolean>thenCompose(friendRoot -> {
+                                                    EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(), username);
+                                                    FollowRequest followReq = new FollowRequest(Optional.of(entry), Optional.ofNullable(requestedKey));
                                                     PendingSocialState updated = pending.withPending(targetUsername);
                                                     byte[] raw = updated.toCbor().serialize();
                                                     return getUserRoot().thenCompose(home -> home.uploadFileSection(
                                                                     SOCIAL_STATE_FILENAME, AsyncReader.build(raw), true, 0, raw.length, Optional.empty(),
                                                                     true, network, crypto, () -> false, x -> {}, crypto.random.randomBytes(32),
                                                                     Optional.empty(), Optional.of(Bat.random(crypto.random)), mirrorBatId()))
-                                                            .thenApply(x -> b);
-                                                }));
-                            });
+                                                            .<Boolean>thenCompose(x -> blindAndSendFollowRequest(targetSigner, targetUser, followReq, 3));
+                                                }),
+                                        // an earlier request to them may still be answered, so leave its state alone
+                                        t -> (wasPending ? Futures.of(true) : rollbackFollowRequest(targetUsername, ! dirExisted))
+                                                .exceptionally(rollbackError -> false)
+                                                .<Boolean>thenCompose(x -> Futures.errored(t)));
+                            }));
                 });
             });
         });
+    }
+
+    /** Pending is cleared before the dir is removed, so a failure in between leaves them looking like a follower
+     *  until the request is resent, rather than pending with no dir. */
+    private CompletableFuture<Boolean> rollbackFollowRequest(String targetUsername, boolean removeDir) {
+        return removeFromPendingOutgoing(targetUsername)
+                .thenCompose(x -> ! removeDir ?
+                        Futures.of(true) :
+                        getSharingFolder().thenCompose(sharing -> sharing.getChild(targetUsername, crypto.hasher, network)
+                                .thenCompose(dir -> dir.isEmpty() ?
+                                        Futures.of(true) :
+                                        dir.get().remove(sharing, PathUtil.get(username, SHARED_DIR_NAME, targetUsername), this)
+                                                .thenApply(y -> true))));
     }
 
     @JsMethod
@@ -3401,11 +3463,46 @@ public class UserContext {
                                                 .thenApply(decrypted -> Optional.of(new FollowRequestWithCipherText(decrypted, b)))
                                                 .exceptionally(t -> Optional.empty()))
                                         .collect(Collectors.toList()))
-                                .thenApply(opts -> opts.stream().flatMap(Optional::stream).collect(Collectors.toList())).thenCompose(withDecrypted -> {
+                                .thenApply(opts -> opts.stream().flatMap(Optional::stream).collect(Collectors.toList()))
+                                .thenCompose(withDecrypted -> (withDecrypted.stream()
+                                        .allMatch(p -> pendingOut.pendingOutgoingFollowRequests.contains(p.req.entry.get().ownerName)) ?
+                                        Futures.of(Collections.<String>emptySet()) : // only needed for requests which aren't replies
+                                        getFollowing()).thenCompose(following -> {
 
-                            List<FollowRequestWithCipherText> replies = withDecrypted.stream()
-                                    .filter(p -> pendingOut.pendingOutgoingFollowRequests.contains(p.req.entry.get().ownerName))
-                                    .collect(Collectors.toList());
+                            // Classify by message content where possible rather than by our local state alone, because a
+                            // failure part way through sending or replying leaves that state half updated.
+                            Map<String, FollowRequestWithCipherText> latestReplies = new LinkedHashMap<>();
+                            Map<String, FollowRequestWithCipherText> initial = new LinkedHashMap<>();
+                            List<FollowRequestWithCipherText> toDiscard = new ArrayList<>();
+                            List<FollowRequestWithCipherText> toReaffirm = new ArrayList<>();
+                            for (FollowRequestWithCipherText p : withDecrypted) {
+                                String from = p.req.entry.get().ownerName;
+                                if (pendingOut.pendingOutgoingFollowRequests.contains(from)) {
+                                    // they may have replied more than once, e.g. rejecting after an accept failed part way
+                                    FollowRequestWithCipherText earlier = latestReplies.put(from, p);
+                                    if (earlier != null)
+                                        toDiscard.add(earlier);
+                                    continue;
+                                }
+                                // an initial request always has a key and an entry point, so this is an unauthenticated
+                                // reply to a request we are no longer waiting on
+                                boolean replyShaped = p.req.key.isEmpty() || p.req.entry.get().pointer.isNull();
+                                if (replyShaped) {
+                                    toDiscard.add(p);
+                                    continue;
+                                }
+                                // They are waiting on a reply, e.g. after unfollowing and asking again. Accepting grants
+                                // nothing they don't already have.
+                                if (followerRoots.containsKey(from) && following.contains(from)) {
+                                    toReaffirm.add(p);
+                                    continue;
+                                }
+                                // A request from someone we already have a sharing dir for is still surfaced, so that a reply
+                                // which failed part way can be completed. Only the latest from each sender is kept.
+                                FollowRequestWithCipherText previous = initial.put(from, p);
+                                if (previous != null)
+                                    toDiscard.add(previous);
+                            }
 
                             BiFunction<TrieNode, FollowRequestWithCipherText, CompletableFuture<TrieNode>> addToStatic = (root, p) -> {
                                 FollowRequest freq = p.req;
@@ -3414,7 +3511,9 @@ public class UserContext {
                                             CompletableFuture.completedFuture(root) : // ignore responses claiming to be owned by us
                                             addExternalEntryPoint(freq.entry.get())
                                                     .thenCompose(x -> removeFromPendingOutgoing(freq.entry.get().ownerName))
-                                                    .thenCompose(x -> retrieveAndAddEntryPointToTrie(root, freq.entry.get()));
+                                                    // their dir may already be gone, e.g. if they removed us again
+                                                    .thenCompose(x -> retrieveAndAddEntryPointToTrie(root, freq.entry.get())
+                                                            .exceptionally(t -> root));
                                     return updatedRoot.thenCompose(newRoot -> {
                                         entrie = newRoot;
                                         // clear their response follow req too
@@ -3432,22 +3531,15 @@ public class UserContext {
                                 FollowRequest freq = p.req;
                                 // delete our folder if they didn't reciprocate
                                 String theirName = freq.entry.get().ownerName;
-                                FileWrapper ourDirForThem = followerRoots.get(theirName);
-                                byte[] ourKeyForThem = ourDirForThem.getKey().serialize();
                                 Optional<byte[]> keyFromResponse = freq.key.map(Cborable::serialize);
                                 if (keyFromResponse.isEmpty()) {
-                                    // They didn't reciprocate (follow us)
-                                    CompletableFuture<FileWrapper> removeDir = ourDirForThem.remove(sharing,
-                                            PathUtil.get(username, SHARED_DIR_NAME, theirName), this);
-
-                                    return removeDir.thenCompose(x -> removeFromPendingOutgoing(freq.entry.get().ownerName))
+                                    // They didn't reciprocate (follow us). They may already have been a follower, using
+                                    // the same dir, so revoke them fully rather than only removing the dir.
+                                    return revokeFollower(theirName).thenCompose(x -> removeFromPendingOutgoing(freq.entry.get().ownerName))
                                             .thenCompose(b -> addToStatic.apply(trie, p));
                                 } else if (freq.entry.get().pointer.isNull()) {
                                     // They reciprocated, but didn't accept (they follow us, but we can't follow them)
-                                    // add entry point to static data to signify their acceptance
                                     // and finally remove the follow request
-                                    EntryPoint entryWeSentToThem = new EntryPoint(ourDirForThem.getPointer().capability.readOnly(),
-                                            username);
                                     // add them to followers group
                                     return getGroupUid(SocialState.FOLLOWERS_GROUP_NAME)
                                             .thenCompose(followersUidOpt -> shareReadAccessWith(PathUtil.get(username,
@@ -3457,10 +3549,6 @@ public class UserContext {
                                             .thenApply(x -> trie);
                                 } else {
                                     // they accepted and reciprocated
-                                    // add entry point to static data to signify their acceptance
-                                    EntryPoint entryWeSentToThem = new EntryPoint(ourDirForThem.getPointer().capability.readOnly(),
-                                            username);
-
                                     // add new entry point to tree root
                                     EntryPoint entry = freq.entry.get();
                                     if (entry.ownerName.equals(username))
@@ -3476,15 +3564,21 @@ public class UserContext {
                                             .exceptionally(t -> trie);
                                 }
                             };
-                            List<FollowRequestWithCipherText> initialRequests = withDecrypted.stream()
-                                    .filter(p -> !followerRoots.containsKey(p.req.entry.get().ownerName))
-                                    .collect(Collectors.toList());
-                            return Futures.reduceAll(replies, entrie, mozart, (a, b) -> a)
+                            return Futures.reduceAll(toDiscard, true,
+                                            (b, p) -> signer.secret.signMessage(p.cipher.serialize())
+                                                    .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed))
+                                                    .exceptionally(t -> false),
+                                            (a, b) -> a)
+                                    .thenCompose(x -> Futures.reduceAll(toReaffirm, true,
+                                            (b, p) -> reaffirmFollowRequest(p, followerRoots.get(p.req.entry.get().ownerName))
+                                                    .exceptionally(t -> false),
+                                            (a, b) -> a))
+                                    .thenCompose(x -> Futures.reduceAll(latestReplies.values(), entrie, mozart, (a, b) -> a))
                                     .thenApply(newRoot -> {
                                         entrie = newRoot;
-                                        return initialRequests;
+                                        return new ArrayList<>(initial.values());
                                     });
-                        }))
+                        })))
                 ));
     }
 
@@ -3844,29 +3938,186 @@ public class UserContext {
     @JsMethod
     public CompletableFuture<Boolean> removeFollower(String usernameToRemove) {
         LOG.info("Remove follower: " + usernameToRemove);
-        // remove /$us/shared/$them
-        Path sharingDir = PathUtil.get(this.username, SHARED_DIR_NAME, usernameToRemove);
-        return removeFromFriendGroup(usernameToRemove)
-                .thenCompose(x1 -> removeFromFollowersGroup(usernameToRemove))
-                .thenCompose(x2 -> unshareItemsInSharingFolder(usernameToRemove, usernameToRemove)) // revoke access to everything ever shared with this user!
-                .thenCompose(x3 -> getSharingFolder())
-                .thenCompose(sharing -> getByPath(sharingDir)
-                        .thenCompose(dir -> dir.get().remove(sharing, sharingDir, this)))
-                .thenApply(x4 -> true);
+        return revokeFollower(usernameToRemove);
     }
 
-    private CompletableFuture<Boolean> removeFromFriendGroup(String usernameToRemove) {
+    /** Their sharing dir is first hidden, by renaming it, so they stop being listed as a follower in one step and the
+     *  rest of the removal can be completed by reconcileGroups if this fails part way.
+     */
+    private CompletableFuture<Boolean> revokeFollower(String usernameToRemove) {
+        return completeFollowerRemoval(usernameToRemove) // in case an earlier removal was interrupted
+                .thenCompose(x -> getSharingFolder())
+                .thenCompose(sharing -> sharing.getChild(usernameToRemove, crypto.hasher, network)
+                        .thenCompose(dir -> dir.isEmpty() ?
+                                Futures.of(true) :
+                                dir.get().rename(REMOVING_FOLLOWER_PREFIX + usernameToRemove, sharing,
+                                        PathUtil.get(username, SHARED_DIR_NAME, usernameToRemove), this)
+                                        .thenApply(y -> true)))
+                .thenCompose(x -> completeFollowerRemoval(usernameToRemove));
+    }
+
+    private CompletableFuture<Boolean> completeFollowerRemoval(String usernameToRemove) {
+        String hiddenName = REMOVING_FOLLOWER_PREFIX + usernameToRemove;
+        Path hiddenDir = PathUtil.get(this.username, SHARED_DIR_NAME, hiddenName);
+        return getByPath(hiddenDir)
+                .thenCompose(dirOpt -> dirOpt.isEmpty() ?
+                        Futures.of(true) :
+                        unshareItemsInSharingFolder(hiddenName, usernameToRemove) // revoke access to everything ever shared with this user!
+                                .thenCompose(x -> getSharingFolder())
+                                .thenCompose(sharing -> getByPath(hiddenDir)
+                                        .thenCompose(dir -> dir.get().remove(sharing, hiddenDir, this)))
+                                .thenApply(x -> true))
+                // they may have become a follower again since an interrupted removal
+                .thenCompose(x -> getSharingFolder())
+                .thenCompose(sharing -> sharing.hasChild(usernameToRemove, crypto.hasher, network))
+                .thenCompose(isFollower -> isFollower ?
+                        Futures.of(true) :
+                        removeFromBuiltInGroups(usernameToRemove));
+    }
+
+    private CompletableFuture<Boolean> removeFromBuiltInGroups(String usernameToRemove) {
+        Set<String> toRemove = Collections.singleton(usernameToRemove);
         return getGroupUid(SocialState.FRIENDS_GROUP_NAME)
                 .thenCompose(friendsUid -> friendsUid.isPresent() ?
-                        removeFromGroup(friendsUid.get(), usernameToRemove) :
+                        removeMembersFromGroup(friendsUid.get(), toRemove) :
+                        Futures.of(true))
+                .thenCompose(x -> getGroupUid(SocialState.FOLLOWERS_GROUP_NAME))
+                .thenCompose(followersUid -> followersUid.isPresent() ?
+                        removeMembersFromGroup(followersUid.get(), toRemove) :
                         Futures.of(true));
     }
 
-    private CompletableFuture<Boolean> removeFromFollowersGroup(String usernameToRemove) {
-        return getGroupUid(SocialState.FOLLOWERS_GROUP_NAME)
-                .thenCompose(followersUid -> followersUid.isPresent() ?
-                        removeFromGroup(followersUid.get(), usernameToRemove) :
-                        Futures.of(true));
+    /** Keep the built in groups in line with who our followers and friends are. Membership of them is managed
+     *  automatically, so remove followers we no longer have a sharing dir for (e.g. after an interrupted removeFollower)
+     *  and friends who are no longer mutual, e.g. because they removed us, and add those who are missing, e.g. after
+     *  unblocking a friend.
+     */
+    private CompletableFuture<Boolean> reconcileGroups(Set<String> following) {
+        return getSharingFolder()
+                .thenCompose(sharing -> sharing.getChildren(crypto.hasher, network))
+                .thenCompose(children -> Futures.reduceAll(children.stream()
+                                .map(FileWrapper::getName)
+                                .filter(n -> n.startsWith(REMOVING_FOLLOWER_PREFIX))
+                                .map(n -> n.substring(REMOVING_FOLLOWER_PREFIX.length()))
+                                .collect(Collectors.toList()),
+                        true,
+                        (b, name) -> completeFollowerRemoval(name),
+                        (a, b) -> a && b))
+                .thenCompose(done -> getFollowerRoots(false)).thenCompose(dirs ->
+                getGroupUid(SocialState.FOLLOWERS_GROUP_NAME).thenCompose(followersUid ->
+                        getGroupUid(SocialState.FRIENDS_GROUP_NAME).thenCompose(friendsUid -> {
+                            if (followersUid.isEmpty() || friendsUid.isEmpty())
+                                return Futures.of(true);
+                            return getGroupMembers(followersUid.get()).thenCompose(followers ->
+                                    getGroupMembers(friendsUid.get()).thenCompose(friends -> {
+                                        Set<String> staleFollowers = new TreeSet<>(followers);
+                                        staleFollowers.removeAll(dirs.keySet());
+                                        Set<String> staleFriends = new TreeSet<>(friends);
+                                        staleFriends.removeAll(dirs.keySet());
+                                        // only check friends we can't currently see, as that is usually nobody
+                                        Set<String> suspects = new TreeSet<>(friends);
+                                        suspects.retainAll(dirs.keySet());
+                                        suspects.removeAll(following);
+                                        return definitelyNotFollowing(dueForUnfollowCheck(suspects)).thenCompose(unfollowed -> {
+                                            staleFriends.addAll(unfollowed);
+                                            return removeMembersFromGroup(friendsUid.get(), staleFriends)
+                                                    .thenCompose(x -> removeMembersFromGroup(followersUid.get(), staleFollowers))
+                                                    .thenCompose(x -> getPendingOutgoingFollowRequests())
+                                                    .thenCompose(pending -> {
+                                                        Set<String> current = new TreeSet<>(dirs.keySet());
+                                                        current.removeAll(pending.pendingOutgoingFollowRequests);
+                                                        Set<String> missingFollowers = new TreeSet<>(current);
+                                                        missingFollowers.removeAll(followers);
+                                                        Set<String> missingFriends = new TreeSet<>(current);
+                                                        missingFriends.retainAll(following);
+                                                        missingFriends.removeAll(friends);
+                                                        return addMembersToGroup(followersUid.get(), missingFollowers)
+                                                                .thenCompose(y -> addMembersToGroup(friendsUid.get(), missingFriends));
+                                                    });
+                                        });
+                                    }));
+                        })));
+    }
+
+    private static final long UNFOLLOW_CHECK_INTERVAL_MILLIS = 10 * 60_000;
+
+    /** A friend whose server is unreachable looks the same as one who removed us until we ask their server, so
+     *  don't make every getSocialState wait on it.
+     */
+    private Set<String> dueForUnfollowCheck(Set<String> suspects) {
+        long now = System.currentTimeMillis();
+        synchronized (lastUnfollowCheck) {
+            Set<String> due = suspects.stream()
+                    .filter(name -> lastUnfollowCheck.getOrDefault(name, 0L) + UNFOLLOW_CHECK_INTERVAL_MILLIS <= now)
+                    .collect(Collectors.toSet());
+            due.forEach(name -> lastUnfollowCheck.put(name, now));
+            return due;
+        }
+    }
+
+    /** The users for whom none of our entry points from them can be retrieved any more. A failure to retrieve, as
+     *  opposed to it not being there, means we can't tell, so they are not included.
+     */
+    private CompletableFuture<Set<String>> definitelyNotFollowing(Set<String> usernames) {
+        if (usernames.isEmpty())
+            return Futures.of(Collections.emptySet());
+        return getUserRoot().thenCompose(this::getFriendsEntryPoints)
+                .thenCompose(entries -> Futures.combineAllInOrder(usernames.stream()
+                                .map(name -> Futures.combineAllInOrder(entries.stream()
+                                                .filter(e -> e.ownerName.equals(name))
+                                                .map(this::isEntryPointGone)
+                                                .collect(Collectors.toList()))
+                                        .thenApply(gone -> gone.stream().allMatch(g -> g) ?
+                                                Optional.of(name) :
+                                                Optional.<String>empty()))
+                                .collect(Collectors.toList()))
+                        .thenApply(res -> res.stream()
+                                .flatMap(Optional::stream)
+                                .collect(Collectors.toSet())));
+    }
+
+    private CompletableFuture<Boolean> isEntryPointGone(EntryPoint e) {
+        return network.coreNode.getPublicKeyHash(e.ownerName)
+                .thenCompose(id -> {
+                    // if they have changed identity key we can't tell from this entry point
+                    if (id.isEmpty() || ! id.get().equals(e.pointer.owner))
+                        return Futures.of(false);
+                    return network.synchronizer.readOnlyValue(e.pointer.owner, e.pointer.writer)
+                            .thenCompose(v -> {
+                                // No pointer, e.g. their server is unreachable and an offline cache doesn't have it,
+                                // looks the same as their dir having gone, so only trust its absence from a real tree
+                                if (! v.contains(e.pointer.writer) || v.get(e.pointer.writer).props.flatMap(wd -> wd.tree).isEmpty())
+                                    return Futures.of(false);
+                                return network.getFile(v, e.pointer, Optional.empty(), e.ownerName)
+                                        .thenApply(Optional::isEmpty);
+                            });
+                }).exceptionally(t -> false);
+    }
+
+    private CompletableFuture<Boolean> addMembersToGroup(String groupUid, Set<String> usernames) {
+        if (usernames.isEmpty())
+            return Futures.of(true);
+        LOG.info("Adding " + usernames + " to group " + groupUid);
+        return shareReadAccessWith(groupDir(groupUid), usernames).thenApply(x -> true);
+    }
+
+    /** Removing from a group rotates its keys and re-shares with the remaining members, so only do it for actual
+     *  members, and all at once, as the re-share fails for any remaining member without a sharing dir.
+     */
+    private CompletableFuture<Boolean> removeMembersFromGroup(String groupUid, Set<String> usernames) {
+        if (usernames.isEmpty())
+            return Futures.of(true);
+        return getGroupMembers(groupUid).thenCompose(members -> {
+            Set<String> toRemove = new TreeSet<>(usernames);
+            toRemove.retainAll(members);
+            if (toRemove.isEmpty())
+                return Futures.of(true);
+            LOG.info("Removing " + toRemove + " from group " + groupUid);
+            return unShareReadAccessWith(groupDir(groupUid), toRemove)
+                    .thenCompose(x -> Futures.reduceAll(toRemove, true,
+                            (b, u) -> unshareItemsInSharingFolder(groupUid, u),
+                            (a, b) -> a && b));
+        });
     }
 
     /** Remove a user from a group. This involves rotating the keys to the group sharing dir,
