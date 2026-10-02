@@ -11,6 +11,7 @@ import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.nio.file.*;
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
@@ -115,6 +116,7 @@ public class IncomingCapCache {
                         .collect(Collectors.toList());
                 if (current.cap.equals(cap)) {
                     List<String> combinedSharers = Stream.concat(existing.get().sharers.stream(), Stream.of(sharer))
+                            .distinct() // a sharing dir can be read again from the start
                             .collect(Collectors.toList());
                     ChildElement updatedChild = new ChildElement(name, cap, combinedSharers);
                     return Futures.of(new CapsInDirectory(Stream.concat(remainder.stream(),
@@ -405,11 +407,12 @@ public class IncomingCapCache {
                 .thenCompose(root -> root.getDescendentByPath(friend + FRIEND_STATE_SUFFIX, s, hasher, network)
                         .thenCompose(stateOpt -> {
                             if (stateOpt.isEmpty())
-                                return Futures.of(ProcessedCaps.empty());
+                                return Futures.of(new Pair<>(ProcessedCaps.empty(), Optional.<LocalDateTime>empty()));
                             return Serialize.readFully(stateOpt.get(), crypto, network)
-                                    .thenApply(arr -> ProcessedCaps.fromCbor(CborObject.fromByteArray(arr)));
+                                    .thenApply(arr -> new Pair<>(ProcessedCaps.fromCbor(CborObject.fromByteArray(arr)),
+                                            Optional.of(stateOpt.get().getFileProperties().modified)));
                         }))
-                .thenCompose(currentState -> ensureUptodate(friend, sharedDir, groups, currentState, s, c, crypto, network))
+                .thenCompose(state -> ensureUptodate(friend, sharedDir, groups, state.left, state.right, s, c, crypto, network))
                 .thenApply(res -> {
                     pointerCache.put(writer, new Pair<>(latestRoot, res.right.flatten()));
                     return res;
@@ -422,10 +425,26 @@ public class IncomingCapCache {
                                                    ProcessedCaps current,
                                                    Snapshot s,
                                                    NetworkAccess network) {
+        return getCapsFrom(friend, originalSharedDir, groups, current, Optional.empty(), s, network);
+    }
+
+    /**
+     * @param lastProgress when we last recorded progress through their sharing dir, if known
+     */
+    public CompletableFuture<CapsDiff> getCapsFrom(String friend,
+                                                   EntryPoint originalSharedDir,
+                                                   List<EntryPoint> groups,
+                                                   ProcessedCaps current,
+                                                   Optional<LocalDateTime> lastProgress,
+                                                   Snapshot s,
+                                                   NetworkAccess network) {
+        byte[] dirId = originalSharedDir.pointer.getMapKey();
         return network.getFile(originalSharedDir, s)
                 .thenCompose(shared -> shared.isEmpty() ?
                         Futures.of(CapsDiff.empty()) :
-                        retrieveNewCaps(shared.get(), current, network, crypto)
+                        startFor(current, dirId, shared.get(), lastProgress, network)
+                                .thenCompose(base -> retrieveNewCaps(shared.get(), base, network, crypto))
+                                .thenApply(direct -> direct.withSharedDir(dirId))
                                 .thenCompose(direct -> Futures.combineAll(groups.stream()
                                                 .parallel()
                                                 .map(e -> network.getFile(e, s)
@@ -440,6 +459,28 @@ public class IncomingCapCache {
                                                 .reduce(direct,
                                                         (a, p) -> a.mergeGroups(current.createGroupDiff(p.left, p.right)),
                                                         CapsDiff::mergeGroups))));
+    }
+
+    /** Where to continue reading a friend's sharing dir from. If it has been replaced, e.g. they removed us and we
+     *  became friends again, our offsets into the old one are meaningless, so start again.
+     */
+    private CompletableFuture<ProcessedCaps> startFor(ProcessedCaps current,
+                                                      byte[] dirId,
+                                                      FileWrapper sharedDir,
+                                                      Optional<LocalDateTime> lastProgress,
+                                                      NetworkAccess network) {
+        if (current.sharedDir.isPresent())
+            return Futures.of(current.isFor(dirId) ? current : current.restartedFor(dirId));
+        // Saved before we recorded which dir. It was replaced if we've read past its end, or it was created after we
+        // last made progress. Starting again unnecessarily, e.g. from clock skew, only costs re-reading it.
+        boolean createdSince = lastProgress.map(t -> t.isBefore(sharedDir.getFileProperties().created)).orElse(false);
+        if (createdSince)
+            return Futures.of(current.restartedFor(dirId));
+        return CapabilityStore.getReadOnlyCapabilityFileSize(sharedDir, crypto, network)
+                .thenCompose(readSize -> CapabilityStore.getEditableCapabilityFileSize(sharedDir, crypto, network)
+                        .thenApply(writeSize -> current.readCapBytes > readSize || current.writeCapBytes > writeSize ?
+                                current.restartedFor(dirId) :
+                                current.withSharedDir(dirId)));
     }
 
     private static CompletableFuture<CapsDiff> retrieveNewCaps(FileWrapper sharedDir,
@@ -472,12 +513,13 @@ public class IncomingCapCache {
                                                                                     EntryPoint originalSharedDir,
                                                                                     List<EntryPoint> groups,
                                                                                     ProcessedCaps current,
+                                                                                    Optional<LocalDateTime> lastProgress,
                                                                                     Snapshot s,
                                                                                     Committer c,
                                                                                     Crypto crypto,
                                                                                     NetworkAccess network) {
         // check there are no new capabilities in the friend's shared directory, or any of their groups
-        return getCapsFrom(friend, originalSharedDir, groups, current, s, network)
+        return getCapsFrom(friend, originalSharedDir, groups, current, lastProgress, s, network)
                 .thenCompose(diff -> addNewCapsToMirror(friend, current, diff, s, c, network))
                 .thenCompose(p -> getAndUpdateWorldRoot(p.left, network)
                         .thenApply(y -> p));
