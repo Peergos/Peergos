@@ -63,7 +63,7 @@ public class GCTests {
         JdbcIpnsAndSocial pointers = new JdbcIpnsAndSocial(getDb(), cmds);
         JdbcUsageStore usage = new JdbcUsageStore(getDb(), cmds);
 
-        GarbageCollector gc = new GarbageCollector(storage, pointers, usage, new RamPki(), dir, (x, y, z) -> Futures.of(true), u -> Futures.of(true), true);
+        GarbageCollector gc = new GarbageCollector(storage, pointers, usage, new RamPki(), dir, (x, y, z, u) -> Futures.of(true), u -> Futures.of(true), true);
         gc.collect(s -> Futures.of(true));
 
         verifyAllReachableBlocksArePresent(pointers, metadb, storage);
@@ -161,7 +161,7 @@ public class GCTests {
         JdbcIpnsAndSocial pointers = new JdbcIpnsAndSocial(getDb(), cmds);
         JdbcUsageStore usage = new JdbcUsageStore(getDb(), cmds);
 
-        GarbageCollector gc = new GarbageCollector(storage, pointers, usage, new RamPki(), dir, (x, y, z) -> Futures.of(true), u -> Futures.of(true), true);
+        GarbageCollector gc = new GarbageCollector(storage, pointers, usage, new RamPki(), dir, (x, y, z, u) -> Futures.of(true), u -> Futures.of(true), true);
         gc.collect(s -> Futures.of(true));
 
         verifyAllReachableBlocksArePresent(pointers, metadb, storage);
@@ -361,7 +361,7 @@ public class GCTests {
         metadb.put(writer, garbage, null, new BlockMetadata(10, Collections.emptyList(), Collections.emptyList()));
 
         GarbageCollector gc = new GarbageCollector(storage, pointers, usage, new RamPki(), dir,
-                (x, y, z) -> Futures.of(true), u -> Futures.of(true), false);
+                (x, y, z, u) -> Futures.of(true), u -> Futures.of(true), false);
         gc.collect(s -> Futures.of(true));
 
         Assert.assertFalse("the unreferenced cbor block is collected",
@@ -414,7 +414,7 @@ public class GCTests {
 
         int before = storage.storage.get(writer).size();
         GarbageCollector gc = new GarbageCollector(storage, pointers, usage, new RamPki(), dir,
-                (x, y, z) -> Futures.of(true), u -> Futures.of(true), true);
+                (x, y, z, u) -> Futures.of(true), u -> Futures.of(true), true);
         gc.collect(s -> Futures.of(true));
 
         Assert.assertEquals("an incomplete mark must not delete anything",
@@ -502,7 +502,7 @@ public class GCTests {
         pointers.setPointer(writer, Optional.empty(), signedCas).join();
 
         GarbageCollector gc = new GarbageCollector(storage, pointers, usage, new RamPki(), dir,
-                (x, y, z) -> Futures.of(true), u -> Futures.of(true), true);
+                (x, y, z, u) -> Futures.of(true), u -> Futures.of(true), true);
         gc.collect(s -> Futures.of(true));
 
         Assert.assertFalse("a dangling pointer must not stop the sweep",

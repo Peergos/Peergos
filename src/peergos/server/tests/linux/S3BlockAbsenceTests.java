@@ -188,7 +188,7 @@ public class S3BlockAbsenceTests {
 
     private GarbageCollector gc() {
         return new GarbageCollector(s3, pointers, usage, new RamPki(), dir,
-                (x, y, z) -> Futures.of(true), u -> Futures.of(true), true);
+                (x, y, z, u) -> Futures.of(true), u -> Futures.of(true), true);
     }
 
     /** Ask s3 itself, rather than hasBlock, which consults caches and the write buffer. */

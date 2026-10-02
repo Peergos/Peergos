@@ -34,15 +34,19 @@ public class GarbageCollector {
     private final boolean listRawFromBlockstore;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final Path reachabilityDbDir;
-    private final TriFunction<Long, Long, Long, CompletableFuture<Boolean>> deleteConfirm;
+    private final DeletionConfirmer deleteConfirm;
     private final Function<String, CompletableFuture<Boolean>> deleteUserConfirm;
+
+    public interface DeletionConfirmer {
+        public CompletableFuture<Boolean> confirmDeleteBlocks(long cborCount, long rawCount, long total, String username);
+    }
 
     public GarbageCollector(DeletableContentAddressedStorage storage,
                             JdbcIpnsAndSocial pointers,
                             UsageStore usage,
                             CoreNode core,
                             Path reachabilityDbDir,
-                            TriFunction<Long, Long, Long, CompletableFuture<Boolean>> deleteConfirm,
+                            DeletionConfirmer deleteConfirm,
                             Function<String, CompletableFuture<Boolean>> deleteUserConfirm,
                             boolean listRawFromBlockstore) {
         this.storage = storage;
@@ -377,7 +381,7 @@ public class GarbageCollector {
                                Path reachabilityDbDir,
                                Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver,
                                BlockMetadataStore metadata,
-                               TriFunction<Long, Long, Long, CompletableFuture<Boolean>> deleteConfirm,
+                               DeletionConfirmer deleteConfirm,
                                Function<String, CompletableFuture<Boolean>> deleteUserConfirm,
                                boolean listFromBlockstore) {
         long ts0 = System.currentTimeMillis();
@@ -503,7 +507,7 @@ public class GarbageCollector {
                 continue;
             }
 
-            boolean delete = deleteConfirm.apply(cborDelCount.get(), rawDelCount.get(), nBlocks).join();
+            boolean delete = deleteConfirm.confirmDeleteBlocks(cborDelCount.get(), rawDelCount.get(), nBlocks, username).join();
             if (! delete)
                 continue;
 

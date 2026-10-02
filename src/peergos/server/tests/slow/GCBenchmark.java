@@ -49,7 +49,7 @@ public class GCBenchmark {
         }
 
         GarbageCollector.collect(storage, pointers, usage, new RamPki(), Paths.get("reachability.sql"), s -> Futures.of(true),
-                new RamBlockMetadataStore(), (cd, rd, c) -> Futures.of(true), u -> Futures.of(true), false);
+                new RamBlockMetadataStore(), (cd, rd, c, u) -> Futures.of(true), u -> Futures.of(true), false);
     }
 
     private static Multihash generateTree(Random r, PublicKeyHash owner, ContentAddressedStorage storage, int nLeaves, TransactionId tid) {
