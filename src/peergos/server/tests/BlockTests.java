@@ -117,6 +117,9 @@ public class BlockTests {
         UserContext freshA = login(a);
         assertTrue(freshA.processFollowRequests().join().isEmpty());
         assertTrue("the request is removed from the server", freshA.getFollowRequests().join().isEmpty());
+        SocialState bState = login(b).getSocialState().join();
+        assertTrue("it is denied, so they aren't left waiting", bState.pendingOutgoing.isEmpty());
+        assertFalse(bState.getFollowing().contains(a.username));
     }
 
     @Test

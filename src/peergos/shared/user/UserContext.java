@@ -2477,6 +2477,11 @@ public class UserContext {
     public CompletableFuture<SocialState> getSocialState() {
         // retrieving friend roots waits on each friend's server, so only do it once
         return processFollowRequests()
+                .thenCompose(pendingIncoming -> completeBlocks()
+                        .exceptionally(t -> {
+                            LOG.log(Level.WARNING, "Couldn't complete blocks", t);
+                            return false;
+                        }).thenApply(x -> pendingIncoming))
                 .thenCompose(pendingIncoming -> getFriendRoots().thenCompose(followingRoots -> reconcileGroups(followingRoots.stream()
                                 .map(FileWrapper::getOwnerName)
                                 .collect(Collectors.toSet()))
@@ -3480,10 +3485,14 @@ public class UserContext {
                             Map<String, FollowRequestWithCipherText> initial = new LinkedHashMap<>();
                             List<FollowRequestWithCipherText> toDiscard = new ArrayList<>();
                             List<FollowRequestWithCipherText> toReaffirm = new ArrayList<>();
+                            List<FollowRequestWithCipherText> toReject = new ArrayList<>();
                             for (FollowRequestWithCipherText p : withDecrypted) {
                                 String from = p.req.entry.get().ownerName;
                                 if (blocked.contains(from)) {
-                                    toDiscard.add(p);
+                                    // Deny a request, like any other, so they aren't left waiting. A reply to an
+                                    // earlier request of ours has nothing to answer.
+                                    boolean isRequest = p.req.key.isPresent() && ! p.req.entry.get().pointer.isNull();
+                                    (isRequest ? toReject : toDiscard).add(p);
                                     continue;
                                 }
                                 if (pendingOut.pendingOutgoingFollowRequests.contains(from)) {
@@ -3578,6 +3587,9 @@ public class UserContext {
                                                     .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed))
                                                     .exceptionally(t -> false),
                                             (a, b) -> a)
+                                    .thenCompose(x -> Futures.reduceAll(toReject, true,
+                                            (b, p) -> replyToFollowRequest(p, false, false).exceptionally(t -> false),
+                                            (a, b) -> a))
                                     .thenCompose(x -> Futures.reduceAll(toReaffirm, true,
                                             (b, p) -> reaffirmFollowRequest(p, followerRoots.get(p.req.entry.get().ownerName))
                                                     .exceptionally(t -> false),
@@ -4013,6 +4025,20 @@ public class UserContext {
                     entrie = entrie.removeEntry("/" + usernameToBlock + "/");
                     return true;
                 });
+    }
+
+    /** Blocking takes several writes, and the block itself is recorded first, so finish any which were interrupted. */
+    private CompletableFuture<Boolean> completeBlocks() {
+        return getBlocked().thenCompose(blocked -> blocked.isEmpty() ?
+                Futures.of(true) :
+                getUnfollowed().thenCompose(unfollowed -> getFollowerRoots(false).thenCompose(dirs ->
+                        getPendingOutgoingFollowRequests().thenCompose(pending -> Futures.reduceAll(blocked, true,
+                                (b, u) -> (unfollowed.contains(u) ? Futures.of(true) : unfollow(u))
+                                        .thenCompose(x -> pending.pendingOutgoingFollowRequests.contains(u) ?
+                                                removeFromPendingOutgoing(u) :
+                                                Futures.of(true))
+                                        .thenCompose(x -> dirs.containsKey(u) ? revokeFollower(u) : Futures.of(true)),
+                                (a, b) -> a && b)))));
     }
 
     /** They stay unfollowed, so see what they share with us directly again only after following them again. */
