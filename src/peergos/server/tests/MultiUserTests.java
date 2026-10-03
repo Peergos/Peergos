@@ -1418,7 +1418,7 @@ public class MultiUserTests {
         // unfollow is local only - b still thinks they are friends
         assertTrue(b.getSocialState().join().getFriends().contains(a.username));
 
-        a.unblock(b.username).join();
+        a.followAgain(b.username).join();
         assertTrue(a.getSocialState().join().getFriends().contains(b.username));
 
         // now remove as follower, then reunite
@@ -1584,7 +1584,7 @@ public class MultiUserTests {
 
         // now re-follow to become friends again
         u1.sendInitialFollowRequest(u2.username).join();
-        u1.unblock(u2.username).join();
+        u1.followAgain(u2.username).join();
         u2.processFollowRequests().join();
 
         Optional<FileWrapper> u1Tou2again = u2.getByPath("/" + u1.username).join();
