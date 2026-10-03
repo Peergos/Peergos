@@ -56,7 +56,9 @@ public class UserContext {
     public static final String ENTRY_POINTS_FROM_FRIENDS_GROUPS_FILENAME = ".groups-from-friends.cborstream";
     public static final String SOCIAL_STATE_FILENAME = ".social-state.cbor";
     private static final String REMOVING_FOLLOWER_PREFIX = ".removing-";
-    public static final String BLOCKED_USERNAMES_FILE = ".blocked-usernames.txt";
+    // historical name: it has always held who we have unfollowed
+    public static final String UNFOLLOWED_USERNAMES_FILE = ".blocked-usernames.txt";
+    public static final String BLOCKED_USERS_FILE = ".blocked-users.cbor";
 
     @JsProperty
     public final String username;
@@ -2475,6 +2477,11 @@ public class UserContext {
     public CompletableFuture<SocialState> getSocialState() {
         // retrieving friend roots waits on each friend's server, so only do it once
         return processFollowRequests()
+                .thenCompose(pendingIncoming -> completeBlocks()
+                        .exceptionally(t -> {
+                            LOG.log(Level.WARNING, "Couldn't complete blocks", t);
+                            return false;
+                        }).thenApply(x -> pendingIncoming))
                 .thenCompose(pendingIncoming -> getFriendRoots().thenCompose(followingRoots -> reconcileGroups(followingRoots.stream()
                                 .map(FileWrapper::getOwnerName)
                                 .collect(Collectors.toSet()))
@@ -2485,12 +2492,12 @@ public class UserContext {
                         .thenCompose(x -> getPendingOutgoingFollowRequests())
                         .thenCompose(pendingOutgoing -> getFollowerRoots(pendingOutgoing.pendingOutgoingFollowRequests)
                                 .thenCompose(followerRoots -> getBlocked().thenCompose(
-                                        blocked -> getFriendAnnotations().thenCompose(
+                                        blocked -> getUnfollowed().thenCompose(unfollowed -> getFriendAnnotations().thenCompose(
                                                 annotations -> getGroupNameMappings().thenApply(
                                                         groups -> new SocialState(pendingIncoming,
                                                                 pendingOutgoing.pendingOutgoingFollowRequests,
                                                                 followerRoots.keySet(), followerRoots, followingRoots,
-                                                                blocked, annotations, groups.uidToGroupName))))))));
+                                                                blocked, unfollowed, annotations, groups.uidToGroupName)))))))));
     }
 
     @JsMethod
@@ -2653,11 +2660,14 @@ public class UserContext {
                 if (alreadyFollowing) {
                     return Futures.errored(new Exception("User " + targetUsername +" is already a follower!"));
                 }
-                // asking to follow someone we have blocked means we want to follow them again
+                // asking to follow someone we have unfollowed means we want to follow them again, but a block has to be
+                // undone explicitly
                 return getBlocked().thenCompose(blocked -> blocked.contains(targetUsername) ?
-                                unblock(targetUsername) :
-                                Futures.of(true))
-                        .thenCompose(unblocked -> getPublicKeys(targetUsername)).thenCompose(targetUserOpt -> {
+                                Futures.<Boolean>errored(new Exception("User " + targetUsername + " is blocked, unblock them first")) :
+                                getUnfollowed().thenCompose(unfollowed -> unfollowed.contains(targetUsername) ?
+                                        followAgain(targetUsername) :
+                                        Futures.of(true)))
+                        .thenCompose(x -> getPublicKeys(targetUsername)).thenCompose(targetUserOpt -> {
                     if (! targetUserOpt.isPresent()) {
                         return Futures.errored(new Exception("User " + targetUsername + " does not exist!"));
                     }
@@ -3458,7 +3468,7 @@ public class UserContext {
     private CompletableFuture<List<FollowRequestWithCipherText>> processFollowRequests(List<BlindFollowRequest> all) {
         return getSharingFolder().thenCompose(sharing ->
                 getFollowerRoots(false).thenCompose(followerRoots -> getPendingOutgoingFollowRequests()
-                        .thenCompose(pendingOut -> Futures.combineAllInOrder(all.stream()
+                        .thenCompose(pendingOut -> getBlocked().thenCompose(blocked -> Futures.combineAllInOrder(all.stream()
                                         .map(b -> b.followRequest.decrypt(boxer.secretBoxingKey, b.dummySource, FollowRequest::fromCbor)
                                                 .thenApply(decrypted -> Optional.of(new FollowRequestWithCipherText(decrypted, b)))
                                                 .exceptionally(t -> Optional.empty()))
@@ -3475,8 +3485,16 @@ public class UserContext {
                             Map<String, FollowRequestWithCipherText> initial = new LinkedHashMap<>();
                             List<FollowRequestWithCipherText> toDiscard = new ArrayList<>();
                             List<FollowRequestWithCipherText> toReaffirm = new ArrayList<>();
+                            List<FollowRequestWithCipherText> toReject = new ArrayList<>();
                             for (FollowRequestWithCipherText p : withDecrypted) {
                                 String from = p.req.entry.get().ownerName;
+                                if (blocked.contains(from)) {
+                                    // Deny a request, like any other, so they aren't left waiting. A reply to an
+                                    // earlier request of ours has nothing to answer.
+                                    boolean isRequest = p.req.key.isPresent() && ! p.req.entry.get().pointer.isNull();
+                                    (isRequest ? toReject : toDiscard).add(p);
+                                    continue;
+                                }
                                 if (pendingOut.pendingOutgoingFollowRequests.contains(from)) {
                                     // they may have replied more than once, e.g. rejecting after an accept failed part way
                                     FollowRequestWithCipherText earlier = latestReplies.put(from, p);
@@ -3569,6 +3587,9 @@ public class UserContext {
                                                     .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed))
                                                     .exceptionally(t -> false),
                                             (a, b) -> a)
+                                    .thenCompose(x -> Futures.reduceAll(toReject, true,
+                                            (b, p) -> replyToFollowRequest(p, false, false).exceptionally(t -> false),
+                                            (a, b) -> a))
                                     .thenCompose(x -> Futures.reduceAll(toReaffirm, true,
                                             (b, p) -> reaffirmFollowRequest(p, followerRoots.get(p.req.entry.get().ownerName))
                                                     .exceptionally(t -> false),
@@ -3578,13 +3599,20 @@ public class UserContext {
                                         entrie = newRoot;
                                         return new ArrayList<>(initial.values());
                                     });
-                        })))
+                        }))))
                 ));
     }
 
+    /** Anything owned or shared by someone we have blocked is hidden. */
+    private CompletableFuture<List<SharedItem>> withoutBlocked(List<SharedItem> items) {
+        return getBlocked().thenApply(blocked -> items.stream()
+                .filter(s -> ! blocked.contains(s.owner) && ! blocked.contains(s.sharer))
+                .collect(Collectors.toList()));
+    }
+
     @JsMethod
-    public CompletableFuture<List<Pair<SharedItem, FileWrapper>>> getFiles(List<SharedItem> pointers) {
-        return Futures.combineAllInOrder(pointers.stream()
+    public CompletableFuture<List<Pair<SharedItem, FileWrapper>>> getFiles(List<SharedItem> allPointers) {
+        return withoutBlocked(allPointers).thenCompose(pointers -> Futures.combineAllInOrder(pointers.stream()
                 .map(s -> Futures.asyncExceptionally(() -> network.getFile(s.cap, s.owner)
                                 .thenCompose(fopt -> fopt.map(f -> Futures.of(Optional.of(f)))
                                         .orElseGet(() -> getByPath(s.path))),
@@ -3593,11 +3621,11 @@ public class UserContext {
                 .collect(Collectors.toList()))
                 .thenApply(res -> res.stream()
                         .flatMap(Optional::stream)
-                        .collect(Collectors.toList()));
+                        .collect(Collectors.toList())));
     }
 
-    public CompletableFuture<List<Pair<SharedItem, FileWrapper>>> getFiles(List<SharedItem> pointers, Snapshot v) {
-        return Futures.combineAllInOrder(pointers.stream()
+    public CompletableFuture<List<Pair<SharedItem, FileWrapper>>> getFiles(List<SharedItem> allPointers, Snapshot v) {
+        return withoutBlocked(allPointers).thenCompose(pointers -> Futures.combineAllInOrder(pointers.stream()
                 .map(s -> Futures.asyncExceptionally(() -> network.getFile(v, s.cap, Optional.empty(), s.owner)
                                 .thenCompose(fopt -> fopt.map(f -> Futures.of(Optional.of(f)))
                                         .orElseGet(() -> getByPath(s.path))),
@@ -3606,7 +3634,7 @@ public class UserContext {
                 .collect(Collectors.toList()))
                 .thenApply(res -> res.stream()
                         .flatMap(Optional::stream)
-                        .collect(Collectors.toList()));
+                        .collect(Collectors.toList())));
     }
 
     public CompletableFuture<Set<FileWrapper>> getChildren(String path) {
@@ -3733,9 +3761,9 @@ public class UserContext {
                                 .thenCompose(reader -> reader.parseStream(EntryPoint::fromCbor, res::add, f.getSize())
                                         .thenApply(x -> res));
                     }).orElse(CompletableFuture.completedFuture(Collections.emptyList()))
-                            .thenCompose(fromFriends -> {
-                                // filter out blocked friends
-                                return homeDir.getChild(BLOCKED_USERNAMES_FILE, crypto.hasher, network)
+                            .thenCompose(fromFriends -> getBlocked(homeDir).thenCompose(blocked -> {
+                                // filter out unfollowed and blocked users
+                                return homeDir.getChild(UNFOLLOWED_USERNAMES_FILE, crypto.hasher, network)
                                         .thenCompose(bopt -> bopt.map(f -> f.getInputStream(network, crypto, x -> {})
                                                 .thenCompose(in -> Serialize.readFully(in, f.getSize()))
                                                 .thenApply(data -> new HashSet<>(Arrays.asList(new String(data).split("\n")))
@@ -3743,9 +3771,9 @@ public class UserContext {
                                                         .collect(Collectors.toSet())))
                                                 .orElse(CompletableFuture.completedFuture(Collections.emptySet()))
                                                 .thenApply(toRemove -> fromFriends.stream()
-                                                        .filter(e -> !toRemove.contains(e.ownerName))
+                                                        .filter(e -> !toRemove.contains(e.ownerName) && ! blocked.contains(e.ownerName))
                                                         .collect(Collectors.toList())));
-                            });
+                            }));
                 }).thenApply(entries -> {
                     // Only take the most recent version of each entry
                     Map<PublicKeyHash, EntryPoint> latest = new LinkedHashMap<>();
@@ -3878,8 +3906,8 @@ public class UserContext {
     public CompletableFuture<Boolean> unfollow(String friendName) {
         LOG.info("Unfollowing: " + friendName);
         return getUserRoot()
-                .thenCompose(home -> home.getChild(BLOCKED_USERNAMES_FILE, crypto.hasher, network)
-                        .thenCompose(fopt -> home.appendToChild(BLOCKED_USERNAMES_FILE,
+                .thenCompose(home -> home.getChild(UNFOLLOWED_USERNAMES_FILE, crypto.hasher, network)
+                        .thenCompose(fopt -> home.appendToChild(UNFOLLOWED_USERNAMES_FILE,
                                 fopt.map(f -> f.getSize()).orElse(0L), (friendName + "\n").getBytes(), true,
                                 mirrorBatId(), network, crypto, x -> {})))
                 .thenApply(b -> {
@@ -3888,43 +3916,142 @@ public class UserContext {
                 });
     }
 
-    public CompletableFuture<Set<String>> getBlocked() {
-        return getUserRoot()
-                .thenCompose(home -> home.getChild(BLOCKED_USERNAMES_FILE, crypto.hasher, network))
-                .thenCompose(this::getBlocked);
-    }
-
-    private CompletableFuture<Set<String>> getBlocked(Optional<FileWrapper> blockedUsernamesFile) {
-        return blockedUsernamesFile.isEmpty() ?
-                Futures.of(Collections.emptySet()) :
-                blockedUsernamesFile.get().getInputStream(network, crypto, x -> {})
-                        .thenCompose(in -> Serialize.readFully(in, blockedUsernamesFile.get().getSize()))
-                        .thenApply(data -> new HashSet<>(Arrays.asList(new String(data).split("\n"))));
-    }
-
+    /** The users we have unfollowed, whose content we don't see directly, though they may still follow us. */
     @JsMethod
-    public CompletableFuture<Boolean> unblock(String username) {
+    public CompletableFuture<Set<String>> getUnfollowed() {
         return getUserRoot()
-                .thenCompose(home -> home.getChild(BLOCKED_USERNAMES_FILE, crypto.hasher, network)
-                        .thenCompose(bopt -> bopt.isEmpty() ?
-                                Futures.of(true) :
-                                getBlocked(bopt)
-                                        .thenCompose(all -> {
-                                            byte[] updated = all.stream()
-                                                    .filter(u -> !u.equals(username))
-                                                    .sorted()
-                                                    .map(u -> u + "\n")
-                                                    .collect(Collectors.joining())
-                                                    .getBytes();
+                .thenCompose(home -> home.getChild(UNFOLLOWED_USERNAMES_FILE, crypto.hasher, network))
+                .thenCompose(this::getUnfollowed);
+    }
 
-                                            return bopt.get().overwriteFile(AsyncReader.build(updated), updated.length, network, crypto, x -> {})
-                                                    .thenApply(x -> true);
-                                        })
-                        )).thenCompose(x -> getUserRoot()
+    private CompletableFuture<Set<String>> getUnfollowed(Optional<FileWrapper> unfollowedUsernamesFile) {
+        return unfollowedUsernamesFile.isEmpty() ?
+                Futures.of(Collections.emptySet()) :
+                unfollowedUsernamesFile.get().getInputStream(network, crypto, x -> {})
+                        .thenCompose(in -> Serialize.readFully(in, unfollowedUsernamesFile.get().getSize()))
+                        .thenApply(data -> Arrays.stream(new String(data).split("\n"))
+                                .filter(u -> ! u.isEmpty())
+                                .collect(Collectors.toSet()));
+    }
+
+    /** Start seeing what an unfollowed user shares with us directly again. */
+    @JsMethod
+    public CompletableFuture<Boolean> followAgain(String username) {
+        return getBlocked().thenCompose(blocked -> blocked.contains(username) ?
+                        Futures.<Boolean>errored(new IllegalStateException("User " + username + " is blocked, unblock them first")) :
+                        getUserRoot().thenCompose(home -> home.getChild(UNFOLLOWED_USERNAMES_FILE, crypto.hasher, network)
+                                .thenCompose(bopt -> bopt.isEmpty() ?
+                                        Futures.of(true) :
+                                        getUnfollowed(bopt)
+                                                .thenCompose(all -> {
+                                                    byte[] updated = all.stream()
+                                                            .filter(u -> !u.equals(username))
+                                                            .sorted()
+                                                            .map(u -> u + "\n")
+                                                            .collect(Collectors.joining())
+                                                            .getBytes();
+
+                                                    return bopt.get().overwriteFile(AsyncReader.build(updated), updated.length, network, crypto, x -> {})
+                                                            .thenApply(x -> true);
+                                                })
+                                )))
+                .thenCompose(x -> getUserRoot()
                         .thenCompose(home -> buildFileTree(entrie, home, n -> n.equals(username), network, crypto)).thenApply(updated -> {
                             this.entrie = updated;
                             return true;
                         }));
+    }
+
+    /** The users we have blocked, from whom we never see anything, even via someone else. */
+    @JsMethod
+    public CompletableFuture<Set<String>> getBlocked() {
+        return getUserRoot().thenCompose(this::getBlocked);
+    }
+
+    private CompletableFuture<Set<String>> getBlocked(FileWrapper home) {
+        return home.getChild(BLOCKED_USERS_FILE, crypto.hasher, network)
+                .thenCompose(fopt -> fopt.isEmpty() ?
+                        Futures.of(Collections.<String>emptySet()) :
+                        Serialize.parse(fopt.get(), UserContext::blockedFromCbor, network, crypto));
+    }
+
+    private static Set<String> blockedFromCbor(Cborable cbor) {
+        CborObject.CborMap m = (CborObject.CborMap) cbor;
+        return new TreeSet<>(m.getList("u", c -> ((CborObject.CborString) c).value));
+    }
+
+    private CompletableFuture<Boolean> setBlocked(Set<String> blocked) {
+        SortedMap<String, Cborable> state = new TreeMap<>();
+        state.put("v", new CborObject.CborLong(1));
+        state.put("u", new CborObject.CborList(blocked.stream()
+                .sorted()
+                .map(CborObject.CborString::new)
+                .collect(Collectors.toList())));
+        byte[] raw = CborObject.CborMap.build(state).serialize();
+        return getUserRoot()
+                .thenCompose(home -> home.getChild(BLOCKED_USERS_FILE, crypto.hasher, network)
+                        .thenCompose(fopt -> fopt.isPresent() ?
+                                fopt.get().overwriteFile(AsyncReader.build(raw), raw.length, network, crypto, x -> {}) :
+                                home.uploadFileSection(BLOCKED_USERS_FILE, AsyncReader.build(raw), true, 0, raw.length,
+                                        Optional.empty(), true, network, crypto, () -> false, x -> {}, crypto.random.randomBytes(32),
+                                        Optional.empty(), Optional.of(Bat.random(crypto.random)), mirrorBatId())))
+                .thenApply(x -> true);
+    }
+
+    /** Never see anything from them, even via someone else, and stop them following us. They are also unfollowed,
+     *  so clients which predate blocking still stop showing what they share with us directly.
+     */
+    @JsMethod
+    public CompletableFuture<Boolean> block(String usernameToBlock) {
+        LOG.info("Blocking: " + usernameToBlock);
+        if (usernameToBlock.equals(username))
+            return Futures.errored(new IllegalStateException("You can't block yourself"));
+        // record the block first, so we stop seeing them even if the rest fails
+        return getBlocked()
+                .thenCompose(blocked -> {
+                    if (blocked.contains(usernameToBlock))
+                        return Futures.of(true);
+                    Set<String> updated = new TreeSet<>(blocked);
+                    updated.add(usernameToBlock);
+                    return setBlocked(updated);
+                })
+                .thenCompose(x -> getUnfollowed())
+                .thenCompose(unfollowed -> unfollowed.contains(usernameToBlock) ?
+                        Futures.of(true) :
+                        unfollow(usernameToBlock))
+                .thenCompose(x -> removeFromPendingOutgoing(usernameToBlock))
+                .thenCompose(x -> revokeFollower(usernameToBlock))
+                .thenApply(x -> {
+                    entrie = entrie.removeEntry("/" + usernameToBlock + "/");
+                    return true;
+                });
+    }
+
+    /** Blocking takes several writes, and the block itself is recorded first, so finish any which were interrupted. */
+    private CompletableFuture<Boolean> completeBlocks() {
+        return getBlocked().thenCompose(blocked -> blocked.isEmpty() ?
+                Futures.of(true) :
+                getUnfollowed().thenCompose(unfollowed -> getFollowerRoots(false).thenCompose(dirs ->
+                        getPendingOutgoingFollowRequests().thenCompose(pending -> Futures.reduceAll(blocked, true,
+                                (b, u) -> (unfollowed.contains(u) ? Futures.of(true) : unfollow(u))
+                                        .thenCompose(x -> pending.pendingOutgoingFollowRequests.contains(u) ?
+                                                removeFromPendingOutgoing(u) :
+                                                Futures.of(true))
+                                        .thenCompose(x -> dirs.containsKey(u) ? revokeFollower(u) : Futures.of(true)),
+                                (a, b) -> a && b)))));
+    }
+
+    /** They stay unfollowed, so see what they share with us directly again only after following them again. */
+    @JsMethod
+    public CompletableFuture<Boolean> unblock(String usernameToUnblock) {
+        return getBlocked()
+                .thenCompose(blocked -> {
+                    if (! blocked.contains(usernameToUnblock))
+                        return Futures.of(true);
+                    Set<String> updated = new TreeSet<>(blocked);
+                    updated.remove(usernameToUnblock);
+                    return setBlocked(updated);
+                });
     }
 
     public CompletableFuture<Optional<String>> getGroupUid(String groupName) {

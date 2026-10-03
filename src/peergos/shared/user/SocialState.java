@@ -16,7 +16,7 @@ public class SocialState {
     public final Set<String> pendingOutgoing;
     public final Map<String, FileWrapper> followerRoots;
     public final Set<FileWrapper> followingRoots;
-    public final Set<String> blocked;
+    public final Set<String> blocked, unfollowed;
     public final Map<String, FriendAnnotation> friendAnnotations;
     public final Map<String, String> uidToGroupName, groupNameToUid;
 
@@ -26,6 +26,7 @@ public class SocialState {
                        Map<String, FileWrapper> followerRoots,
                        Set<FileWrapper> followingRoots,
                        Set<String> blocked,
+                       Set<String> unfollowed,
                        Map<String, FriendAnnotation> friendAnnotations,
                        Map<String, String> uidToGroupName) {
         this.pendingIncoming = pendingIncoming;
@@ -39,6 +40,7 @@ public class SocialState {
         sortedByName.addAll(followingRoots);
         this.followingRoots = sortedByName;
         this.blocked = blocked;
+        this.unfollowed = unfollowed;
         this.friendAnnotations = friendAnnotations;
         this.uidToGroupName = uidToGroupName;
         // names of custom groups need not be unique, and the built-in names are reserved for the built-in groups
