@@ -161,6 +161,35 @@ public class BlockTests {
         assertTrue("unblocking shows them again", sharedOwners(login(a)).contains(b.username));
     }
 
+    @Test
+    public void friendsAgainAfterUnblockingWhenTheyAsk() {
+        UserContext a = signUp(), b = signUp();
+        friends(a, b);
+        a.block(b.username).join();
+        a.unblock(b.username).join();
+        // they ask, and we follow them back, which undoes having unfollowed them
+        friends(b, login(a));
+        assertTrue(login(a).getSocialState().join().getFriends().contains(b.username));
+        assertTrue(login(b).getSocialState().join().getFriends().contains(a.username));
+    }
+
+    @Test
+    public void friendsAgainAfterFollowingAgainAndAsking() {
+        UserContext a = signUp(), b = signUp();
+        friends(a, b);
+        a.block(b.username).join();
+        a.unblock(b.username).join();
+        a.followAgain(b.username).join();
+        // we follow them, but they no longer follow us, so we ask them to
+        friends(login(a), b);
+        assertTrue(login(a).getSocialState().join().getFriends().contains(b.username));
+        assertTrue(login(b).getSocialState().join().getFriends().contains(a.username));
+        try {
+            login(a).sendInitialFollowRequest(b.username).join();
+            fail("Asking an existing friend should fail");
+        } catch (Exception expected) {}
+    }
+
     /** The owners of everything in our news feed which we can retrieve. */
     private static Set<String> sharedOwners(UserContext c) {
         SocialFeed feed = c.getSocialFeed().join().update().join();

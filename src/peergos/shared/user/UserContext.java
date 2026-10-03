@@ -2599,7 +2599,9 @@ public class UserContext {
                     });
         }).thenCompose(b -> {
             if (reciprocate)
-                return addExternalEntryPoint(initialRequest.entry.get())
+                // following them back undoes having unfollowed them, otherwise we still wouldn't see them
+                return removeFromUnfollowed(theirUsername)
+                        .thenCompose(x -> addExternalEntryPoint(initialRequest.entry.get()))
                         .thenCompose(x -> retrieveAndAddEntryPointToTrie(entrie, initialRequest.entry.get()));
             return CompletableFuture.completedFuture(entrie);
         }).thenCompose(trie -> {
@@ -2651,14 +2653,11 @@ public class UserContext {
 
     public CompletableFuture<Boolean> sendFollowRequest(String targetUsername, SymmetricKey requestedKey) {
         return getSharingFolder().thenCompose(sharing -> {
-            // check for them not reciprocating
-            return getFollowing().thenCompose(following -> {
-                boolean alreadyFollowing = following.stream()
-                        .filter(x -> x.equals(targetUsername))
-                        .findAny()
-                        .isPresent();
-                if (alreadyFollowing) {
-                    return Futures.errored(new Exception("User " + targetUsername +" is already a follower!"));
+            // following someone who doesn't follow us, e.g. after they removed us, is when a request asks them to
+            // follow back
+            return getFollowing().thenCompose(following -> getFollowerNames().thenCompose(followers -> {
+                if (following.contains(targetUsername) && followers.contains(targetUsername)) {
+                    return Futures.errored(new Exception("You are already friends with " + targetUsername));
                 }
                 // asking to follow someone we have unfollowed means we want to follow them again, but a block has to be
                 // undone explicitly
@@ -2697,7 +2696,7 @@ public class UserContext {
                                                 .<Boolean>thenCompose(x -> Futures.errored(t)));
                             }));
                 });
-            });
+            }));
         });
     }
 
@@ -3605,6 +3604,9 @@ public class UserContext {
 
     /** Anything owned or shared by someone we have blocked is hidden. */
     private CompletableFuture<List<SharedItem>> withoutBlocked(List<SharedItem> items) {
+        // e.g. our own new post, which shouldn't cost a lookup
+        if (items.stream().allMatch(s -> s.owner.equals(username) && s.sharer.equals(username)))
+            return Futures.of(items);
         return getBlocked().thenApply(blocked -> items.stream()
                 .filter(s -> ! blocked.contains(s.owner) && ! blocked.contains(s.sharer))
                 .collect(Collectors.toList()));
@@ -3939,27 +3941,30 @@ public class UserContext {
     public CompletableFuture<Boolean> followAgain(String username) {
         return getBlocked().thenCompose(blocked -> blocked.contains(username) ?
                         Futures.<Boolean>errored(new IllegalStateException("User " + username + " is blocked, unblock them first")) :
-                        getUserRoot().thenCompose(home -> home.getChild(UNFOLLOWED_USERNAMES_FILE, crypto.hasher, network)
-                                .thenCompose(bopt -> bopt.isEmpty() ?
-                                        Futures.of(true) :
-                                        getUnfollowed(bopt)
-                                                .thenCompose(all -> {
-                                                    byte[] updated = all.stream()
-                                                            .filter(u -> !u.equals(username))
-                                                            .sorted()
-                                                            .map(u -> u + "\n")
-                                                            .collect(Collectors.joining())
-                                                            .getBytes();
-
-                                                    return bopt.get().overwriteFile(AsyncReader.build(updated), updated.length, network, crypto, x -> {})
-                                                            .thenApply(x -> true);
-                                                })
-                                )))
+                        removeFromUnfollowed(username))
                 .thenCompose(x -> getUserRoot()
                         .thenCompose(home -> buildFileTree(entrie, home, n -> n.equals(username), network, crypto)).thenApply(updated -> {
                             this.entrie = updated;
                             return true;
                         }));
+    }
+
+    private CompletableFuture<Boolean> removeFromUnfollowed(String username) {
+        return getUserRoot().thenCompose(home -> home.getChild(UNFOLLOWED_USERNAMES_FILE, crypto.hasher, network)
+                .thenCompose(bopt -> bopt.isEmpty() ?
+                        Futures.of(true) :
+                        getUnfollowed(bopt).thenCompose(all -> {
+                            if (! all.contains(username))
+                                return Futures.of(true);
+                            byte[] updated = all.stream()
+                                    .filter(u -> !u.equals(username))
+                                    .sorted()
+                                    .map(u -> u + "\n")
+                                    .collect(Collectors.joining())
+                                    .getBytes();
+                            return bopt.get().overwriteFile(AsyncReader.build(updated), updated.length, network, crypto, x -> {})
+                                    .thenApply(x -> true);
+                        })));
     }
 
     /** The users we have blocked, from whom we never see anything, even via someone else. */

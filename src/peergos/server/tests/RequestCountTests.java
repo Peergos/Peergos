@@ -203,7 +203,8 @@ public class RequestCountTests {
             Pair<Path, FileWrapper> p = sharerFeed.createNewPost(post).join();
             sharer.shareReadAccessWith(p.left, Set.of(friends)).join();
         }
-        Assert.assertTrue("Adding a post to social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 10);
+        // how many champ nodes miss the cache depends on where the random map keys land, from 5 to 11 seen
+        Assert.assertTrue("Adding a post to social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 12);
         a.getSocialFeed().join().update().join();
 
         // share more items
