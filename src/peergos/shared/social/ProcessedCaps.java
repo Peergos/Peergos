@@ -12,16 +12,41 @@ public class ProcessedCaps implements Cborable {
     public final int readCaps, writeCaps;
     public final long readCapBytes, writeCapBytes;
     public final Map<String, ProcessedCaps> groups;
+    // The map key of the friend's sharing dir the byte offsets are into. They are meaningless in any other, e.g. if
+    // they removed us and we became friends again. Absent in state saved before this was recorded.
+    public final Optional<byte[]> sharedDir;
 
-    public ProcessedCaps(int readCaps, int writeCaps, long readCapBytes, long writeCapBytes, Map<String, ProcessedCaps> groups) {
+    public ProcessedCaps(int readCaps, int writeCaps, long readCapBytes, long writeCapBytes, Map<String, ProcessedCaps> groups, Optional<byte[]> sharedDir) {
         this.readCaps = readCaps;
         this.writeCaps = writeCaps;
         this.readCapBytes = readCapBytes;
         this.writeCapBytes = writeCapBytes;
         this.groups = groups;
+        this.sharedDir = sharedDir;
+    }
+
+    public ProcessedCaps(int readCaps, int writeCaps, long readCapBytes, long writeCapBytes, Map<String, ProcessedCaps> groups) {
+        this(readCaps, writeCaps, readCapBytes, writeCapBytes, groups, Optional.empty());
+    }
+
+    public boolean isFor(byte[] dir) {
+        return sharedDir.isPresent() && Arrays.equals(sharedDir.get(), dir);
+    }
+
+    public ProcessedCaps withSharedDir(byte[] dir) {
+        return new ProcessedCaps(readCaps, writeCaps, readCapBytes, writeCapBytes, groups, Optional.of(dir));
+    }
+
+    /** Start reading a new sharing dir from the beginning. Group offsets are into the groups' own dirs so are kept. */
+    public ProcessedCaps restartedFor(byte[] dir) {
+        return new ProcessedCaps(0, 0, 0L, 0L, groups, Optional.of(dir));
     }
 
     public ProcessedCaps add(CapsDiff diff) {
+        if (diff.sharedDir.isPresent() && ! isFor(diff.sharedDir.get())) {
+            boolean continues = readCapBytes == diff.priorReadByteOffset && writeCapBytes == diff.priorWriteByteOffset;
+            return (continues ? withSharedDir(diff.sharedDir.get()) : restartedFor(diff.sharedDir.get())).add(diff);
+        }
         if (readCapBytes != diff.priorReadByteOffset)
             throw new IllegalStateException("Applying cap diff to wrong base");
         if (writeCapBytes != diff.priorWriteByteOffset)
@@ -43,7 +68,8 @@ public class ProcessedCaps implements Cborable {
                 writeCaps + diff.writeCapCount(),
                 diff.updatedReadBytes(),
                 diff.updatedWriteBytes(),
-                updated
+                updated,
+                sharedDir
         );
     }
 
@@ -70,6 +96,7 @@ public class ProcessedCaps implements Cborable {
             groups.put(e.getKey(), e.getValue().toCbor());
         }
         state.put("g", CborObject.CborMap.build(groups));
+        sharedDir.ifPresent(d -> state.put("d", new CborObject.CborByteArray(d)));
         return CborObject.CborMap.build(state);
     }
 
@@ -84,6 +111,6 @@ public class ProcessedCaps implements Cborable {
         long writeCapBytes = m.getLong("wb");
 
         Map<String, ProcessedCaps> groups = m.getMap("g", c -> ((CborObject.CborString) c).value, ProcessedCaps::fromCbor);
-        return new ProcessedCaps(readCaps, writeCaps, readCapBytes, writeCapBytes, groups);
+        return new ProcessedCaps(readCaps, writeCaps, readCapBytes, writeCapBytes, groups, m.getOptionalByteArray("d"));
     }
 }

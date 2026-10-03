@@ -9,15 +9,30 @@ public class CapsDiff {
     public final long priorReadByteOffset, priorWriteByteOffset;
     public final ReadAndWriteCaps newCaps;
     public final Map<String, CapsDiff> groupDiffs;
+    // the map key of the friend's sharing dir the offsets are into, see ProcessedCaps
+    public final Optional<byte[]> sharedDir;
+
+    public CapsDiff(long priorReadByteOffset,
+                    long priorWriteByteOffset,
+                    ReadAndWriteCaps newCaps,
+                    Map<String, CapsDiff> groupDiffs,
+                    Optional<byte[]> sharedDir) {
+        this.priorReadByteOffset = priorReadByteOffset;
+        this.priorWriteByteOffset = priorWriteByteOffset;
+        this.newCaps = newCaps;
+        this.groupDiffs = groupDiffs;
+        this.sharedDir = sharedDir;
+    }
 
     public CapsDiff(long priorReadByteOffset,
                     long priorWriteByteOffset,
                     ReadAndWriteCaps newCaps,
                     Map<String, CapsDiff> groupDiffs) {
-        this.priorReadByteOffset = priorReadByteOffset;
-        this.priorWriteByteOffset = priorWriteByteOffset;
-        this.newCaps = newCaps;
-        this.groupDiffs = groupDiffs;
+        this(priorReadByteOffset, priorWriteByteOffset, newCaps, groupDiffs, Optional.empty());
+    }
+
+    public CapsDiff withSharedDir(byte[] dir) {
+        return new CapsDiff(priorReadByteOffset, priorWriteByteOffset, newCaps, groupDiffs, Optional.of(dir));
     }
 
     public int readCapCount() {
@@ -31,7 +46,7 @@ public class CapsDiff {
     public CapsDiff flatten() {
         Map<String, CapsDiff> flattenedGroups = groupDiffs.entrySet().stream()
                 .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue().flatten()));
-        return new CapsDiff(updatedReadBytes(), updatedWriteBytes(), ReadAndWriteCaps.empty(), flattenedGroups);
+        return new CapsDiff(updatedReadBytes(), updatedWriteBytes(), ReadAndWriteCaps.empty(), flattenedGroups, sharedDir);
     }
 
     public List<CapabilityWithPath> getNewCaps() {
@@ -46,7 +61,7 @@ public class CapsDiff {
         HashMap<String, CapsDiff> combined = new HashMap<>(groupDiffs);
         combined.putAll(other.groupDiffs);
         return new CapsDiff(priorReadByteOffset, priorWriteByteOffset, newCaps,
-                combined);
+                combined, sharedDir);
     }
 
     public boolean isEmpty() {
