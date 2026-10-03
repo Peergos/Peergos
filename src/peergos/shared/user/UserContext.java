@@ -3604,6 +3604,9 @@ public class UserContext {
 
     /** Anything owned or shared by someone we have blocked is hidden. */
     private CompletableFuture<List<SharedItem>> withoutBlocked(List<SharedItem> items) {
+        // e.g. our own new post, which shouldn't cost a lookup
+        if (items.stream().allMatch(s -> s.owner.equals(username) && s.sharer.equals(username)))
+            return Futures.of(items);
         return getBlocked().thenApply(blocked -> items.stream()
                 .filter(s -> ! blocked.contains(s.owner) && ! blocked.contains(s.sharer))
                 .collect(Collectors.toList()));
