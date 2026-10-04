@@ -1,17 +1,19 @@
 package peergos.shared.user;
 
 import jsinterop.annotations.JsMethod;
+import peergos.shared.cbor.*;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.io.ipfs.bases.*;
 import peergos.shared.user.app.*;
-import peergos.shared.user.fs.AsyncReader;
-import peergos.shared.user.fs.FileWrapper;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.*;
 import java.util.stream.*;
 
 /** This is the trusted implementation of the API that will be presented to a sandboxed application in Peergos.
@@ -30,14 +32,22 @@ import java.util.stream.*;
  * When an app is installed a copy of its assets are stored in /$username/.apps/$appname/assets
  * The apps internal storage, if allowed, is in /$username/.apps/$appname/data
  * Any permissions granted by the user will be stored in /$username/.apps/$appname/permissions.cbor
+ * Folders the user has chosen for the app to keep using are stored in /$username/.apps/$appname/grants.cbor, outside
+ * the data directory so the app cannot reach them.
  */
-public class App implements StoreAppData {
+public class App implements StoreAppData, UseChosenFolder {
     public static final String APPS_DIR_NAME = ".apps";
     public static final String DATA_DIR_NAME = "data";
+    public static final String GRANTS_FILENAME = "grants.cbor";
 
     private final UserContext ctx;
     private final String username;
     private final Path appDataDirectoryWithoutUser;
+    private final Map<String, FolderGrant> sessionGrants = new HashMap<>();
+    private final Set<String> staleGrants = new HashSet<>();
+    private final Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> signers = new HashMap<>();
+    private AppGrants persistedGrants = null;
+
     private App(UserContext ctx, String username, Path appDataDirectory) {
         this.ctx = ctx;
         this.username = username;
@@ -211,5 +221,388 @@ public class App implements StoreAppData {
             return Futures.of(opt.get().getFileProperties().isDirectory ? 1 : 0);
         });
     }
-}
 
+    private Path grantsPath() {
+        return PathUtil.get(username).resolve(appDataDirectoryWithoutUser.getParent()).resolve(GRANTS_FILENAME);
+    }
+
+    private CompletableFuture<AppGrants> loadPersistedGrants() {
+        Path path = grantsPath();
+        return ctx.getByPath(path)
+                .thenCompose(opt -> opt.isEmpty() ?
+                        Futures.of(AppGrants.empty()) :
+                        readFileContents(path).thenApply(bytes -> AppGrants.fromCbor(CborObject.fromByteArray(bytes))))
+                .thenApply(g -> {
+                    persistedGrants = g;
+                    return g;
+                });
+    }
+
+    private CompletableFuture<AppGrants> updatePersistedGrants(Function<AppGrants, AppGrants> change) {
+        return loadPersistedGrants().thenCompose(current -> {
+            AppGrants updated = change.apply(current);
+            return writeFileContents(grantsPath(), updated.serialize())
+                    .thenApply(x -> {
+                        persistedGrants = updated;
+                        return updated;
+                    });
+        });
+    }
+
+    private CompletableFuture<FolderGrant> findGrant(String grantId) {
+        FolderGrant session = sessionGrants.get(grantId);
+        if (session != null)
+            return Futures.of(session);
+        if (persistedGrants != null && persistedGrants.get(grantId).isPresent())
+            return Futures.of(persistedGrants.get(grantId).get());
+        return loadPersistedGrants()
+                .thenApply(g -> g.get(grantId).orElseThrow(() -> new IllegalStateException("Unknown grant " + grantId)));
+    }
+
+    private GrantInfo toInfo(FolderGrant g) {
+        return new GrantInfo(g.id, g.target.path, g.write, ! sessionGrants.containsKey(g.id), g.granted, staleGrants.contains(g.id));
+    }
+
+    private static List<String> grantPathElements(String relativePath) {
+        if (relativePath == null)
+            return Collections.emptyList();
+        if (relativePath.startsWith("/") || relativePath.contains("\\"))
+            throw new IllegalStateException("Path must be relative to the granted folder!");
+        List<String> parts = Arrays.stream(relativePath.split("/"))
+                .filter(s -> ! s.isEmpty())
+                .collect(Collectors.toList());
+        for (String part : parts)
+            if (part.startsWith("."))
+                throw new IllegalStateException("Path element " + part + " not allowed!");
+        return parts;
+    }
+
+    /** Resolves only through the stored capability. Never re-derive a grant from its path, which is a display hint
+     *  and may by now name a different folder.
+     */
+    private CompletableFuture<Optional<FileWrapper>> resolveGrantRoot(FolderGrant g, boolean forWrite) {
+        if (forWrite && ! g.write)
+            return Futures.errored(new IllegalStateException("Grant " + g.id + " is read only"));
+        AbsoluteCapability cap = forWrite ? g.target.cap : g.target.cap.readOnly();
+        CompletableFuture<Optional<SigningPrivateKeyAndPublicHash>> signer = forWrite ?
+                signerFor(g) :
+                Futures.of(Optional.empty());
+        return signer.thenCompose(s -> {
+            if (forWrite && s.isEmpty())
+                throw new IllegalStateException("No signing key for grant " + g.id);
+            return ctx.network.synchronizer.readOnlyValue(cap.owner, cap.writer)
+                    .thenCompose(v -> ctx.network.getFile(v, cap, s, username))
+                    .exceptionally(t -> Optional.empty())
+                    .thenApply(opt -> {
+                        Optional<FileWrapper> dir = opt.filter(FileWrapper::isDirectory);
+                        if (dir.isPresent())
+                            staleGrants.remove(g.id);
+                        else
+                            staleGrants.add(g.id);
+                        return dir;
+                    });
+        });
+    }
+
+    /** The signing key of the grant's writing space. Walking the path hint is only a way to find that key; the
+     *  folder written to is still the one the capability names.
+     */
+    private CompletableFuture<Optional<SigningPrivateKeyAndPublicHash>> signerFor(FolderGrant g) {
+        PublicKeyHash writer = g.target.cap.writer;
+        SigningPrivateKeyAndPublicHash cached = signers.get(writer);
+        if (cached != null)
+            return Futures.of(Optional.of(cached));
+        List<String> parts = PathUtil.components(PathUtil.get(g.target.path));
+        return ctx.getUserRoot()
+                .thenCompose(home -> findSignerAlong(home, parts.subList(1, parts.size()), writer))
+                .exceptionally(t -> Optional.empty())
+                .thenCompose(found -> found.isPresent() ? Futures.of(found) : ctx.getOwnedSigner(writer))
+                .thenApply(found -> {
+                    found.ifPresent(s -> signers.put(writer, s));
+                    return found;
+                });
+    }
+
+    private CompletableFuture<Optional<SigningPrivateKeyAndPublicHash>> findSignerAlong(FileWrapper dir,
+                                                                                         List<String> rest,
+                                                                                         PublicKeyHash writer) {
+        if (dir.isWritable() && dir.writer().equals(writer))
+            return Futures.of(Optional.of(dir.signingPair()));
+        if (rest.isEmpty())
+            return Futures.of(Optional.empty());
+        return dir.getChild(rest.get(0), ctx.crypto.hasher, ctx.network)
+                .thenCompose(child -> child.isEmpty() ?
+                        Futures.of(Optional.empty()) :
+                        findSignerAlong(child.get(), rest.subList(1, rest.size()), writer));
+    }
+
+    /** A link node is only legitimate where a writing space boundary was created inside this tree, in which case its
+     *  target names the link as its parent. Anything else could lead out of the granted folder.
+     */
+    private CompletableFuture<FileWrapper> ensureContained(FileWrapper child) {
+        if (! child.isLink())
+            return Futures.of(child);
+        Location link = child.getLinkPointer().capability.getLocation();
+        return child.getAnyLinkPointer(ctx.network).thenApply(parentLink -> {
+            if (parentLink.isEmpty() || ! parentLink.get().capability.getLocation().equals(link))
+                throw new IllegalStateException("Link leads outside the granted folder: " + child.getName());
+            return child;
+        });
+    }
+
+    private CompletableFuture<Optional<FileWrapper>> walk(FileWrapper from, List<String> parts) {
+        if (parts.isEmpty())
+            return Futures.of(Optional.of(from));
+        if (! from.isDirectory())
+            return Futures.of(Optional.empty());
+        return from.getChild(parts.get(0), ctx.crypto.hasher, ctx.network)
+                .thenCompose(child -> child.isEmpty() || child.get().getFileProperties().isHidden ?
+                        Futures.of(Optional.<FileWrapper>empty()) :
+                        ensureContained(child.get()).thenCompose(c -> walk(c, parts.subList(1, parts.size()))));
+    }
+
+    private CompletableFuture<FileWrapper> getOrMkdirs(FileWrapper dir, List<String> parts) {
+        if (parts.isEmpty())
+            return Futures.of(dir);
+        String name = parts.get(0);
+        return dir.getChild(name, ctx.crypto.hasher, ctx.network)
+                .thenCompose(child -> child.isPresent() ?
+                        ensureContained(child.get()) :
+                        dir.mkdir(name, ctx.network, false, ctx.mirrorBatId(), ctx.crypto)
+                                .thenCompose(updated -> updated.getChild(name, ctx.crypto.hasher, ctx.network))
+                                .thenApply(Optional::get))
+                .thenCompose(next -> {
+                    if (! next.isDirectory())
+                        throw new IllegalStateException(name + " is not a directory");
+                    return getOrMkdirs(next, parts.subList(1, parts.size()));
+                });
+    }
+
+    private CompletableFuture<FileWrapper> grantedParentForWrite(String grantId, List<String> parts) {
+        if (parts.isEmpty())
+            throw new IllegalStateException("A file name is required");
+        return findGrant(grantId)
+                .thenCompose(g -> resolveGrantRoot(g, true))
+                .thenCompose(root -> getOrMkdirs(root.orElseThrow(() -> new IllegalStateException("Granted folder " + grantId + " not found")),
+                        parts.subList(0, parts.size() - 1)));
+    }
+
+    @JsMethod
+    public CompletableFuture<GrantInfo> addGrant(FileWrapper folder, String path, boolean write, boolean persist) {
+        if (! folder.isDirectory())
+            throw new IllegalStateException("Only a folder can be granted");
+        List<String> parts = PathUtil.components(PathUtil.get(path));
+        if (parts.size() < 2 || ! parts.get(0).equals(username))
+            throw new IllegalStateException("Only a folder inside your own drive can be granted");
+        for (String part : parts)
+            if (part.startsWith("."))
+                throw new IllegalStateException("A hidden folder cannot be granted");
+        if (write && ! folder.isWritable())
+            throw new IllegalStateException("Folder is not writable");
+        AbsoluteCapability cap = write ? folder.writableFilePointer() : folder.readOnlyPointer();
+        CapabilityWithPath target = new CapabilityWithPath("/" + String.join("/", parts), cap);
+        long now = System.currentTimeMillis();
+        Location loc = cap.getLocation();
+        if (! persist) {
+            Optional<FolderGrant> existing = sessionGrants.values().stream()
+                    .filter(g -> g.target.cap.getLocation().equals(loc))
+                    .findFirst();
+            FolderGrant grant = new FolderGrant(existing.map(g -> g.id).orElseGet(this::newGrantId), target, write, now);
+            sessionGrants.put(grant.id, grant);
+            return Futures.of(toInfo(grant));
+        }
+        return loadPersistedGrants().thenCompose(current -> {
+            Optional<FolderGrant> existing = current.grants.stream()
+                    .filter(g -> g.target.cap.getLocation().equals(loc))
+                    .findFirst();
+            FolderGrant grant = new FolderGrant(existing.map(g -> g.id).orElseGet(this::newGrantId), target, write, now);
+            AppGrants updated = existing.isPresent() ? current.replace(grant) : current.add(grant);
+            return writeFileContents(grantsPath(), updated.serialize()).thenApply(x -> {
+                persistedGrants = updated;
+                return toInfo(grant);
+            });
+        });
+    }
+
+    private String newGrantId() {
+        return Multibase.encode(Multibase.Base.Base32, ctx.crypto.random.randomBytes(16));
+    }
+
+    /** Point an existing grant at a folder the user has approved again, keeping its id so the app's urls still work.
+     */
+    @JsMethod
+    public CompletableFuture<Boolean> rebindGrant(String grantId, FileWrapper folder, String path) {
+        return findGrant(grantId).thenCompose(g -> {
+            if (! folder.isDirectory())
+                throw new IllegalStateException("Only a folder can be granted");
+            if (g.write && ! folder.isWritable())
+                throw new IllegalStateException("Folder is not writable");
+            AbsoluteCapability cap = g.write ? folder.writableFilePointer() : folder.readOnlyPointer();
+            FolderGrant rebound = g.withTarget(new CapabilityWithPath(path, cap));
+            staleGrants.remove(grantId);
+            if (sessionGrants.containsKey(grantId)) {
+                sessionGrants.put(grantId, rebound);
+                return Futures.of(true);
+            }
+            return updatePersistedGrants(current -> current.replace(rebound)).thenApply(x -> true);
+        });
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> revokeGrant(String grantId) {
+        staleGrants.remove(grantId);
+        if (sessionGrants.remove(grantId) != null)
+            return Futures.of(true);
+        return updatePersistedGrants(current -> current.remove(grantId)).thenApply(x -> true);
+    }
+
+    @JsMethod
+    public CompletableFuture<GrantInfo> getGrantInfo(String grantId) {
+        return findGrant(grantId).thenApply(this::toInfo);
+    }
+
+    /** Lists every grant, checking each still resolves and refreshing the path of any that has moved.
+     */
+    @JsMethod
+    @Override
+    public CompletableFuture<List<GrantInfo>> listGrants() {
+        return loadPersistedGrants().thenCompose(persisted -> {
+            List<FolderGrant> all = new ArrayList<>(persisted.grants);
+            all.addAll(sessionGrants.values());
+            return Futures.combineAllInOrder(all.stream()
+                    .map(this::refreshPath)
+                    .collect(Collectors.toList()));
+        }).thenCompose(refreshed -> {
+            List<FolderGrant> moved = new ArrayList<>();
+            for (FolderGrant g : refreshed) {
+                FolderGrant session = sessionGrants.get(g.id);
+                if (session != null)
+                    sessionGrants.put(g.id, g);
+                else if (persistedGrants.get(g.id).map(p -> ! p.target.path.equals(g.target.path)).orElse(false))
+                    moved.add(g);
+            }
+            CompletableFuture<?> saved = moved.isEmpty() ?
+                    Futures.of(true) :
+                    updatePersistedGrants(current -> {
+                        AppGrants res = current;
+                        for (FolderGrant g : moved)
+                            res = res.replace(g);
+                        return res;
+                    });
+            return saved.thenApply(x -> refreshed.stream()
+                    .map(this::toInfo)
+                    .collect(Collectors.toList()));
+        });
+    }
+
+    private CompletableFuture<FolderGrant> refreshPath(FolderGrant g) {
+        return resolveGrantRoot(g, false).thenCompose(dir -> dir.isEmpty() ?
+                Futures.of(g) :
+                dir.get().getPath(ctx.network)
+                        .thenApply(p -> p.equals(g.target.path) ? g : g.withTarget(new CapabilityWithPath(p, g.target.cap)))
+                        .exceptionally(t -> g));
+    }
+
+    @JsMethod
+    public boolean isGrantStale(String grantId) {
+        return staleGrants.contains(grantId);
+    }
+
+    @JsMethod
+    @Override
+    public CompletableFuture<Optional<FileWrapper>> getGranted(String grantId, String relativePath) {
+        List<String> parts = grantPathElements(relativePath);
+        return findGrant(grantId)
+                .thenCompose(g -> resolveGrantRoot(g, false))
+                .thenCompose(root -> root.isEmpty() ?
+                        Futures.of(Optional.<FileWrapper>empty()) :
+                        walk(root.get(), parts));
+    }
+
+    @Override
+    public CompletableFuture<List<String>> dirGranted(String grantId, String relativePath) {
+        return getGranted(grantId, relativePath).thenCompose(dir -> {
+            if (dir.isEmpty() || ! dir.get().isDirectory())
+                throw new IllegalStateException("Directory not found: " + relativePath);
+            return dir.get().getChildren(ctx.crypto.hasher, ctx.network)
+                    .thenApply(children -> children.stream()
+                            .filter(f -> ! f.getFileProperties().isHidden)
+                            .map(FileWrapper::getName)
+                            .collect(Collectors.toList()));
+        });
+    }
+
+    @Override
+    public CompletableFuture<byte[]> readGranted(String grantId, String relativePath) {
+        return getGranted(grantId, relativePath).thenCompose(file -> {
+            if (file.isEmpty() || file.get().isDirectory())
+                throw new IllegalStateException("File not found: " + relativePath);
+            long len = file.get().getSize();
+            return file.get().getInputStream(ctx.network, ctx.crypto, len, 1, l -> {})
+                    .thenCompose(is -> Serialize.readFully(is, len));
+        });
+    }
+
+    /*
+    @return -1 Does not exist (or not accessible), 0 File, 1 Directory
+     */
+    @JsMethod
+    @Override
+    public CompletableFuture<Integer> existsGranted(String grantId, String relativePath) {
+        return getGranted(grantId, relativePath)
+                .thenApply(opt -> opt.isEmpty() ? -1 : opt.get().isDirectory() ? 1 : 0);
+    }
+
+    @JsMethod
+    @Override
+    public CompletableFuture<Boolean> writeGranted(String grantId, String relativePath, byte[] data) {
+        List<String> parts = grantPathElements(relativePath);
+        return grantedParentForWrite(grantId, parts)
+                .thenCompose(dir -> dir.uploadOrReplaceFile(parts.get(parts.size() - 1), AsyncReader.build(data),
+                        data.length, ctx.network, ctx.crypto, () -> false, x -> {}))
+                .thenApply(fw -> true);
+    }
+
+    @JsMethod
+    @Override
+    public CompletableFuture<Boolean> appendGranted(String grantId, String relativePath, byte[] data) {
+        List<String> parts = grantPathElements(relativePath);
+        return grantedParentForWrite(grantId, parts)
+                .thenCompose(dir -> dir.appendFileJS(parts.get(parts.size() - 1), AsyncReader.build(data),
+                        0, data.length, ctx.network, ctx.crypto, x -> {}))
+                .thenApply(fw -> true);
+    }
+
+    @JsMethod
+    @Override
+    public CompletableFuture<Boolean> deleteGranted(String grantId, String relativePath) {
+        List<String> parts = grantPathElements(relativePath);
+        if (parts.isEmpty())
+            throw new IllegalStateException("The granted folder itself cannot be deleted");
+        String name = parts.get(parts.size() - 1);
+        return findGrant(grantId).thenCompose(g -> resolveGrantRoot(g, true)
+                .thenCompose(root -> walk(root.orElseThrow(() -> new IllegalStateException("Granted folder " + grantId + " not found")),
+                        parts.subList(0, parts.size() - 1)))
+                .thenCompose(parent -> {
+                    if (parent.isEmpty() || ! parent.get().isDirectory())
+                        throw new IllegalStateException("File not found: " + relativePath);
+                    return walk(parent.get(), Collections.singletonList(name)).thenCompose(child -> {
+                        if (child.isEmpty())
+                            throw new IllegalStateException("File not found: " + relativePath);
+                        Path ourPath = PathUtil.get(g.target.path).resolve(String.join("/", parts));
+                        return child.get().remove(parent.get(), ourPath, ctx);
+                    });
+                }))
+                .thenApply(x -> true);
+    }
+
+    @JsMethod
+    @Override
+    public CompletableFuture<Boolean> mkdirGranted(String grantId, String relativePath) {
+        List<String> parts = grantPathElements(relativePath);
+        return findGrant(grantId)
+                .thenCompose(g -> resolveGrantRoot(g, true))
+                .thenCompose(root -> getOrMkdirs(root.orElseThrow(() -> new IllegalStateException("Granted folder " + grantId + " not found")), parts))
+                .thenApply(x -> true);
+    }
+}

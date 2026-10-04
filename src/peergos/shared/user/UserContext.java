@@ -4397,6 +4397,18 @@ public class UserContext {
         return ancestors;
     }
 
+    /** The signing key of one of our writing spaces, which is needed to write through a capability that was not
+     *  reached by walking down from our home directory.
+     */
+    public CompletableFuture<Optional<SigningPrivateKeyAndPublicHash>> getOwnedSigner(PublicKeyHash writer) {
+        return getUserRoot().thenCompose(home -> {
+            if (home.writer().equals(writer))
+                return Futures.of(Optional.of(home.signingPair()));
+            return findSharedSigners(Collections.singleton(writer), new HashMap<>())
+                    .thenApply(found -> Optional.ofNullable(found.get(writer)));
+        });
+    }
+
     /** Find the signing key of each wanted writing space from the paths we have write shared or linked, which is
      *  where a writing space is created.
      */
