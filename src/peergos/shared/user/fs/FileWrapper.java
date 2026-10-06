@@ -3055,7 +3055,7 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                         && f.writableFilePointer().writer.equals(parentSigner.publicKeyHash)));
         List<FileWrapper> batchableFiles = partitioned.get(true);
         List<FileWrapper> otherChildren = partitioned.get(false);
-        return network.synchronizer.applyComplexUpdate(owner, parentSigner,
+        return Futures.asyncExceptionally(() -> network.synchronizer.applyComplexUpdate(owner, parentSigner,
                 (version, c) -> version.withWriter(owner, parent.writer(), network)
                 .thenCompose(v2 -> {
                     // Look up committed CHAMP values for batchable files BEFORE removeChildren
@@ -3112,7 +3112,14 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                                         (s, f) -> context.sharedWithCache.clearSharedWith(parentPath.resolve(f.getName()), s, c, network),
                                                         (a, b) -> a.mergeAndOverwriteWith(b)));
                             });
-                }))
+                })), t -> {
+                    network.enableCommits();
+                    return Futures.errored(t);
+                })
+                .thenApply(s -> {
+                    network.enableCommits();
+                    return s;
+                })
                 .thenCompose(s -> parent.getUpdated(s, network));
     }
 
@@ -3153,7 +3160,7 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
         boolean writableParent = parent.isWritable();
         parent.setModified();
         network.disableCommits();
-        return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
+        return Futures.asyncExceptionally(() -> network.synchronizer.applyComplexUpdate(owner(), signingPair(),
                 (v0, c) -> {
                     return (context.isSecretLink() ?
                             Futures.of(v0) :
@@ -3178,6 +3185,13 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                     Futures.of(v2)))
                             .thenCompose(s -> context.isSecretLink() ? Futures.of(s) :
                                     context.sharedWithCache.clearSharedWith(ourPath, s, c, network));
+                }), t -> {
+                    network.enableCommits();
+                    return Futures.errored(t);
+                })
+                .thenApply(s -> {
+                    network.enableCommits();
+                    return s;
                 })
                 .thenCompose(s -> parent.getUpdated(s, network));
     }
