@@ -174,4 +174,99 @@ public class StaleCopyTests {
         assertNoDanglingLinks(fresh, dir);
         assertNoDanglingLinks(fresh, target);
     }
+
+    @Test
+    public void removeChildWithStaleParent() {
+        UserContext user = user();
+        Path dir = dir(user);
+        upload(user, dir, "a", 3000);
+        FileWrapper staleParent = get(user, dir);
+        FileWrapper a = get(user, dir.resolve("a"));
+        upload(user, dir, "b", 3000);
+
+        staleParent.removeChild(a, user.network, crypto.random, crypto.hasher).join();
+
+        Assert.assertEquals(Set.of("b"), names(fresh(user), dir));
+    }
+
+    @Test
+    public void setPropertiesOfAChangedFileIsRefused() {
+        UserContext user = user();
+        Path dir = dir(user);
+        upload(user, dir, "a", 3000);
+        FileWrapper stale = get(user, dir.resolve("a"));
+        byte[] replaced = upload(user, dir, "a", 4000);
+
+        FileProperties hidden = get(user, dir.resolve("a")).getFileProperties();
+        hidden = new FileProperties(hidden.name, false, false, hidden.mimeType, hidden.size, hidden.modified, hidden.created,
+                true, hidden.thumbnail, hidden.streamSecret, hidden.treeHash, hidden.chunkSize);
+        try {
+            stale.setProperties(hidden, crypto.hasher, user.network, Optional.of(get(user, dir))).join();
+            Assert.fail("applied properties from a copy of a file that has since changed");
+        } catch (Exception expected) {}
+
+        UserContext fresh = fresh(user);
+        Assert.assertFalse(get(fresh, dir.resolve("a")).getFileProperties().isHidden);
+        Assert.assertArrayEquals(replaced, read(fresh, dir.resolve("a")));
+    }
+
+    @Test
+    public void setSameNamePropertiesOfAChangedFileIsRefused() {
+        UserContext user = user();
+        Path dir = dir(user);
+        upload(user, dir, "a", 3000);
+        FileWrapper stale = get(user, dir.resolve("a"));
+        byte[] replaced = upload(user, dir, "a", 4000);
+
+        LocalDateTime when = LocalDateTime.of(2020, 1, 2, 3, 4, 5);
+        try {
+            stale.setSameNameProperties(stale.getFileProperties().withModified(when), user.network).join();
+            Assert.fail("applied properties from a copy of a file that has since changed");
+        } catch (Exception expected) {}
+
+        UserContext fresh = fresh(user);
+        Assert.assertNotEquals(when, get(fresh, dir.resolve("a")).getFileProperties().modified);
+        Assert.assertArrayEquals(replaced, read(fresh, dir.resolve("a")));
+    }
+
+    @Test
+    public void setSameNamePropertiesOnAStaleFolder() {
+        UserContext user = user();
+        Path dir = dir(user);
+        FileWrapper stale = get(user, dir);
+        upload(user, dir, "a", 3000);
+
+        LocalDateTime when = LocalDateTime.of(2020, 1, 2, 3, 4, 5);
+        stale.setSameNameProperties(stale.getFileProperties().withModified(when), user.network).join();
+
+        UserContext fresh = fresh(user);
+        Assert.assertEquals(when, get(fresh, dir).getFileProperties().modified);
+        Assert.assertEquals("updating a folder's properties dropped a child", Set.of("a"), names(fresh, dir));
+    }
+
+    @Test
+    public void mkdirInStaleFolder() {
+        UserContext user = user();
+        Path dir = dir(user);
+        FileWrapper stale = get(user, dir);
+        upload(user, dir, "a", 3000);
+
+        stale.mkdir("sub", user.network, false, user.mirrorBatId(), crypto).join();
+
+        Assert.assertEquals(Set.of("a", "sub"), names(fresh(user), dir));
+    }
+
+    @Test
+    public void mkdirOfANameAddedSinceIsRefused() {
+        UserContext user = user();
+        Path dir = dir(user);
+        FileWrapper stale = get(user, dir);
+        upload(user, dir, "sub", 3000);
+
+        try {
+            stale.mkdir("sub", user.network, false, user.mirrorBatId(), crypto).join();
+            Assert.fail("made a folder with the name of an existing file");
+        } catch (Exception expected) {}
+        Assert.assertEquals(Set.of("sub"), names(fresh(user), dir));
+    }
 }

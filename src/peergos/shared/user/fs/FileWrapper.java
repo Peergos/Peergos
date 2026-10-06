@@ -229,9 +229,10 @@ public class FileWrapper {
             NetworkAccess network,
             SafeRandom random,
             Hasher hasher) {
-        return pointer.fileAccess
-                .updateChildLinks(version, committer, (WritableAbsoluteCapability) pointer.capability, signingPair(),
-                        childCases, network, random, hasher);
+        return getUpdated(version, network)
+                .thenCompose(fresh -> fresh.pointer.fileAccess
+                        .updateChildLinks(version, committer, (WritableAbsoluteCapability) fresh.pointer.capability, fresh.signingPair(),
+                                childCases, network, random, hasher));
     }
 
     public CompletableFuture<Boolean> hasChildWithName(Snapshot version, String name, Hasher hasher, NetworkAccess network) {
@@ -249,8 +250,7 @@ public class FileWrapper {
     public CompletableFuture<FileWrapper> removeChild(FileWrapper child, NetworkAccess network, SafeRandom random, Hasher hasher) {
         setModified();
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
-                (cwd, committer) -> pointer.fileAccess
-                .removeChildren(cwd, committer, Arrays.asList(child.isLink() ? child.linkPointer.get().capability : child.getPointer().capability), writableFilePointer(), entryWriter, network, random, hasher))
+                (cwd, committer) -> removeChild(cwd, committer, child, network, random, hasher))
                 .thenCompose(newRoot -> getUpdated(newRoot, network));
     }
 
@@ -260,8 +260,10 @@ public class FileWrapper {
                                                    NetworkAccess network,
                                                    SafeRandom random,
                                                    Hasher hasher) {
-        return pointer.fileAccess.removeChildren(version, committer,
-                Arrays.asList(child.isLink() ? child.linkPointer.get().capability : child.getPointer().capability), writableFilePointer(), entryWriter, network, random, hasher);
+        return getUpdated(version, network)
+                .thenCompose(fresh -> fresh.pointer.fileAccess.removeChildren(version, committer,
+                        Arrays.asList(child.isLink() ? child.linkPointer.get().capability : child.getPointer().capability),
+                        fresh.writableFilePointer(), fresh.entryWriter, network, random, hasher));
     }
 
     @JsMethod
@@ -2166,16 +2168,17 @@ public class FileWrapper {
             return Futures.errored(new IllegalStateException("Illegal directory name: " + newFolderName));
         }
         Snapshot fullVersion = this.version.mergeAndOverwriteWith(version);
-        return hasChildWithName(fullVersion, newFolderName, crypto.hasher, network).thenCompose(hasChild -> {
+        Optional<BatId> mirror = mirrorBatId().or(() -> mirrorBat);
+        return getUpdated(fullVersion, network).thenCompose(fresh -> fresh.hasChildWithName(fullVersion, newFolderName, crypto.hasher, network).thenCompose(hasChild -> {
             if (hasChild) {
                 return Futures.errored(new IllegalStateException("Child already exists with name: " + newFolderName));
             }
-            return pointer.fileAccess.mkdir(fullVersion, committer, newFolderName, network, writableFilePointer(), getChildsEntryWriter(),
-                    requestedBaseReadKey, requestedBaseWriteKey, desiredMapKey, desiredBat, isSystemFolder, mirrorBatId().or(() -> mirrorBat), crypto).thenApply(x -> {
+            return fresh.pointer.fileAccess.mkdir(fullVersion, committer, newFolderName, network, fresh.writableFilePointer(), fresh.getChildsEntryWriter(),
+                    requestedBaseReadKey, requestedBaseWriteKey, desiredMapKey, desiredBat, isSystemFolder, mirror, crypto).thenApply(x -> {
                 setModified();
                 return x;
             });
-        });
+        }));
     }
 
     /** Get or create a descendant directory
@@ -2216,10 +2219,10 @@ public class FileWrapper {
                                                                       Crypto crypto,
                                                                       Snapshot version,
                                                                       Committer committer) {
-        return Futures.reduceAll(subPath, new Pair<>(version, this.withVersion(version)),
+        return getUpdated(version, network).thenCompose(fresh -> Futures.reduceAll(subPath, new Pair<>(version, fresh),
                 (p, name) -> p.right.getOrMkdir(name, Optional.empty(), Optional.empty(), Optional.empty(),
                                 Optional.empty(), isSystemFolder, p.right.mirrorBatId().or(() -> mirrorBat), network, crypto, p.left, committer),
-                (a, b) -> b);
+                (a, b) -> b));
     }
 
     private CompletableFuture<Pair<Snapshot, FileWrapper>> getOrMkdir(String newFolderName,
@@ -2345,6 +2348,7 @@ public class FileWrapper {
                                                     Hasher hasher,
                                                     NetworkAccess network,
                                                     Optional<FileWrapper> parent) {
+        boolean isDir = isDirectory();
         setModified();
         String newName = updatedProperties.name;
         if (!isLegalName(newName)) {
@@ -2354,10 +2358,11 @@ public class FileWrapper {
                 (s, comitter) -> (! parent.isPresent() ?
                         CompletableFuture.completedFuture(s) :
                         s.withWriter(owner(), parent.get().writer(), network)
-                ).thenCompose(withParent -> parent.get().hasChildWithName(withParent, newName, hasher, network))
+                ).thenCompose(withParent -> parent.get().getUpdated(withParent, network)
+                                .thenCompose(freshParent -> freshParent.hasChildWithName(withParent, newName, hasher, network)
                         .thenCompose(hasChild -> ! hasChild ?
                                 CompletableFuture.completedFuture(true) :
-                                parent.get().getChildrenCapabilities(hasher, network)
+                                freshParent.getChildrenCapabilities(hasher, network)
                                         .thenApply(childCaps -> {
                                             if (! childCaps.stream()
                                                     .map(l -> new ByteArrayWrapper(l.cap.getMapKey()))
@@ -2365,24 +2370,32 @@ public class FileWrapper {
                                                     .contains(new ByteArrayWrapper(pointer.capability.getMapKey())))
                                                 throw new IllegalStateException("Cannot rename to same name as an existing file");
                                             return true;
-                                        })).thenCompose(x -> {
-                            CryptreeNode fileAccess = pointer.fileAccess;
-                            return fileAccess.updateProperties(s, comitter, writableFilePointer(),
-                                    entryWriter, updatedProperties, network);
-                        }))
+                                        })))).thenCompose(x -> current(isDir, s, network)
+                                .thenCompose(us -> us.pointer.fileAccess.updateProperties(s, comitter, us.writableFilePointer(),
+                                        us.entryWriter, updatedProperties, network))))
                 .thenApply(fa -> true);
+    }
+
+    /** What to write new properties to. A folder's properties don't describe its children, so they can go on its
+     *  listing as it is now. A file's describe its contents - size, hash, chunk size - so applying them to contents
+     *  written since we were retrieved would be wrong; write our own copy, which fails if the file has changed.
+     */
+    private CompletableFuture<FileWrapper> current(boolean isDir, Snapshot s, NetworkAccess network) {
+        return isDir ? getUpdated(s, network) : Futures.of(this);
     }
 
     public CompletableFuture<Boolean> setSameNameProperties(FileProperties updatedProperties,
                                                             NetworkAccess network) {
         String name = getName();
+        boolean isDir = isDirectory();
         setModified();
         String newName = updatedProperties.name;
         if (! newName.equals(name)) {
             return Futures.errored(new IllegalArgumentException("Can't rename file here: " + newName));
         }
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
-                        (s, c) -> pointer.fileAccess.updateProperties(s, c, writableFilePointer(), entryWriter, updatedProperties, network))
+                        (s, c) -> current(isDir, s, network)
+                                .thenCompose(us -> us.pointer.fileAccess.updateProperties(s, c, us.writableFilePointer(), us.entryWriter, updatedProperties, network)))
                 .thenApply(fa -> true);
     }
 
