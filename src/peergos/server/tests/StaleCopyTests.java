@@ -269,4 +269,71 @@ public class StaleCopyTests {
         } catch (Exception expected) {}
         Assert.assertEquals(Set.of("sub"), names(fresh(user), dir));
     }
+
+    private static HashTree hash(byte[] data) {
+        return HashTree.build(AsyncReader.build(data), 0, data.length, Chunk.LEGACY_SIZE, crypto.hasher).join();
+    }
+
+    private byte[] uploadWithHash(UserContext user, Path dir, String name, int size) {
+        byte[] data = new byte[size];
+        random.nextBytes(data);
+        get(user, dir).uploadFileWithHash(name, AsyncReader.build(data), data.length, Optional.of(hash(data)),
+                Optional.empty(), Optional.empty(), user.network, crypto, x -> {}).join();
+        return data;
+    }
+
+    @Test
+    public void overwriteFileWithStaleCopy() {
+        UserContext user = user();
+        Path dir = dir(user);
+        upload(user, dir, "a", 3000);
+        FileWrapper stale = get(user, dir.resolve("a"));
+        upload(user, dir, "other", 3000);
+
+        byte[] replacement = new byte[5000];
+        random.nextBytes(replacement);
+        stale.overwriteFile(AsyncReader.build(replacement), replacement.length, user.network, crypto, x -> {}).join();
+
+        UserContext fresh = fresh(user);
+        Assert.assertArrayEquals(replacement, read(fresh, dir.resolve("a")));
+        Assert.assertEquals(Set.of("a", "other"), names(fresh, dir));
+    }
+
+    @Test
+    public void overwriteChangedChunksComparesWithTheCurrentContents() {
+        UserContext user = user();
+        Path dir = dir(user);
+        byte[] original = uploadWithHash(user, dir, "a", 3000);
+        FileWrapper stale = get(user, dir.resolve("a"));
+        byte[] other = new byte[3000];
+        random.nextBytes(other);
+        get(user, dir.resolve("a")).overwriteChangedChunks(AsyncReader.build(other), other.length, Optional.of(hash(other)),
+                Optional.empty(), user.network, crypto, x -> {}).join();
+
+        // our copy's chunk hashes match what we write, but the file no longer holds it
+        stale.overwriteChangedChunks(AsyncReader.build(original), original.length, Optional.of(hash(original)),
+                Optional.empty(), user.network, crypto, x -> {}).join();
+
+        Assert.assertArrayEquals("skipped a chunk that only our copy says is unchanged",
+                original, read(fresh(user), dir.resolve("a")));
+    }
+
+    @Test
+    public void overwriteSetsHashAndModifiedTime() {
+        UserContext user = user();
+        Path dir = dir(user);
+        uploadWithHash(user, dir, "a", 3000);
+        byte[] replacement = new byte[4000];
+        random.nextBytes(replacement);
+        HashTree h = hash(replacement);
+        LocalDateTime when = LocalDateTime.of(2021, 2, 3, 4, 5, 6);
+
+        get(user, dir.resolve("a")).overwriteChangedChunks(AsyncReader.build(replacement), replacement.length,
+                Optional.of(h), Optional.of(when), user.network, crypto, x -> {}).join();
+
+        FileWrapper now = get(fresh(user), dir.resolve("a"));
+        Assert.assertArrayEquals(replacement, read(fresh(user), dir.resolve("a")));
+        Assert.assertEquals(h.rootHash, now.getFileProperties().treeHash.get().rootHash);
+        Assert.assertEquals(when, now.getFileProperties().modified);
+    }
 }

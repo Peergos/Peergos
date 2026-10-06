@@ -869,9 +869,10 @@ public class CloudFilesProvider {
     }
 
     /** Push local content to Peergos via overwriteChangedChunks (existing) or uploadFileWithHash (new).
-     *  Always sets the file's treeHash explicitly afterwards — mirrors PeergosSyncFS.setBytes /
-     *  PeergosSyncFS.setHashes. This guarantees every conflict check after this upload has a
-     *  populated treeHash to compare against.
+     *  Either sets the content, its treeHash and its modified time in one update, so every conflict
+     *  check after this upload has a populated treeHash to compare against, and the modified time
+     *  matches the local placeholder's (applyRemoteDelete / applyRemoteChangeOrConflict use that
+     *  equality as the "no local edits since last sync" signal).
      *
      *  Surfaces upload progress in File Explorer by marking the placeholder NOT_IN_SYNC
      *  before the upload and flipping it to IN_SYNC after success. CF only fires
@@ -890,10 +891,8 @@ public class CloudFilesProvider {
                      new peergos.server.simulation.FileAsyncReader(localPath.toFile())) {
             if (existingOpt.isPresent() && !existingOpt.get().isDirectory()) {
                 existingOpt.get().overwriteChangedChunks(
-                        reader, localSize,
+                        reader, localSize, Optional.ofNullable(localHash), Optional.of(localModified),
                         context.network, context.crypto, l -> {}).join();
-                if (localHash != null) applyHash(peergosPath, localHash);
-                stampPeergosMtime(peergosPath, localModified);
             } else {
                 parentOpt.get().uploadFileWithHash(name,
                         reader, localSize, Optional.ofNullable(localHash),
@@ -905,42 +904,6 @@ public class CloudFilesProvider {
                     fw -> recordSyncedVersion(localPath, fw));
         }
         setInSyncState(localPath, CfApi.CF_IN_SYNC_STATE_IN_SYNC);
-    }
-
-    /** Set the file's modified time to {@code localModified} so syncState.modificationTime
-     *  (recorded from the peergos FileWrapper) matches the local placeholder's mtime —
-     *  applyRemoteDelete / applyRemoteChangeOrConflict use that equality as the "no local
-     *  edits since last sync" signal. {@code overwriteChangedChunks} doesn't accept a
-     *  modified time, so we update it as a follow-up; {@code uploadFileWithHash} takes
-     *  it directly and doesn't need this. */
-    private Optional<FileWrapper> stampPeergosMtime(String peergosPath, LocalDateTime localModified) {
-        try {
-            Optional<FileWrapper> fwOpt = context.getByPath(peergosPath).join();
-            if (fwOpt.isEmpty()) return Optional.empty();
-            FileWrapper fw = fwOpt.get();
-            FileProperties updated = fw.getFileProperties().withModified(localModified);
-            fw.setSameNameProperties(updated, context.network).join();
-            return context.getByPath(peergosPath).join();
-        } catch (Exception e) {
-            LOG.log(Level.WARNING, "stampPeergosMtime failed for " + peergosPath, e);
-            return Optional.empty();
-        }
-    }
-
-    /** Apply a precomputed HashTree to an already-uploaded file via PropsUpdate.
-     *  Mirrors PeergosSyncFS.setHashes — used after overwriteChangedChunks (which doesn't
-     *  set the hash itself) so conflict-detection always has a populated baseline. */
-    private void applyHash(String peergosPath, HashTree hash) {
-        try {
-            Optional<FileWrapper> fwOpt = context.getByPath(peergosPath).join();
-            if (fwOpt.isEmpty()) return;
-            java.util.List<FileWrapper.PropsUpdate> updates =
-                    fwOpt.get().getHashUpdates(hash, context.network, context.crypto.hasher).join();
-            if (updates.isEmpty()) return;
-            FileWrapper.bulkSetSameNameProperties(updates, context.network).join();
-        } catch (Exception e) {
-            LOG.log(Level.WARNING, "applyHash failed for " + peergosPath, e);
-        }
     }
 
     /**
@@ -1874,10 +1837,8 @@ public class CloudFilesProvider {
                          new peergos.server.simulation.FileAsyncReader(localPath.toFile())) {
                 if (existing.isPresent() && !existing.get().isDirectory()) {
                     uploaded = existing.get().overwriteChangedChunks(
-                            reader, localSize,
+                            reader, localSize, Optional.ofNullable(localHash), Optional.of(localModified),
                             context.network, context.crypto, l -> {}).join();
-                    if (localHash != null) applyHash(peergosPath, localHash);
-                    uploaded = stampPeergosMtime(peergosPath, localModified).orElse(uploaded);
                 } else {
                     uploaded = parentOpt.get().uploadFileWithHash(name,
                             reader, localSize, Optional.ofNullable(localHash),

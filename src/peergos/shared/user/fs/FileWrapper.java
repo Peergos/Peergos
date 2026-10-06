@@ -1085,7 +1085,7 @@ public class FileWrapper {
                                                         Crypto crypto,
                                                         ProgressConsumer<Long> monitor) {
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
-                (s, committer) -> overwriteFile(fileData, newSize, network, crypto, monitor, version, committer))
+                (s, committer) -> overwriteFile(fileData, newSize, network, crypto, monitor, s, committer))
                 .thenCompose(v -> getUpdated(v, network));
     }
 
@@ -1094,19 +1094,57 @@ public class FileWrapper {
                                                                   NetworkAccess network,
                                                                   Crypto crypto,
                                                                   ProgressConsumer<Long> monitor) {
+        return overwriteChangedChunks(newData, newSize, Optional.empty(), Optional.empty(), network, crypto, monitor);
+    }
+
+    /** Overwrite the contents, and set the new contents' hash and modified time, in one update, so a failure part
+     *  way can't leave new contents described by the old hash or time.
+     */
+    public CompletableFuture<FileWrapper> overwriteChangedChunks(AsyncReader newData,
+                                                                  long newSize,
+                                                                  Optional<HashTree> newHash,
+                                                                  Optional<LocalDateTime> modified,
+                                                                  NetworkAccess network,
+                                                                  Crypto crypto,
+                                                                  ProgressConsumer<Long> monitor) {
+        return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
+                        (s, committer) -> overwriteChangedChunks(s, committer, newData, newSize, network, crypto, monitor)
+                                .thenCompose(written -> setHashAndModified(written, committer, newHash, modified, network, crypto)))
+                .thenCompose(v -> getUpdated(v, network));
+    }
+
+    /** Unchanged chunks are found by comparing with the file's chunk hashes, so they must be those of the file as it
+     *  is now, not as our copy has it.
+     */
+    private CompletableFuture<Snapshot> overwriteChangedChunks(Snapshot s,
+                                                               Committer committer,
+                                                               AsyncReader newData,
+                                                               long newSize,
+                                                               NetworkAccess network,
+                                                               Crypto crypto,
+                                                               ProgressConsumer<Long> monitor) {
+        return getUpdated(s, network)
+                .thenCompose(current -> current.overwriteChangedChunksOf(s, committer, newData, newSize, network, crypto, monitor));
+    }
+
+    private CompletableFuture<Snapshot> overwriteChangedChunksOf(Snapshot s,
+                                                                 Committer committer,
+                                                                 AsyncReader newData,
+                                                                 long newSize,
+                                                                 NetworkAccess network,
+                                                                 Crypto crypto,
+                                                                 ProgressConsumer<Long> monitor) {
         long existingSize = getSize();
         int chunkSize = getFileProperties().chunkSize;
         int nChunks = newSize == 0 ? 1 : (int) ((newSize + chunkSize - 1) / chunkSize);
         Optional<HashBranch> existingBranch = getFileProperties().treeHash;
 
-        if (existingBranch.isEmpty() || existingBranch.get().level1.isEmpty() || nChunks > 1024) {
-            return overwriteFile(newData, newSize, network, crypto, monitor);
-        }
+        if (existingBranch.isEmpty() || existingBranch.get().level1.isEmpty() || nChunks > 1024)
+            return overwriteFile(newData, newSize, network, crypto, monitor, s, committer);
 
         ChunkHashList existingChunkHashes = existingBranch.get().level1.get();
 
-        return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
-                (s, committer) -> clean(s, committer, network, crypto)
+        return clean(s, committer, network, crypto)
                         .thenCompose(cleaned ->
                                 Futures.reduceAll(
                                         IntStream.range(0, nChunks).boxed().collect(Collectors.toList()),
@@ -1139,8 +1177,23 @@ public class FileWrapper {
                                                 ? Futures.of(finalState.right)
                                                 : finalState.left.getUpdated(finalState.right, network)
                                                         .thenCompose(f -> f.truncate(finalState.right, committer,
-                                                                newSize, network, crypto)))))
-                .thenCompose(v -> getUpdated(v, network));
+                                                                newSize, network, crypto))));
+    }
+
+    private CompletableFuture<Snapshot> setHashAndModified(Snapshot s,
+                                                           Committer committer,
+                                                           Optional<HashTree> newHash,
+                                                           Optional<LocalDateTime> modified,
+                                                           NetworkAccess network,
+                                                           Crypto crypto) {
+        return (newHash.isEmpty() ? Futures.of(s) :
+                getUpdated(s, network)
+                        .thenCompose(f -> f.getHashUpdates(newHash.get(), network, crypto.hasher))
+                        .thenCompose(updates -> updates.isEmpty() ? Futures.of(s) :
+                                bulkSetSameNameProperties(s, committer, owner(), updates, network)))
+                .thenCompose(hashed -> modified.isEmpty() ? Futures.of(hashed) :
+                        getUpdated(hashed, network).thenCompose(f -> f.pointer.fileAccess.updateProperties(hashed, committer,
+                                f.writableFilePointer(), f.entryWriter, f.getFileProperties().withModified(modified.get()), network)));
     }
 
     private static CompletableFuture<Void> readFully(AsyncReader reader, byte[] buf, int offset, int remaining) {
