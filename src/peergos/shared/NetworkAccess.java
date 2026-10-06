@@ -435,6 +435,10 @@ public class NetworkAccess {
         return Futures.of(true);
     }
 
+    public CompletableFuture<Boolean> commit(PublicKeyHash owner, Supplier<Boolean> commitWatcher, Set<PublicKeyHash> writers) {
+        return Futures.of(true);
+    }
+
     public CompletableFuture<Optional<RetrievedCapability>> retrieveMetadata(AbsoluteCapability cap, Snapshot version) {
         return retrieveAllMetadata(Collections.singletonList(cap), version)
                 .thenApply(p -> p.left.isEmpty() ? Optional.empty() : Optional.of(p.left.get(0)));

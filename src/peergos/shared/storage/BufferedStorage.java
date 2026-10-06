@@ -333,6 +333,29 @@ public class BufferedStorage extends DelegatingStorage {
                 .thenApply(hashes -> hashes.get(0));
     }
 
+    /** Remove the blocks these writers buffered that no root reaches. Other writers' blocks are left alone, as an
+     *  update to one of them may still be in progress and not have linked its blocks yet.
+     */
+    public void gc(List<Cid> roots, Set<PublicKeyHash> writers) {
+        synchronized (storage) {
+            Set<Cid> reachable = new HashSet<>();
+            for (Cid root : roots)
+                markReachable(root, reachable, storage);
+            List<Cid> unreachable = storage.entrySet().stream()
+                    .filter(e -> writers.contains(e.getValue().writer) && ! reachable.contains(e.getKey()))
+                    .map(Map.Entry::getKey)
+                    .collect(Collectors.toList());
+            unreachable.forEach(this::remove);
+        }
+    }
+
+    /** A commit for these writers has finished, landed or not, so stop holding the blocks it took. */
+    public void commitFinished(Set<PublicKeyHash> writers) {
+        synchronized (storage) {
+            inFlight.entrySet().removeIf(e -> writers.contains(e.getValue().writer));
+        }
+    }
+
     public void gc(List<Cid> roots) {
         synchronized (storage) {
             Set<Cid> reachable = new HashSet<>();

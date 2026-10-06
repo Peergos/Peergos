@@ -229,9 +229,10 @@ public class FileWrapper {
             NetworkAccess network,
             SafeRandom random,
             Hasher hasher) {
-        return pointer.fileAccess
-                .updateChildLinks(version, committer, (WritableAbsoluteCapability) pointer.capability, signingPair(),
-                        childCases, network, random, hasher);
+        return getUpdated(version, network)
+                .thenCompose(fresh -> fresh.pointer.fileAccess
+                        .updateChildLinks(version, committer, (WritableAbsoluteCapability) fresh.pointer.capability, fresh.signingPair(),
+                                childCases, network, random, hasher));
     }
 
     public CompletableFuture<Boolean> hasChildWithName(Snapshot version, String name, Hasher hasher, NetworkAccess network) {
@@ -249,8 +250,7 @@ public class FileWrapper {
     public CompletableFuture<FileWrapper> removeChild(FileWrapper child, NetworkAccess network, SafeRandom random, Hasher hasher) {
         setModified();
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
-                (cwd, committer) -> pointer.fileAccess
-                .removeChildren(cwd, committer, Arrays.asList(child.isLink() ? child.linkPointer.get().capability : child.getPointer().capability), writableFilePointer(), entryWriter, network, random, hasher))
+                (cwd, committer) -> removeChild(cwd, committer, child, network, random, hasher))
                 .thenCompose(newRoot -> getUpdated(newRoot, network));
     }
 
@@ -260,8 +260,10 @@ public class FileWrapper {
                                                    NetworkAccess network,
                                                    SafeRandom random,
                                                    Hasher hasher) {
-        return pointer.fileAccess.removeChildren(version, committer,
-                Arrays.asList(child.isLink() ? child.linkPointer.get().capability : child.getPointer().capability), writableFilePointer(), entryWriter, network, random, hasher);
+        return getUpdated(version, network)
+                .thenCompose(fresh -> fresh.pointer.fileAccess.removeChildren(version, committer,
+                        Arrays.asList(child.isLink() ? child.linkPointer.get().capability : child.getPointer().capability),
+                        fresh.writableFilePointer(), fresh.entryWriter, network, random, hasher));
     }
 
     @JsMethod
@@ -1083,7 +1085,7 @@ public class FileWrapper {
                                                         Crypto crypto,
                                                         ProgressConsumer<Long> monitor) {
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
-                (s, committer) -> overwriteFile(fileData, newSize, network, crypto, monitor, version, committer))
+                (s, committer) -> overwriteFile(fileData, newSize, network, crypto, monitor, s, committer))
                 .thenCompose(v -> getUpdated(v, network));
     }
 
@@ -1092,19 +1094,57 @@ public class FileWrapper {
                                                                   NetworkAccess network,
                                                                   Crypto crypto,
                                                                   ProgressConsumer<Long> monitor) {
+        return overwriteChangedChunks(newData, newSize, Optional.empty(), Optional.empty(), network, crypto, monitor);
+    }
+
+    /** Overwrite the contents, and set the new contents' hash and modified time, in one update, so a failure part
+     *  way can't leave new contents described by the old hash or time.
+     */
+    public CompletableFuture<FileWrapper> overwriteChangedChunks(AsyncReader newData,
+                                                                  long newSize,
+                                                                  Optional<HashTree> newHash,
+                                                                  Optional<LocalDateTime> modified,
+                                                                  NetworkAccess network,
+                                                                  Crypto crypto,
+                                                                  ProgressConsumer<Long> monitor) {
+        return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
+                        (s, committer) -> overwriteChangedChunks(s, committer, newData, newSize, network, crypto, monitor)
+                                .thenCompose(written -> setHashAndModified(written, committer, newHash, modified, network, crypto)))
+                .thenCompose(v -> getUpdated(v, network));
+    }
+
+    /** Unchanged chunks are found by comparing with the file's chunk hashes, so they must be those of the file as it
+     *  is now, not as our copy has it.
+     */
+    private CompletableFuture<Snapshot> overwriteChangedChunks(Snapshot s,
+                                                               Committer committer,
+                                                               AsyncReader newData,
+                                                               long newSize,
+                                                               NetworkAccess network,
+                                                               Crypto crypto,
+                                                               ProgressConsumer<Long> monitor) {
+        return getUpdated(s, network)
+                .thenCompose(current -> current.overwriteChangedChunksOf(s, committer, newData, newSize, network, crypto, monitor));
+    }
+
+    private CompletableFuture<Snapshot> overwriteChangedChunksOf(Snapshot s,
+                                                                 Committer committer,
+                                                                 AsyncReader newData,
+                                                                 long newSize,
+                                                                 NetworkAccess network,
+                                                                 Crypto crypto,
+                                                                 ProgressConsumer<Long> monitor) {
         long existingSize = getSize();
         int chunkSize = getFileProperties().chunkSize;
         int nChunks = newSize == 0 ? 1 : (int) ((newSize + chunkSize - 1) / chunkSize);
         Optional<HashBranch> existingBranch = getFileProperties().treeHash;
 
-        if (existingBranch.isEmpty() || existingBranch.get().level1.isEmpty() || nChunks > 1024) {
-            return overwriteFile(newData, newSize, network, crypto, monitor);
-        }
+        if (existingBranch.isEmpty() || existingBranch.get().level1.isEmpty() || nChunks > 1024)
+            return overwriteFile(newData, newSize, network, crypto, monitor, s, committer);
 
         ChunkHashList existingChunkHashes = existingBranch.get().level1.get();
 
-        return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
-                (s, committer) -> clean(s, committer, network, crypto)
+        return clean(s, committer, network, crypto)
                         .thenCompose(cleaned ->
                                 Futures.reduceAll(
                                         IntStream.range(0, nChunks).boxed().collect(Collectors.toList()),
@@ -1137,8 +1177,23 @@ public class FileWrapper {
                                                 ? Futures.of(finalState.right)
                                                 : finalState.left.getUpdated(finalState.right, network)
                                                         .thenCompose(f -> f.truncate(finalState.right, committer,
-                                                                newSize, network, crypto)))))
-                .thenCompose(v -> getUpdated(v, network));
+                                                                newSize, network, crypto))));
+    }
+
+    private CompletableFuture<Snapshot> setHashAndModified(Snapshot s,
+                                                           Committer committer,
+                                                           Optional<HashTree> newHash,
+                                                           Optional<LocalDateTime> modified,
+                                                           NetworkAccess network,
+                                                           Crypto crypto) {
+        return (newHash.isEmpty() ? Futures.of(s) :
+                getUpdated(s, network)
+                        .thenCompose(f -> f.getHashUpdates(newHash.get(), network, crypto.hasher))
+                        .thenCompose(updates -> updates.isEmpty() ? Futures.of(s) :
+                                bulkSetSameNameProperties(s, committer, owner(), updates, network)))
+                .thenCompose(hashed -> modified.isEmpty() ? Futures.of(hashed) :
+                        getUpdated(hashed, network).thenCompose(f -> f.pointer.fileAccess.updateProperties(hashed, committer,
+                                f.writableFilePointer(), f.entryWriter, f.getFileProperties().withModified(modified.get()), network)));
     }
 
     private static CompletableFuture<Void> readFully(AsyncReader reader, byte[] buf, int offset, int remaining) {
@@ -1451,6 +1506,15 @@ public class FileWrapper {
         });
     }
 
+    /** The writers an upload writes to: the folder it is uploading into, and our own space for its transactions. */
+    private static Set<PublicKeyHash> uploadWriters(FileWrapper parent, TransactionService transactions) {
+        Set<PublicKeyHash> writers = new HashSet<>();
+        writers.add(parent.writer());
+        if (transactions != null)
+            writers.add(transactions.getSigner().publicKeyHash);
+        return writers;
+    }
+
     private static CompletableFuture<Pair<Snapshot, List<NamedRelativeCapability>>> atomicallyClearTransactionsAndAddToParent(
             List<FileUploadTransaction> toClose,
             List<NamedRelativeCapability> childLinks,
@@ -1468,7 +1532,7 @@ public class FileWrapper {
                 .thenCompose(res -> Futures.reduceAll(toClose, res, (v, f) -> transactions.close(v, c, f), (a, b) -> b))
                 .thenApply(s -> {network.enableCommits(); return s;})
                 .thenCompose(s -> network.isFull() ?
-                        network.commit(parent.owner(), commitWatcher).thenApply(x -> s) :
+                        network.commit(parent.owner(), commitWatcher, uploadWriters(parent, transactions)).thenApply(x -> s) :
                         Futures.of(s))
                 .thenApply(s -> new Pair<>(s, Collections.<NamedRelativeCapability>emptyList()));
     }
@@ -2157,16 +2221,17 @@ public class FileWrapper {
             return Futures.errored(new IllegalStateException("Illegal directory name: " + newFolderName));
         }
         Snapshot fullVersion = this.version.mergeAndOverwriteWith(version);
-        return hasChildWithName(fullVersion, newFolderName, crypto.hasher, network).thenCompose(hasChild -> {
+        Optional<BatId> mirror = mirrorBatId().or(() -> mirrorBat);
+        return getUpdated(fullVersion, network).thenCompose(fresh -> fresh.hasChildWithName(fullVersion, newFolderName, crypto.hasher, network).thenCompose(hasChild -> {
             if (hasChild) {
                 return Futures.errored(new IllegalStateException("Child already exists with name: " + newFolderName));
             }
-            return pointer.fileAccess.mkdir(fullVersion, committer, newFolderName, network, writableFilePointer(), getChildsEntryWriter(),
-                    requestedBaseReadKey, requestedBaseWriteKey, desiredMapKey, desiredBat, isSystemFolder, mirrorBatId().or(() -> mirrorBat), crypto).thenApply(x -> {
+            return fresh.pointer.fileAccess.mkdir(fullVersion, committer, newFolderName, network, fresh.writableFilePointer(), fresh.getChildsEntryWriter(),
+                    requestedBaseReadKey, requestedBaseWriteKey, desiredMapKey, desiredBat, isSystemFolder, mirror, crypto).thenApply(x -> {
                 setModified();
                 return x;
             });
-        });
+        }));
     }
 
     /** Get or create a descendant directory
@@ -2207,10 +2272,10 @@ public class FileWrapper {
                                                                       Crypto crypto,
                                                                       Snapshot version,
                                                                       Committer committer) {
-        return Futures.reduceAll(subPath, new Pair<>(version, this.withVersion(version)),
+        return getUpdated(version, network).thenCompose(fresh -> Futures.reduceAll(subPath, new Pair<>(version, fresh),
                 (p, name) -> p.right.getOrMkdir(name, Optional.empty(), Optional.empty(), Optional.empty(),
                                 Optional.empty(), isSystemFolder, p.right.mirrorBatId().or(() -> mirrorBat), network, crypto, p.left, committer),
-                (a, b) -> b);
+                (a, b) -> b));
     }
 
     private CompletableFuture<Pair<Snapshot, FileWrapper>> getOrMkdir(String newFolderName,
@@ -2260,57 +2325,69 @@ public class FileWrapper {
             return CompletableFuture.completedFuture(parent);
         if (! parent.isWritable())
             return Futures.errored(new IllegalStateException("Unable to rename something without write access to the parent!"));
-        CompletableFuture<Optional<FileWrapper>> childExists = parent == null ?
-                CompletableFuture.completedFuture(Optional.empty()) :
-                parent.getDescendentByPath(newFilename, userContext.crypto.hasher, userContext.network);
         ensureUnmodified();
-        FileProperties currentProps = getFileProperties();
+        NetworkAccess network = userContext.network;
+        boolean isLink = linkPointer.orElse(pointer).getProperties().isLink;
+        SigningPrivateKeyAndPublicHash signer = isLink ? parent.signingPair() : signingPair();
+        String oldName = getName();
         setModified();
-        return childExists
-                .thenCompose(existing -> {
-                    if (existing.isPresent())
-                        throw new IllegalStateException("Cannot rename, child already exists with name: " + newFilename);
+        // the parent and we may both have changed since we were retrieved, so rename what is there now
+        return network.synchronizer.applyComplexUpdate(owner(), signer,
+                (s, committer) -> parent.getUpdated(s, network)
+                        .thenCompose(freshParent -> freshParent.getChild(freshParent.version.mergeAndOverwriteWith(s), newFilename, network)
+                                .thenCompose(existing -> {
+                                    if (existing.isPresent())
+                                        throw new IllegalStateException("Cannot rename, child already exists with name: " + newFilename);
+                                    return freshParent.getChild(freshParent.version.mergeAndOverwriteWith(s), oldName, network);
+                                })
+                                .thenCompose(freshUs -> {
+                                    if (freshUs.isEmpty())
+                                        throw new IllegalStateException("Cannot rename " + oldName + ", it is no longer in its folder");
+                                    return freshUs.get().renameIn(s, committer, newFilename, freshParent, ourPath, isLink, userContext);
+                                })))
+                .thenCompose(newVersion -> parent.getUpdated(newVersion, network));
+    }
 
-                    //get current props
-                    RetrievedCapability ourPointer = linkPointer.orElse(pointer);
-                    WritableAbsoluteCapability us = (WritableAbsoluteCapability) ourPointer.capability;
-                    CryptreeNode nodeToUpdate = ourPointer.fileAccess;
-
-                    boolean isDir = this.isDirectory();
-                    boolean isLink = ourPointer.getProperties().isLink;
-                    FileProperties newProps = new FileProperties(newFilename, isDir, isLink,
+    private CompletableFuture<Snapshot> renameIn(Snapshot s,
+                                                 Committer committer,
+                                                 String newFilename,
+                                                 FileWrapper parent,
+                                                 Path ourPath,
+                                                 boolean isLink,
+                                                 UserContext userContext) {
+        FileProperties currentProps = getFileProperties();
+        RetrievedCapability ourPointer = linkPointer.orElse(pointer);
+        WritableAbsoluteCapability us = (WritableAbsoluteCapability) ourPointer.capability;
+        CryptreeNode nodeToUpdate = ourPointer.fileAccess;
+        boolean isDir = this.isDirectory();
+        FileProperties newProps = new FileProperties(newFilename, isDir, isLink,
+                currentProps.mimeType, currentProps.size,
+                currentProps.modified, currentProps.created, currentProps.isHidden,
+                currentProps.thumbnail, currentProps.streamSecret, currentProps.treeHash, currentProps.chunkSize);
+        return nodeToUpdate.updateProperties(s, committer, us, entryWriter, newProps, userContext.network)
+                .thenCompose(updated -> parent.updateChildLinks(updated, committer,
+                        Arrays.asList(new Pair<>(us, new NamedAbsoluteCapability(newFilename, us,
+                                Optional.of(isDir),
+                                Optional.of(currentProps.mimeType),
+                                Optional.of(currentProps.created)))),
+                        userContext.network, userContext.crypto.random, userContext.crypto.hasher))
+                .thenCompose(v -> userContext.isSecretLink() ? Futures.of(v) :
+                        userContext.sharedWithCache.rename(ourPath,
+                                ourPath.getParent().resolve(newFilename), v, committer, userContext.network))
+                .thenCompose(v -> {
+                    if (! isLink)
+                        return Futures.of(v);
+                    // make sure to update name in link target for writable links, otherwise old name will leak
+                    RetrievedCapability nonLinkPointer = pointer;
+                    WritableAbsoluteCapability nonLinkUs = (WritableAbsoluteCapability) nonLinkPointer.capability;
+                    CryptreeNode nonLinkNodeToUpdate = nonLinkPointer.fileAccess;
+                    FileProperties nonLinkProps = new FileProperties(newFilename, isDir, false,
                             currentProps.mimeType, currentProps.size,
                             currentProps.modified, currentProps.created, currentProps.isHidden,
                             currentProps.thumbnail, currentProps.streamSecret, currentProps.treeHash, currentProps.chunkSize);
-                    SigningPrivateKeyAndPublicHash signer = isLink ? parent.signingPair() : signingPair();
-                    return userContext.network.synchronizer.applyComplexUpdate(owner(), signer,
-                            (s, committer) -> nodeToUpdate.updateProperties(s, committer, us,
-                                    entryWriter, newProps, userContext.network)
-                                    .thenCompose(updated -> parent.updateChildLinks(updated, committer,
-                                            Arrays.asList(new Pair<>(us, new NamedAbsoluteCapability(newFilename, us,
-                                                    Optional.of(isDir),
-                                                    Optional.of(currentProps.mimeType),
-                                                    Optional.of(currentProps.created)))),
-                                            userContext.network, userContext.crypto.random, userContext.crypto.hasher))
-                                    .thenCompose(v -> userContext.isSecretLink() ? Futures.of(v) :
-                                            userContext.sharedWithCache.rename(ourPath,
-                                                    ourPath.getParent().resolve(newFilename), v, committer, userContext.network))
-                                    .thenCompose(v -> {
-                                        if (! isLink)
-                                            return Futures.of(v);
-                                        // make sure to update name in link target for writable links, otherwise old name will leak
-                                        RetrievedCapability nonLinkPointer = pointer;
-                                        WritableAbsoluteCapability nonLinkUs = (WritableAbsoluteCapability) nonLinkPointer.capability;
-                                        CryptreeNode nonLinkNodeToUpdate = nonLinkPointer.fileAccess;
-                                        FileProperties nonLinkProps = new FileProperties(newFilename, isDir, false,
-                                                currentProps.mimeType, currentProps.size,
-                                                currentProps.modified, currentProps.created, currentProps.isHidden,
-                                                currentProps.thumbnail, currentProps.streamSecret, currentProps.treeHash, currentProps.chunkSize);
-                                        return v.withWriter(owner(), nonLinkUs.writer, userContext.network)
-                                                .thenCompose(v2 -> nonLinkNodeToUpdate.updateProperties(v2, committer, nonLinkUs,
-                                                        Optional.of(signingPair()), nonLinkProps, userContext.network));
-                                    })
-                    ).thenCompose(newVersion -> parent.getUpdated(newVersion, userContext.network));
+                    return v.withWriter(owner(), nonLinkUs.writer, userContext.network)
+                            .thenCompose(v2 -> nonLinkNodeToUpdate.updateProperties(v2, committer, nonLinkUs,
+                                    Optional.of(signingPair()), nonLinkProps, userContext.network));
                 });
     }
 
@@ -2324,6 +2401,7 @@ public class FileWrapper {
                                                     Hasher hasher,
                                                     NetworkAccess network,
                                                     Optional<FileWrapper> parent) {
+        boolean isDir = isDirectory();
         setModified();
         String newName = updatedProperties.name;
         if (!isLegalName(newName)) {
@@ -2333,10 +2411,11 @@ public class FileWrapper {
                 (s, comitter) -> (! parent.isPresent() ?
                         CompletableFuture.completedFuture(s) :
                         s.withWriter(owner(), parent.get().writer(), network)
-                ).thenCompose(withParent -> parent.get().hasChildWithName(withParent, newName, hasher, network))
+                ).thenCompose(withParent -> parent.get().getUpdated(withParent, network)
+                                .thenCompose(freshParent -> freshParent.hasChildWithName(withParent, newName, hasher, network)
                         .thenCompose(hasChild -> ! hasChild ?
                                 CompletableFuture.completedFuture(true) :
-                                parent.get().getChildrenCapabilities(hasher, network)
+                                freshParent.getChildrenCapabilities(hasher, network)
                                         .thenApply(childCaps -> {
                                             if (! childCaps.stream()
                                                     .map(l -> new ByteArrayWrapper(l.cap.getMapKey()))
@@ -2344,24 +2423,32 @@ public class FileWrapper {
                                                     .contains(new ByteArrayWrapper(pointer.capability.getMapKey())))
                                                 throw new IllegalStateException("Cannot rename to same name as an existing file");
                                             return true;
-                                        })).thenCompose(x -> {
-                            CryptreeNode fileAccess = pointer.fileAccess;
-                            return fileAccess.updateProperties(s, comitter, writableFilePointer(),
-                                    entryWriter, updatedProperties, network);
-                        }))
+                                        })))).thenCompose(x -> current(isDir, s, network)
+                                .thenCompose(us -> us.pointer.fileAccess.updateProperties(s, comitter, us.writableFilePointer(),
+                                        us.entryWriter, updatedProperties, network))))
                 .thenApply(fa -> true);
+    }
+
+    /** What to write new properties to. A folder's properties don't describe its children, so they can go on its
+     *  listing as it is now. A file's describe its contents - size, hash, chunk size - so applying them to contents
+     *  written since we were retrieved would be wrong; write our own copy, which fails if the file has changed.
+     */
+    private CompletableFuture<FileWrapper> current(boolean isDir, Snapshot s, NetworkAccess network) {
+        return isDir ? getUpdated(s, network) : Futures.of(this);
     }
 
     public CompletableFuture<Boolean> setSameNameProperties(FileProperties updatedProperties,
                                                             NetworkAccess network) {
         String name = getName();
+        boolean isDir = isDirectory();
         setModified();
         String newName = updatedProperties.name;
         if (! newName.equals(name)) {
             return Futures.errored(new IllegalArgumentException("Can't rename file here: " + newName));
         }
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
-                        (s, c) -> pointer.fileAccess.updateProperties(s, c, writableFilePointer(), entryWriter, updatedProperties, network))
+                        (s, c) -> current(isDir, s, network)
+                                .thenCompose(us -> us.pointer.fileAccess.updateProperties(s, c, us.writableFilePointer(), us.entryWriter, updatedProperties, network)))
                 .thenApply(fa -> true);
     }
 
@@ -2467,63 +2554,89 @@ public class FileWrapper {
                             Optional.empty());
 
             NetworkAccess net = context.network;
-            Hasher hasher = context.crypto.hasher;
-
+            String name = getName();
             return context.getPublicFile(ourPath).thenApply(opt -> opt.isPresent())
                     .thenCompose(isPublic -> net.synchronizer.applyComplexUpdate(owner(), signingPair(),
-                            (v, c) -> context.sharedWithCache.getAllDescendantShares(ourPath, v)
-                                    .thenCompose(shared -> {
-                                        return (isPublic || !owner().equals(target.owner()) ?
-                                                Futures.of(false) :
-                                                shared.isEmpty() // fast path
-                                                        ? Futures.of(true) : preserveAccess.get())
-                                                .thenCompose(keepAccess -> {
-                                                    boolean differentParentWriter = !target.writer().equals(parent.writer());
-                                                    // TODO optimise different parent writer case by correcting owned keys
-                                                    if (keepAccess && !differentParentWriter) {
-                                                        // just update parent and child pointers, no need to re-upload, rotate keys etc.
-                                                        boolean differentWriter = !target.writer().equals(writer());
-                                                        boolean ourFile = context.signer != null && target.owner().equals(context.signer.publicKeyHash);
-                                                        RelativeCapability newParentLink = new RelativeCapability(differentWriter ?
-                                                                Optional.of(target.writer()) :
-                                                                Optional.empty(),
-                                                                target.getLocation().getMapKey(), target.writableFilePointer().bat, target.getParentKey(), Optional.empty());
-                                                        CryptreeNode newMetadata = pointer.fileAccess.withParentLink(getParentKey(), newParentLink);
-                                                        RelativeCapability ourNewcap = target.writableFilePointer().relativise(pointer.capability);
-                                                        return IpfsTransaction.call(owner(),
-                                                                tid -> target.getPath(net).thenCompose(newPath -> v.withWriter(owner(), target.writer(), net)
-                                                                        .thenCompose(w -> net.uploadChunk(w, c, newMetadata, owner(), pointer.capability.getMapKey(), signingPair(), tid))
-                                                                        .thenCompose(v2 -> target.pointer.fileAccess.addChildrenAndCommit(v2, c,
-                                                                                Arrays.asList(new NamedRelativeCapability(getName(), ourNewcap, Optional.of(isDirectory()), Optional.of(getFileProperties().mimeType), Optional.of(getFileProperties().created))),
-                                                                                target.writableFilePointer(), target.signingPair(), targetMirrorBatId, net, context.crypto))
-                                                                        .thenCompose(v3 -> parent.pointer.fileAccess
-                                                                                .removeChildren(v3, c, Arrays.asList(isLink() ? linkPointer.get().capability : getPointer().capability), parent.writableFilePointer(),
-                                                                                        parent.entryWriter, net, context.crypto.random, hasher))
-                                                                        .thenCompose(v4 -> !ourFile || shared.isEmpty() ? Futures.of(v4) : context.sharedWithCache.clearSharedWith(ourPath, v4, c, net))
-                                                                        .thenCompose(v5 -> !ourFile || shared.isEmpty() ? Futures.of(v5) : context.sharedWithCache.addAllSharedWith(shared.entrySet().stream()
-                                                                                .collect(Collectors.toMap(e -> PathUtil.get(newPath).resolve(e.getKey().relativize(ourPath)), e -> e.getValue())), v5, c, net))),
-                                                                net.dhtClient);
-
-                                                    }
-                                                    return version.withWriter(owner(), target.writer(), net)
-                                                            .thenCompose(both -> copyTo(target, this.props.thumbnail, targetMirrorBatId, net, context.crypto, both, c))
-                                                            .thenCompose(v2 -> version.withWriter(owner(), parent.writer(), net)
-                                                                    .thenCompose(v3 -> parent.pointer.fileAccess
-                                                                            .removeChildren(v2, c, isLink() ? Arrays.asList(linkPointer.get().capability) : Arrays.asList(getPointer().capability), parent.writableFilePointer(),
-                                                                                    parent.entryWriter, net, context.crypto.random, hasher))
-                                                                    .thenCompose(v4 -> IpfsTransaction.call(owner(),
-                                                                                    tid -> FileWrapper.deleteAllChunks(
-                                                                                            isLink() ?
-                                                                                                    (WritableAbsoluteCapability) getLinkPointer().capability :
-                                                                                                    writableFilePointer(),
-                                                                                            parent.signingPair(), tid, hasher, net, v4, c), net.dhtClient)
-                                                                            .thenCompose(v5 -> context.isSecretLink() ? Futures.of(v5) :
-                                                                                    context.sharedWithCache.clearSharedWith(ourPath, v5, c, net)))
-                                                            );
-                                                });
-                                    }))).thenApply(s -> true);
+                            // the folders and we may all have changed since we were retrieved, so move what is there now
+                            (v, c) -> parent.getUpdated(v, net)
+                                    .thenCompose(freshParent -> target.getUpdated(v, net)
+                                            .thenCompose(freshTarget -> freshParent.getChild(freshParent.version.mergeAndOverwriteWith(v), name, net)
+                                                    .thenCompose(freshUs -> {
+                                                        if (freshUs.isEmpty())
+                                                            throw new IllegalStateException("Cannot move " + name + ", it is no longer in its folder");
+                                                        return freshUs.get().moveIn(v, c, freshTarget, freshParent, ourPath, isPublic,
+                                                                targetMirrorBatId, context, preserveAccess);
+                                                    }))))).thenApply(s -> true);
         });
-}
+    }
+
+    private CompletableFuture<Snapshot> moveIn(Snapshot v,
+                                               Committer c,
+                                               FileWrapper target,
+                                               FileWrapper parent,
+                                               Path ourPath,
+                                               boolean isPublic,
+                                               Optional<BatId> targetMirrorBatId,
+                                               UserContext context,
+                                               Supplier<CompletableFuture<Boolean>> preserveAccess) {
+        NetworkAccess net = context.network;
+        Hasher hasher = context.crypto.hasher;
+        return context.sharedWithCache.getAllDescendantShares(ourPath, v)
+                .thenCompose(shared -> {
+                    return (isPublic || !owner().equals(target.owner()) ?
+                            Futures.of(false) :
+                            shared.isEmpty() // fast path
+                                    ? Futures.of(true) : preserveAccess.get())
+                            .thenCompose(keepAccess -> {
+                                boolean differentParentWriter = !target.writer().equals(parent.writer());
+                                // TODO optimise different parent writer case by correcting owned keys
+                                if (keepAccess && !differentParentWriter) {
+                                    // just update parent and child pointers, no need to re-upload, rotate keys etc.
+                                    boolean differentWriter = !target.writer().equals(writer());
+                                    boolean ourFile = context.signer != null && target.owner().equals(context.signer.publicKeyHash);
+                                    RelativeCapability newParentLink = new RelativeCapability(differentWriter ?
+                                            Optional.of(target.writer()) :
+                                            Optional.empty(),
+                                            target.getLocation().getMapKey(), target.writableFilePointer().bat, target.getParentKey(), Optional.empty());
+                                    CryptreeNode newMetadata = pointer.fileAccess.withParentLink(getParentKey(), newParentLink);
+                                    RelativeCapability ourNewcap = target.writableFilePointer().relativise(pointer.capability);
+                                    return IpfsTransaction.call(owner(),
+                                            tid -> target.getPath(net).thenCompose(newPath -> v.withWriter(owner(), target.writer(), net)
+                                                    .thenCompose(w -> net.uploadChunk(w, c, newMetadata, owner(), pointer.capability.getMapKey(), signingPair(), tid))
+                                                    .thenCompose(v2 -> target.pointer.fileAccess.addChildrenAndCommit(v2, c,
+                                                            Arrays.asList(new NamedRelativeCapability(getName(), ourNewcap, Optional.of(isDirectory()), Optional.of(getFileProperties().mimeType), Optional.of(getFileProperties().created))),
+                                                            target.writableFilePointer(), target.signingPair(), targetMirrorBatId, net, context.crypto))
+                                                    // adding to the target changed the listing if it is also the parent's
+                                                    .thenCompose(v3 -> parent.getUpdated(v3, net)
+                                                            .thenCompose(freshParent -> freshParent.pointer.fileAccess
+                                                                    .removeChildren(v3, c, Arrays.asList(isLink() ? linkPointer.get().capability : getPointer().capability), freshParent.writableFilePointer(),
+                                                                            freshParent.entryWriter, net, context.crypto.random, hasher)))
+                                                    .thenCompose(v4 -> !ourFile || shared.isEmpty() ? Futures.of(v4) : context.sharedWithCache.clearSharedWith(ourPath, v4, c, net))
+                                                    .thenCompose(v5 -> !ourFile || shared.isEmpty() ? Futures.of(v5) : context.sharedWithCache.addAllSharedWith(shared.entrySet().stream()
+                                                            .collect(Collectors.toMap(e -> PathUtil.get(newPath).resolve(e.getKey().relativize(ourPath)), e -> e.getValue())), v5, c, net))),
+                                            net.dhtClient);
+
+                                }
+                                return v.withWriter(owner(), target.writer(), net)
+                                        .thenCompose(both -> copyTo(target, this.props.thumbnail, targetMirrorBatId, net, context.crypto, both, c))
+                                        .thenCompose(v2 -> v2.withWriter(owner(), parent.writer(), net)
+                                                .thenCompose(v3 -> parent.getUpdated(v3, net)
+                                                        .thenCompose(freshParent -> freshParent.pointer.fileAccess
+                                                                .removeChildren(v3, c, isLink() ? Arrays.asList(linkPointer.get().capability) : Arrays.asList(getPointer().capability), freshParent.writableFilePointer(),
+                                                                        freshParent.entryWriter, net, context.crypto.random, hasher)))
+                                                .thenCompose(v4 -> IpfsTransaction.call(owner(),
+                                                                tid -> FileWrapper.deleteAllChunks(
+                                                                        isLink() ?
+                                                                                (WritableAbsoluteCapability) getLinkPointer().capability :
+                                                                                writableFilePointer(),
+                                                                        parent.signingPair(), tid, hasher, net, v4, c), net.dhtClient)
+                                                        .thenCompose(v5 -> context.isSecretLink() ? Futures.of(v5) :
+                                                                context.sharedWithCache.clearSharedWith(ourPath, v5, c, net)))
+                                        );
+                            });
+                });
+    }
+
 
 @JsMethod
 public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context) {

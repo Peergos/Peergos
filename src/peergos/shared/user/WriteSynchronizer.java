@@ -9,8 +9,10 @@ import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.*;
@@ -23,9 +25,9 @@ public class WriteSynchronizer {
     // The keys are <owner, writer> pairs. The owner is only needed to handle identity changes
     private final Map<Pair<PublicKeyHash, PublicKeyHash>, AsyncLock<Snapshot>> pending = new ConcurrentHashMap<>();
     private CommitterBuilder committerBuilder = (c, o, w) -> c;
-    private BufferedNetworkAccess.Flusher flusher = (o, v, w) -> Futures.of(v);
+    private BufferedNetworkAccess.Flusher flusher = (o, writers, v, w) -> Futures.of(v);
     private volatile CommitObserver commitObserver = (w, s) -> {};
-    private Runnable discardBuffered = () -> {};
+    private Consumer<Set<PublicKeyHash>> discardBuffered = writers -> {};
 
     public WriteSynchronizer(MutablePointers mutable, ContentAddressedStorage dht, Hasher hasher) {
         this.mutable = mutable;
@@ -45,16 +47,43 @@ public class WriteSynchronizer {
         this.flusher = flusher;
     }
 
-    public void setDiscardBuffered(Runnable discardBuffered) {
+    public void setDiscardBuffered(Consumer<Set<PublicKeyHash>> discardBuffered) {
         this.discardBuffered = discardBuffered;
+    }
+
+    /** The writers an update has committed to, so that only they are flushed when it finishes, and only they are
+     *  thrown away if it fails. The buffer is shared with every other update in progress, which may be partway
+     *  through writing to other writers.
+     */
+    private static class Written {
+        private final Set<PublicKeyHash> writers = new HashSet<>();
+
+        Written(PublicKeyHash lockedWriter) {
+            writers.add(lockedWriter);
+        }
+
+        Committer tracking(Committer c) {
+            return (o, w, wd, existing, tid) -> {
+                synchronized (writers) {
+                    writers.add(w.publicKeyHash);
+                }
+                return c.commit(o, w, wd, existing, tid);
+            };
+        }
+
+        Set<PublicKeyHash> get() {
+            synchronized (writers) {
+                return new HashSet<>(writers);
+            }
+        }
     }
 
     /** If an update fails, throw away everything it buffered. Otherwise the writer lock would recover to the
      *  update's partial state, read back from the buffer, and the next commit would send it.
      */
-    private <T> CompletableFuture<T> discardOnFailure(Supplier<CompletableFuture<T>> update) {
+    private <T> CompletableFuture<T> discardOnFailure(Written written, Supplier<CompletableFuture<T>> update) {
         return Futures.asyncExceptionally(update, t -> {
-            discardBuffered.run();
+            discardBuffered.accept(written.get());
             return Futures.errored(t);
         });
     }
@@ -170,11 +199,18 @@ public class WriteSynchronizer {
         // and whoever commits first will win. We also need to retrieve the writer data again from the network after
         // a previous transaction has completed (another node/user with write access may have concurrently updated the mapping)
         return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
-                .runWithLock(current -> IpfsTransaction.call(owner, tid -> transformer.apply(current.get(writer).props.get(), tid)
-                                .thenCompose(wd -> observe(committerBuilder.buildCommitter((aOwner, signer, wdr, existing, t) -> wdr.get().commit(aOwner, signer,
-                                        existing.hash, existing.sequence, mutable, dht, hasher, t), owner, () -> true))
-                                        .commit(owner, writer, wd, current.get(writer), tid)
-                                        .thenCompose(v -> flusher.commit(owner, v, () -> true))), dht),
+                .runWithLock(current -> {
+                            Set<PublicKeyHash> written = Collections.singleton(writer.publicKeyHash);
+                            return IpfsTransaction.call(owner, tid -> Futures.asyncExceptionally(() -> transformer.apply(current.get(writer).props.get(), tid)
+                                            .thenCompose(wd -> observe(committerBuilder.buildCommitter((aOwner, signer, wdr, existing, t) -> wdr.get().commit(aOwner, signer,
+                                                    existing.hash, existing.sequence, mutable, dht, hasher, t), owner, () -> true))
+                                                    .commit(owner, writer, wd, current.get(writer), tid)),
+                                    t -> {
+                                        discardBuffered.accept(written);
+                                        return Futures.errored(t);
+                                    })
+                                    .thenCompose(v -> flusher.commit(owner, written, v, () -> true)), dht);
+                        },
                         () -> getWriterData(owner, writer.publicKeyHash));
     }
 
@@ -190,13 +226,16 @@ public class WriteSynchronizer {
                                                           ComplexMutation transformer,
                                                           Supplier<Boolean> commitWatcher) {
         return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
-                .runWithLock(current -> discardOnFailure(() -> transformer.apply(current,
-                                        observe(committerBuilder.buildCommitter((aOwner, signer, wd, existing, tid) -> (wd.isPresent() ?
+                .runWithLock(current -> {
+                            Written written = new Written(writer.publicKeyHash);
+                            return discardOnFailure(written, () -> transformer.apply(current,
+                                        written.tracking(observe(committerBuilder.buildCommitter((aOwner, signer, wd, existing, tid) -> (wd.isPresent() ?
                                                 wd.get().commit(aOwner, signer, existing.hash, existing.sequence, mutable, dht, hasher, tid) :
                                                 WriterData.commitDeletion(aOwner, signer, existing.hash, existing.sequence, mutable))
-                                                .thenCompose(s -> updateWriterState(owner, signer.publicKeyHash, s).thenApply(x -> s)), owner, commitWatcher))))
+                                                .thenCompose(s -> updateWriterState(owner, signer.publicKeyHash, s).thenApply(x -> s)), owner, commitWatcher)))))
                                 .thenApply(Snapshot::asWritable)
-                                .thenCompose(v -> flusher.commit(owner, v, commitWatcher)),
+                                .thenCompose(v -> flusher.commit(owner, written.get(), v, commitWatcher));
+                        },
                         () -> getWriterData(owner, writer.publicKeyHash));
     }
 
@@ -234,19 +273,22 @@ public class WriteSynchronizer {
                                                                             ComplexComputation<V> transformer) {
         CompletableFuture<Pair<Snapshot, V>> res = new CompletableFuture<>();
         return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
-                .runWithLock(current -> discardOnFailure(() -> transformer.apply(current,
-                                observe(committerBuilder.buildCommitter((aOwner, signer, wd, existing, tid) ->
+                .runWithLock(current -> {
+                            Written written = new Written(writer.publicKeyHash);
+                            return discardOnFailure(written, () -> transformer.apply(current,
+                                written.tracking(observe(committerBuilder.buildCommitter((aOwner, signer, wd, existing, tid) ->
                                                 (wd.isPresent() ?
                                                         wd.get().commit(aOwner, signer, existing.hash, existing.sequence, mutable, dht, hasher, tid) :
                                                         WriterData.commitDeletion(aOwner, signer, existing.hash, existing.sequence, mutable))
                                                         .thenCompose(s -> updateWriterState(owner, signer.publicKeyHash, s)
                                                                 .thenApply(x -> s)),
-                                        owner, () -> true))))
-                                .thenCompose(p -> flusher.commit(owner, p.left.asWritable(), () -> true).thenApply(x -> p))
+                                        owner, () -> true)))))
+                                .thenCompose(p -> flusher.commit(owner, written.get(), p.left.asWritable(), () -> true).thenApply(x -> p))
                                 .thenApply(p -> {
                                     res.complete(p);
                                     return p.left;
-                                }),
+                                });
+                        },
                         () -> getWriterData(owner, writer.publicKeyHash))
                 .thenCompose(x -> res);
     }

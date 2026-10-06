@@ -149,4 +149,37 @@ public class OverwriteAtomicityTests {
                 Arrays.equals(now, original) || Arrays.equals(now, shorter));
         Assert.assertFalse("the replacement needed more than one commit", failed);
     }
+
+    /** The windows mount sets a file's new contents, their hash and the modified time. A failure between separate
+     *  commits for them left new contents described by the old hash, which then looked like a conflict.
+     */
+    @Test
+    public void overwriteWithHashAndModifiedTimeIsOneCommit() {
+        String username = "oh" + Math.abs(random.nextInt() % 1_000_000);
+        UserContext user = PeergosNetworkUtils.ensureSignedUp(username, "password", network(service.storage), crypto);
+        Path dir = PathUtil.get(username);
+        byte[] original = new byte[7000];
+        random.nextBytes(original);
+        user.getByPath(dir).join().get().uploadFileWithHash("file", AsyncReader.build(original), original.length,
+                Optional.of(HashTree.build(AsyncReader.build(original), 0, original.length, Chunk.LEGACY_SIZE, crypto.hasher).join()),
+                Optional.empty(), Optional.empty(), user.network, crypto, x -> {}).join();
+
+        AtomicInteger commits = new AtomicInteger();
+        UserContext failing = PeergosNetworkUtils.ensureSignedUp(username, "password", network(failingAfterFirstCommit(commits)), crypto);
+        byte[] replacement = new byte[9000];
+        random.nextBytes(replacement);
+        HashTree hash = HashTree.build(AsyncReader.build(replacement), 0, replacement.length, Chunk.LEGACY_SIZE, crypto.hasher).join();
+        java.time.LocalDateTime when = java.time.LocalDateTime.of(2021, 2, 3, 4, 5, 6);
+        commits.set(0);
+        failing.getByPath(dir.resolve("file")).join().get()
+                .overwriteChangedChunks(AsyncReader.build(replacement), replacement.length, Optional.of(hash), Optional.of(when),
+                        failing.network, crypto, x -> {})
+                .join();
+
+        UserContext fresh = PeergosNetworkUtils.ensureSignedUp(username, "password", network(service.storage), crypto);
+        FileWrapper now = fresh.getByPath(dir.resolve("file")).join().get();
+        Assert.assertArrayEquals(replacement, read(fresh, dir.resolve("file")));
+        Assert.assertEquals(hash.rootHash, now.getFileProperties().treeHash.get().rootHash);
+        Assert.assertEquals(when, now.getFileProperties().modified);
+    }
 }
