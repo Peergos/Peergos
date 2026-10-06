@@ -452,7 +452,7 @@ public class ServerAdmin {
     private static boolean dialViaLocalNabu(URL gateway, PeerId expected, int timeoutSeconds) {
         System.out.println("Dialling " + expected.toBase58() + " via the local Nabu p2p proxy at " + gateway);
         JavaPoster p2p = new JavaPoster(gateway, false);
-        String prefix = "/p2p/" + expected.toBase58() + "/http/" + ContentAddressedStorage.HTTP.apiPrefix;
+        String prefix = "/p2p/" + Cid.decodePeerId(expected.toBase58()) + "/http/" + ContentAddressedStorage.HTTP.apiPrefix;
         long start = System.currentTimeMillis();
         try {
             PeerId claimed = parsePeerId(JSONParser.parse(new String(p2p.get(prefix + ContentAddressedStorage.HTTP.ID)
