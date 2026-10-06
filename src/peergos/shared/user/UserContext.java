@@ -511,7 +511,7 @@ public class UserContext {
         // Using a local OpLog that doesn't commit anything allows us to group all the updates into a single atomic call
         OpLog opLog = new OpLog(new ArrayList<>(), null, Optional.empty());
         BufferedNetworkAccess network = NetworkAccess.nonCommittingForSignup(opLog, opLog, opLog, opLog, crypto.hasher);
-        network.synchronizer.setFlusher((o, v, w) -> Futures.of(v)); // disable final commit
+        network.synchronizer.setFlusher((o, writers, v, w) -> Futures.of(v)); // disable final commit
         progressCallback.accept("Generating keys");
         return initialNetwork.coreNode.getChain(username)
                 .thenApply(existing -> {

@@ -1451,6 +1451,15 @@ public class FileWrapper {
         });
     }
 
+    /** The writers an upload writes to: the folder it is uploading into, and our own space for its transactions. */
+    private static Set<PublicKeyHash> uploadWriters(FileWrapper parent, TransactionService transactions) {
+        Set<PublicKeyHash> writers = new HashSet<>();
+        writers.add(parent.writer());
+        if (transactions != null)
+            writers.add(transactions.getSigner().publicKeyHash);
+        return writers;
+    }
+
     private static CompletableFuture<Pair<Snapshot, List<NamedRelativeCapability>>> atomicallyClearTransactionsAndAddToParent(
             List<FileUploadTransaction> toClose,
             List<NamedRelativeCapability> childLinks,
@@ -1468,7 +1477,7 @@ public class FileWrapper {
                 .thenCompose(res -> Futures.reduceAll(toClose, res, (v, f) -> transactions.close(v, c, f), (a, b) -> b))
                 .thenApply(s -> {network.enableCommits(); return s;})
                 .thenCompose(s -> network.isFull() ?
-                        network.commit(parent.owner(), commitWatcher).thenApply(x -> s) :
+                        network.commit(parent.owner(), commitWatcher, uploadWriters(parent, transactions)).thenApply(x -> s) :
                         Futures.of(s))
                 .thenApply(s -> new Pair<>(s, Collections.<NamedRelativeCapability>emptyList()));
     }

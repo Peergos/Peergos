@@ -28,7 +28,7 @@ import java.util.stream.*;
 public class BufferedNetworkAccess extends NetworkAccess {
 
     public interface Flusher {
-        CompletableFuture<Snapshot> commit(PublicKeyHash owner, Snapshot v, Supplier<Boolean> commitWatcher);
+        CompletableFuture<Snapshot> commit(PublicKeyHash owner, Set<PublicKeyHash> writers, Snapshot v, Supplier<Boolean> commitWatcher);
     }
 
     private final BufferedStorage blockBuffer;
@@ -62,11 +62,8 @@ public class BufferedNetworkAccess extends NetworkAccess {
                 new LegacyBulkCommitter(blockBuffer.target(), unbufferedMutable, hasher), hasher);
         this.bufferSize = bufferSize;
         synchronizer.setCommitterBuilder(this::buildCommitter);
-        synchronizer.setFlusher((o, v, w) -> commit(o, w).thenApply(b -> v));
-        synchronizer.setDiscardBuffered(() -> {
-            blockBuffer.clear();
-            pointerBuffer.clear();
-        });
+        synchronizer.setFlusher((o, writers, v, w) -> commit(o, w, writers).thenApply(b -> v));
+        synchronizer.setDiscardBuffered(this::discard);
     }
 
     @Override
@@ -75,7 +72,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
                 blockBuffer.put(o, w.publicKeyHash, new byte[0], wd.get().serialize(), tid).thenApply(MaybeMultihash::new))
                 .thenCompose(newHash -> {
                     PointerUpdate update = pointerBuffer.addWrite(o, w, newHash, e.hash, e.sequence);
-                    return maybeCommit(o, commitWatcher)
+                    return maybeCommit(o, commitWatcher, Collections.singleton(w.publicKeyHash))
                             .thenApply(x -> new Snapshot(w.publicKeyHash, new CommittedWriterData(newHash, wd, update.sequence)));
                 });
     }
@@ -173,10 +170,16 @@ public class BufferedNetworkAccess extends NetworkAccess {
         return bufferedSize() >= bufferSize;
     }
 
-    private CompletableFuture<Boolean> maybeCommit(PublicKeyHash owner, Supplier<Boolean> commitWatcher) {
+    private CompletableFuture<Boolean> maybeCommit(PublicKeyHash owner, Supplier<Boolean> commitWatcher, Set<PublicKeyHash> writers) {
         if (safeToCommit && isFull())
-            return commit(owner, commitWatcher);
+            return commit(owner, commitWatcher, writers);
         return Futures.of(true);
+    }
+
+    /** Throw away what is buffered for these writers, leaving other writers' buffered updates in place. */
+    private synchronized void discard(Set<PublicKeyHash> writers) {
+        pointerBuffer.remove(writers);
+        blockBuffer.gc(pointerBuffer.getRoots(), writers);
     }
 
     /**
@@ -218,14 +221,25 @@ public class BufferedNetworkAccess extends NetworkAccess {
 
     @Override
     public synchronized CompletableFuture<Boolean> commit(PublicKeyHash owner, Supplier<Boolean> commitWatcher) {
-        List<BufferedPointers.WriterUpdate> writerUpdates = pointerBuffer.getUpdates();
-        if (blockBuffer.isEmpty() && writerUpdates.isEmpty())
+        return commit(owner, commitWatcher, pointerBuffer.getWriters());
+    }
+
+    /** Commit only these writers' buffered updates. Other writers' may belong to updates still in progress, and must
+     *  neither be committed half done nor be lost when this commit clears what it sent.
+     */
+    @Override
+    public synchronized CompletableFuture<Boolean> commit(PublicKeyHash owner, Supplier<Boolean> commitWatcher, Set<PublicKeyHash> toCommit) {
+        List<BufferedPointers.WriterUpdate> writerUpdates = pointerBuffer.getUpdates(toCommit);
+        if (writerUpdates.isEmpty())
             return Futures.of(true);
         // Condense pointers and do a mini GC to remove superfluous work
-        List<Cid> roots = pointerBuffer.getRoots();
+        List<Cid> roots = writerUpdates.stream()
+                .flatMap(u -> u.currentHash.toOptional().stream())
+                .map(c -> (Cid) c)
+                .collect(Collectors.toList());
         if (roots.isEmpty())
             return Futures.of(true);
-        blockBuffer.gc(roots);
+        blockBuffer.gc(pointerBuffer.getRoots(), toCommit);
         Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers = pointerBuffer.getSigners();
         List<Pair<BufferedPointers.WriterUpdate, Optional<CommittedWriterData>>> writes = blockBuffer.getAllWriterData(writerUpdates);
 
@@ -242,17 +256,21 @@ public class BufferedNetworkAccess extends NetworkAccess {
                         (done, e) -> commitOwner(e.getKey(), e.getValue(), writers).thenApply(b -> done && b),
                         (x, y) -> x && y)
                 .thenApply(x -> {
-                    pointerBuffer.clear();
-                    blockBuffer.clear();
+                    finishCommit(toCommit);
                     return commitWatcher.get();
                 }).thenApply(res::complete)
                 .exceptionally(t -> {
-                    pointerBuffer.clear();
-                    blockBuffer.clear();
+                    finishCommit(toCommit);
                     res.completeExceptionally(t);
                     return true;
                 });
         return res;
+    }
+
+    private synchronized void finishCommit(Set<PublicKeyHash> committed) {
+        pointerBuffer.remove(committed);
+        blockBuffer.commitFinished(committed);
+        blockBuffer.gc(pointerBuffer.getRoots(), committed);
     }
 
     private CompletableFuture<Boolean> commitOwner(PublicKeyHash owner,

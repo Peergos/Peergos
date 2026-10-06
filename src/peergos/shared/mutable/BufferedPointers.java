@@ -69,21 +69,50 @@ public class BufferedPointers implements MutablePointers {
 
     public Optional<Pair<Optional<Cid>, Optional<Long>>> getCommittedPointerTarget(PublicKeyHash writer) {
         synchronized (writerUpdates) {
-            if (writerUpdates.isEmpty())
-                return Optional.ofNullable(lastCommits.get(writer))
-                        .map(w -> new Pair<>(w.currentHash.toOptional().map(h -> (Cid) h),
-                                w.currentSequence));
-            return writerUpdates.stream()
+            Optional<Pair<Optional<Cid>, Optional<Long>>> buffered = writerUpdates.stream()
                     .filter(u -> u.writer.equals(writer))
                     .findFirst()
                     .map(m -> new Pair<>(m.prevHash.toOptional().map(h -> (Cid) h),
                             m.currentSequence.map(x -> x - 1)));
+            if (buffered.isPresent())
+                return buffered;
+            return Optional.ofNullable(lastCommits.get(writer))
+                    .map(w -> new Pair<>(w.currentHash.toOptional().map(h -> (Cid) h),
+                            w.currentSequence));
         }
     }
 
     public List<WriterUpdate> getUpdates() {
         synchronized (writerUpdates) {
-            return writerUpdates.subList(0, writerUpdates.size());
+            return new ArrayList<>(writerUpdates);
+        }
+    }
+
+    public List<WriterUpdate> getUpdates(Set<PublicKeyHash> forWriters) {
+        synchronized (writerUpdates) {
+            return writerUpdates.stream()
+                    .filter(u -> forWriters.contains(u.writer))
+                    .collect(Collectors.toList());
+        }
+    }
+
+    public Set<PublicKeyHash> getWriters() {
+        synchronized (writerUpdates) {
+            return writerUpdates.stream()
+                    .map(u -> u.writer)
+                    .collect(Collectors.toSet());
+        }
+    }
+
+    /** Drop whatever is buffered for these writers, leaving other writers' buffered updates in place. */
+    public void remove(Set<PublicKeyHash> toRemove) {
+        synchronized (writerUpdates) {
+            writerUpdates.removeIf(u -> toRemove.contains(u.writer));
+            for (PublicKeyHash writer : toRemove) {
+                latest.remove(writer);
+                writers.remove(writer);
+                owners.remove(writer);
+            }
         }
     }
 
