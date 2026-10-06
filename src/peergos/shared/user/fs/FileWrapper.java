@@ -3098,13 +3098,15 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                                         IpfsTransaction.call(owner,
                                                                 tid -> network.deleteAllChunksIfPresent(v3, c, owner, parentSigner, allKeys, knownValues, tid),
                                                                 network.dhtClient)))
-                                        // 3. Parent listing update last
-                                        .thenCompose(v4 -> parent.pointer.fileAccess
-                                                .removeChildren(v4, c, childrenToDelete.stream()
-                                                                .map(f -> f.isLink() ? f.linkPointer.get().capability : f.getPointer().capability)
-                                                                .collect(Collectors.toList()),
-                                                        parent.writableFilePointer(),
-                                                        parent.entryWriter, network, context.crypto.random, hasher))
+                                        // 3. Parent listing update last, on the listing as it is now: the parent we were
+                                        // given was retrieved before we got the writer lock and may since have changed
+                                        .thenCompose(v4 -> parent.getUpdated(v4, network)
+                                                .thenCompose(freshParent -> freshParent.pointer.fileAccess
+                                                        .removeChildren(v4, c, childrenToDelete.stream()
+                                                                        .map(f -> f.isLink() ? f.linkPointer.get().capability : f.getPointer().capability)
+                                                                        .collect(Collectors.toList()),
+                                                                freshParent.writableFilePointer(),
+                                                                freshParent.entryWriter, network, context.crypto.random, hasher)))
                                         .thenCompose(v5 -> context.isSecretLink() ? Futures.of(v5) :
                                                 Futures.reduceAll(batchableFiles, v5,
                                                         (s, f) -> context.sharedWithCache.clearSharedWith(parentPath.resolve(f.getName()), s, c, network),

@@ -63,6 +63,10 @@ public class BufferedNetworkAccess extends NetworkAccess {
         this.bufferSize = bufferSize;
         synchronizer.setCommitterBuilder(this::buildCommitter);
         synchronizer.setFlusher((o, v, w) -> commit(o, w).thenApply(b -> v));
+        synchronizer.setDiscardBuffered(() -> {
+            blockBuffer.clear();
+            pointerBuffer.clear();
+        });
     }
 
     @Override

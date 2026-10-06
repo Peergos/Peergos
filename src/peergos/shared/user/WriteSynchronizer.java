@@ -25,6 +25,7 @@ public class WriteSynchronizer {
     private CommitterBuilder committerBuilder = (c, o, w) -> c;
     private BufferedNetworkAccess.Flusher flusher = (o, v, w) -> Futures.of(v);
     private volatile CommitObserver commitObserver = (w, s) -> {};
+    private Runnable discardBuffered = () -> {};
 
     public WriteSynchronizer(MutablePointers mutable, ContentAddressedStorage dht, Hasher hasher) {
         this.mutable = mutable;
@@ -42,6 +43,20 @@ public class WriteSynchronizer {
 
     public void setFlusher(BufferedNetworkAccess.Flusher flusher) {
         this.flusher = flusher;
+    }
+
+    public void setDiscardBuffered(Runnable discardBuffered) {
+        this.discardBuffered = discardBuffered;
+    }
+
+    /** If an update fails, throw away everything it buffered. Otherwise the writer lock would recover to the
+     *  update's partial state, read back from the buffer, and the next commit would send it.
+     */
+    private <T> CompletableFuture<T> discardOnFailure(Supplier<CompletableFuture<T>> update) {
+        return Futures.asyncExceptionally(update, t -> {
+            discardBuffered.run();
+            return Futures.errored(t);
+        });
     }
 
     /** Told about every mutable pointer commit, with the sequence number the pointer reached.
@@ -175,11 +190,11 @@ public class WriteSynchronizer {
                                                           ComplexMutation transformer,
                                                           Supplier<Boolean> commitWatcher) {
         return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
-                .runWithLock(current -> transformer.apply(current,
+                .runWithLock(current -> discardOnFailure(() -> transformer.apply(current,
                                         observe(committerBuilder.buildCommitter((aOwner, signer, wd, existing, tid) -> (wd.isPresent() ?
                                                 wd.get().commit(aOwner, signer, existing.hash, existing.sequence, mutable, dht, hasher, tid) :
                                                 WriterData.commitDeletion(aOwner, signer, existing.hash, existing.sequence, mutable))
-                                                .thenCompose(s -> updateWriterState(owner, signer.publicKeyHash, s).thenApply(x -> s)), owner, commitWatcher)))
+                                                .thenCompose(s -> updateWriterState(owner, signer.publicKeyHash, s).thenApply(x -> s)), owner, commitWatcher))))
                                 .thenApply(Snapshot::asWritable)
                                 .thenCompose(v -> flusher.commit(owner, v, commitWatcher)),
                         () -> getWriterData(owner, writer.publicKeyHash));
@@ -219,14 +234,14 @@ public class WriteSynchronizer {
                                                                             ComplexComputation<V> transformer) {
         CompletableFuture<Pair<Snapshot, V>> res = new CompletableFuture<>();
         return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
-                .runWithLock(current -> transformer.apply(current,
+                .runWithLock(current -> discardOnFailure(() -> transformer.apply(current,
                                 observe(committerBuilder.buildCommitter((aOwner, signer, wd, existing, tid) ->
                                                 (wd.isPresent() ?
                                                         wd.get().commit(aOwner, signer, existing.hash, existing.sequence, mutable, dht, hasher, tid) :
                                                         WriterData.commitDeletion(aOwner, signer, existing.hash, existing.sequence, mutable))
                                                         .thenCompose(s -> updateWriterState(owner, signer.publicKeyHash, s)
                                                                 .thenApply(x -> s)),
-                                        owner, () -> true)))
+                                        owner, () -> true))))
                                 .thenCompose(p -> flusher.commit(owner, p.left.asWritable(), () -> true).thenApply(x -> p))
                                 .thenApply(p -> {
                                     res.complete(p);
