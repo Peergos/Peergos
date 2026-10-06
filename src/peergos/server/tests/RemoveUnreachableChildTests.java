@@ -7,6 +7,7 @@ import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.mutable.*;
+import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -90,6 +91,45 @@ public class RemoveUnreachableChildTests {
     }
 
     @Test
+    public void detachesAChildInTheSameWritingSpaceWhoseMetadataIsGone() {
+        UserContext context = ensureSignedUp(generateUsername(random), "password", network, crypto);
+        String username = context.username;
+        Path a = PathUtil.get(username, "a");
+
+        mkdir(context, PathUtil.get(username), "a");
+        uploadFile(context, a, "X.mscz_saving");
+        uploadFile(context, a, "sibling.txt");
+        deleteDataKeepingLink(context, a, "X.mscz_saving");
+        Assert.assertTrue(linkedNames(context, a).contains("X.mscz_saving"));
+        Assert.assertTrue(context.getByPath(a.resolve("X.mscz_saving")).join().isEmpty());
+
+        Assert.assertTrue(RemoveUnreachableChild.removeUnreachableChild(context, a, "X.mscz_saving", false));
+
+        Assert.assertFalse(linkedNames(context, a).contains("X.mscz_saving"));
+        Assert.assertTrue(context.getByPath(a.resolve("sibling.txt")).join().isPresent());
+        uploadFile(context, a, "X.mscz_saving");
+        Assert.assertTrue(context.getByPath(a.resolve("X.mscz_saving")).join().isPresent());
+    }
+
+    @Test
+    public void refusesToDetachAHealthyChildInTheSameWritingSpace() {
+        UserContext context = ensureSignedUp(generateUsername(random), "password", network, crypto);
+        String username = context.username;
+        Path a = PathUtil.get(username, "a");
+
+        mkdir(context, PathUtil.get(username), "a");
+        uploadFile(context, a, "file.txt");
+
+        try {
+            RemoveUnreachableChild.removeUnreachableChild(context, a, "file.txt", false);
+            Assert.fail("removed a child that was perfectly reachable");
+        } catch (IllegalStateException e) {
+            Assert.assertTrue(e.getMessage(), e.getMessage().contains("metadata is present"));
+        }
+        Assert.assertTrue(context.getByPath(a.resolve("file.txt")).join().isPresent());
+    }
+
+    @Test
     public void dryRunChangesNothing() {
         UserContext context = ensureSignedUp(generateUsername(random), "password", network, crypto);
         String username = context.username;
@@ -116,6 +156,23 @@ public class RemoveUnreachableChildTests {
         byte[] signed = signer.secret.signMessage(cas.serialize()).join();
         Assert.assertTrue(network.mutable.setPointer(owner, signer.publicKeyHash, signed).join());
         network.synchronizer.clear();
+    }
+
+    /** Delete a file's data but leave its parent's link to it, which is what a half applied delete leaves. */
+    private static void deleteDataKeepingLink(UserContext context, Path parent, String name) {
+        FileWrapper file = context.getByPath(parent.resolve(name)).join().get();
+        FileWrapper dir = context.getByPath(parent).join().get();
+        context.network.synchronizer.applyComplexUpdate(file.owner(), dir.signingPair(),
+                (v, c) -> IpfsTransaction.call(file.owner(),
+                        tid -> FileWrapper.deleteAllChunks(file.writableFilePointer(), dir.signingPair(), tid,
+                                crypto.hasher, context.network, v, c), context.network.dhtClient)).join();
+    }
+
+    private static Set<String> linkedNames(UserContext context, Path dir) {
+        FileWrapper folder = context.getByPath(dir).join().get();
+        return folder.getChildrenCapabilities(crypto.hasher, context.network).join().stream()
+                .map(c -> c.name.name)
+                .collect(java.util.stream.Collectors.toSet());
     }
 
     private static boolean listingFails(UserContext context, Path dir) {

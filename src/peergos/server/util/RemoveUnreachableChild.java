@@ -26,6 +26,10 @@ import java.util.stream.*;
  *  The child's own blocks are not touched: there is no pointer to reach them through, so whatever
  *  it held is already gone and only the reference to it can still be repaired.
  *
+ *  It also removes a link to a child in the parent's own writing space whose metadata is gone - what
+ *  a delete that removed the child's data but not the parent's link to it leaves. That child can't be
+ *  opened or deleted in the app either.
+ *
  *  Usage:
  *    java -cp Peergos.jar peergos.server.util.RemoveUnreachableChild \
  *         -username alice -path /alice/photos/holiday [-peergos-url http://localhost:8000] [-dry-run true]
@@ -94,10 +98,21 @@ public class RemoveUnreachableChild {
         List<AbsoluteCapability> toRemove = new ArrayList<>();
         Set<PublicKeyHash> deadWriters = new LinkedHashSet<>();
         for (NamedAbsoluteCapability child : matching) {
-            PublicKeyHash childWriter = targetWriter(context, parent, child.cap);
+            Optional<CryptreeNode> sameWriterNode = child.cap.writer.equals(parent.writer()) ?
+                    network.getMetadata(parent.version.get(parent.writer()), child.cap).join() :
+                    Optional.empty();
+            if (child.cap.writer.equals(parent.writer()) && sameWriterNode.isEmpty()) {
+                System.out.println("Found " + parentPath.resolve(childName) + " in " + parentPath
+                        + "'s writing space, with its metadata missing");
+                toRemove.add(child.cap);
+                continue;
+            }
+            PublicKeyHash childWriter = sameWriterNode.isPresent() ?
+                    linkTarget(context, parent, child.cap, sameWriterNode.get()) :
+                    child.cap.writer;
             if (childWriter.equals(parent.writer()))
-                throw new IllegalStateException(childName + " shares " + parentPath + "'s writing space, so it has"
-                        + " no pointer of its own and cannot be the unreachable one. Delete it in the app instead.");
+                throw new IllegalStateException(childName + " is reachable - it is in " + parentPath
+                        + "'s writing space and its metadata is present. Delete it in the app rather than with this.");
             if (pointerIsSet(context, childWriter))
                 throw new IllegalStateException(childName + " is reachable - its writing space " + childWriter
                         + " still has a pointer. Delete it in the app rather than with this.");
@@ -134,12 +149,8 @@ public class RemoveUnreachableChild {
      *  the writer the parent names is the parent's own. Follow the link to the writer that matters.
      *  The link node is readable whatever state its target is in, which is what makes this work at all.
      */
-    private static PublicKeyHash targetWriter(UserContext context, FileWrapper parent, AbsoluteCapability childCap) {
+    private static PublicKeyHash linkTarget(UserContext context, FileWrapper parent, AbsoluteCapability childCap, CryptreeNode node) {
         NetworkAccess network = context.network;
-        if (! childCap.writer.equals(parent.writer()))
-            return childCap.writer;
-        CryptreeNode node = network.getMetadata(parent.version.get(parent.writer()), childCap).join()
-                .orElseThrow(() -> new IllegalStateException("Couldn't retrieve the link node for " + childCap));
         if (! node.getProperties(node.getParentKey(childCap.rBaseKey)).isLink)
             return childCap.writer;
         Set<NamedAbsoluteCapability> targets = node
