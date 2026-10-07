@@ -261,12 +261,16 @@ public class SocialFeed {
                                                 combined.map(p ->  p.left.collect(Collectors.toSet())).orElse(Collections.emptySet()),
                                                 combined.map(p ->  p.right).map(s::mergeAndOverwriteWith).orElse(s)));
                             }).
-                            // updating our cache of what friends share with us is one friend at a time, as two from
-                            // the same snapshot can change the same folder; reading what's new for the feed is parallel
-                            thenCompose(fv -> Futures.reduceAll(fv.left.stream(), fv.right,
-                                            (v, friend) -> friend.updateIncludingGroups(v, c, network)
-                                                    .thenApply(p -> v.mergeAndOverwriteWith(p.left)),
-                                            (a, b) -> b)
+                            // writing to our cache of what friends share with us is one friend at a time, as two
+                            // from the same snapshot can change the same folder; all the reading is parallel
+                            thenCompose(fv -> Futures.combineAllInOrder(fv.left.stream()
+                                                    .map(friend -> friend.prepareUpdate(fv.right, network)
+                                                            .thenApply(u -> new Pair<>(friend, u)))
+                                                    .collect(Collectors.toList()))
+                                    .thenCompose(prepared -> Futures.reduceAll(prepared.stream(), fv.right,
+                                            (v, p) -> p.left.updateIncludingGroups(p.right, v, c, network)
+                                                    .thenApply(r -> v.mergeAndOverwriteWith(r.left)),
+                                            (a, b) -> b))
                                     .thenCompose(v -> Futures.combineAllInOrder(fv.left.stream()
                                                     .map(friend -> getFriendUpdate(friend, v, network))
                                                     .collect(Collectors.toList()))
