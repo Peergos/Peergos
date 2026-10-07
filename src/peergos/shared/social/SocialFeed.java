@@ -261,16 +261,17 @@ public class SocialFeed {
                                                 combined.map(p ->  p.left.collect(Collectors.toSet())).orElse(Collections.emptySet()),
                                                 combined.map(p ->  p.right).map(s::mergeAndOverwriteWith).orElse(s)));
                             }).
-                            thenCompose(fv -> {
-                                Snapshot s0 = fv.right;
-                                List<CompletableFuture<Pair<Snapshot, Optional<Update>>>> futures = fv.left.stream()
-                                        .map(friend -> getFriendUpdate(friend, s0, c, network))
-                                        .collect(Collectors.toList());
-                                return Futures.combineAllInOrder(futures)
-                                        .thenApply(results -> new Pair<>(
-                                                results.stream().map(p -> p.left).reduce(s0, Snapshot::mergeAndOverwriteWith),
-                                                results.stream().flatMap(r -> r.right.stream()).collect(Collectors.toList())));
-                            })
+                            // one friend at a time: each can write to our cache of what friends share with us, and
+                            // two from the same snapshot would both change the same folder
+                            thenCompose(fv -> Futures.reduceAll(fv.left.stream(),
+                                    new Pair<Snapshot, List<Update>>(fv.right, Collections.emptyList()),
+                                    (acc, friend) -> getFriendUpdate(friend, acc.left, c, network)
+                                            .thenApply(r -> {
+                                                List<Update> updates = new ArrayList<>(acc.right);
+                                                r.right.ifPresent(updates::add);
+                                                return new Pair<>(acc.left.mergeAndOverwriteWith(r.left), updates);
+                                            }),
+                                    (a, b) -> b))
                             .thenCompose(p -> mergeUpdates(p.left, c, p.right));
                 }).thenApply(p -> p.right);
     }
