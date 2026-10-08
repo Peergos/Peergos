@@ -261,17 +261,22 @@ public class SocialFeed {
                                                 combined.map(p ->  p.left.collect(Collectors.toSet())).orElse(Collections.emptySet()),
                                                 combined.map(p ->  p.right).map(s::mergeAndOverwriteWith).orElse(s)));
                             }).
-                            thenCompose(fv -> {
-                                Snapshot s0 = fv.right;
-                                List<CompletableFuture<Pair<Snapshot, Optional<Update>>>> futures = fv.left.stream()
-                                        .map(friend -> getFriendUpdate(friend, s0, c, network))
-                                        .collect(Collectors.toList());
-                                return Futures.combineAllInOrder(futures)
-                                        .thenApply(results -> new Pair<>(
-                                                results.stream().map(p -> p.left).reduce(s0, Snapshot::mergeAndOverwriteWith),
-                                                results.stream().flatMap(r -> r.right.stream()).collect(Collectors.toList())));
-                            })
-                            .thenCompose(p -> mergeUpdates(p.left, c, p.right));
+                            // writing to our cache of what friends share with us is one friend at a time, as two
+                            // from the same snapshot can change the same folder; all the reading is parallel
+                            thenCompose(fv -> Futures.combineAllInOrder(fv.left.stream()
+                                                    .map(friend -> friend.prepareUpdate(fv.right, network)
+                                                            .thenApply(u -> new Pair<>(friend, u)))
+                                                    .collect(Collectors.toList()))
+                                    .thenCompose(prepared -> Futures.reduceAll(prepared.stream(), fv.right,
+                                            (v, p) -> p.left.updateIncludingGroups(p.right, v, c, network)
+                                                    .thenApply(r -> v.mergeAndOverwriteWith(r.left)),
+                                            (a, b) -> b))
+                                    .thenCompose(v -> Futures.combineAllInOrder(fv.left.stream()
+                                                    .map(friend -> getFriendUpdate(friend, v, network))
+                                                    .collect(Collectors.toList()))
+                                            .thenCompose(updates -> mergeUpdates(v, c, updates.stream()
+                                                    .flatMap(Optional::stream)
+                                                    .collect(Collectors.toList())))));
                 }).thenApply(p -> p.right);
     }
 
@@ -281,21 +286,19 @@ public class SocialFeed {
         }
     }
 
-    private CompletableFuture<Pair<Snapshot, Optional<Update>>> getFriendUpdate(FriendSourcedTrieNode friend,
-                                                                                Snapshot s,
-                                                                                Committer c,
-                                                                                NetworkAccess network) {
+    private CompletableFuture<Optional<Update>> getFriendUpdate(FriendSourcedTrieNode friend,
+                                                                Snapshot s,
+                                                                NetworkAccess network) {
         long t0 = System.currentTimeMillis();
         ProcessedCaps current = currentCapBytesProcessed.getOrDefault(friend.ownerName, ProcessedCaps.empty());
-        return friend.updateIncludingGroups(s, c, network)
-                .thenCompose(p -> friend.getCaps(current, s,network)
-                        .thenApply(diff -> {
-                            long t1 = System.currentTimeMillis();
-                            System.out.println("GetFriendUpdate("+friend.ownerName +") " + (t1-t0));
-                            if (diff.isEmpty())
-                                return new Pair<>(p.left, Optional.<Update>empty());
-                            return new Pair<>(p.left, Optional.of(new Update(friend.ownerName, current, diff)));
-                        }));
+        return friend.getCaps(current, s, network)
+                .thenApply(diff -> {
+                    long t1 = System.currentTimeMillis();
+                    System.out.println("GetFriendUpdate("+friend.ownerName +") " + (t1-t0));
+                    if (diff.isEmpty())
+                        return Optional.<Update>empty();
+                    return Optional.of(new Update(friend.ownerName, current, diff));
+                });
     }
 
     private synchronized CompletableFuture<Pair<Snapshot, SocialFeed>> mergeUpdates(Snapshot v,

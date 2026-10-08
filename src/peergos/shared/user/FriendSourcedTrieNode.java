@@ -102,10 +102,22 @@ public class FriendSourcedTrieNode implements TrieNode {
         return file.withTrieNode(new ExternalTrieNode(path, this));
     }
 
+    public CompletableFuture<IncomingCapCache.PendingUpdate> prepareUpdate(Snapshot s, NetworkAccess network) {
+        return cache.prepareFriendUpdate(ownerName, sharedDir, groups, s, network);
+    }
+
     public CompletableFuture<Pair<Snapshot, CapsDiff>> updateIncludingGroups(Snapshot s,
                                                                              Committer c,
                                                                              NetworkAccess network) {
-        return ensureUptodate(s, c, crypto, network)
+        return prepareUpdate(s, network)
+                .thenCompose(u -> updateIncludingGroups(u, s, c, network));
+    }
+
+    public CompletableFuture<Pair<Snapshot, CapsDiff>> updateIncludingGroups(IncomingCapCache.PendingUpdate prepared,
+                                                                             Snapshot s,
+                                                                             Committer c,
+                                                                             NetworkAccess network) {
+        return cache.applyFriendUpdate(prepared, s, c, network)
                 .thenCompose(p -> {
                     List<CapabilityWithPath> newGroups = p.right.getNewCaps().stream()
                             .filter(cap -> cap.path.startsWith("/" + ownerName + "/" + UserContext.SHARED_DIR_NAME))

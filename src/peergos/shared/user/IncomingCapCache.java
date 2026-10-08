@@ -383,27 +383,54 @@ public class IncomingCapCache {
                 .thenApply(r ->  r.file.version);
     }
 
-    public synchronized CompletableFuture<Pair<Snapshot, CapsDiff>> ensureFriendUptodate(String friend,
-                                                                                         EntryPoint sharedDir,
-                                                                                         List<EntryPoint> groups,
-                                                                                         Snapshot s,
-                                                                                         Committer c,
-                                                                                         NetworkAccess network) {
-        // if the friend's mutable pointer hasn't changed since our last update we can short circuit early
-        PublicKeyHash owner = sharedDir.pointer.owner;
-        PublicKeyHash writer = sharedDir.pointer.writer;
-        if (! s.contains(writer))
-            return Futures.of(new Pair<>(s, CapsDiff.empty()));
-        CommittedWriterData latestCwd = s.get(writer);
-        MaybeMultihash latestRoot = latestCwd.hash;
-        Pair<MaybeMultihash, CapsDiff> cached = pointerCache.get(writer);
-        boolean equal = cached != null && latestRoot.equals(cached.left);
-        if (equal) {
-            if (cached.right.groupDiffs.size() == groups.size())
-                return Futures.of(new Pair<>(s, cached.right));
+    /** What bringing our cache of a friend's shares up to date would write, found without writing anything, so it
+     *  can be done for many friends at once. Applying it is what has to be one friend at a time.
+     */
+    public static class PendingUpdate {
+        private final String friend;
+        private final PublicKeyHash writer;
+        private final MaybeMultihash latestRoot;
+        private final Optional<ProcessedCaps> current;
+        private final CapsDiff diff;
+
+        private PendingUpdate(String friend, PublicKeyHash writer, MaybeMultihash latestRoot, Optional<ProcessedCaps> current, CapsDiff diff) {
+            this.friend = friend;
+            this.writer = writer;
+            this.latestRoot = latestRoot;
+            this.current = current;
+            this.diff = diff;
         }
 
-        return getAndUpdateRoot(s, network)
+        private static PendingUpdate none(CapsDiff diff) {
+            return new PendingUpdate(null, null, null, Optional.empty(), diff);
+        }
+    }
+
+    public CompletableFuture<Pair<Snapshot, CapsDiff>> ensureFriendUptodate(String friend,
+                                                                            EntryPoint sharedDir,
+                                                                            List<EntryPoint> groups,
+                                                                            Snapshot s,
+                                                                            Committer c,
+                                                                            NetworkAccess network) {
+        return prepareFriendUpdate(friend, sharedDir, groups, s, network)
+                .thenCompose(u -> applyFriendUpdate(u, s, c, network));
+    }
+
+    public synchronized CompletableFuture<PendingUpdate> prepareFriendUpdate(String friend,
+                                                                             EntryPoint sharedDir,
+                                                                             List<EntryPoint> groups,
+                                                                             Snapshot s,
+                                                                             NetworkAccess network) {
+        // if the friend's mutable pointer hasn't changed since our last update we can short circuit early
+        PublicKeyHash writer = sharedDir.pointer.writer;
+        if (! s.contains(writer))
+            return Futures.of(PendingUpdate.none(CapsDiff.empty()));
+        MaybeMultihash latestRoot = s.get(writer).hash;
+        Pair<MaybeMultihash, CapsDiff> cached = pointerCache.get(writer);
+        if (cached != null && latestRoot.equals(cached.left) && cached.right.groupDiffs.size() == groups.size())
+            return Futures.of(PendingUpdate.none(cached.right));
+
+        return cacheRoot.getUpdated(s, network)
                 .thenCompose(root -> root.getDescendentByPath(friend + FRIEND_STATE_SUFFIX, s, hasher, network)
                         .thenCompose(stateOpt -> {
                             if (stateOpt.isEmpty())
@@ -412,11 +439,27 @@ public class IncomingCapCache {
                                     .thenApply(arr -> new Pair<>(ProcessedCaps.fromCbor(CborObject.fromByteArray(arr)),
                                             Optional.of(stateOpt.get().getFileProperties().modified)));
                         }))
-                .thenCompose(state -> ensureUptodate(friend, sharedDir, groups, state.left, state.right, s, c, crypto, network))
+                .thenCompose(state -> getCapsFrom(friend, sharedDir, groups, state.left, state.right, s, network)
+                        .thenApply(diff -> new PendingUpdate(friend, writer, latestRoot, Optional.of(state.left), diff)));
+    }
+
+    public CompletableFuture<Pair<Snapshot, CapsDiff>> applyFriendUpdate(PendingUpdate u,
+                                                                         Snapshot s,
+                                                                         Committer c,
+                                                                         NetworkAccess network) {
+        if (u.current.isEmpty())
+            return Futures.of(new Pair<>(s, u.diff));
+        return addNewCapsToMirror(u.friend, u.current.get(), u.diff, s, c, network)
+                .thenCompose(p -> getAndUpdateWorldRoot(p.left, network)
+                        .thenApply(y -> p))
                 .thenApply(res -> {
-                    pointerCache.put(writer, new Pair<>(latestRoot, res.right.flatten()));
+                    cacheProcessed(u.writer, u.latestRoot, res.right.flatten());
                     return res;
                 });
+    }
+
+    private synchronized void cacheProcessed(PublicKeyHash writer, MaybeMultihash root, CapsDiff processed) {
+        pointerCache.put(writer, new Pair<>(root, processed));
     }
 
     public CompletableFuture<CapsDiff> getCapsFrom(String friend,
@@ -507,22 +550,6 @@ public class IncomingCapCache {
                                 .thenApply(writeable ->
                                         new CapsDiff.ReadAndWriteCaps(newReadCaps, writeable)))
                 .thenApply(newCaps -> new CapsDiff(readCapBytes, writeCapBytes, newCaps, Collections.emptyMap()));
-    }
-
-    private synchronized CompletableFuture<Pair<Snapshot, CapsDiff>> ensureUptodate(String friend,
-                                                                                    EntryPoint originalSharedDir,
-                                                                                    List<EntryPoint> groups,
-                                                                                    ProcessedCaps current,
-                                                                                    Optional<LocalDateTime> lastProgress,
-                                                                                    Snapshot s,
-                                                                                    Committer c,
-                                                                                    Crypto crypto,
-                                                                                    NetworkAccess network) {
-        // check there are no new capabilities in the friend's shared directory, or any of their groups
-        return getCapsFrom(friend, originalSharedDir, groups, current, lastProgress, s, network)
-                .thenCompose(diff -> addNewCapsToMirror(friend, current, diff, s, c, network))
-                .thenCompose(p -> getAndUpdateWorldRoot(p.left, network)
-                        .thenApply(y -> p));
     }
 
     private static synchronized CompletableFuture<CapabilitiesFromUser> getWritableCaps(FileWrapper sharedDir,
