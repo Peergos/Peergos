@@ -169,6 +169,10 @@ public class Args {
         return peergosDir.resolve(fName);
     }
 
+    public Path getConfigFile() {
+        return fromPeergosDir(CONFIG_FILENAME, CONFIG_FILENAME);
+    }
+
     public Path getPeergosDirChild(String filename) {
         return getPeergosDir().resolve(filename);
     }

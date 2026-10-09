@@ -1457,7 +1457,9 @@ public class Main extends Builder {
         // Netty uses thread count twice the number of CPUs, this undoes that
         System.getProperties().setProperty("io.netty.eventLoopThreads", "2");
         try {
-            MAIN.main(Args.parse(args));
+            Args a = Args.parse(args);
+            Builder.setClientConfig(a.getConfigFile());
+            MAIN.main(a);
         } catch (Throwable e) {
             e.printStackTrace();
             Logging.LOG().log(Level.SEVERE, e, () -> e.getMessage());

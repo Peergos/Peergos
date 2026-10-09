@@ -9,6 +9,7 @@ import peergos.server.crypto.asymmetric.mlkem.JavaMlkem;
 import peergos.server.crypto.hash.*;
 import peergos.server.crypto.random.*;
 import peergos.server.login.*;
+import peergos.shared.login.DeviceTokenStore;
 import peergos.server.space.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
@@ -471,12 +472,26 @@ public class Builder {
     }
 
 
+    private static final DeviceTokenStore IN_MEMORY_DEVICE_TOKENS = DeviceTokenStore.inMemory();
+    private static volatile Optional<Path> clientConfig = Optional.empty();
+
+    /** Java clients started from the command line, as the desktop app's are, keep their device tokens
+     *  in this config file. Without one, as in tests, they are only kept for the life of the process.
+     */
+    public static void setClientConfig(Path config) {
+        clientConfig = Optional.of(config);
+    }
+
+    private static DeviceTokenStore deviceTokens() {
+        return clientConfig.<DeviceTokenStore>map(ConfigDeviceTokenStore::new).orElse(IN_MEMORY_DEVICE_TOKENS);
+    }
+
     public static CompletableFuture<NetworkAccess> buildJavaGatewayAccess(URL apiAddress, URL proxyAddress, String pkiNodeId) {
         Multihash pkiServerNodeId = Cid.decode(pkiNodeId);
         JavaPoster p2pPoster = new JavaPoster(proxyAddress, false);
         JavaPoster apiPoster = new JavaPoster(apiAddress, false);
         ScryptJava hasher = new ScryptJava();
-        return NetworkAccess.buildViaGateway(apiPoster, p2pPoster, pkiServerNodeId, 0, hasher, false);
+        return NetworkAccess.buildViaGateway(apiPoster, p2pPoster, pkiServerNodeId, 0, hasher, false, deviceTokens());
     }
 
     public static CompletableFuture<NetworkAccess> buildJavaNetworkAccess(URL target,
@@ -503,7 +518,7 @@ public class Builder {
         JavaPoster poster = new JavaPoster(target, isPublicServer, basicAuth, userAgent, proxy);
         ScryptJava hasher = new ScryptJava();
         ContentAddressedStorage localDht = NetworkAccess.buildLocalDht(poster, true, hasher);
-        return NetworkAccess.buildViaPeergosInstance(poster, poster, localDht, mutableCacheTime, hasher, false);
+        return NetworkAccess.buildViaPeergosInstance(poster, poster, localDht, mutableCacheTime, hasher, false, deviceTokens());
     }
 
     public static CompletableFuture<NetworkAccess> buildLocalJavaNetworkAccess(int targetPort) {
