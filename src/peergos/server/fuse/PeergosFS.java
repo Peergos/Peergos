@@ -219,8 +219,9 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
     @Override
     public int truncate(String s, @off_t long l) {
         ensureNotClosed();
-        //TODO
-        return 0;
+        Path path = PathUtil.get(s);
+        String parentPath = path.getParent().toString();
+        return applyIfBothPresent(parentPath, s, (parent, file) -> truncate(parent, file, l));
     }
 
     @Override
@@ -359,10 +360,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
 
     @Override
     public int ftruncate(String s, @off_t long l, FuseFileInfo fuseFileInfo) {
-        ensureNotClosed();
-        Path path = PathUtil.get(s);
-        String parentPath = path.getParent().toString();
-        return applyIfBothPresent(parentPath, s, (parent, file) -> truncate(parent, file, l));
+        return truncate(s, l);
     }
 
     @Override
