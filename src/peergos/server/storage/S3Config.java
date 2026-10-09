@@ -61,7 +61,7 @@ public class S3Config {
         Optional<String> publicReads = getPublicReadUrl(a);
         String authedHost = S3Config.build(a,  Optional.empty()).getHost();
         if (publicReads.isPresent())
-            return Arrays.asList(authedHost, publicReads.get());
+            return Arrays.asList(authedHost, publicReads.get().replaceFirst("^https?://", ""));
         return Arrays.asList(authedHost);
     }
 }
