@@ -7,6 +7,7 @@ import peergos.shared.crypto.asymmetric.PublicSigningKey;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
+import peergos.shared.login.LoginResponse;
 import peergos.shared.login.mfa.BackupCodes;
 import peergos.shared.login.mfa.MultiFactorAuthMethod;
 import peergos.shared.login.mfa.MultiFactorAuthRequest;
@@ -72,16 +73,17 @@ public class LocalOnlyAccount implements Account {
     }
 
     @Override
-    public CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
-                                                                                          PublicSigningKey authorisedReader,
-                                                                                          byte[] auth,
-                                                                                          Optional<MultiFactorAuthResponse>  mfa,
-                                                                                          boolean cacheMfaLoginData,
-                                                                                          boolean forceProxy,
-                                                                                          boolean forceNoCache) {
+    public CompletableFuture<LoginResponse> getLoginData(String username,
+                                                         PublicSigningKey authorisedReader,
+                                                         byte[] auth,
+                                                         Optional<MultiFactorAuthResponse> mfa,
+                                                         Optional<String> deviceToken,
+                                                         boolean cacheMfaLoginData,
+                                                         boolean forceProxy,
+                                                         boolean forceNoCache) {
         if (! allowExternalLogin && ! hasQuota(username) && !forceProxy)
             throw new IllegalStateException(isHomeServer(username) ? EXPIRED_ERROR : EXTERNAL_ERROR);
-        return target.getLoginData(username, authorisedReader, auth, mfa, cacheMfaLoginData, forceProxy, forceNoCache).thenApply(res -> {
+        return target.getLoginData(username, authorisedReader, auth, mfa, deviceToken, cacheMfaLoginData, forceProxy, forceNoCache).thenApply(res -> {
             TimeLimited.isAllowedTime(auth, 24*3600, authorisedReader);
             return res;
         });

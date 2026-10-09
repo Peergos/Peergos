@@ -54,6 +54,7 @@ public class JdbcAccount implements LoginCache {
     private static final String COUNT_MFA = "SELECT COUNT(*) FROM mfa WHERE username = ?;";
     private static final String DELETE_UNVERIFIED = "DELETE FROM mfa WHERE username = ? AND type = ? AND enabled = ?;";
 
+    public static final String INCORRECT_LOGIN = "Incorrect username or password";
     public static final int MAX_MFA = 10;
     /** A staged login is only left behind by a password change that was interrupted between staging and
      *  updating the login table. They are all cleared by the next successful login data write, so this
@@ -76,12 +77,14 @@ public class JdbcAccount implements LoginCache {
     private final WebAuthnManager webauthn = WebAuthnManager.createNonStrictWebAuthnManager();
     private final Origin origin;
     private final String rpId;
+    private final LoginThrottle throttle;
 
     public JdbcAccount(Supplier<Connection> conn, SqlSupplier commands, Origin origin, String rpId) {
         this.conn = conn;
         this.origin = origin;
         this.rpId = rpId;
         init(commands);
+        this.throttle = new LoginThrottle(this::getConnection, commands);
     }
 
     private Connection getConnection() {
@@ -311,21 +314,40 @@ public class JdbcAccount implements LoginCache {
         }
     }
 
-    public CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getEntryData(String username,
-                                                                                          PublicSigningKey authorisedReader,
-                                                                                          Optional<MultiFactorAuthResponse> mfa) {
+    public CompletableFuture<LoginResponse> getEntryData(String username,
+                                                        PublicSigningKey authorisedReader,
+                                                        Optional<MultiFactorAuthResponse> mfa,
+                                                        Optional<String> deviceToken) {
         List<MultiFactorAuthMethod> mfas = getSecondAuthMethods(username).join();
         List<MultiFactorAuthMethod> enabled = mfas.stream().filter(m -> m.enabled).collect(Collectors.toList());
         // backup codes are never a second factor on their own, only a way of satisfying an existing one,
         // and a mount's credential belongs to a device rather than to the user, so neither of them is
         // something we can challenge a person with
-        if (enabled.stream().allMatch(m -> m.type == MultiFactorAuthMethod.Type.BACKUP_CODES || ! m.type.interactive))
-            return getEntryData(username, authorisedReader).thenApply(Either::a);
-        if (mfa.isEmpty()) {
+        boolean needsMfa = ! enabled.stream().allMatch(m -> m.type == MultiFactorAuthMethod.Type.BACKUP_CODES || ! m.type.interactive);
+        if (needsMfa && mfa.isEmpty()) {
             byte[] challenge = createChallenge(username);
-            return Futures.of(Either.b(new MultiFactorAuthRequest(enabled, challenge)));
+            return Futures.of(new LoginResponse(Either.b(new MultiFactorAuthRequest(enabled, challenge)), Optional.empty()));
         }
-        MultiFactorAuthResponse mfaAuth = mfa.get();
+        // recording guesses for a user that doesn't exist would let anybody grow the failures table
+        if (! hasEntry(username))
+            return Futures.errored(new IllegalStateException(INCORRECT_LOGIN));
+        LoginThrottle.Device device = throttle.device(username, deviceToken);
+        throttle.reservePasswordAttempt(username, device, authorisedReader);
+        Optional<UserStaticData> entry = lookupEntryData(username, authorisedReader);
+        if (entry.isPresent())
+            throttle.releasePasswordAttempt(username, device, authorisedReader);
+        if (needsMfa)
+            validateSecondFactor(username, enabled, mfa.get(), device, entry.isPresent());
+        if (entry.isEmpty())
+            return Futures.errored(new IllegalStateException(INCORRECT_LOGIN));
+        return Futures.of(new LoginResponse(Either.a(entry.get()), throttle.loggedIn(username, device)));
+    }
+
+    private void validateSecondFactor(String username,
+                                      List<MultiFactorAuthMethod> enabled,
+                                      MultiFactorAuthResponse mfaAuth,
+                                      LoginThrottle.Device device,
+                                      boolean passwordCorrect) {
         byte[] credentialId = mfaAuth.credentialId;
         // only an enabled factor can satisfy a challenge - an enrolment that was never verified isn't
         // listed in 2fa settings, so it can't be seen or revoked there either. Same wording as an
@@ -347,19 +369,37 @@ public class JdbcAccount implements LoginCache {
             // Update counter
             verifier.setCounter(newSignCount);
             updateMFA(username, credentialId, verifier.serialize());
-        } else {
-            MultiFactorAuthMethod.Type type = getType(username, credentialId);
-            if (type == MultiFactorAuthMethod.Type.BACKUP_CODES)
-                validateBackupCode(username, credentialId, mfaAuth.response.a());
-            else if (type == MultiFactorAuthMethod.Type.TOTP || type == MultiFactorAuthMethod.Type.MOUNT)
-                validateTotpCode(username, credentialId, mfaAuth.response.a());
-            else
-                throw new IllegalStateException("Not a code based credential!");
+            return;
         }
-        return getEntryData(username, authorisedReader).thenApply(Either::a);
+        MultiFactorAuthMethod.Type type = getType(username, credentialId);
+        if (type != MultiFactorAuthMethod.Type.BACKUP_CODES &&
+                type != MultiFactorAuthMethod.Type.TOTP &&
+                type != MultiFactorAuthMethod.Type.MOUNT)
+            throw new IllegalStateException("Not a code based credential!");
+        String code = mfaAuth.response.a();
+        if (passwordCorrect)
+            throttle.reserveMfaAttempt(username, device, credentialId, code);
+        else
+            throttle.checkMfaAttempt(username, device, credentialId, code);
+        if (type == MultiFactorAuthMethod.Type.BACKUP_CODES)
+            validateBackupCode(username, credentialId, code);
+        else
+            validateTotpCode(username, credentialId, code);
+        if (passwordCorrect)
+            throttle.releaseMfaAttempt(username, device, credentialId, code);
     }
 
     public CompletableFuture<UserStaticData> getEntryData(String username, PublicSigningKey authorisedReader) {
+        try {
+            return lookupEntryData(username, authorisedReader)
+                    .map(Futures::of)
+                    .orElseGet(() -> Futures.errored(new IllegalStateException(INCORRECT_LOGIN)));
+        } catch (Exception e) {
+            return Futures.errored(e);
+        }
+    }
+
+    private Optional<UserStaticData> lookupEntryData(String username, PublicSigningKey authorisedReader) {
         String reader = new String(Base64.getEncoder().encode(authorisedReader.serialize()));
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(GET_LOGIN)) {
@@ -367,11 +407,11 @@ public class JdbcAccount implements LoginCache {
             stmt.setString(2, reader);
             ResultSet rs = stmt.executeQuery();
             if (rs.next()) {
-                return CompletableFuture.completedFuture(UserStaticData.fromCbor(CborObject.fromByteArray(Base64.getDecoder().decode(rs.getString("entry")))));
+                return Optional.of(UserStaticData.fromCbor(CborObject.fromByteArray(Base64.getDecoder().decode(rs.getString("entry")))));
             }
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            return Futures.errored(sqe);
+            throw new RuntimeException(sqe);
         }
 
         // A password change that published its new key generation algorithm, but was interrupted before
@@ -386,13 +426,12 @@ public class JdbcAccount implements LoginCache {
                 UserStaticData entry = UserStaticData.fromCbor(CborObject.fromByteArray(Base64.getDecoder().decode(rs.getString("entry"))));
                 // finish that password change now, rather than leaving the login table stale until the next one
                 completeInterruptedPasswordChange(username);
-                return CompletableFuture.completedFuture(entry);
+                return Optional.of(entry);
             }
-
-            return Futures.errored(new IllegalStateException("Incorrect username or password"));
+            return Optional.empty();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            return Futures.errored(sqe);
+            throw new RuntimeException(sqe);
         }
     }
 

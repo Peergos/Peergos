@@ -4,6 +4,7 @@ import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.*;
+import peergos.shared.login.*;
 import peergos.shared.login.mfa.*;
 import peergos.shared.util.*;
 
@@ -43,20 +44,23 @@ public class ProxyingAccount implements Account {
     }
 
     @Override
-    public CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
-                                                                                          PublicSigningKey authorisedReader,
-                                                                                          byte[] auth,
-                                                                                          Optional<MultiFactorAuthResponse>  mfa,
-                                                                                          boolean cacheMfaLoginData,
-                                                                                          boolean forceProxy,
-                                                                                          boolean forceNoCache) {
+    public CompletableFuture<LoginResponse> getLoginData(String username,
+                                                         PublicSigningKey authorisedReader,
+                                                         byte[] auth,
+                                                         Optional<MultiFactorAuthResponse> mfa,
+                                                         Optional<String> deviceToken,
+                                                         boolean cacheMfaLoginData,
+                                                         boolean forceProxy,
+                                                         boolean forceNoCache) {
         // a mirror of the login data is only used when the home server can't be reached, and only holds
         // an entry at all for a user without 2FA, whose login data we were able to mirror
         return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCallWithMirrorFallback(core,
                 serverIds,
                 idOpt.get(),
-                () -> local.getLoginData(username, authorisedReader, auth, mfa, false, forceProxy, forceNoCache),
-                target -> p2p.getLoginData(target, username, authorisedReader, auth, mfa),
+                // a device token is only any use from the home server, so don't let a mirror replace it
+                () -> local.getLoginData(username, authorisedReader, auth, mfa, deviceToken, false, forceProxy, forceNoCache)
+                        .thenApply(res -> Proxy.isHomeServer(core, serverIds, idOpt.get()) ? res : res.withoutDeviceToken()),
+                target -> p2p.getLoginData(target, username, authorisedReader, auth, mfa, deviceToken),
                 weMirror));
     }
 

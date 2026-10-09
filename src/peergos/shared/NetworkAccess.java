@@ -312,7 +312,7 @@ public class NetworkAccess {
                     ContentAddressedStorage p2pDht = new CachingVerifyingStorage(new RetryStorage(storage, 7),
                             100 * 1024, 1_000, nodeIds, hasher);
                     MutablePointersProxy httpMutable = new HttpMutablePointers(apiPoster, p2pPoster);
-                    Account account = new HttpAccount(apiPoster, p2pPoster);
+                    Account account = new HttpAccount(apiPoster, p2pPoster, Optional.of(deviceTokenStore(isJavascript)));
                     MutablePointers p2pMutable = new ProxyingMutablePointers(nodeIds, core, httpMutable, httpMutable, owner -> false);
 
                     SocialNetworkProxy httpSocial = new HttpSocialNetwork(apiPoster, p2pPoster);
@@ -327,6 +327,10 @@ public class NetworkAccess {
                 });
     }
 
+    private static DeviceTokenStore deviceTokenStore(boolean isJavascript) {
+        return isJavascript ? new JSDeviceTokenStore() : DeviceTokenStore.inMemory();
+    }
+
     public static NetworkAccess buildToPeergosServer(List<Cid> nodeIds,
                                                      CoreNode core,
                                                      ContentAddressedStorage localDht,
@@ -339,7 +343,7 @@ public class NetworkAccess {
         ContentAddressedStorage p2pDht = new CachingVerifyingStorage(new RetryStorage(localDht, 7),
                 100 * 1024, 1_000, nodeIds, hasher);
         MutablePointersProxy httpMutable = new HttpMutablePointers(apiPoster, p2pPoster);
-        Account account = new HttpAccount(apiPoster, p2pPoster);
+        Account account = new HttpAccount(apiPoster, p2pPoster, Optional.of(deviceTokenStore(isJavascript)));
 
         SocialNetworkProxy httpSocial = new HttpSocialNetwork(apiPoster, p2pPoster);
         SpaceUsageProxy httpUsage = new HttpSpaceUsage(apiPoster, p2pPoster);

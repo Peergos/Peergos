@@ -10,6 +10,7 @@ import peergos.shared.crypto.SigningKeyPair;
 import peergos.shared.crypto.asymmetric.PublicSigningKey;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 import peergos.shared.login.LoginCache;
+import peergos.shared.login.LoginResponse;
 import peergos.shared.login.OfflineAccountStore;
 import peergos.shared.login.mfa.BackupCodes;
 import peergos.shared.login.mfa.MultiFactorAuthMethod;
@@ -65,7 +66,7 @@ public class OfflineAccountStoreTests {
     }
 
     private Either<UserStaticData, MultiFactorAuthRequest> login() {
-        return store.getLoginData(USERNAME, reader, auth, Optional.empty(), false, false, false).join();
+        return store.getLoginData(USERNAME, reader, auth, Optional.empty(), Optional.empty(), false, false, false).join().resp;
     }
 
     /** The server is held mid call, which is where the cache used to win and answer for it. */
@@ -76,7 +77,7 @@ public class OfflineAccountStoreTests {
         server.holdReplies = true;
 
         CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> login =
-                store.getLoginData(USERNAME, reader, auth, Optional.empty(), false, false, false);
+                store.getLoginData(USERNAME, reader, auth, Optional.empty(), Optional.empty(), false, false, false).thenApply(r -> r.resp);
         Assert.assertFalse("answered from the cache before the server had a say", login.isDone());
 
         server.answer();
@@ -190,16 +191,17 @@ public class OfflineAccountStoreTests {
         }
 
         @Override
-        public CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
-                                                                                              PublicSigningKey authorisedReader,
-                                                                                              byte[] auth,
-                                                                                              Optional<MultiFactorAuthResponse> mfa,
-                                                                                              boolean cacheMfaLoginData,
-                                                                                              boolean forceProxy,
-                                                                                              boolean forceNoCache) {
+        public CompletableFuture<LoginResponse> getLoginData(String username,
+                                                             PublicSigningKey authorisedReader,
+                                                             byte[] auth,
+                                                             Optional<MultiFactorAuthResponse> mfa,
+                                                             Optional<String> deviceToken,
+                                                             boolean cacheMfaLoginData,
+                                                             boolean forceProxy,
+                                                             boolean forceNoCache) {
             if (mfaEnabled && mfa.isEmpty())
-                return whenReachable(Either.b(new MultiFactorAuthRequest(List.of(totp()), new byte[32])));
-            return whenReachable(Either.a(entry));
+                return whenReachable(new LoginResponse(Either.b(new MultiFactorAuthRequest(List.of(totp()), new byte[32]))));
+            return whenReachable(new LoginResponse(Either.a(entry)));
         }
 
         @Override

@@ -4,6 +4,7 @@ import peergos.server.util.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.login.*;
 import peergos.shared.login.mfa.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
@@ -33,17 +34,17 @@ public class VerifyingAccount implements Account {
     }
 
     @Override
-    public CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
-                                                                                          PublicSigningKey authorisedReader,
-                                                                                          byte[] auth,
-                                                                                          Optional<MultiFactorAuthResponse>  mfa,
-                                                                                          boolean cacheMfaLoginData,
-                                                                                          boolean forceProxy,
-                                                                                          boolean forceNoCache) {
-        return target.getLoginData(username, authorisedReader, auth, mfa, cacheMfaLoginData, forceProxy, forceNoCache).thenApply(res -> {
-            TimeLimited.isAllowedTime(auth, 24*3600, authorisedReader);
-            return res;
-        });
+    public CompletableFuture<LoginResponse> getLoginData(String username,
+                                                         PublicSigningKey authorisedReader,
+                                                         byte[] auth,
+                                                         Optional<MultiFactorAuthResponse> mfa,
+                                                         Optional<String> deviceToken,
+                                                         boolean cacheMfaLoginData,
+                                                         boolean forceProxy,
+                                                         boolean forceNoCache) {
+        // before anything else, so that every guess the throttle records cost the guesser a key derivation
+        TimeLimited.isAllowedTime(auth, 24*3600, authorisedReader);
+        return target.getLoginData(username, authorisedReader, auth, mfa, deviceToken, cacheMfaLoginData, forceProxy, forceNoCache);
     }
 
     @Override

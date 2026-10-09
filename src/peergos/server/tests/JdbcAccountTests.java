@@ -192,7 +192,7 @@ public class JdbcAccountTests {
 
         try {
             db.getEntryData(username, reader, Optional.of(new MultiFactorAuthResponse(abandoned.credentialId,
-                    Either.a(code(totp, abandoned))))).join();
+                    Either.a(code(totp, abandoned)))), Optional.empty()).join();
             Assert.fail("an unverified second factor satisfied the login challenge");
         } catch (IllegalStateException e) {
             Assert.assertTrue(e.getMessage(), e.getMessage().contains("Unknown credential id"));
@@ -200,7 +200,7 @@ public class JdbcAccountTests {
 
         // the verified one still works
         Assert.assertTrue(db.getEntryData(username, reader, Optional.of(new MultiFactorAuthResponse(active.credentialId,
-                Either.a(code(totp, active))))).join().isA());
+                Either.a(code(totp, active)))), Optional.empty()).join().resp.isA());
     }
 
     /** A mount's credential is never offered in a challenge, because it isn't interactive, but it
@@ -220,6 +220,109 @@ public class JdbcAccountTests {
         db.enableMountFactor(username, mount.credentialId, code(totp, mount)).join();
 
         Assert.assertTrue(db.getEntryData(username, reader, Optional.of(new MultiFactorAuthResponse(mount.credentialId,
-                Either.a(code(totp, mount))))).join().isA());
+                Either.a(code(totp, mount)))), Optional.empty()).join().resp.isA());
+    }
+
+    private String attempt(String username, PublicSigningKey reader, Optional<MultiFactorAuthResponse> mfa, Optional<String> device) {
+        try {
+            db.getEntryData(username, reader, mfa, device).join();
+            return "ok";
+        } catch (Exception e) {
+            if (e.getMessage().contains(LoginThrottle.THROTTLED_ERROR))
+                return "throttled";
+            if (e.getMessage().contains(JdbcAccount.INCORRECT_LOGIN))
+                return "incorrect";
+            return e.getMessage();
+        }
+    }
+
+    private String attempt(String username, PublicSigningKey reader, Optional<String> device) {
+        return attempt(username, reader, Optional.empty(), device);
+    }
+
+    @Test
+    public void guessingLocksOutNewDevicesOnly() {
+        String username = "alice";
+        PublicSigningKey reader = reader();
+        db.setLoginData(loginFor(username, reader)).join();
+        Optional<String> knownDevice = db.getEntryData(username, reader, Optional.empty(), Optional.empty()).join().deviceToken;
+        Assert.assertTrue(knownDevice.isPresent());
+
+        List<PublicSigningKey> guesses = new ArrayList<>();
+        for (int i = 0; i < LoginThrottle.MAX_PASSWORD_FAILURES; i++) {
+            guesses.add(reader());
+            Assert.assertEquals("incorrect", attempt(username, guesses.get(i), Optional.empty()));
+        }
+        Assert.assertEquals("throttled", attempt(username, reader(), Optional.empty()));
+        // refused before it is checked, so a right guess can't be told apart from a wrong one
+        Assert.assertEquals("throttled", attempt(username, reader, Optional.empty()));
+        // a guess that has already been made reveals nothing new
+        Assert.assertEquals("incorrect", attempt(username, guesses.get(0), Optional.empty()));
+
+        Assert.assertEquals("ok", attempt(username, reader, knownDevice));
+        Assert.assertEquals("throttled", attempt(username, reader, Optional.of("not a real token")));
+    }
+
+    @Test
+    public void repeatingAWrongPasswordOnlyCountsOnce() {
+        String username = "alice";
+        PublicSigningKey reader = reader();
+        db.setLoginData(loginFor(username, reader)).join();
+        PublicSigningKey typo = reader();
+        for (int i = 0; i < 3 * LoginThrottle.MAX_PASSWORD_FAILURES; i++)
+            Assert.assertEquals("incorrect", attempt(username, typo, Optional.empty()));
+        Assert.assertEquals("ok", attempt(username, reader, Optional.empty()));
+    }
+
+    @Test
+    public void aKnownDeviceHasItsOwnBudget() {
+        String username = "alice";
+        PublicSigningKey reader = reader();
+        db.setLoginData(loginFor(username, reader)).join();
+        Optional<String> device = db.getEntryData(username, reader, Optional.empty(), Optional.empty()).join().deviceToken;
+        for (int i = 0; i < LoginThrottle.MAX_PASSWORD_FAILURES; i++)
+            Assert.assertEquals("incorrect", attempt(username, reader(), device));
+        Assert.assertEquals("throttled", attempt(username, reader, device));
+        Assert.assertEquals("ok", attempt(username, reader, Optional.empty()));
+    }
+
+    @Test
+    public void secondFactorGuessesAreLimited() throws Exception {
+        String username = "alice";
+        PublicSigningKey reader = reader();
+        db.setLoginData(loginFor(username, reader)).join();
+        TimeBasedOneTimePasswordGenerator totp =
+                new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, TotpKey.ALGORITHM);
+        TotpKey key = db.addTotpFactor(username).join();
+        db.enableTotpFactor(username, key.credentialId, code(totp, key)).join();
+        Optional<String> device = db.getEntryData(username, reader, Optional.of(new MultiFactorAuthResponse(key.credentialId,
+                Either.a(code(totp, key)))), Optional.empty()).join().deviceToken;
+
+        // without the password, guesses at the code don't use up the second factor budget
+        PublicSigningKey wrongPassword = reader();
+        for (int i = 0; i < 2 * LoginThrottle.MAX_MFA_FAILURES; i++)
+            Assert.assertTrue(attempt(username, wrongPassword, Optional.of(new MultiFactorAuthResponse(key.credentialId,
+                    Either.a(wrongCode(totp, key, i)))), Optional.empty()).contains("Invalid TOTP code"));
+
+        for (int i = 0; i < LoginThrottle.MAX_MFA_FAILURES; i++)
+            Assert.assertTrue(attempt(username, reader, Optional.of(new MultiFactorAuthResponse(key.credentialId,
+                    Either.a(wrongCode(totp, key, i)))), Optional.empty()).contains("Invalid TOTP code"));
+        MultiFactorAuthResponse right = new MultiFactorAuthResponse(key.credentialId, Either.a(code(totp, key)));
+        Assert.assertEquals("throttled", attempt(username, reader, Optional.of(right), Optional.empty()));
+        // the same whether or not the password is right
+        Assert.assertEquals("throttled", attempt(username, reader(), Optional.of(right), Optional.empty()));
+        Assert.assertEquals("ok", attempt(username, reader, Optional.of(right), device));
+    }
+
+    private static String wrongCode(TimeBasedOneTimePasswordGenerator totp, TotpKey key, int i) throws Exception {
+        java.security.Key k = new SecretKeySpec(key.key, TotpKey.ALGORITHM);
+        Set<String> valid = Set.of(totp.generateOneTimePasswordString(k, Instant.now()),
+                totp.generateOneTimePasswordString(k, Instant.now().minusSeconds(30)),
+                totp.generateOneTimePasswordString(k, Instant.now().plusSeconds(30)));
+        for (int c = i * 1000; ; c++) {
+            String code = String.format("%06d", c);
+            if (! valid.contains(code))
+                return code;
+        }
     }
 }

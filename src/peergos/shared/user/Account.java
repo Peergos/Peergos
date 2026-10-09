@@ -3,6 +3,7 @@ package peergos.shared.user;
 import jsinterop.annotations.JsMethod;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.login.*;
 import peergos.shared.login.mfa.*;
 import peergos.shared.util.*;
 
@@ -31,13 +32,15 @@ public interface Account {
      * @param authorisedReader
      * @param auth
      * @param mfa
+     * @param deviceToken from a previous login on this device, which gives it a failure budget of its own
      * @return
      */
-    CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
-                                                                                   PublicSigningKey authorisedReader,
-                                                                                   byte[] auth,
-                                                                                   Optional<MultiFactorAuthResponse>  mfa,
-                                                                                   boolean cacheMfaLoginData,
+    CompletableFuture<LoginResponse> getLoginData(String username,
+                                                  PublicSigningKey authorisedReader,
+                                                  byte[] auth,
+                                                  Optional<MultiFactorAuthResponse>  mfa,
+                                                  Optional<String> deviceToken,
+                                                  boolean cacheMfaLoginData,
                                                                                    boolean forceProxy,
                                                                                    boolean forceNoCache);
 

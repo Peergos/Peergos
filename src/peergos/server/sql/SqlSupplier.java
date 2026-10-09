@@ -73,6 +73,17 @@ public interface SqlSupplier {
                 "CREATE UNIQUE INDEX IF NOT EXISTS mfa_challenge_index ON mfa_challenge (username);";
     }
 
+    default String createLoginFailuresTableCommand() {
+        return "CREATE TABLE IF NOT EXISTS login_failures (username text not null, bucket text not null, " +
+                "attempt text not null, time " + sqlInteger() + " not null, PRIMARY KEY (username, bucket, attempt)); " +
+                "CREATE INDEX IF NOT EXISTS login_failures_time_index ON login_failures (time);";
+    }
+
+    default String createDeviceTokensTableCommand() {
+        return "CREATE TABLE IF NOT EXISTS device_tokens (username text not null, token text not null, " +
+                "lastused " + sqlInteger() + " not null, PRIMARY KEY (username, token));";
+    }
+
     default String createBatStoreTableCommand() {
         return "CREATE TABLE IF NOT EXISTS bats (username text not null, id text primary key not null, bat text not null); " +
                 "CREATE UNIQUE INDEX IF NOT EXISTS bat_index ON bats (id);";

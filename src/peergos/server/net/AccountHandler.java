@@ -98,10 +98,11 @@ public class AccountHandler implements HttpHandler {
                                 Optional.of(MultiFactorAuthResponse.fromCbor(CborObject.fromByteArray(ArrayOps.hexToBytes(params.get("mfa").get(0))))) :
                                 Optional.empty();
                         boolean forceProxy = params.containsKey("proxy") ? Boolean.parseBoolean(params.get("proxy").get(0)) : false;
-                        Either<UserStaticData, MultiFactorAuthRequest> res = account.getLoginData(username, authorisedReader, auth, mfa, false, forceProxy, false).join();
-                        res = filterToSupportedMfaTypes(res, params);
+                        Optional<String> deviceToken = params.containsKey("device") ? Optional.of(params.get("device").get(0)) : Optional.empty();
+                        LoginResponse login = account.getLoginData(username, authorisedReader, auth, mfa, deviceToken, false, forceProxy, false).join();
+                        Either<UserStaticData, MultiFactorAuthRequest> res = filterToSupportedMfaTypes(login.resp, params);
                         AggregatedMetrics.LOGIN_GET.inc();
-                        byte[] resBytes = new LoginResponse(res).serialize();
+                        byte[] resBytes = new LoginResponse(res, login.deviceToken).serialize();
                         dout.write(resBytes);
                         byte[] b = bout.toByteArray();
                         exchange.sendResponseHeaders(200, b.length);
@@ -115,6 +116,8 @@ public class AccountHandler implements HttpHandler {
                             AggregatedMetrics.LOGIN_GET_FAILURE_EXTERNAL.inc();
                         } else if (msg != null && msg.equals(LocalOnlyAccount.EXPIRED_ERROR)) {
                             AggregatedMetrics.LOGIN_GET_FAILURE_EXPIRED.inc();
+                        } else if (msg != null && msg.contains(LoginThrottle.THROTTLED_ERROR)) {
+                            AggregatedMetrics.LOGIN_GET_FAILURE_THROTTLED.inc();
                         }
                         HttpUtil.replyError(exchange, e);
                     }
