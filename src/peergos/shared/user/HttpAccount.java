@@ -18,17 +18,24 @@ public class HttpAccount implements AccountProxy {
 
     private final HttpPoster direct, p2p;
     private final String directUrlPrefix;
+    private final Optional<DeviceTokenStore> deviceTokens;
 
-    public HttpAccount(HttpPoster direct, HttpPoster p2p) {
+    public HttpAccount(HttpPoster direct, HttpPoster p2p, Optional<DeviceTokenStore> deviceTokens) {
         this.direct = direct;
         this.p2p = p2p;
         this.directUrlPrefix = "";
+        this.deviceTokens = deviceTokens;
+    }
+
+    public HttpAccount(HttpPoster direct, HttpPoster p2p) {
+        this(direct, p2p, Optional.empty());
     }
 
     public HttpAccount(HttpPoster p2p, Multihash targetNodeID) {
         this.directUrlPrefix = getProxyUrlPrefix(targetNodeID);
         this.direct = p2p;
         this.p2p = p2p;
+        this.deviceTokens = Optional.empty();
     }
 
     private static String getProxyUrlPrefix(Multihash targetId) {
@@ -74,24 +81,33 @@ public class HttpAccount implements AccountProxy {
     }
 
     @Override
-    public CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
-                                                                                          PublicSigningKey authorisedReader,
-                                                                                          byte[] auth,
-                                                                                          Optional<MultiFactorAuthResponse>  mfa,
-                                                                                          boolean cacheMfaLoginData,
-                                                                                          boolean forceProxy,
-                                                                                          boolean forceNoCache) {
-        return getLoginData(directUrlPrefix, direct, username, authorisedReader, auth, mfa, forceProxy);
+    public CompletableFuture<LoginResponse> getLoginData(String username,
+                                                         PublicSigningKey authorisedReader,
+                                                         byte[] auth,
+                                                         Optional<MultiFactorAuthResponse> mfa,
+                                                         Optional<String> deviceToken,
+                                                         boolean cacheMfaLoginData,
+                                                         boolean forceProxy,
+                                                         boolean forceNoCache) {
+        // a token passed in explicitly is one we are forwarding for somebody else's device
+        Optional<String> token = deviceToken.isPresent() ? deviceToken : deviceTokens.flatMap(t -> t.get(username));
+        return getLoginData(directUrlPrefix, direct, username, authorisedReader, auth, mfa, token, forceProxy)
+                .thenApply(res -> {
+                    if (deviceToken.isEmpty())
+                        res.deviceToken.ifPresent(t -> deviceTokens.ifPresent(store -> store.set(username, t)));
+                    return res;
+                });
     }
 
     @Override
-    public CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(Multihash targetServerId,
-                                                                                          String username,
-                                                                                          PublicSigningKey authorisedReader,
-                                                                                          byte[] auth,
-                                                                                          Optional<MultiFactorAuthResponse> mfa) {
+    public CompletableFuture<LoginResponse> getLoginData(Multihash targetServerId,
+                                                        String username,
+                                                        PublicSigningKey authorisedReader,
+                                                        byte[] auth,
+                                                        Optional<MultiFactorAuthResponse> mfa,
+                                                        Optional<String> deviceToken) {
         // bounded, because whoever asked us has a mirror to fall back on and a finite patience
-        return getLoginData(getProxyUrlPrefix(targetServerId), p2p, username, authorisedReader, auth, mfa, true,
+        return getLoginData(getProxyUrlPrefix(targetServerId), p2p, username, authorisedReader, auth, mfa, deviceToken, true,
                 Constants.PROXIED_READ_TIMEOUT_MILLIS);
     }
 
@@ -108,33 +124,36 @@ public class HttpAccount implements AccountProxy {
         return res.toString();
     }
 
-    private CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String urlPrefix,
-                                                                                           HttpPoster poster,
-                                                                                           String username,
-                                                                                           PublicSigningKey authorisedReader,
-                                                                                           byte[] auth,
-                                                                                           Optional<MultiFactorAuthResponse> mfa,
-                                                                                           boolean forceProxy) {
-        return getLoginData(urlPrefix, poster, username, authorisedReader, auth, mfa, forceProxy,
+    private CompletableFuture<LoginResponse> getLoginData(String urlPrefix,
+                                                          HttpPoster poster,
+                                                          String username,
+                                                          PublicSigningKey authorisedReader,
+                                                          byte[] auth,
+                                                          Optional<MultiFactorAuthResponse> mfa,
+                                                          Optional<String> deviceToken,
+                                                          boolean forceProxy) {
+        return getLoginData(urlPrefix, poster, username, authorisedReader, auth, mfa, deviceToken, forceProxy,
                 HttpPoster.DEFAULT_TIMEOUT_MILLIS);
     }
 
-    private CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String urlPrefix,
-                                                                                           HttpPoster poster,
-                                                                                           String username,
-                                                                                           PublicSigningKey authorisedReader,
-                                                                                           byte[] auth,
-                                                                                           Optional<MultiFactorAuthResponse> mfa,
-                                                                                           boolean forceProxy,
-                                                                                           int timeoutMillis) {
+    private CompletableFuture<LoginResponse> getLoginData(String urlPrefix,
+                                                          HttpPoster poster,
+                                                          String username,
+                                                          PublicSigningKey authorisedReader,
+                                                          byte[] auth,
+                                                          Optional<MultiFactorAuthResponse> mfa,
+                                                          Optional<String> deviceToken,
+                                                          boolean forceProxy,
+                                                          int timeoutMillis) {
         return poster.postUnzip(urlPrefix + Constants.LOGIN_URL + "getLogin?username=" + username
                         + "&author=" + ArrayOps.bytesToHex(authorisedReader.serialize())
                         + "&auth=" + ArrayOps.bytesToHex(auth)
                         + "&proxy=" + forceProxy
                         + "&mfaTypes=" + supportedMfaTypes()
-                        + mfa.map(mfaCode -> "&mfa=" + ArrayOps.bytesToHex(mfaCode.serialize())).orElse(""),
+                        + mfa.map(mfaCode -> "&mfa=" + ArrayOps.bytesToHex(mfaCode.serialize())).orElse("")
+                        + deviceToken.map(t -> "&device=" + t).orElse(""),
                         new byte[0], timeoutMillis)
-                .thenApply(res -> LoginResponse.fromCbor(CborObject.fromByteArray(res)).resp);
+                .thenApply(res -> LoginResponse.fromCbor(CborObject.fromByteArray(res)));
     }
 
     @Override

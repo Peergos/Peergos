@@ -534,7 +534,7 @@ public class MultiNodeNetworkTests {
                     .map(p -> p.length + " bytes").orElse("no pointer"));
             String loginRead = describe(() -> node2.account.getLoginData(username, loginKeys.publicSigningKey,
                     TimeLimitedClient.signNow(loginKeys.secretSigningKey).join(), Optional.empty(),
-                    false, false, true).join().isA() ? "login data present" : "2fa required");
+                    Optional.empty(), false, false, true).join().resp.isA() ? "login data present" : "2fa required");
             System.out.println("  from the mirror, pointer: " + pointerRead);
             System.out.println("  from the mirror, login:   " + loginRead);
             Assert.assertTrue("pointer served from the mirror: " + pointerRead, pointerRead.endsWith(" bytes"));

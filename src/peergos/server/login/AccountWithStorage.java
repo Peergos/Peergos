@@ -6,6 +6,7 @@ import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.*;
+import peergos.shared.login.*;
 import peergos.shared.login.mfa.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
@@ -86,14 +87,15 @@ public class AccountWithStorage implements Account {
     }
 
     @Override
-    public CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
-                                                                                          PublicSigningKey authorisedReader,
-                                                                                          byte[] auth,
-                                                                                          Optional<MultiFactorAuthResponse> mfa,
-                                                                                          boolean cacheMfaLoginData,
-                                                                                          boolean forceProxy,
-                                                                                          boolean forceNoCache) {
-        return target.getEntryData(username, authorisedReader, mfa);
+    public CompletableFuture<LoginResponse> getLoginData(String username,
+                                                         PublicSigningKey authorisedReader,
+                                                         byte[] auth,
+                                                         Optional<MultiFactorAuthResponse> mfa,
+                                                         Optional<String> deviceToken,
+                                                         boolean cacheMfaLoginData,
+                                                         boolean forceProxy,
+                                                         boolean forceNoCache) {
+        return target.getEntryData(username, authorisedReader, mfa, deviceToken);
     }
 
     @Override

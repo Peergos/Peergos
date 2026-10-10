@@ -131,7 +131,7 @@ public class Migrate {
         SigningKeyPair loginKeys = credentials.getUser();
         byte[] auth = TimeLimitedClient.signNow(loginKeys.secretSigningKey).join();
         Either<UserStaticData, MultiFactorAuthRequest> login = network.account.getLoginData(username,
-                loginKeys.publicSigningKey, auth, Optional.empty(), false, false, true).join();
+                loginKeys.publicSigningKey, auth, Optional.empty(), Optional.empty(), false, false, true).join().resp;
         if (login.isB())
             throw new IllegalStateException("Second factor auth is never mirrored, so " + username +
                     " can only be migrated by their home server");

@@ -63,6 +63,10 @@ public class Proxy {
                 t -> weMirror.apply(ownerKey) ? direct.get() : Futures.errored(t));
     }
 
+    public static boolean isHomeServer(CoreNode core, List<Cid> serverIds, PublicKeyHash ownerKey) {
+        return isUs(serverIds, homeServer(core, ownerKey));
+    }
+
     private static Multihash homeServer(CoreNode core, PublicKeyHash ownerKey) {
         List<Multihash> storageIds = core.getStorageProviders(ownerKey);
         if (storageIds.isEmpty())

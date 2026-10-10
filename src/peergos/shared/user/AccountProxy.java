@@ -2,6 +2,7 @@ package peergos.shared.user;
 
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.io.ipfs.Multihash;
+import peergos.shared.login.*;
 import peergos.shared.login.mfa.*;
 import peergos.shared.util.*;
 
@@ -15,11 +16,12 @@ public interface AccountProxy extends Account {
 
     CompletableFuture<Boolean> setLoginData(Multihash targetServerId, LoginData login, byte[] auth);
 
-    CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(Multihash targetServerId,
-                                                                                   String username,
-                                                                                   PublicSigningKey authorisedReader,
-                                                                                   byte[] auth,
-                                                                                   Optional<MultiFactorAuthResponse> mfa);
+    CompletableFuture<LoginResponse> getLoginData(Multihash targetServerId,
+                                                  String username,
+                                                  PublicSigningKey authorisedReader,
+                                                  byte[] auth,
+                                                  Optional<MultiFactorAuthResponse> mfa,
+                                                  Optional<String> deviceToken);
 
     CompletableFuture<List<MultiFactorAuthMethod>> getSecondAuthMethods(Multihash targetServerId, String username, byte[] auth);
 

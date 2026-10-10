@@ -5,6 +5,7 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
+import peergos.shared.login.*;
 import peergos.shared.login.mfa.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
@@ -71,20 +72,21 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     }
 
     @Override
-    public synchronized CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
-                                                                                                       PublicSigningKey authorisedReader,
-                                                                                                       byte[] auth,
-                                                                                                       Optional<MultiFactorAuthResponse> mfa,
-                                                                                                       boolean cacheMfaLoginData,
-                                                                                                       boolean forceProxy,
-                                                                                                       boolean forceNoCache) {
+    public synchronized CompletableFuture<LoginResponse> getLoginData(String username,
+                                                                      PublicSigningKey authorisedReader,
+                                                                      byte[] auth,
+                                                                      Optional<MultiFactorAuthResponse> mfa,
+                                                                      Optional<String> deviceToken,
+                                                                      boolean cacheMfaLoginData,
+                                                                      boolean forceProxy,
+                                                                      boolean forceNoCache) {
         if (loginData == null)
             throw new IllegalStateException("No login data present!");
         if (! loginData.left.username.equals(username))
             throw new IllegalStateException("No login data present for " + username);
         if (! loginData.left.authorisedReader.equals(authorisedReader))
             throw new IllegalStateException("You are not authorised to login as " + username);
-        return Futures.of(Either.a(loginData.left.entryPoints));
+        return Futures.of(new LoginResponse(Either.a(loginData.left.entryPoints)));
     }
 
     @Override

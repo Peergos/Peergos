@@ -238,14 +238,16 @@ public class UserContext {
                                                                                                     boolean forceProxy,
                                                                                                     NetworkAccess network) {
         return TimeLimitedClient.signNow(loginSecret)
-                .thenCompose(signedTime -> network.account.getLoginData(username, loginPub, signedTime, Optional.empty(), cacheMfaLoginData, forceProxy, false))
+                .thenCompose(signedTime -> network.account.getLoginData(username, loginPub, signedTime, Optional.empty(), Optional.empty(), cacheMfaLoginData, forceProxy, false))
+                .thenApply(login -> login.resp)
                 .thenCompose(res -> {
                     if (res.isA())
                         return Futures.of(res.a());
                     MultiFactorAuthRequest authReq = res.b();
                     return mfa.apply(authReq)
                             .thenCompose(authResp -> TimeLimitedClient.signNow(loginSecret)
-                                    .thenCompose(signedTime -> network.account.getLoginData(username, loginPub, signedTime, Optional.of(authResp), cacheMfaLoginData, forceProxy, false)))
+                                    .thenCompose(signedTime -> network.account.getLoginData(username, loginPub, signedTime, Optional.of(authResp), Optional.empty(), cacheMfaLoginData, forceProxy, false)))
+                            .thenApply(login -> login.resp)
                             .thenApply(login -> {
                                 if (login.isB())
                                     throw new IllegalStateException("Server rejected second factor auth");
@@ -258,7 +260,8 @@ public class UserContext {
                         // try to get entry data avoiding the cache
                         return TimeLimitedClient.signNow(loginSecret)
                                 .thenCompose(signedTime -> network.account.getLoginData(username, loginPub,
-                                        signedTime, Optional.empty(), cacheMfaLoginData, forceProxy, true))
+                                        signedTime, Optional.empty(), Optional.empty(), cacheMfaLoginData, forceProxy, true))
+                                .thenApply(login -> login.resp)
                                 .thenApply(entryData2 -> {
                                     try {
                                         return new Pair<>(entryData2.a(), entryData2.a().getData(loginRoot));

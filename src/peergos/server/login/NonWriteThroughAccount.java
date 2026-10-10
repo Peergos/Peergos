@@ -1,6 +1,7 @@
 package peergos.server.login;
 
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.login.*;
 import peergos.shared.login.mfa.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
@@ -25,17 +26,18 @@ public class NonWriteThroughAccount implements Account {
     }
 
     @Override
-    public CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
-                                                                                          PublicSigningKey authorisedReader,
-                                                                                          byte[] auth,
-                                                                                          Optional<MultiFactorAuthResponse>  mfa,
-                                                                                          boolean cacheMfaLoginData,
-                                                                                          boolean forceProxy,
-                                                                                          boolean forceNoCache) {
+    public CompletableFuture<LoginResponse> getLoginData(String username,
+                                                         PublicSigningKey authorisedReader,
+                                                         byte[] auth,
+                                                         Optional<MultiFactorAuthResponse> mfa,
+                                                         Optional<String> deviceToken,
+                                                         boolean cacheMfaLoginData,
+                                                         boolean forceProxy,
+                                                         boolean forceNoCache) {
         LoginData updated = modifications.get(username);
         if (updated == null)
-            return source.getLoginData(username, authorisedReader, auth, mfa, false, forceProxy, forceNoCache);
-        return Futures.of(Either.a(updated.entryPoints));
+            return source.getLoginData(username, authorisedReader, auth, mfa, deviceToken, false, forceProxy, forceNoCache);
+        return Futures.of(new LoginResponse(Either.a(updated.entryPoints)));
     }
 
     @Override

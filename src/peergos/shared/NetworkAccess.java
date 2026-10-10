@@ -233,7 +233,7 @@ public class NetworkAccess {
         OnlineState onlineState = new OnlineState(() -> localDht.id()
                 .thenApply(x -> true)
                 .exceptionally(t -> false));
-        return buildViaPeergosInstance(relative, relative, localDht, 7_000, hasher, true)
+        return buildViaPeergosInstance(relative, relative, localDht, 7_000, hasher, true, new JSDeviceTokenStore())
                 .thenApply(net -> net.withStorage(s ->
                         new UnauthedCachingStorage(s, new JSBlockCache(cacheSizeKiB/1024), hasher))
                         .withMutablePointerOfflineCache(m -> new OfflinePointerCache(m,
@@ -262,9 +262,10 @@ public class NetworkAccess {
                                                          ContentAddressedStorage localDht,
                                                          int mutableCacheTime,
                                                          Hasher hasher,
-                                                         boolean isJavascript) {
+                                                         boolean isJavascript,
+                                                         DeviceTokenStore deviceTokens) {
         return buildDirectS3Blockstore(localDht, core, apiPoster, true, hasher)
-                .thenCompose(dht -> build(core, dht, apiPoster, p2pPoster, mutableCacheTime, hasher, usernames, true, isJavascript));
+                .thenCompose(dht -> build(core, dht, apiPoster, p2pPoster, mutableCacheTime, hasher, usernames, true, isJavascript, deviceTokens));
     }
 
     public static CompletableFuture<NetworkAccess> buildViaPeergosInstance(HttpPoster apiPoster,
@@ -272,12 +273,13 @@ public class NetworkAccess {
                                                                             ContentAddressedStorage localDht,
                                                                             int mutableCacheTime,
                                                                             Hasher hasher,
-                                                                            boolean isJavascript) {
+                                                                            boolean isJavascript,
+                                                                            DeviceTokenStore deviceTokens) {
         CoreNode direct = buildDirectCorenode(apiPoster);
         return direct.getUsernames("")
                 .exceptionally(t -> Collections.emptyList())
                 .thenCompose(usernames -> build(usernames, direct, apiPoster, p2pPoster, localDht,
-                        mutableCacheTime, hasher, isJavascript));
+                        mutableCacheTime, hasher, isJavascript, deviceTokens));
     }
 
     public static CompletableFuture<NetworkAccess> buildViaGateway(HttpPoster apiPoster,
@@ -285,13 +287,14 @@ public class NetworkAccess {
                                                                    Multihash pkiServerNodeId,
                                                                    int mutableCacheTime,
                                                                    Hasher hasher,
-                                                                   boolean isJavascript) {
+                                                                   boolean isJavascript,
+                                                                   DeviceTokenStore deviceTokens) {
         // We are not on a Peergos server, hopefully an IPFS gateway
         ContentAddressedStorage localIpfs = buildLocalDht(apiPoster, false, hasher);
         CoreNode core = buildProxyingCorenode(p2pPoster, pkiServerNodeId);
         return core.getUsernames("").thenCompose(usernames ->
                         build(core, localIpfs, apiPoster, p2pPoster, mutableCacheTime, hasher,
-                                usernames, false, isJavascript));
+                                usernames, false, isJavascript, deviceTokens));
     }
 
     private static CompletableFuture<NetworkAccess> build(CoreNode core,
@@ -302,17 +305,18 @@ public class NetworkAccess {
                                                           Hasher hasher,
                                                           List<String> usernames,
                                                           boolean isPeergosServer,
-                                                          boolean isJavascript) {
+                                                          boolean isJavascript,
+                                                          DeviceTokenStore deviceTokens) {
         return (isPeergosServer ? localDht.ids() : Futures.of(Collections.singletonList(Proxy.ZERO)))
                 .thenApply(nodeIds -> {
                     if (isPeergosServer)
-                        return buildToPeergosServer(nodeIds, core, localDht, apiPoster, p2pPoster, mutableCacheTime, hasher, usernames, isJavascript);
+                        return buildToPeergosServer(nodeIds, core, localDht, apiPoster, p2pPoster, mutableCacheTime, hasher, usernames, isJavascript, deviceTokens);
                     ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(p2pPoster);
                     ContentAddressedStorage storage = new ContentAddressedStorage.Proxying(localDht, proxingDht, nodeIds, core, true, true, n -> true);
                     ContentAddressedStorage p2pDht = new CachingVerifyingStorage(new RetryStorage(storage, 7),
                             100 * 1024, 1_000, nodeIds, hasher);
                     MutablePointersProxy httpMutable = new HttpMutablePointers(apiPoster, p2pPoster);
-                    Account account = new HttpAccount(apiPoster, p2pPoster);
+                    Account account = new HttpAccount(apiPoster, p2pPoster, Optional.of(deviceTokens));
                     MutablePointers p2pMutable = new ProxyingMutablePointers(nodeIds, core, httpMutable, httpMutable, owner -> false);
 
                     SocialNetworkProxy httpSocial = new HttpSocialNetwork(apiPoster, p2pPoster);
@@ -335,11 +339,12 @@ public class NetworkAccess {
                                                      int mutableCacheTime,
                                                      Hasher hasher,
                                                      List<String> usernames,
-                                                     boolean isJavascript) {
+                                                     boolean isJavascript,
+                                                     DeviceTokenStore deviceTokens) {
         ContentAddressedStorage p2pDht = new CachingVerifyingStorage(new RetryStorage(localDht, 7),
                 100 * 1024, 1_000, nodeIds, hasher);
         MutablePointersProxy httpMutable = new HttpMutablePointers(apiPoster, p2pPoster);
-        Account account = new HttpAccount(apiPoster, p2pPoster);
+        Account account = new HttpAccount(apiPoster, p2pPoster, Optional.of(deviceTokens));
 
         SocialNetworkProxy httpSocial = new HttpSocialNetwork(apiPoster, p2pPoster);
         SpaceUsageProxy httpUsage = new HttpSpaceUsage(apiPoster, p2pPoster);

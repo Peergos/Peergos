@@ -31,31 +31,32 @@ public class OfflineAccountStore implements Account {
     }
 
     @Override
-    public CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
-                                                                                          PublicSigningKey authorisedReader,
-                                                                                          byte[] auth,
-                                                                                          Optional<MultiFactorAuthResponse>  mfa,
-                                                                                          boolean cacheMfaLoginData,
-                                                                                          boolean forceProxy,
-                                                                                          boolean forceNoCache) {
+    public CompletableFuture<LoginResponse> getLoginData(String username,
+                                                         PublicSigningKey authorisedReader,
+                                                         byte[] auth,
+                                                         Optional<MultiFactorAuthResponse> mfa,
+                                                         Optional<String> deviceToken,
+                                                         boolean cacheMfaLoginData,
+                                                         boolean forceProxy,
+                                                         boolean forceNoCache) {
         return Futures.asyncExceptionally(() -> {
                     if (online.isOnline())
-                        return target.getLoginData(username, authorisedReader, auth, mfa, cacheMfaLoginData, forceProxy, forceNoCache)
+                        return target.getLoginData(username, authorisedReader, auth, mfa, deviceToken, cacheMfaLoginData, forceProxy, forceNoCache)
                                 .thenApply(login -> {
-                                    if (login.isA() && (mfa.isEmpty() || cacheMfaLoginData))
-                                        local.setLoginData(new LoginData(username, login.a(), authorisedReader, Optional.empty()));
+                                    if (login.resp.isA() && (mfa.isEmpty() || cacheMfaLoginData))
+                                        local.setLoginData(new LoginData(username, login.resp.a(), authorisedReader, Optional.empty()));
                                     else // disable offline login if MFA is enabled
                                         local.removeLoginData(username);
                                     return login;
                                 });
                     online.updateAsync();
-                    return local.getEntryData(username, authorisedReader).thenApply(Either::a);
+                    return local.getEntryData(username, authorisedReader).thenApply(e -> new LoginResponse(Either.a(e)));
                 },
                 t -> {
                     if (t.getMessage().contains("Incorrect+password"))
                         return Futures.errored(new IllegalStateException("Incorrect password!"));
                     if (online.isOfflineException(t))
-                        return local.getEntryData(username, authorisedReader).thenApply(Either::a);
+                        return local.getEntryData(username, authorisedReader).thenApply(e -> new LoginResponse(Either.a(e)));
                     return Futures.errored(t);
                 });
     }
