@@ -18,18 +18,22 @@ import peergos.shared.util.Futures;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.net.ConnectException;
+import java.nio.channels.UnresolvedAddressException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.zip.ZipOutputStream;
+import javax.net.ssl.SSLHandshakeException;
 
 public class CLITests {
 
@@ -77,6 +81,33 @@ public class CLITests {
         Assert.assertEquals("2.5 GiB", CLI.formatSize((long) (2.5 * 1024 * 1024 * 1024)));
         // bigger than the largest unit stays in TiB rather than running off the end of the units
         Assert.assertEquals("5120 TiB", CLI.formatSize(5120L * 1024 * 1024 * 1024 * 1024));
+    }
+
+    @Test
+    public void errorMessages() {
+        // CompletionException -> ConnectException -> ConnectException -> UnresolvedAddressException, null messages
+        ConnectException inner = new ConnectException();
+        inner.initCause(new UnresolvedAddressException());
+        ConnectException outer = new ConnectException();
+        outer.initCause(inner);
+        Assert.assertEquals("host could not be resolved",
+                CLI.errorMessage(new CompletionException(null, outer)));
+
+        String alert = "(unrecognized_name) Received fatal alert: unrecognized_name";
+        String ssl = CLI.errorMessage(new CompletionException(new SSLHandshakeException(alert)));
+        Assert.assertTrue(ssl, ssl.contains("SSL handshake failed") && ssl.contains(alert));
+        Assert.assertFalse(ssl, ssl.contains("\n"));
+
+        Assert.assertEquals("Incorrect password",
+                CLI.errorMessage(new CompletionException(new IllegalStateException("Incorrect password"))));
+
+        String nameless = CLI.errorMessage(new IllegalStateException((String) null));
+        Assert.assertEquals("IllegalStateException", nameless);
+        Assert.assertFalse(nameless.startsWith("at "));
+
+        Assert.assertEquals("server said no", CLI.errorMessage(new IllegalStateException("server said\nno")));
+
+        Assert.assertEquals("Connection refused", CLI.errorMessage(new ConnectException("Connection refused")));
     }
 
     @Test

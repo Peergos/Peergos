@@ -35,6 +35,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.net.*;
 import java.nio.*;
+import java.nio.channels.UnresolvedAddressException;
 import java.nio.charset.*;
 import java.nio.file.*;
 import java.time.Instant;
@@ -48,6 +49,8 @@ import java.util.concurrent.atomic.*;
 import java.util.function.*;
 import java.util.logging.Level;
 import java.util.stream.*;
+
+import javax.net.ssl.SSLHandshakeException;
 
 import static org.jline.builtins.Completers.TreeCompleter.node;
 
@@ -207,9 +210,8 @@ public class CLI implements Runnable {
                     return "Unexpected cmd '" + parsedCommand.cmd + "'";
             }
         } catch (Exception ex) {
-            ex.printStackTrace();
-            return "Failed to execute " + parsedCommand;
-
+            Logging.LOG().log(Level.FINE, "Failed to execute " + parsedCommand, ex);
+            return "Failed to execute " + parsedCommand + ": " + errorMessage(ex);
         }
 
     }
@@ -783,8 +785,7 @@ public class CLI implements Runnable {
         try {
             cliContext.userContext.changePassword(currentPassword, newPassword, methods -> mfa(methods, terminal.writer(), reader)).join();
         } catch (Exception ex) {
-            ex.printStackTrace();
-            return "Failed to update password";
+            return "Failed to update password: " + errorMessage(ex);
         }
         return "Password updated";
     }
@@ -886,7 +887,6 @@ public class CLI implements Runnable {
         try {
             peergosFileSystem.grant(remotePath, userToGrantAccess, permission);
         } catch (Exception ex) {
-            ex.printStackTrace();
             return "Failed to share " + type + " '" + remoteString(remotePath) + "': " + errorMessage(ex);
         }
         return "Shared " + access + "-access to " + type + " '" + remoteString(remotePath) + "' with " + userToGrantAccess
@@ -911,7 +911,6 @@ public class CLI implements Runnable {
                     .orElseThrow(() -> new IllegalStateException("Could not find " + remotePath));
             cliContext.userContext.makePublic(file).join();
         } catch (Exception ex) {
-            ex.printStackTrace();
             return "Failed to publish " + type + " '" + remoteString(remotePath) + "': " + errorMessage(ex);
         }
         return "Made " + type + " '" + remoteString(remotePath) + "' public"
@@ -930,11 +929,27 @@ public class CLI implements Runnable {
         return Character.toUpperCase(s.charAt(0)) + s.substring(1);
     }
 
-    /** The message of the underlying failure, unwrapping the future's completion exception.
-     */
-    private static String errorMessage(Throwable t) {
-        Throwable cause = t instanceof CompletionException && t.getCause() != null ? t.getCause() : t;
-        return cause.getMessage() == null ? cause.toString() : cause.getMessage();
+    public static String errorMessage(Throwable t) {
+        // getRootCause stops at a checked exception, e.g. the ConnectException wrapping an UnresolvedAddressException
+        Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (Throwable current = t; current != null && seen.add(current); current = current.getCause()) {
+            if (current instanceof UnresolvedAddressException || current instanceof UnknownHostException)
+                return "host could not be resolved";
+            if (current instanceof SSLHandshakeException) {
+                String detail = oneLine(current.getMessage());
+                return detail == null ? "SSL handshake failed" : "SSL handshake failed: " + detail;
+            }
+        }
+        Throwable root = Exceptions.getRootCause(t);
+        String message = oneLine(root.getMessage());
+        return message != null ? message : root.getClass().getSimpleName();
+    }
+
+    private static String oneLine(String text) {
+        if (text == null)
+            return null;
+        String line = text.replace('\r', ' ').replace('\n', ' ');
+        return line.isBlank() ? null : line;
     }
 
     public String follow(ParsedCommand cmd) {
@@ -946,8 +961,7 @@ public class CLI implements Runnable {
         try {
             cliContext.userContext.sendInitialFollowRequest(userToFollow).join();
         } catch (Exception ex) {
-            ex.printStackTrace();
-            return "Failed to send follow request";
+            return "Failed to send follow request: " + errorMessage(ex);
         }
         return "Sent follow request to '" + userToFollow + "'";
     }
@@ -1023,7 +1037,6 @@ public class CLI implements Runnable {
                         .collect(Collectors.toList());
 
         } catch (IOException ioe) {
-            ioe.printStackTrace();
         }
         return Collections.emptyList();
     }
@@ -1191,14 +1204,23 @@ public class CLI implements Runnable {
                 reader.readLine("Enter username" + PROMPT).trim();
 
         Optional<ProxySelector> proxy = ProxyChooser.build(args);
-        NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https"), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-shell"), proxy).join();
         Consumer<String> progressConsumer =  msg -> {
             writer.println(msg);
             writer.flush();
             return;
         };
 
-        boolean isRegistered = network.isUsernameRegistered(username).join();
+        NetworkAccess network;
+        boolean isRegistered;
+        try {
+            network = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https"), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-shell"), proxy).join();
+            isRegistered = network.isUsernameRegistered(username).join();
+        } catch (Exception ex) {
+            writer.println("Could not reach " + address + ": " + errorMessage(ex));
+            writer.flush();
+            System.exit(1);
+            return null;
+        }
         if (! isRegistered) {
             String password = Passwords.generate();
             writer.println("Generated password: " + password);
@@ -1212,15 +1234,31 @@ public class CLI implements Runnable {
             writer.println("(An admin of the server can create one with: java -jar Peergos.jar quota token create)");
             String token = reader.readLine(PROMPT).trim();;
 
-            UserContext userContext = UserContext.signUp(username, password, token, Optional.empty(), s -> {},
-                    Optional.empty(), network, CRYPTO, progressConsumer).join();
+            UserContext userContext;
+            try {
+                userContext = UserContext.signUp(username, password, token, Optional.empty(), s -> {},
+                        Optional.empty(), network, CRYPTO, progressConsumer).join();
+            } catch (Exception ex) {
+                writer.println("Sign up failed: " + errorMessage(ex));
+                writer.flush();
+                System.exit(1);
+                return null;
+            }
             return new CLIContext(terminal, userContext, serverURL.toString(), username);
         } else {
             String password = args.hasArg("PEERGOS_PASSWORD") ?
                     args.getArg("PEERGOS_PASSWORD") :
                     reader.readLine("Enter password for '" + username + "'" + PROMPT, PASSWORD_MASK);
-            UserContext userContext = UserContext.signIn(username, password,
-                    methods -> mfa(methods, writer, reader), false, false, network, CRYPTO, progressConsumer).join();
+            UserContext userContext;
+            try {
+                userContext = UserContext.signIn(username, password,
+                        methods -> mfa(methods, writer, reader), false, false, network, CRYPTO, progressConsumer).join();
+            } catch (Exception ex) {
+                writer.println("Login failed: " + errorMessage(ex));
+                writer.flush();
+                System.exit(1);
+                return null;
+            }
             return new CLIContext(terminal, userContext, serverURL.toString(), username);
         }
     }
