@@ -463,6 +463,26 @@ public abstract class UserTests {
         Assert.assertTrue(updatedFile.getFileProperties().modified.isAfter(emptyFile.getFileProperties().modified));
     }
 
+    @Test
+    public void namesWithLeadingAndTrailingSpaces() {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        byte[] data = randomData(1024);
+        FileWrapper dir = context.getUserRoot().join()
+                .getOrMkdirs(PathUtil.getUntrimmed(" dir /sub "), network, false, context.mirrorBatId(), crypto).join();
+        for (String name : List.of(" leading.txt", "trailing.txt ", " both "))
+            dir = dir.uploadOrReplaceFile(name, AsyncReader.build(data), data.length, network, crypto, () -> false, l -> {}).join();
+
+        for (String name : List.of(" leading.txt", "trailing.txt ", " both ")) {
+            String path = username + "/ dir /sub /" + name;
+            Optional<FileWrapper> f = context.getByPath(path).join();
+            Assert.assertTrue(path, f.isPresent());
+            Assert.assertEquals(name, f.get().getName());
+        }
+        Assert.assertTrue(context.getByPath(PathUtil.getUntrimmed(username + "/ dir /sub / leading.txt")).join().isPresent());
+    }
+
     /** An in-flight upload holds the write lock for the whole file, so reads must not queue behind it.
      */
     @Test

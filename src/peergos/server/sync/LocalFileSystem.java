@@ -67,7 +67,7 @@ public class LocalFileSystem implements SyncFilesystem {
 
     @Override
     public Path resolve(String p) {
-        return PathUtil.get(p);
+        return PathUtil.getUntrimmed(p);
     }
 
     @Override
