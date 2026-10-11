@@ -199,13 +199,18 @@ public class FileWrapper {
             else
                 return CompletableFuture.completedFuture(Optional.empty());
 
-        Path canon = PathUtil.get(path);
-        return getChild(version, canon.getName(0).toString(), network).thenCompose(child -> {
+        // don't use PathUtil.get here, it trims, which breaks names with leading or trailing spaces
+        String canon = path.replaceAll("\\\\", "/");
+        if (canon.startsWith("/"))
+            canon = canon.substring(1);
+        int slash = canon.indexOf("/");
+        String name = slash < 0 ? canon : canon.substring(0, slash);
+        String rest = slash < 0 ? "" : canon.substring(slash + 1);
+        return getChild(version, name, network).thenCompose(child -> {
             if (child.isPresent()) {
-                int names = canon.getNameCount();
-                if (names == 1)
+                if (rest.isEmpty())
                     return Futures.of(child);
-                return child.get().getDescendentByPath(canon.subpath(1, names).toString(), child.get().version, hasher, network);
+                return child.get().getDescendentByPath(rest, child.get().version, hasher, network);
             }
             return CompletableFuture.completedFuture(Optional.empty());
         });
@@ -1273,7 +1278,7 @@ public class FileWrapper {
         }
 
         public Path path() {
-            return PathUtil.get(relativePath.stream().collect(Collectors.joining("/")));
+            return PathUtil.getUntrimmed(relativePath.stream().collect(Collectors.joining("/")));
         }
     }
 
@@ -1310,7 +1315,7 @@ public class FileWrapper {
                         (s, c) -> {
                             return getUpdated(s, network).thenCompose(us -> Futures.reduceAll(directories, us,
                                             (dir, children) -> dir.getOrMkdirs(children.relativePath, false, mirror, network, crypto, dir.version, c)
-                                                    .thenCompose(p -> uploadFolder(PathUtil.get(path).resolve(children.path()), p.right,
+                                                    .thenCompose(p -> uploadFolder(PathUtil.getUntrimmed(path).resolve(children.path()), p.right,
                                                             children, mirrorBat, txns, resumeFile, replaceFile, commitWatcher, isCancelled, opened, network, crypto, c)
                                                             .thenCompose(v -> dir.getUpdated(v, network))),
                                             (a, b) -> b))
@@ -2252,7 +2257,7 @@ public class FileWrapper {
         List<String> elements = Arrays.asList(finalPath.split("/"));
         if (! isWritable())
             return getChild(elements.get(0), crypto.hasher, network)
-                    .thenCompose(kid -> kid.get().getOrMkdirs(PathUtil.get(elements.subList(1, elements.size())
+                    .thenCompose(kid -> kid.get().getOrMkdirs(PathUtil.getUntrimmed(elements.subList(1, elements.size())
                             .stream().collect(Collectors.joining("/"))), network, isSystemFolder, mirrorBat, crypto));
         // Only take the write lock if something is actually missing, otherwise opening an app whilst
         // an upload is in flight would wait for the upload
@@ -2542,7 +2547,7 @@ public class FileWrapper {
         }).thenCompose(x -> {
             // ensure we aren't trying to move a folder to a descendant folder, which will result in data loss!
             return target.getPath(context.network).thenApply(targetPath -> {
-                        Path targetP = PathUtil.get(targetPath);
+                        Path targetP = PathUtil.getUntrimmed(targetPath);
                         if (targetP.startsWith(ourPath))
                             throw new IllegalStateException("You cannot move a folder to a descendant folder");
                         return true;
@@ -2613,7 +2618,7 @@ public class FileWrapper {
                                                                             freshParent.entryWriter, net, context.crypto.random, hasher)))
                                                     .thenCompose(v4 -> !ourFile || shared.isEmpty() ? Futures.of(v4) : context.sharedWithCache.clearSharedWith(ourPath, v4, c, net))
                                                     .thenCompose(v5 -> !ourFile || shared.isEmpty() ? Futures.of(v5) : context.sharedWithCache.addAllSharedWith(shared.entrySet().stream()
-                                                            .collect(Collectors.toMap(e -> PathUtil.get(newPath).resolve(e.getKey().relativize(ourPath)), e -> e.getValue())), v5, c, net))),
+                                                            .collect(Collectors.toMap(e -> PathUtil.getUntrimmed(newPath).resolve(e.getKey().relativize(ourPath)), e -> e.getValue())), v5, c, net))),
                                             net.dhtClient);
 
                                 }

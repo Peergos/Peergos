@@ -116,6 +116,37 @@ public class SyncTests {
     }
 
     @Test
+    public void namesWithLeadingAndTrailingSpaces() throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync");
+        Path base2 = Files.createTempDirectory("peergos-sync");
+
+        LocalFileSystem localFs = new LocalFileSystem(base1, Main.initCrypto().hasher);
+        LocalFileSystem remoteFs = new LocalFileSystem(base2, Main.initCrypto().hasher);
+        SyncState syncedState = new JdbcTreeState(":memory:");
+
+        List<String> relPaths = List.of(" leading.txt", "trailing.txt ", "dir/ leading.txt", "dir/trailing.txt ",
+                " dir /sub/ both .txt");
+        byte[] data = new byte[1024];
+        new Random(42).nextBytes(data);
+        for (String relPath : relPaths) {
+            Path p = base1.resolve(Paths.get("", relPath.split("/")));
+            Files.createDirectories(p.getParent());
+            Files.write(p, data, StandardOpenOption.CREATE);
+        }
+
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+        for (String relPath : relPaths) {
+            Assert.assertNotNull(relPath, syncedState.byPath(relPath));
+            Assert.assertArrayEquals(relPath, data, Files.readAllBytes(base2.resolve(Paths.get("", relPath.split("/")))));
+        }
+
+        // sync should be stable
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+        for (String relPath : relPaths)
+            Assert.assertNotNull(relPath, syncedState.byPath(relPath));
+    }
+
+    @Test
     public void renamesWithDuplicates() throws Exception {
         for (int copies=2; copies < 15; copies++)
             for (int renames=1; renames <= copies; renames++)

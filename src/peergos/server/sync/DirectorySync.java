@@ -491,7 +491,7 @@ public class DirectorySync {
                     FileState synced = syncedVersions.byPath(file.relPath);
                     if (synced != null)
                         return;
-                    Path p = PathUtil.get(file.relPath);
+                    Path p = PathUtil.getUntrimmed(file.relPath);
                     if (IGNORED_FILENAMES.contains(p.getFileName().toString()))
                         return;
                     FileState remote = initialRemote.byPath(file.relPath);
@@ -604,7 +604,7 @@ public class DirectorySync {
                         syncedVersions.removeLocalDelete(path);
                     if (! syncRemoteDeletes && syncedVersions.hasRemoteDelete(path))
                         syncedVersions.removeRemoteDelete(path);
-                } else if (! IGNORED_FILENAMES.contains(PathUtil.get(path).getFileName().toString()))
+                } else if (! IGNORED_FILENAMES.contains(PathUtil.getUntrimmed(path).getFileName().toString()))
                     allChangedPaths.add(path);
             }
             Set<String> doneFiles = Collections.synchronizedSet(new HashSet<>());
@@ -1441,7 +1441,7 @@ public class DirectorySync {
                     version.update(props.meta.get().version);
             } else {
                 int chunkSize = chunkSizeFor(props.meta, atSync);
-                HashTree hashTree = fs.hashFile(PathUtil.get(props.relPath), props.meta, relPath, synced, props.size, chunkSize);
+                HashTree hashTree = fs.hashFile(PathUtil.getUntrimmed(props.relPath), props.meta, relPath, synced, props.size, chunkSize);
                 if (props.meta.isPresent()) {
                     version.update(props.meta.get().version);
                     Optional<HashBranch> remoteHash = props.meta.get().getFileProperties().treeHash;
