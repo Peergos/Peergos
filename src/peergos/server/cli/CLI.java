@@ -50,7 +50,7 @@ import java.util.function.*;
 import java.util.logging.Level;
 import java.util.stream.*;
 
-import javax.net.ssl.SSLException;
+import javax.net.ssl.SSLHandshakeException;
 
 import static org.jline.builtins.Completers.TreeCompleter.node;
 
@@ -210,8 +210,8 @@ public class CLI implements Runnable {
                     return "Unexpected cmd '" + parsedCommand.cmd + "'";
             }
         } catch (Exception ex) {
+            Logging.LOG().log(Level.FINE, "Failed to execute " + parsedCommand, ex);
             return "Failed to execute " + parsedCommand + ": " + errorMessage(ex);
-
         }
 
     }
@@ -929,42 +929,22 @@ public class CLI implements Runnable {
         return Character.toUpperCase(s.charAt(0)) + s.substring(1);
     }
 
-    /** One line naming the underlying failure, walking the whole cause chain.
-     *
-     *  Shared getRootCause stops at the first non-RuntimeException, which hides an
-     *  UnresolvedAddressException under the ConnectException that wraps it.
-     */
     public static String errorMessage(Throwable t) {
-        boolean unresolved = false;
-        boolean ssl = false;
-        String handshake = null;
-        String message = null;
-        Class<?> type = t.getClass();
-        for (Throwable current = t; current != null; current = current.getCause()) {
+        // getRootCause stops at a checked exception, e.g. the ConnectException wrapping an UnresolvedAddressException
+        Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (Throwable current = t; current != null && seen.add(current); current = current.getCause()) {
             if (current instanceof UnresolvedAddressException || current instanceof UnknownHostException)
-                unresolved = true;
-            if (current instanceof SSLException) {
-                ssl = true;
+                return "host could not be resolved";
+            if (current instanceof SSLHandshakeException) {
                 String detail = oneLine(current.getMessage());
-                if (detail != null)
-                    handshake = detail;
+                return detail == null ? "SSL handshake failed" : "SSL handshake failed: " + detail;
             }
-            String detail = oneLine(current.getMessage());
-            if (detail != null)
-                message = detail;
-            type = current.getClass();
-            if (current.getCause() == current)
-                break;
         }
-        if (unresolved)
-            return "host could not be resolved";
-        if (ssl)
-            return handshake == null ? "SSL handshake failed" : "SSL handshake failed: " + handshake;
-        return message != null ? message : type.getSimpleName();
+        Throwable root = Exceptions.getRootCause(t);
+        String message = oneLine(root.getMessage());
+        return message != null ? message : root.getClass().getSimpleName();
     }
 
-    /** A server body must not reintroduce a trace by containing a newline.
-     */
     private static String oneLine(String text) {
         if (text == null)
             return null;
@@ -1057,7 +1037,6 @@ public class CLI implements Runnable {
                         .collect(Collectors.toList());
 
         } catch (IOException ioe) {
-            // tab completion has nothing to offer when the local path cannot be listed
         }
         return Collections.emptyList();
     }
