@@ -46,10 +46,8 @@ public class FileBlockCache implements BlockCache {
         File sizeFile = root.resolve("size.bin").toFile();
         boolean needToRecount = true;
         if (sizeFile.exists()) {
-            try {
-                DataInputStream din = new DataInputStream(new FileInputStream(sizeFile));
+            try (DataInputStream din = new DataInputStream(new FileInputStream(sizeFile))) {
                 long size = din.readLong();
-                din.close();
                 if (size >= 0 && size / 2 <= this.maxSizeBytes) {
                     totalSize.set(size);
                     needToRecount = false;
@@ -59,7 +57,7 @@ public class FileBlockCache implements BlockCache {
                             + " bytes (max size is " + this.maxSizeBytes + "), recounting...");
                 }
             } catch (IOException e) {
-                throw new RuntimeException(e);
+                LOG.log(Level.WARNING, "Unreadable file block cache size file, recounting...", e);
             }
         }
         if (needToRecount) {
@@ -116,11 +114,15 @@ public class FileBlockCache implements BlockCache {
         while (true) {
             if (needToCommitSize.get()) {
                 try {
-                    File sizeFile = root.resolve("size.bin").toFile();
-                    DataOutputStream dout = new DataOutputStream(new FileOutputStream(sizeFile));
-                    dout.writeLong(totalSize.get());
-                    dout.flush();
-                    dout.close();
+                    // write-then-rename so a kill mid-write can't leave a truncated size.bin
+                    Path tmp = root.resolve("size.bin.tmp");
+                    try (FileOutputStream fout = new FileOutputStream(tmp.toFile());
+                         DataOutputStream dout = new DataOutputStream(fout)) {
+                        dout.writeLong(totalSize.get());
+                        dout.flush();
+                        fout.getFD().sync();
+                    }
+                    Files.move(tmp, root.resolve("size.bin"), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
                     needToCommitSize.set(false);
                 } catch (Exception e) {
                     LOG.log(Level.WARNING, e, () -> e.getMessage());
