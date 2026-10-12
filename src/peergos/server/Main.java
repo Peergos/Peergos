@@ -731,7 +731,7 @@ public class Main extends Builder {
                             Optional.of(new MountConfigHandler(mountProps)));
 
                     InetSocketAddress localAPIAddress = new InetSocketAddress("localhost", port);
-                    List<String> appSubdomains = Arrays.asList("markup-viewer,calendar,code-editor,pdf".split(","));
+                    List<String> appSubdomains = Arrays.asList("markup-viewer,calendar,address-book,code-editor,pdf".split(","));
                     int connectionBacklog = 50;
                     // a concurrency cap rather than a thread count: requests past it are refused
                     int handlerPoolSize = 1000;
@@ -1103,7 +1103,7 @@ public class Main extends Builder {
             Optional<String> basicAuth = a.getOptionalArg("basic-auth");
             List<String> blockstoreDomains = S3Config.getBlockstoreDomains(a);
             Optional<String> paymentDomain = a.getOptionalArg("payment-domain");
-            List<String> appSubdomains = Arrays.asList(a.getArg("apps", "markup-viewer,email,calendar,code-editor,pdf").split(","));
+            List<String> appSubdomains = Arrays.asList(a.getArg("apps", "markup-viewer,email,calendar,address-book,code-editor,pdf").split(","));
             List<String> frameDomains = paymentDomain.map(Arrays::asList).orElse(Collections.emptyList());
 
             localAPI.initAndStart(localAPIAddress, nodeIds, tlsProps, publicHostname, blockstoreDomains, frameDomains, appSubdomains,
