@@ -1253,6 +1253,23 @@ public class MultiUserTests {
     }
 
     @Test
+    public void followRequestsSentAtOnce() throws Exception {
+        // each request adds its target to the same file of pending requests, so sent at once they can lose each other's
+        UserContext alice = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
+        List<UserContext> others = new ArrayList<>();
+        for (int i = 0; i < 5; i++)
+            others.add(PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto));
+        List<CompletableFuture<?>> sends = others.stream()
+                .map(u -> CompletableFuture.runAsync(() -> alice.sendInitialFollowRequest(u.username).join()))
+                .collect(Collectors.toList());
+        for (CompletableFuture<?> send : sends)
+            send.get();
+        Set<String> pending = alice.getSocialState().get().pendingOutgoing;
+        for (UserContext u : others)
+            assertTrue("Waiting on " + u.username + ", among " + pending, pending.contains(u.username));
+    }
+
+    @Test
     public void verifyFriend() {
         String username1 = random();
         String password1 = random();
