@@ -262,12 +262,7 @@ public class LocalFileSystem implements SyncFilesystem {
     @Override
     public long filesCount() throws IOException {
         AtomicLong count = new AtomicLong(0);
-        try (Stream<Path> stream = Files.list(root)) {
-            stream.forEach(p -> {
-                if (Files.isRegularFile(p))
-                    count.incrementAndGet();
-            });
-        }
+        applyToSubtree(root, f -> count.incrementAndGet(), d -> {});
         return count.get();
     }
 
