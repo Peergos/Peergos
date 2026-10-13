@@ -687,7 +687,7 @@ public class DirectorySync {
 
             for (Set<String> smallFiles : smallFileBatches) {
                 if (!smallFiles.isEmpty()) {
-                    LOG.accept("Remote: bulk uploading " + smallFiles.size() + " small files");
+                    LOG.accept("Remote: bulk uploading " + smallFiles.size() + " small files" + " " + progress);
                     Map<String, FileWrapper.FolderUploadProperties> folders = new HashMap<>();
                     for (String relPath : smallFiles) {
                         doneFiles.add(relPath);
@@ -761,7 +761,7 @@ public class DirectorySync {
                 byFolder.forEach((dir, files) -> {
                     if (isCancelled.get())
                         throw new RuntimeException("Sync cancelled before deleting from " + dir);
-                    LOG.accept("REMOTE: bulk deleting " + files.size() + " from " + remoteFS.resolve(dir));
+                    LOG.accept("REMOTE: bulk deleting " + files.size() + " from " + remoteFS.resolve(dir) + " " + progress);
                     remoteFS.bulkDelete(remoteFS.resolve(dir), files);
                     for (String file : files) {
                         String path = dir + (dir.isEmpty() ? "" : "/") + file;
@@ -828,24 +828,24 @@ public class DirectorySync {
                 } else if (hasLocal) {
                     if (hasSynced) { // delete
                         if (syncRemoteDeletes) {
-                            LOG.accept("Sync local: delete dir " + dirPath);
+                            LOG.accept("Sync local: delete dir " + dirPath + " " + progress);
                             localFS.delete(localFS.resolve(dirPath));
                             syncedVersions.removeDir(dirPath);
                         }
                     } else {
-                        LOG.accept("Sync Remote: mkdir " + dirPath);
+                        LOG.accept("Sync Remote: mkdir " + dirPath + " " + progress);
                         remoteFS.mkdirs(remoteFS.resolve(dirPath));
                         syncedVersions.addDir(dirPath);
                     }
                 } else {
                     if (hasSynced) { // delete
                         if (syncLocalDeletes) {
-                            LOG.accept("Sync Remote: delete dir " + dirPath);
+                            LOG.accept("Sync Remote: delete dir " + dirPath + " " + progress);
                             remoteFS.delete(remoteFS.resolve(dirPath));
                             syncedVersions.removeDir(dirPath);
                         }
                     } else {
-                        LOG.accept("Sync Local: mkdir " + dirPath);
+                        LOG.accept("Sync Local: mkdir " + dirPath + " " + progress);
                         localFS.mkdirs(localFS.resolve(dirPath));
                         syncedVersions.addDir(dirPath);
                     }
