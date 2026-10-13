@@ -2456,24 +2456,42 @@ public class UserContext {
     }
 
     private CompletableFuture<Boolean> removeFromPendingOutgoing(String usernameToRemove) {
-        return getUserRoot()
-                .thenCompose(home -> home.hasChild(SOCIAL_STATE_FILENAME, crypto.hasher, network)
-                        .thenCompose(exists ->  {
-                            if (! exists)
-                                return CompletableFuture.completedFuture(true);
-                            return home.getChild(SOCIAL_STATE_FILENAME, crypto.hasher, network)
-                                    .thenCompose(fileOpt ->
-                                            fileOpt.get().getInputStream(network, crypto, x -> {})
-                                                    .thenCompose(reader -> Serialize.parse(reader, fileOpt.get().getSize(),
-                                                            PendingSocialState::fromCbor))
-                                                    .thenCompose(current -> {
-                                                        PendingSocialState updated = current.withoutPending(usernameToRemove);
-                                                        byte[] raw = updated.serialize();
-                                                        return fileOpt.get().overwriteFile(AsyncReader.build(raw), raw.length,
-                                                                network, crypto, x -> {})
-                                                                .thenApply(x -> true);
-                                                    }));
+        return changePendingSocialState(current -> current.withoutPending(usernameToRemove));
+    }
+
+    // Each change to the pending social state reads the file, changes it and writes it back, so two at once lose
+    // one: a follow request sent while a reply is taken in put back the name the reply had removed, and with the
+    // reply gone, nothing ever answered that request. So they are made one after another.
+    private CompletableFuture<Boolean> pendingSocialStateChanges = Futures.of(true);
+
+    private synchronized CompletableFuture<Boolean> changePendingSocialState(Function<PendingSocialState, PendingSocialState> change) {
+        CompletableFuture<Boolean> next = pendingSocialStateChanges
+                .exceptionally(t -> true)
+                .thenCompose(x -> getUserRoot())
+                .thenCompose(home -> home.getChild(SOCIAL_STATE_FILENAME, crypto.hasher, network)
+                        .thenCompose(fileOpt -> {
+                            if (fileOpt.isEmpty()) {
+                                PendingSocialState updated = change.apply(PendingSocialState.empty());
+                                if (updated.pendingOutgoingFollowRequests.isEmpty())
+                                    return Futures.of(true);
+                                byte[] raw = updated.serialize();
+                                return home.uploadFileSection(SOCIAL_STATE_FILENAME, AsyncReader.build(raw), true, 0, raw.length,
+                                                Optional.empty(), true, network, crypto, () -> false, y -> {},
+                                                crypto.random.randomBytes(32), Optional.empty(), Optional.of(Bat.random(crypto.random)),
+                                                mirrorBatId())
+                                        .thenApply(y -> true);
+                            }
+                            FileWrapper file = fileOpt.get();
+                            return file.getInputStream(network, crypto, y -> {})
+                                    .thenCompose(reader -> Serialize.parse(reader, file.getSize(), PendingSocialState::fromCbor))
+                                    .thenCompose(current -> {
+                                        byte[] raw = change.apply(current).serialize();
+                                        return file.overwriteFile(AsyncReader.build(raw), raw.length, network, crypto, y -> {})
+                                                .thenApply(y -> true);
+                                    });
                         }));
+        pendingSocialStateChanges = next;
+        return next;
     }
 
     @JsMethod
@@ -2685,12 +2703,7 @@ public class UserContext {
                                                 .<Boolean>thenCompose(friendRoot -> {
                                                     EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(), username);
                                                     FollowRequest followReq = new FollowRequest(Optional.of(entry), Optional.ofNullable(requestedKey));
-                                                    PendingSocialState updated = pending.withPending(targetUsername);
-                                                    byte[] raw = updated.toCbor().serialize();
-                                                    return getUserRoot().thenCompose(home -> home.uploadFileSection(
-                                                                    SOCIAL_STATE_FILENAME, AsyncReader.build(raw), true, 0, raw.length, Optional.empty(),
-                                                                    true, network, crypto, () -> false, x -> {}, crypto.random.randomBytes(32),
-                                                                    Optional.empty(), Optional.of(Bat.random(crypto.random)), mirrorBatId()))
+                                                    return changePendingSocialState(current -> current.withPending(targetUsername))
                                                             .<Boolean>thenCompose(x -> blindAndSendFollowRequest(targetSigner, targetUser, followReq, 3));
                                                 }),
                                         // an earlier request to them may still be answered, so leave its state alone
