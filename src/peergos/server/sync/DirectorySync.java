@@ -470,8 +470,6 @@ public class DirectorySync {
             // Do an incremental sync of only files to make progress quicker
             // We don't need to prehash entire dirs here,
             // because we are not trying to detect moves/renames
-            SyncProgress progress = new SyncProgress(localFS.filesCount() - syncedVersions.filesCount());
-
             // Enumerate the remote once here rather than probing it a file at a time. As well as
             // being far cheaper, it lets us record a synced entry for every file that already
             // matches remotely, whatever its size. Only recording the large ones would leave a
@@ -485,19 +483,27 @@ public class DirectorySync {
                 buildDirState(remoteFS, initialRemote, syncedVersions, isCancelled);
                 LOG.accept("Found " + initialRemote.filesCount() + " remote files in " + (System.currentTimeMillis() - r0)/1_000 + "s");
 
+                // every local file is visited, so count each one, including those skipped
+                SyncProgress progress = new SyncProgress(localFS.filesCount());
                 localFS.applyToSubtree(file -> {
                     if (isCancelled.get())
                         throw new RuntimeException("Sync cancelled during initial scan");
                     FileState synced = syncedVersions.byPath(file.relPath);
-                    if (synced != null)
+                    if (synced != null) {
+                        progress.doneFile();
                         return;
+                    }
                     Path p = PathUtil.getUntrimmed(file.relPath);
-                    if (IGNORED_FILENAMES.contains(p.getFileName().toString()))
+                    if (IGNORED_FILENAMES.contains(p.getFileName().toString())) {
+                        progress.doneFile();
                         return;
+                    }
                     FileState remote = initialRemote.byPath(file.relPath);
                     if (remote == null) {
-                        if (file.size <= 1024*1024) // avoid doing many small files in non bulk uploads
+                        if (file.size <= 1024*1024) { // avoid doing many small files in non bulk uploads
+                            progress.doneFile();
                             return;
+                        }
                         try {
                             LOG.accept("REMOTE: Uploading " + file.relPath + " " + progress);
                             int chunkSize = FileProperties.chunkSizeForNewFiles();
@@ -515,13 +521,15 @@ public class DirectorySync {
                         } catch (IOException e) {
                             throw new RuntimeException(e);
                         }
-                    } else if (remote.size == file.size) {
+                    } else if (remote.size != file.size) {
+                        progress.doneFile();
+                    } else {
                         // hashing here is not extra work: recording the entry lets buildDirState
                         // below match it on modtime and size and skip hashing the file again
                         HashTree localHash = localFS.hashFile(p, Optional.empty(), file.relPath, syncedVersions, file.size, remote.chunkSize);
+                        progress.doneFile();
                         if (localHash.equals(remote.hashTree)) {
                             syncedVersions.add(new FileState(file.relPath, file.modifiedTime, file.size, localHash, remote.chunkSize));
-                            progress.doneFile();
                             LOG.accept("Skipping identical remote file in initial sync: " + file.relPath + " " + progress);
                         }
                     }
