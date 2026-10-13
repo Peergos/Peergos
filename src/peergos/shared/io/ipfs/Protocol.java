@@ -34,6 +34,7 @@ public class Protocol {
         GARLIC64(446, LENGTH_PREFIXED_VAR_SIZE, "garlic64"),
         GARLIC32(447, LENGTH_PREFIXED_VAR_SIZE, "garlic32"),
         QUIC(460, 0, "quic"),
+        QUIC_V1(461, 0, "quic-v1"),
         WS(477, 0, "ws"),
         WSS(478, 0, "wss"),
         P2PCIRCUIT(290, 0, "p2p-circuit"),
