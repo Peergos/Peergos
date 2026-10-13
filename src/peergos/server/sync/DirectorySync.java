@@ -514,7 +514,7 @@ public class DirectorySync {
                                     0, file.size, ResumeUploadProps.random(crypto));
                             syncedVersions.startCopies(List.of(op));
                             remoteFS.setBytes(p, 0, localFS.getBytes(p, 0), file.size, Optional.of(hashTree),
-                                    Optional.of(modified), localFS.getThumbnail(p), op.props, isCancelled, LOG);
+                                    Optional.of(modified), localFS.getThumbnail(p), op.props, isCancelled, m -> LOG.accept(m + " " + progress));
                             syncedVersions.finishCopies(List.of(op));
                             syncedVersions.add(new FileState(file.relPath, file.modifiedTime, file.size, hashTree, chunkSize));
                             progress.doneFile();
@@ -912,6 +912,8 @@ public class DirectorySync {
                                 Supplier<Boolean> isCancelled,
                                 Consumer<String> LOG,
                                 SyncProgress progress) throws IOException {
+        // per MiB transfer lines replace the status, so they carry the pass's count too
+        Consumer<String> transferLog = m -> LOG.accept(m + " " + progress);
         long totalSpace = localFs.totalSpace();
         long freeSpace = localFs.freeSpace();
 
@@ -950,7 +952,7 @@ public class DirectorySync {
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
-                    Optional<LocalDateTime> actualModTime = copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, isCancelled, LOG);
+                    Optional<LocalDateTime> actualModTime = copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, isCancelled, transferLog);
                     syncedVersions.add(remote.withModtime(actualModTime));
                     progress.doneFile();
                 }
@@ -986,7 +988,7 @@ public class DirectorySync {
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(false, localFs.resolve(local.relPath), remoteFs.resolve(local.relPath), local, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
-                    Optional<LocalDateTime> actualModTime = copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions, isCancelled, LOG);
+                    Optional<LocalDateTime> actualModTime = copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions, isCancelled, transferLog);
                     syncedVersions.add(local.withModtime(actualModTime));
                     progress.doneFile();
                 }
@@ -1016,14 +1018,14 @@ public class DirectorySync {
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
-                    Optional<LocalDateTime> actualModTime = copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, isCancelled, LOG);
+                    Optional<LocalDateTime> actualModTime = copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, isCancelled, transferLog);
                     syncedVersions.add(remote.withModtime(actualModTime));
 
                     List<Pair<Long, Long>> diffs2 = local.diffRanges(null);
                     List<CopyOp> ops2 = diffs2.stream()
                             .map(d -> new CopyOp(false, localFs.resolve(renamed.relPath), remoteFs.resolve(renamed.relPath), renamed, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
-                    Optional<LocalDateTime> actualModTime2 = copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions, isCancelled, LOG);
+                    Optional<LocalDateTime> actualModTime2 = copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions, isCancelled, transferLog);
                     syncedVersions.add(renamed.withModtime(actualModTime2));
                     progress.doneFile();
                 }
@@ -1075,7 +1077,7 @@ public class DirectorySync {
                         List<CopyOp> ops = diffs.stream()
                                 .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                                 .collect(Collectors.toList());
-                        Optional<LocalDateTime> actualModTime = copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, isCancelled, LOG);
+                        Optional<LocalDateTime> actualModTime = copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, isCancelled, transferLog);
                         syncedVersions.add(remote.withModtime(actualModTime));
                         progress.doneFile();
 
@@ -1083,7 +1085,7 @@ public class DirectorySync {
                         List<CopyOp> ops2 = diffs2.stream()
                                 .map(d -> new CopyOp(false, localFs.resolve(renamed.relPath), remoteFs.resolve(renamed.relPath), renamed, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                                 .collect(Collectors.toList());
-                        Optional<LocalDateTime> actualModTime2 = copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions, isCancelled, LOG);
+                        Optional<LocalDateTime> actualModTime2 = copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions, isCancelled, transferLog);
                         syncedVersions.add(renamed.withModtime(actualModTime2));
                         syncedVersions.removeRemoteDelete(remote.relPath);
                         progress.doneFile();
@@ -1096,7 +1098,7 @@ public class DirectorySync {
                         List<CopyOp> ops = diffs.stream()
                                 .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, local, d.left, d.right, ResumeUploadProps.random(crypto)))
                                 .collect(Collectors.toList());
-                        Optional<LocalDateTime> actualModTime = copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, isCancelled, LOG);
+                        Optional<LocalDateTime> actualModTime = copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, isCancelled, transferLog);
                         syncedVersions.add(remote.withModtime(actualModTime));
                         progress.doneFile();
                     }
@@ -1147,7 +1149,7 @@ public class DirectorySync {
                         List<CopyOp> ops = diffs.stream()
                                 .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                                 .collect(Collectors.toList());
-                        Optional<LocalDateTime> actualModTime = copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, isCancelled, LOG);
+                        Optional<LocalDateTime> actualModTime = copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, isCancelled, transferLog);
                         syncedVersions.add(remote.withModtime(actualModTime));
                         progress.doneFile();
 
@@ -1155,7 +1157,7 @@ public class DirectorySync {
                         List<CopyOp> ops2 = diffs2.stream()
                                 .map(d -> new CopyOp(false, localFs.resolve(renamed.relPath), remoteFs.resolve(renamed.relPath), renamed, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                                 .collect(Collectors.toList());
-                        Optional<LocalDateTime> actualModTime2 = copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions, isCancelled, LOG);
+                        Optional<LocalDateTime> actualModTime2 = copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions, isCancelled, transferLog);
                         syncedVersions.add(renamed.withModtime(actualModTime2));
                         syncedVersions.removeLocalDelete(local.relPath);
                         progress.doneFile();
@@ -1165,7 +1167,7 @@ public class DirectorySync {
                         List<CopyOp> ops = diffs.stream()
                                 .map(d -> new CopyOp(false, localFs.resolve(local.relPath), remoteFs.resolve(local.relPath), local, remote, d.left, d.right, ResumeUploadProps.random(crypto)))
                                 .collect(Collectors.toList());
-                        Optional<LocalDateTime> actualModTime = copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions, isCancelled, LOG);
+                        Optional<LocalDateTime> actualModTime = copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions, isCancelled, transferLog);
                         remoteFs.setHash(remoteFs.resolve(local.relPath), local.hashTree, local.size);
                         syncedVersions.add(local.withModtime(actualModTime));
                         progress.doneFile();
@@ -1186,7 +1188,7 @@ public class DirectorySync {
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
-                    Optional<LocalDateTime> actualModTime = copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, isCancelled, LOG);
+                    Optional<LocalDateTime> actualModTime = copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, isCancelled, transferLog);
                     syncedVersions.add(remote.withModtime(actualModTime));
                     progress.doneFile();
                     if (! syncLocalDeletes && syncedVersions.hasLocalDelete(remote.relPath))
@@ -1199,7 +1201,7 @@ public class DirectorySync {
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(false, localFs.resolve(local.relPath), remoteFs.resolve(local.relPath), local, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
-                    Optional<LocalDateTime> actualModTime = copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions, isCancelled, LOG);
+                    Optional<LocalDateTime> actualModTime = copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions, isCancelled, transferLog);
                     syncedVersions.add(local.withModtime(actualModTime));
                     progress.doneFile();
                     if (! syncRemoteDeletes && syncedVersions.hasRemoteDelete(local.relPath))
@@ -1219,7 +1221,7 @@ public class DirectorySync {
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(false, localFs.resolve(local.relPath), remoteFs.resolve(local.relPath), local, remote, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
-                    Optional<LocalDateTime> actualModTime = copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions, isCancelled, LOG);
+                    Optional<LocalDateTime> actualModTime = copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions, isCancelled, transferLog);
                     remoteFs.setHash(remoteFs.resolve(local.relPath), local.hashTree, local.size);
                     syncedVersions.add(local.withModtime(actualModTime));
                     progress.doneFile();
@@ -1230,7 +1232,7 @@ public class DirectorySync {
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
-                    Optional<LocalDateTime> actualModTime = copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, isCancelled, LOG);
+                    Optional<LocalDateTime> actualModTime = copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, isCancelled, transferLog);
                     syncedVersions.add(remote.withModtime(actualModTime));
                     progress.doneFile();
 
@@ -1238,7 +1240,7 @@ public class DirectorySync {
                     List<CopyOp> ops2 = diffs2.stream()
                             .map(d -> new CopyOp(false, localFs.resolve(renamed.relPath), remoteFs.resolve(renamed.relPath), renamed, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
-                    Optional<LocalDateTime> actualModTime2 = copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions, isCancelled, LOG);
+                    Optional<LocalDateTime> actualModTime2 = copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions, isCancelled, transferLog);
                     syncedVersions.add(renamed.withModtime(actualModTime2));
                     progress.doneFile();
                 }
