@@ -1254,7 +1254,7 @@ public class MultiUserTests {
 
     @Test
     public void followRequestsSentAtOnce() throws Exception {
-        // each request adds its target to the same file of pending requests, so sent at once they lost each other's
+        // each request adds its target to the same file of pending requests, so sent at once they can lose each other's
         UserContext alice = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
         List<UserContext> others = new ArrayList<>();
         for (int i = 0; i < 5; i++)

@@ -2460,8 +2460,8 @@ public class UserContext {
     }
 
     // Each change to the pending social state reads the file, changes it and writes it back, so two at once lose
-    // one: a follow request sent while a reply is taken in put back the name the reply had removed, and with the
-    // reply gone, nothing ever answered that request. So they are made one after another.
+    // one: a follow request sent while a reply is taken in would put back the name the reply removes, and with the
+    // reply gone nothing would answer that request again. So they are made one after another.
     private CompletableFuture<Boolean> pendingSocialStateChanges = Futures.of(true);
 
     private synchronized CompletableFuture<Boolean> changePendingSocialState(Function<PendingSocialState, PendingSocialState> change) {
