@@ -380,22 +380,34 @@ public class IpfsWrapper implements AutoCloseable {
         LOG.info("Using IPFS dir " + ipfsDir);
 
         IpfsConfigParams ipfsConfigParams = buildConfig(args);
+        List<PeerId> ourIds = ids.getIdentities();
+        // an interrupted first start leaves the identity in the db before it is saved to the config file
+        if (ipfsConfigParams.identity.isEmpty() && readIPFSIdentity(ipfsDir).isEmpty() && ! ourIds.isEmpty()) {
+            PeerId latest = ourIds.get(ourIds.size() - 1);
+            byte[] privPb = ids.getPrivateKey(latest);
+            if (privPb != null) {
+                LOG.info("Using identity from server identity db");
+                ipfsConfigParams = ipfsConfigParams.withIdentity(Optional.of(new IdentitySection(privPb, latest)));
+            }
+        }
 
         IpfsWrapper ipfsWrapper = new IpfsWrapper(ipfsDir, ipfsConfigParams);
         Config config = ipfsWrapper.configure();
         // use identity from db if present, otherwise move to db
-        List<PeerId> ourIds = ids.getIdentities();
         if (ourIds.isEmpty()) {
             // initialise id db with our current peerid and sign an ipns record
             PrivKey peerPrivate = KeyKt.unmarshalPrivateKey(config.identity.privKeyProtobuf);
             byte[] signedRecord = ServerIdentity.generateSignedIpnsRecord(peerPrivate, Optional.empty(), false, 1);
             ids.addIdentity(PeerId.fromPubKey(peerPrivate.publicKey()), signedRecord);
+            ids.setPrivateKey(peerPrivate);
         } else {
             // make sure we are using the latest identity
             PeerId current = ourIds.get(ourIds.size() - 1);
             if (! current.equals(config.identity.peerId))
                 throw new IllegalStateException("Supplied peerid ("+config.identity.peerId.toBase58()+
-                        ") doesn't match latest in server identity db ("+current.toBase58()+")!");
+                        ") doesn't match latest in server identity db ("+current.toBase58()+")! " +
+                        "If no accounts have been created on this server yet, delete the server identity db " +
+                        "(serverids.sql by default) and restart.");
         }
 
         LOG.info("Starting Nabu version: " + APIHandler.CURRENT_VERSION + ", peerid: " + config.identity.peerId);
