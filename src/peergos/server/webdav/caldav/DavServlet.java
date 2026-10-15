@@ -139,6 +139,9 @@ public class DavServlet extends HttpServlet {
                 case "MKCOL":
                     doMkcol(req, resp);
                     return;
+                case "PROPPATCH":
+                    doProppatch(req, resp);
+                    return;
                 default:
                     resp.addHeader("Allow", allowed(resolve(req)));
                     resp.sendError(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
@@ -166,7 +169,7 @@ public class DavServlet extends HttpServlet {
             case OBJECT:
                 return "OPTIONS, GET, HEAD, PUT, DELETE, PROPFIND, REPORT";
             case COLLECTION:
-                return "OPTIONS, PUT, DELETE, PROPFIND, REPORT";
+                return "OPTIONS, PUT, DELETE, PROPFIND, PROPPATCH, REPORT";
             case HOME:
                 return type == Type.ADDRESSBOOK ? "OPTIONS, MKCOL, PROPFIND, REPORT"
                         : "OPTIONS, MKCALENDAR, PROPFIND, REPORT";
@@ -296,7 +299,8 @@ public class DavServlet extends HttpServlet {
         Element body = parseBody(req).map(Document::getDocumentElement).orElse(null);
         store.createCollection(directory,
                 property(body, "displayname").orElse(directory),
-                type.get() == Type.CALENDAR ? property(body, "calendar-color").orElse("#00a9ff") : "");
+                type.get() == Type.CALENDAR ?
+                        property(body, "calendar-color").flatMap(DavServlet::webColour).orElse("#00a9ff") : "");
         resp.setStatus(HttpServletResponse.SC_CREATED);
     }
 
@@ -390,6 +394,153 @@ public class DavServlet extends HttpServlet {
         if (prop == null)
             return Optional.empty();
         return Optional.of(new ArrayList<>(XMLHelper.getPropertiesFromXML(prop)));
+    }
+
+    // --------------------------------------------------------------- PROPPATCH
+
+    private static final String INFO_NAME = "name";
+    private static final String INFO_COLOUR = "color";
+    private static final String INFO_ORDER = "order";
+
+    /**
+     * RFC 4918 PROPPATCH for what a client lets the user edit on a collection: its name, its
+     * colour and Apple's calendar order. It is all or nothing, so one property that cannot be
+     * set fails the others with 424 and nothing is written.
+     *
+     * The name and colour of a collection App.config lists belong to the web app, which writes
+     * that file back whole, so they can only be changed there. The order lives in the info
+     * file, which the web app writes only when it creates a calendar.
+     */
+    private void doProppatch(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        Optional<Resource> resolved = resolve(req);
+        if (resolved.isEmpty()) {
+            resp.sendError(HttpServletResponse.SC_NOT_FOUND);
+            return;
+        }
+        Resource resource = resolved.get();
+        if (resource.kind != Kind.COLLECTION) {
+            resp.addHeader("Allow", allowed(resolved));
+            resp.sendError(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
+            return;
+        }
+        Optional<Element> root = parseBody(req).map(Document::getDocumentElement)
+                .filter(e -> NS_DAV.equals(e.getNamespaceURI()) && "propertyupdate".equals(e.getLocalName()));
+        if (root.isEmpty()) {
+            resp.sendError(HttpServletResponse.SC_BAD_REQUEST);
+            return;
+        }
+        Map<String, Optional<String>> changes = new LinkedHashMap<>();
+        Map<String, Boolean> accepted = new LinkedHashMap<>();
+        for (Element update : childElements(root.get())) {
+            boolean set = "set".equals(update.getLocalName());
+            if (! NS_DAV.equals(update.getNamespaceURI()) || ! (set || "remove".equals(update.getLocalName())))
+                continue;
+            for (Element prop : childElements(update)) {
+                if (! NS_DAV.equals(prop.getNamespaceURI()) || ! "prop".equals(prop.getLocalName()))
+                    continue;
+                for (Element property : childElements(prop)) {
+                    String name = (property.getNamespaceURI() == null ? "" : property.getNamespaceURI())
+                            + ":" + property.getLocalName();
+                    Optional<String> value = set ? Optional.of(property.getTextContent().trim()) : Optional.empty();
+                    accepted.put(name, change(resource, name, value, changes));
+                }
+            }
+        }
+        boolean allAccepted = ! accepted.containsValue(false);
+        if (allAccepted && ! changes.isEmpty())
+            resource.store.updateInfo(resource.collection.directory, changes);
+
+        XMLWriter out = beginMultistatus(resp);
+        out.writeElement(dav("response"), XMLWriter.OPENING);
+        out.writeElement(dav("href"), XMLWriter.OPENING);
+        out.writeText(escape(href(req, resource)));
+        out.writeElement(dav("href"), XMLWriter.CLOSING);
+        if (allAccepted) {
+            writePropstat(out, accepted.keySet(), HttpServletResponse.SC_OK, "OK");
+        } else {
+            writePropstat(out, filter(accepted, false), HttpServletResponse.SC_FORBIDDEN, "Forbidden");
+            writePropstat(out, filter(accepted, true), 424, "Failed Dependency");
+        }
+        out.writeElement(dav("response"), XMLWriter.CLOSING);
+        endMultistatus(out);
+    }
+
+    /**
+     * Whether one set or remove can be applied, adding it to the info file changes if so.
+     * Setting a name or colour to what it already is succeeds without a write, so a client
+     * that echoes back what it read is not refused on a collection the web app lists.
+     */
+    private static boolean change(Resource resource, String property, Optional<String> value,
+                                  Map<String, Optional<String>> changes) {
+        CollectionInfo collection = resource.collection;
+        if (property.equals(dav("displayname"))) {
+            if (value.isEmpty() || value.get().isEmpty())
+                return false;
+            if (value.get().equals(collection.name))
+                return true;
+            if (collection.configured)
+                return false;
+            changes.put(INFO_NAME, value);
+            return true;
+        }
+        if (resource.type != Type.CALENDAR)
+            return false;
+        if (property.equals(appleIcal("calendar-color"))) {
+            Optional<String> colour = value.flatMap(DavServlet::webColour);
+            if (colour.isEmpty())
+                return false;
+            if (colour.get().equalsIgnoreCase(collection.colour))
+                return true;
+            if (collection.configured)
+                return false;
+            changes.put(INFO_COLOUR, colour);
+            return true;
+        }
+        if (property.equals(appleIcal("calendar-order"))) {
+            if (value.isPresent() && ! value.get().matches("-?\\d{1,9}"))
+                return false;
+            changes.put(INFO_ORDER, value);
+            return true;
+        }
+        return false;
+    }
+
+    /** The #rrggbb the web app accepts, from that or the #rrggbbaa Apple clients send. */
+    static Optional<String> webColour(String value) {
+        if (! value.matches("#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?"))
+            return Optional.empty();
+        return Optional.of(value.substring(0, 7));
+    }
+
+    private static List<String> filter(Map<String, Boolean> accepted, boolean wanted) {
+        List<String> res = new ArrayList<>();
+        accepted.forEach((property, ok) -> {
+            if (ok == wanted)
+                res.add(property);
+        });
+        return res;
+    }
+
+    private static void writePropstat(XMLWriter out, Collection<String> properties, int code, String text) {
+        if (properties.isEmpty())
+            return;
+        out.writeElement(dav("propstat"), XMLWriter.OPENING);
+        out.writeElement(dav("prop"), XMLWriter.OPENING);
+        for (String property : properties)
+            out.writeElement(property, XMLWriter.NO_CONTENT);
+        out.writeElement(dav("prop"), XMLWriter.CLOSING);
+        writeStatus(out, code, text);
+        out.writeElement(dav("propstat"), XMLWriter.CLOSING);
+    }
+
+    private static List<Element> childElements(Element parent) {
+        List<Element> res = new ArrayList<>();
+        NodeList children = parent.getChildNodes();
+        for (int i = 0; i < children.getLength(); i++) {
+            if (children.item(i) instanceof Element)
+                res.add((Element) children.item(i));
+        }
+        return res;
     }
 
     // ------------------------------------------------------------------ REPORT
@@ -695,6 +846,13 @@ public class DavServlet extends HttpServlet {
         }
         if (property.equals(appleIcal("calendar-color"))) {
             writeText(out, appleIcal("calendar-color"), resource.collection.colour);
+            return true;
+        }
+        if (property.equals(appleIcal("calendar-order"))) {
+            Object order = resource.store.readInfo(resource.collection.directory).get(INFO_ORDER);
+            if (! (order instanceof String))
+                return false;
+            writeText(out, appleIcal("calendar-order"), (String) order);
             return true;
         }
         return false;

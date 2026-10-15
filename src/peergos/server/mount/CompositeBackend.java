@@ -54,6 +54,11 @@ public class CompositeBackend implements MountBackend {
     }
 
     @Override
+    public boolean supportsDrive() {
+        return backends.stream().anyMatch(MountBackend::supportsDrive);
+    }
+
+    @Override
     public boolean supportsCalendar() {
         return backends.stream().anyMatch(MountBackend::supportsCalendar);
     }

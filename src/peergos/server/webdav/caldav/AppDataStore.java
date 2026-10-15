@@ -400,6 +400,35 @@ public abstract class AppDataStore {
         remove(collectionPath(directory));
     }
 
+    /** The collection's info file, or empty when it has none or it does not parse. */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> readInfo(String directory) {
+        Optional<byte[]> info = readFile(collectionPath(directory).resolve(infoFilename));
+        if (info.isEmpty())
+            return new LinkedHashMap<>();
+        try {
+            Object parsed = JSONParser.parse(new String(info.get(), StandardCharsets.UTF_8));
+            return parsed instanceof Map ? new LinkedHashMap<>((Map<String, Object>) parsed) : new LinkedHashMap<>();
+        } catch (RuntimeException e) {
+            return new LinkedHashMap<>();
+        }
+    }
+
+    /**
+     * Sets, or with an empty value removes, keys in the info file, keeping any it does not
+     * name, since the web app may store more there than the bridge knows about.
+     */
+    public synchronized void updateInfo(String directory, Map<String, Optional<String>> changes) {
+        Map<String, Object> info = readInfo(directory);
+        changes.forEach((key, value) -> {
+            if (value.isPresent())
+                info.put(key, value.get());
+            else
+                info.remove(key);
+        });
+        write(join(directory, "", infoFilename), JSONParser.toString(info).getBytes(StandardCharsets.UTF_8));
+    }
+
     private static String join(String... segments) {
         return Arrays.stream(segments).filter(s -> ! s.isEmpty()).collect(Collectors.joining("/"));
     }

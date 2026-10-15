@@ -13,6 +13,7 @@ import peergos.server.webdav.MountConfig;
 import peergos.server.webdav.WebdavServer;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
+import peergos.shared.io.ipfs.api.JSONParser;
 import peergos.shared.user.App;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.FileWrapper;
@@ -27,6 +28,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Base64;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
 
@@ -412,6 +414,105 @@ public class CalDavTests {
         else if (ifHeader != null)
             request = request.header("If-Match", ifHeader);
         return client.send(request.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    /** Apple Calendar renames, recolours and reorders calendars with PROPPATCH. */
+    @Test
+    public void proppatchCalendarProperties() throws Exception {
+        String username = "caldav-proppatch" + Math.abs(random.nextInt() % 1_000_000);
+        String password = "testpassword";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        App calendar = App.init(context, "calendar").join();
+        write(calendar, "App.config",
+                "{\"calendars\":[{\"name\":\"Work\",\"directory\":\"work\",\"color\":\"#ff0000\"}]}");
+        write(calendar, "work/calendar.inf", "{\"name\":\"Work\",\"color\":\"#ff0000\"}");
+        String configBefore = new String(calendar.readInternal(PathUtil.get("App.config"), null).join(),
+                StandardCharsets.UTF_8);
+        UserContext verifier = verifier(username, password);
+
+        int port = TestPorts.getPort();
+        Server server = WebdavServer.startNonBlocking(port, WEBDAV_USER, WEBDAV_PASSWORD,
+                username, password, "http://localhost:" + args.getInt("port"), "basic", MountConfig.disabled());
+        try {
+            HttpClient client = HttpClient.newHttpClient();
+            String base = "http://localhost:" + port;
+            String auth = "Basic " + Base64.getEncoder()
+                    .encodeToString((WEBDAV_USER + ":" + WEBDAV_PASSWORD).getBytes());
+            String work = base + "/dav/calendars/" + username + "/work/";
+            String personal = base + "/dav/calendars/" + username + "/personal/";
+
+            // Apple sends #RRGGBBAA, which the web app would reject
+            Assert.assertEquals(201, send(client, auth, "MKCALENDAR", personal,
+                    "<C:mkcalendar xmlns:D=\"DAV:\" xmlns:C=\"urn:ietf:params:xml:ns:caldav\" "
+                            + "xmlns:A=\"http://apple.com/ns/ical/\"><D:set><D:prop>"
+                            + "<D:displayname>Personal</D:displayname><A:calendar-color>#00FF00FF</A:calendar-color>"
+                            + "</D:prop></D:set></C:mkcalendar>", null).statusCode());
+            Assert.assertEquals("#00FF00", info(verifier, username, "personal").get("color"));
+
+            HttpResponse<String> patched = send(client, auth, "PROPPATCH", personal,
+                    proppatch("<D:displayname>Home</D:displayname>"
+                            + "<A:calendar-color>#112233FF</A:calendar-color>"
+                            + "<A:calendar-order>3</A:calendar-order>", ""), null);
+            Assert.assertEquals(207, patched.statusCode());
+            Assert.assertTrue(patched.body(), patched.body().contains("HTTP/1.1 200 OK"));
+            Assert.assertFalse(patched.body(), patched.body().contains("403"));
+            Map<String, Object> info = info(verifier, username, "personal");
+            Assert.assertEquals("Home", info.get("name"));
+            Assert.assertEquals("#112233", info.get("color"));
+            Assert.assertEquals("3", info.get("order"));
+            String props = propfind(client, auth, personal, "0",
+                    "<D:propfind xmlns:D=\"DAV:\" xmlns:A=\"http://apple.com/ns/ical/\"><D:prop>"
+                            + "<D:displayname/><A:calendar-color/><A:calendar-order/></D:prop></D:propfind>").body();
+            Assert.assertEquals("Home", between(props, "<D:displayname>", "</D:displayname>"));
+            Assert.assertEquals("#112233", between(props, "<ICAL:calendar-color>", "</ICAL:calendar-color>"));
+            Assert.assertEquals("3", between(props, "<ICAL:calendar-order>", "</ICAL:calendar-order>"));
+
+            Assert.assertEquals(207, send(client, auth, "PROPPATCH", personal,
+                    proppatch("", "<A:calendar-order/>"), null).statusCode());
+            Assert.assertFalse(info(verifier, username, "personal").containsKey("order"));
+
+            // The web app owns the name and colour of a calendar App.config lists, and one
+            // refused property means none are applied
+            HttpResponse<String> refused = send(client, auth, "PROPPATCH", work,
+                    proppatch("<D:displayname>Other</D:displayname><A:calendar-order>1</A:calendar-order>", ""), null);
+            Assert.assertEquals(207, refused.statusCode());
+            Assert.assertTrue(refused.body(), refused.body().contains("HTTP/1.1 403 Forbidden"));
+            Assert.assertTrue(refused.body(), refused.body().contains("HTTP/1.1 424 Failed Dependency"));
+            Assert.assertFalse(info(verifier, username, "work").containsKey("order"));
+            Assert.assertEquals(configBefore, read(verifier, username, "App.config"));
+
+            // but echoing back what it already is, and ordering it, are fine
+            HttpResponse<String> echoed = send(client, auth, "PROPPATCH", work,
+                    proppatch("<A:calendar-color>#FF0000FF</A:calendar-color><A:calendar-order>2</A:calendar-order>", ""), null);
+            Assert.assertFalse(echoed.body(), echoed.body().contains("403"));
+            Map<String, Object> workInfo = info(verifier, username, "work");
+            Assert.assertEquals("2", workInfo.get("order"));
+            Assert.assertEquals("#ff0000", workInfo.get("color"));
+            Assert.assertEquals(configBefore, read(verifier, username, "App.config"));
+
+            HttpResponse<String> unknown = send(client, auth, "PROPPATCH", personal,
+                    proppatch("<D:getcontenttype>text/plain</D:getcontenttype>", ""), null);
+            Assert.assertTrue(unknown.body(), unknown.body().contains("HTTP/1.1 403 Forbidden"));
+
+            Assert.assertEquals(405, send(client, auth, "PROPPATCH",
+                    base + "/dav/calendars/" + username + "/", proppatch("<A:calendar-order>1</A:calendar-order>", ""),
+                    null).statusCode());
+        } finally {
+            server.stop();
+        }
+    }
+
+    private static String proppatch(String set, String remove) {
+        return "<D:propertyupdate xmlns:D=\"DAV:\" xmlns:A=\"http://apple.com/ns/ical/\">"
+                + (set.isEmpty() ? "" : "<D:set><D:prop>" + set + "</D:prop></D:set>")
+                + (remove.isEmpty() ? "" : "<D:remove><D:prop>" + remove + "</D:prop></D:remove>")
+                + "</D:propertyupdate>";
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> info(UserContext verifier, String username, String directory) {
+        return (Map<String, Object>) JSONParser.parse(read(verifier, username, directory + "/calendar.inf"));
     }
 
     /** An entry another user owns reaches the phone, and stays theirs to change. */

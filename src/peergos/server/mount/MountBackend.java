@@ -13,6 +13,11 @@ public interface MountBackend {
 
     java.util.Optional<String> activeMountPoint();
 
+    /** Whether this platform can mount the drive, which is what the UI offers a switch for. */
+    default boolean supportsDrive() {
+        return true;
+    }
+
     /** Whether this platform can sync calendars at all, which is what the UI offers a switch for. */
     default boolean supportsCalendar() {
         return false;

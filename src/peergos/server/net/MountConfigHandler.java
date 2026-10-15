@@ -466,6 +466,7 @@ public class MountConfigHandler implements HttpHandler {
                 json.put("syncCalendar", reported.syncCalendar);
                 json.put("syncContacts", reported.syncContacts);
                 // what this platform can do at all, which is what the UI offers switches for
+                json.put("canMountDrive", backend.supportsDrive());
                 json.put("canSyncCalendar", backend.supportsCalendar());
                 json.put("canSyncContacts", backend.supportsContacts());
                 json.put("davClients", backend.usesDavClients());
@@ -505,6 +506,7 @@ public class MountConfigHandler implements HttpHandler {
                 boolean syncCalendar = body.get("syncCalendar") instanceof Boolean && (Boolean) body.get("syncCalendar");
                 boolean syncContacts = body.get("syncContacts") instanceof Boolean && (Boolean) body.get("syncContacts");
                 // a platform that cannot sync them must not persist a config claiming it does
+                mountDrive = mountDrive && backend.supportsDrive();
                 syncCalendar = syncCalendar && backend.supportsCalendar();
                 syncContacts = syncContacts && backend.supportsContacts();
                 if (! mountDrive && ! syncCalendar && ! syncContacts)

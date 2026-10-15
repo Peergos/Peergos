@@ -41,7 +41,7 @@ public class WebdavBackend implements MountBackend {
 
     @Override
     public void enable(MountConfig config, UserContext context, Path peergosDir) throws Exception {
-        boolean wantsDrive = config.mountDrive && canMountDrive;
+        boolean wantsDrive = config.mountDrive && supportsDrive();
         boolean wantsDav = config.syncCalendar || config.syncContacts;
         if (! wantsDrive && ! wantsDav) {
             // bridge only, with nothing asked of it: another backend has the drive
@@ -67,21 +67,25 @@ public class WebdavBackend implements MountBackend {
         if (prevMount != null) prevMount.close();
     }
 
-    // Hidden on macOS for now, drive mount or not: nothing there has been through the CalDAV and
-    // CardDAV client story yet, so offering it would be offering something untested.
+    // The drive is not offered on macOS yet
+    @Override
+    public boolean supportsDrive() {
+        return canMountDrive && ! isMac();
+    }
+
     @Override
     public boolean supportsCalendar() {
-        return ! isMac();
+        return true;
     }
 
     @Override
     public boolean supportsContacts() {
-        return ! isMac();
+        return true;
     }
 
     @Override
     public boolean usesDavClients() {
-        return ! isMac();
+        return true;
     }
 
     @Override
