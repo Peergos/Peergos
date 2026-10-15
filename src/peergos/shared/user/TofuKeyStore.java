@@ -28,7 +28,7 @@ public class TofuKeyStore implements Cborable {
         this(new HashMap<>(), new HashMap<>());
     }
 
-    public Optional<PublicKeyHash> getPublicKey(String username) {
+    public synchronized Optional<PublicKeyHash> getPublicKey(String username) {
         List<UserPublicKeyLink> chain = chains.get(username);
         if (chain == null) {
             List<UserPublicKeyLink> expiredChain = expired.get(username);
@@ -39,12 +39,12 @@ public class TofuKeyStore implements Cborable {
         return Optional.of(chain.get(chain.size() - 1).owner);
     }
 
-    public Optional<String> getUsername(PublicKeyHash signer) {
+    public synchronized Optional<String> getUsername(PublicKeyHash signer) {
         String name = reverseLookup.get(signer);
         return Optional.ofNullable(name);
     }
 
-    public List<UserPublicKeyLink> getChain(String username) {
+    public synchronized List<UserPublicKeyLink> getChain(String username) {
         return chains.getOrDefault(username, expired.getOrDefault(username, Collections.emptyList()));
     }
 
@@ -77,14 +77,18 @@ public class TofuKeyStore implements Cborable {
                             throw new IllegalStateException("Trying to update a username claim with a different key! "
                                     + ArrayOps.bytesToHex(existing.get(0).owner.toCbor().toByteArray()) + " != "
                                     + ArrayOps.bytesToHex(tail.get(0).owner.toCbor().toByteArray()));
-                        expired.remove(username);
+                        synchronized (this) {
+                            expired.remove(username);
+                        }
                     }
                     mergedFuture = UserPublicKeyLink.merge(existing, tail, ipfs);
 
+                    // lookups of different users complete on different threads
                     return mergedFuture.thenApply(merged -> {
-                        chains.put(username, merged);
-                        PublicKeyHash owner = last.owner;
-                        reverseLookup.put(owner, username);
+                        synchronized (this) {
+                            chains.put(username, merged);
+                            reverseLookup.put(last.owner, username);
+                        }
                         return true;
                     });
                 });
@@ -100,7 +104,7 @@ public class TofuKeyStore implements Cborable {
     }
 
     @Override
-    public CborObject toCbor() {
+    public synchronized CborObject toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();
         Consumer<Map<String, List<UserPublicKeyLink>>> serialise = map -> map.forEach((name, chain) -> state.put(name,
                 new CborObject.CborList(chain.stream()
