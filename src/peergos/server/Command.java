@@ -51,19 +51,29 @@ public class Command<V> {
     }
 
     public V main(Args args) {
+        return main(args, Collections.emptyMap());
+    }
+
+    /** Defaults are only applied by the command that runs, so a subcommand's own default wins over its parent's.
+     */
+    private V main(Args args, Map<String, String> inheritedDefaults) {
+        Map<String, String> defaults = new LinkedHashMap<>(inheritedDefaults);
         for (Arg param : params) {
             if (param.defaultValue.isPresent())
-                args = args.setIfAbsent(param.name, param.defaultValue.get());
+                defaults.put(param.name, param.defaultValue.get());
         }
         Optional<String> headOpt = args.head();
 
         if (headOpt.isPresent()) {
             String head = headOpt.get();
             if (subCommands.containsKey(head)) {
-                subCommands.get(head).main(args.tail());
+                subCommands.get(head).main(args.tail(), defaults);
                 return null;
             }
         }
+
+        for (Map.Entry<String, String> e : defaults.entrySet())
+            args = args.setIfAbsent(e.getKey(), e.getValue());
 
         if (args.hasArg("help")) {
             System.out.println(helpMessage());
