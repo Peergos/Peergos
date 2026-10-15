@@ -756,16 +756,14 @@ public class RamUserTests extends UserTests {
         Assert.assertTrue("usageAfterDelete=" + usageAfterDelete + " initialUsage=" + initialUsage,
                 usageAfterDelete < initialUsage + CLEANUP_RESIDUE_TOLERANCE);
 
-        // clean the partial upload
+        // clean the partial upload. Deleting the writing space already gave back its data, so all that is left
+        // is the transaction record, which may also already have been accounted for by the time usage was read
         context.cleanPartialUploads(t -> true).join();
+        FileWrapper home = context.getUserRoot().join();
+        Assert.assertTrue(context.getTransactionService().getOpenTransactions(home.version).join().isEmpty());
         long usageAfterCleanup = context.getSpaceUsage(false).join();
-        for (int i = 0; i < 60 && usageAfterCleanup >= usageAfterDelete; i++) { // Allow time for server to process cleanup event
-            Thread.sleep(1_000);
-            usageAfterCleanup = context.getSpaceUsage(false).join();
-        }
-
         Assert.assertTrue("usageAfterCleanup=" + usageAfterCleanup + " usageAfterDelete=" + usageAfterDelete,
-                usageAfterCleanup < usageAfterDelete);
+                usageAfterCleanup <= usageAfterDelete);
     }
 
     @Test

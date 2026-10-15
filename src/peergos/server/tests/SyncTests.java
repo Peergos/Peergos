@@ -1,6 +1,7 @@
 package peergos.server.tests;
 
 import org.junit.Assert;
+import org.junit.Assume;
 import org.junit.Test;
 import peergos.server.JavaCrypto;
 import peergos.server.Main;
@@ -117,6 +118,8 @@ public class SyncTests {
 
     @Test
     public void namesWithLeadingAndTrailingSpaces() throws Exception {
+        Assume.assumeFalse("Windows file names can't end in a space",
+                System.getProperty("os.name").toLowerCase().startsWith("windows"));
         Path base1 = Files.createTempDirectory("peergos-sync");
         Path base2 = Files.createTempDirectory("peergos-sync");
 

@@ -10,6 +10,8 @@ import peergos.shared.storage.*;
 import peergos.shared.util.TriFunction;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
+import peergos.shared.corenode.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.server.*;
@@ -1267,6 +1269,28 @@ public class MultiUserTests {
         Set<String> pending = alice.getSocialState().get().pendingOutgoing;
         for (UserContext u : others)
             assertTrue("Waiting on " + u.username + ", among " + pending, pending.contains(u.username));
+    }
+
+    @Test
+    public void concurrentKeystoreUpdates() throws Exception {
+        // each lookup of a user not yet in the keystore commits it, so lookups made at once must not clash
+        String password = random();
+        UserContext alice = PeergosNetworkUtils.ensureSignedUp(random(), password, network, crypto);
+        List<UserContext> others = new ArrayList<>();
+        for (int i = 0; i < 10; i++)
+            others.add(PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto));
+        List<CompletableFuture<Optional<PublicKeyHash>>> lookups = others.stream()
+                .map(u -> alice.network.coreNode.getPublicKeyHash(u.username))
+                .collect(Collectors.toList());
+        for (int i = 0; i < others.size(); i++)
+            Assert.assertEquals(Optional.of(others.get(i).signer.publicKeyHash), lookups.get(i).get());
+
+        UserContext fresh = PeergosNetworkUtils.ensureSignedUp(alice.username, password, network.clear(), crypto);
+        FileWrapper keystore = fresh.getByPath(alice.username + "/" + TofuCoreNode.KEY_STORE_NAME).join().get();
+        byte[] raw = Serialize.readFully(keystore, crypto, fresh.network).join();
+        TofuKeyStore stored = TofuKeyStore.fromCbor(CborObject.fromByteArray(raw));
+        for (UserContext u : others)
+            Assert.assertEquals(u.username, Optional.of(u.signer.publicKeyHash), stored.getPublicKey(u.username));
     }
 
     @Test

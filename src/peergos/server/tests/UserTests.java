@@ -470,7 +470,7 @@ public abstract class UserTests {
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         byte[] data = randomData(1024);
         FileWrapper dir = context.getUserRoot().join()
-                .getOrMkdirs(PathUtil.getUntrimmed(" dir /sub "), network, false, context.mirrorBatId(), crypto).join();
+                .getOrMkdirs(List.of(" dir ", "sub "), network, false, context.mirrorBatId(), crypto).join();
         for (String name : List.of(" leading.txt", "trailing.txt ", " both "))
             dir = dir.uploadOrReplaceFile(name, AsyncReader.build(data), data.length, network, crypto, () -> false, l -> {}).join();
 
@@ -480,7 +480,14 @@ public abstract class UserTests {
             Assert.assertTrue(path, f.isPresent());
             Assert.assertEquals(name, f.get().getName());
         }
-        Assert.assertTrue(context.getByPath(PathUtil.getUntrimmed(username + "/ dir /sub / leading.txt")).join().isPresent());
+        Assert.assertTrue(context.getByPath(username + "/ dir /sub / leading.txt").join().isPresent());
+
+        // a folder upload builds paths from the names it is given
+        FileWrapper.FileUploadProperties upload = new FileWrapper.FileUploadProperties("in folder.txt ",
+                () -> AsyncReader.build(data), 0, data.length, Optional.empty(), Optional.empty(), false, false, x -> {});
+        context.getUserRoot().join().uploadSubtree(Stream.of(new FileWrapper.FolderUploadProperties(List.of(" dir ", "sub ", " deeper "), List.of(upload))),
+                context.mirrorBatId(), network, crypto, context.getTransactionService(), f -> Futures.of(false), f -> Futures.of(true), () -> true).join();
+        Assert.assertTrue(context.getByPath(username + "/ dir /sub / deeper /in folder.txt ").join().isPresent());
     }
 
     /** An in-flight upload holds the write lock for the whole file, so reads must not queue behind it.
