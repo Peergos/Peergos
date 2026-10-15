@@ -13,7 +13,6 @@ import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
-import java.nio.file.*;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -116,8 +115,9 @@ public class FileUploadTransaction implements Transaction {
 
     @JsMethod
     public String targetFilename() {
-        Path path = PathUtil.get(this.path);
-        return path.getFileName().toString();
+        // not via a Path, which would trim the name or, on Windows, reject one ending in a space
+        String canonical = path.replaceAll("\\\\", "/");
+        return canonical.substring(canonical.lastIndexOf("/") + 1);
     }
 
     @Override

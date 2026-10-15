@@ -1315,7 +1315,7 @@ public class FileWrapper {
                         (s, c) -> {
                             return getUpdated(s, network).thenCompose(us -> Futures.reduceAll(directories, us,
                                             (dir, children) -> dir.getOrMkdirs(children.relativePath, false, mirror, network, crypto, dir.version, c)
-                                                    .thenCompose(p -> uploadFolder(PathUtil.getUntrimmed(path).resolve(children.path()), p.right,
+                                                    .thenCompose(p -> uploadFolder(joinNames(path, children.relativePath), p.right,
                                                             children, mirrorBat, txns, resumeFile, replaceFile, commitWatcher, isCancelled, opened, network, crypto, c)
                                                             .thenCompose(v -> dir.getUpdated(v, network))),
                                             (a, b) -> b))
@@ -1334,7 +1334,13 @@ public class FileWrapper {
                 });
     }
 
-    public static CompletableFuture<Snapshot> uploadFolder(Path toParent,
+    /** Stored names can end in a space, which a java.nio Path can't hold on Windows, so join them as strings */
+    private static String joinNames(String path, List<String> names) {
+        String parent = path.startsWith("/") ? path.substring(1) : path;
+        return Stream.concat(Stream.of(parent), names.stream()).collect(Collectors.joining("/"));
+    }
+
+    public static CompletableFuture<Snapshot> uploadFolder(String toParent,
                                                            FileWrapper parent,
                                                            FolderUploadProperties children,
                                                            Optional<BatId> mirrorBat,
@@ -1399,7 +1405,7 @@ public class FileWrapper {
                                     return Futures.of(new Pair<>(p.left, p.right));
                                 }
                                 // Remote file exists but content differs — ask the caller.
-                                return replaceFile.apply(toParent.resolve(f.filename).toString())
+                                return replaceFile.apply(toParent + "/" + f.filename)
                                         .thenCompose(replace -> replace ?
                                                 uploadFilePart(toParent, parent, p, f.withOverwriteExisting(),
                                                         mirrorBat, transactions, resumeFile, commitWatcher, isCancelled, opened, network, crypto, c) :
@@ -1415,7 +1421,7 @@ public class FileWrapper {
     }
 
     private static CompletableFuture<Pair<Snapshot, List<NamedRelativeCapability>>> uploadFilePart(
-            Path toParent,
+            String toParent,
             FileWrapper parent,
             Pair<Snapshot, List<NamedRelativeCapability>> p,
             FileUploadProperties f,
@@ -1458,7 +1464,7 @@ public class FileWrapper {
                 FileProperties props = new FileProperties(f.filename,
                         false, false, mimeType, f.length,
                         now, now, false, Optional.empty(), Optional.of(crypto.random.randomBytes(32)), f.hash.map(t -> t.branch(0)));
-                return Transaction.buildFileUploadTransaction(toParent.resolve(f.filename).toString(), f.length,
+                return Transaction.buildFileUploadTransaction(toParent + "/" + f.filename, f.length,
                         props, f.hash, props.streamSecret.get(), SymmetricKey.random(), SymmetricKey.random(),
                         SymmetricKey.random(), parent.signingPair(), new Location(parent.owner(), parent.writer(),
                                 crypto.random.randomBytes(32)), Optional.of(Bat.random(crypto.random)), crypto.hasher);
@@ -2254,11 +2260,20 @@ public class FileWrapper {
                                                       Optional<BatId> mirrorBat,
                                                       Crypto crypto) {
         String finalPath = TrieNode.canonicalise(subPath.toString());
-        List<String> elements = Arrays.asList(finalPath.split("/"));
+        return getOrMkdirs(Arrays.asList(finalPath.split("/")), network, isSystemFolder, mirrorBat, crypto);
+    }
+
+    public CompletableFuture<FileWrapper> getOrMkdirs(List<String> elements,
+                                                      NetworkAccess network,
+                                                      boolean isSystemFolder,
+                                                      Optional<BatId> mirrorBat,
+                                                      Crypto crypto) {
+        if (elements.isEmpty())
+            return Futures.of(this);
         if (! isWritable())
             return getChild(elements.get(0), crypto.hasher, network)
-                    .thenCompose(kid -> kid.get().getOrMkdirs(PathUtil.getUntrimmed(elements.subList(1, elements.size())
-                            .stream().collect(Collectors.joining("/"))), network, isSystemFolder, mirrorBat, crypto));
+                    .thenCompose(kid -> kid.get().getOrMkdirs(elements.subList(1, elements.size()), network, isSystemFolder, mirrorBat, crypto));
+        String finalPath = String.join("/", elements);
         // Only take the write lock if something is actually missing, otherwise opening an app whilst
         // an upload is in flight would wait for the upload
         return getLatest(network)
@@ -2547,8 +2562,9 @@ public class FileWrapper {
         }).thenCompose(x -> {
             // ensure we aren't trying to move a folder to a descendant folder, which will result in data loss!
             return target.getPath(context.network).thenApply(targetPath -> {
-                        Path targetP = PathUtil.getUntrimmed(targetPath);
-                        if (targetP.startsWith(ourPath))
+                        List<String> targetNames = Arrays.asList(TrieNode.canonicalise(targetPath).split("/"));
+                        List<String> ourNames = PathUtil.components(ourPath);
+                        if (targetNames.size() >= ourNames.size() && targetNames.subList(0, ourNames.size()).equals(ourNames))
                             throw new IllegalStateException("You cannot move a folder to a descendant folder");
                         return true;
                     });
