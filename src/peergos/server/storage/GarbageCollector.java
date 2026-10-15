@@ -19,6 +19,7 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
+import java.util.concurrent.locks.*;
 import java.util.function.*;
 import java.util.logging.*;
 import java.util.stream.*;
@@ -33,6 +34,7 @@ public class GarbageCollector {
     private final BlockMetadataStore metadata;
     private final boolean listRawFromBlockstore;
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private final ReentrantLock collecting = new ReentrantLock();
     private final Path reachabilityDbDir;
     private final DeletionConfirmer deleteConfirm;
     private final Function<String, CompletableFuture<Boolean>> deleteUserConfirm;
@@ -60,8 +62,31 @@ public class GarbageCollector {
         this.metadata = storage.getBlockMetadataStore().orElseGet(RamBlockMetadataStore::new);
     }
 
-    public synchronized void collect(Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
-        collect(storage, pointers, usage, core, reachabilityDbDir, snapshotSaver, metadata, deleteConfirm, deleteUserConfirm, listRawFromBlockstore);
+    public void collect(Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
+        collecting.lock();
+        try {
+            collect(storage, pointers, usage, core, reachabilityDbDir, snapshotSaver, metadata, deleteConfirm, deleteUserConfirm, listRawFromBlockstore);
+        } finally {
+            collecting.unlock();
+        }
+    }
+
+    /** Run a gc, or if one is already running wait for it to finish instead of starting another.
+     *
+     * @return whether this call ran the gc
+     */
+    public boolean collectOrAwait(Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
+        if (collecting.tryLock()) {
+            try {
+                collect(storage, pointers, usage, core, reachabilityDbDir, snapshotSaver, metadata, deleteConfirm, deleteUserConfirm, listRawFromBlockstore);
+                return true;
+            } finally {
+                collecting.unlock();
+            }
+        }
+        collecting.lock();
+        collecting.unlock();
+        return false;
     }
 
     public void stop() {
@@ -73,7 +98,7 @@ public class GarbageCollector {
         Thread garbageCollector = new Thread(() -> {
             while (running.get()) {
                 try {
-                    collect(snapshotSaver);
+                    collectOrAwait(snapshotSaver);
                 } catch (Exception e) {
                     LOG.log(Level.SEVERE, e, e::getMessage);
                 }

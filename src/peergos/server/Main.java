@@ -919,15 +919,18 @@ public class Main extends Builder {
             localStorage.setPki(core);
             userQuotas.setPki(core);
 
-            boolean enableGC = a.getBoolean("enable-gc", false) && partitionStatus.isDone();
+            boolean useS3 = S3Config.useS3(a);
+            // without a local ipfs an S3 blockstore is gc'd separately
+            boolean gcAvailable = useIPFS || ! useS3;
             GarbageCollector gc = null;
-            if (enableGC) {
-                boolean useS3 = S3Config.useS3(a);
+            if (gcAvailable) {
                 boolean listRawBlocks = useS3 && a.getBoolean(VERSIONED_S3.name);
                 gc = new GarbageCollector(localStorageForLinks, rawPointers, usageStore, core, a.fromPeergosDir("", ""), (cd, rd, c, u) -> Futures.of(true), username -> Futures.of(true), listRawBlocks);
-                Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver = s -> Futures.of(true);
-                int gcInterval = 12 * 60 * 60 * 1000;
-                gc.start(a.getInt("gc.period.millis", gcInterval), snapshotSaver);
+                if (a.getBoolean("enable-gc", false) && partitionStatus.isDone()) {
+                    Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver = s -> Futures.of(true);
+                    int gcInterval = 12 * 60 * 60 * 1000;
+                    gc.start(a.getInt("gc.period.millis", gcInterval), snapshotSaver);
+                }
             }
 
             boolean mirrorUsers = a.getBoolean("mirror-users", true);
@@ -1108,6 +1111,7 @@ public class Main extends Builder {
 
             localAPI.initAndStart(localAPIAddress, nodeIds, tlsProps, publicHostname, blockstoreDomains, frameDomains, appSubdomains,
                     a.getBoolean("include-csp", true), basicAuth, webroot, appDevTarget, useWebAssetCache, isPublicServer, maxConnectionQueue, handlerThreads);
+            localAPI.startGcApi(partitionStatus, GcCLI.tokenFile(a));
             p2pAPI.initAndStart(p2pAPIAddress, nodeIds, Optional.empty(), publicHostname, blockstoreDomains, frameDomains, appSubdomains,
                     a.getBoolean("include-csp", true), basicAuth, webroot, Optional.empty(), useWebAssetCache, isPublicServer, maxConnectionQueue, handlerThreads);
 
@@ -1429,6 +1433,7 @@ public class Main extends Builder {
                     PROXY,
                     ServerAdmin.SERVER_ADMIN,
                     STOP,
+                    GcCLI.GC,
                     PKI,
                     PKI_INIT,
                     IPFS

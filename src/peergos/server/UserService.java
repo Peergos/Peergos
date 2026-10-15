@@ -334,6 +334,12 @@ public class UserService {
         return true;
     }
 
+    /** Only for the user facing api: remote peers reach the p2p api over loopback */
+    public void startGcApi(PartitionStatus partitionStatus, Path tokenFile) throws IOException {
+        localhostServer.createContext("/" + Constants.GC,
+                new LocalOnlyHandler(new GcHandler(gc, partitionStatus, tokenFile), localhostServer.getAddress().getPort()));
+    }
+
     private static void addHandler(HttpServer localhostServer,
                                    HttpsServer tlsServer,
                                    String path,
