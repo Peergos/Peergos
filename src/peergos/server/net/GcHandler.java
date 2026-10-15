@@ -7,23 +7,56 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.nio.charset.*;
+import java.nio.file.*;
+import java.nio.file.attribute.*;
+import java.security.*;
+import java.util.*;
 import java.util.logging.*;
 
+/** Runs a gc for a caller that can read the token file, which a reverse proxy on this machine can't forward for */
 public class GcHandler implements HttpHandler {
     private static final Logger LOG = Logging.LOG();
+    public static final String TOKEN_HEADER = "X-Peergos-Gc-Token";
 
     private final GarbageCollector gc;
+    private final PartitionStatus partitionStatus;
+    private final byte[] token;
 
-    public GcHandler(GarbageCollector gc) {
+    public GcHandler(GarbageCollector gc, PartitionStatus partitionStatus, Path tokenFile) throws IOException {
         this.gc = gc;
+        this.partitionStatus = partitionStatus;
+        byte[] raw = new byte[32];
+        new SecureRandom().nextBytes(raw);
+        String encoded = ArrayOps.bytesToHex(raw);
+        this.token = encoded.getBytes(StandardCharsets.UTF_8);
+        writeOwnerOnly(tokenFile, encoded);
+    }
+
+    private static void writeOwnerOnly(Path file, String contents) throws IOException {
+        Files.deleteIfExists(file);
+        try {
+            Files.createFile(file, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
+        } catch (UnsupportedOperationException e) {
+            Files.createFile(file);
+        }
+        Files.writeString(file, contents);
     }
 
     @Override
     public void handle(HttpExchange exchange) throws IOException {
         try {
+            List<String> supplied = exchange.getRequestHeaders().get(TOKEN_HEADER);
+            if (supplied == null || supplied.size() != 1 ||
+                    ! MessageDigest.isEqual(token, supplied.get(0).getBytes(StandardCharsets.UTF_8))) {
+                reply(exchange, 403, "Invalid gc token");
+                return;
+            }
             if (gc == null) {
-                // without enable-gc writes aren't tracked in transactions, so a concurrent gc could delete them
-                reply(exchange, 409, "GC is not enabled on the running server. Stop it to run gc, or restart it with -enable-gc true");
+                reply(exchange, 409, "This server's S3 blockstore is garbage collected separately");
+                return;
+            }
+            if (! partitionStatus.isDone()) {
+                reply(exchange, 409, "The blockstore is still being partitioned, try again when it has finished");
                 return;
             }
             boolean ran = gc.collectOrAwait(s -> Futures.of(true));

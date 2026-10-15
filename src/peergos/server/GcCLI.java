@@ -2,6 +2,7 @@ package peergos.server;
 
 import peergos.server.crypto.hash.ScryptJava;
 import peergos.server.corenode.*;
+import peergos.server.net.GcHandler;
 import peergos.server.space.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
@@ -36,20 +37,28 @@ public class GcCLI extends Builder {
                     .toList()
     );
 
+    public static Path tokenFile(Args a) {
+        return a.fromPeergosDir("gc-token-file", "gc.token");
+    }
+
     private static boolean gc(Args a) {
         int port = a.getInt("port");
         HttpClient client = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
-        HttpRequest req = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/" + Constants.GC))
-                .POST(HttpRequest.BodyPublishers.noBody())
-                .build();
         try {
+            HttpRequest.Builder req = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/" + Constants.GC))
+                    .POST(HttpRequest.BodyPublishers.noBody());
+            Path tokenFile = tokenFile(a);
+            if (Files.exists(tokenFile))
+                req.header(GcHandler.TOKEN_HEADER, Files.readString(tokenFile).trim());
             System.out.println("Running gc in the server on port " + port + "...");
-            HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> res = client.send(req.build(), HttpResponse.BodyHandlers.ofString());
             if (res.statusCode() == 404)
                 return fail("The server on port " + port + " has no gc api. Stop it to run gc.");
+            if (res.statusCode() == 403)
+                return fail("The server refused the gc token. Run this as a user that can read " + tokenFile + " with the same PEERGOS_PATH as the server.");
             if (res.statusCode() != 200)
                 return fail(res.body());
             System.out.println(res.body());
