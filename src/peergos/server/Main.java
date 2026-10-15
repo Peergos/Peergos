@@ -1108,6 +1108,7 @@ public class Main extends Builder {
 
             localAPI.initAndStart(localAPIAddress, nodeIds, tlsProps, publicHostname, blockstoreDomains, frameDomains, appSubdomains,
                     a.getBoolean("include-csp", true), basicAuth, webroot, appDevTarget, useWebAssetCache, isPublicServer, maxConnectionQueue, handlerThreads);
+            localAPI.startGcApi();
             p2pAPI.initAndStart(p2pAPIAddress, nodeIds, Optional.empty(), publicHostname, blockstoreDomains, frameDomains, appSubdomains,
                     a.getBoolean("include-csp", true), basicAuth, webroot, Optional.empty(), useWebAssetCache, isPublicServer, maxConnectionQueue, handlerThreads);
 
@@ -1429,6 +1430,7 @@ public class Main extends Builder {
                     PROXY,
                     ServerAdmin.SERVER_ADMIN,
                     STOP,
+                    GcCLI.GC,
                     PKI,
                     PKI_INIT,
                     IPFS
