@@ -1,7 +1,10 @@
 package peergos.server.webdav;
 
-import org.eclipse.jetty.security.ConstraintMapping;
-import org.eclipse.jetty.security.ConstraintSecurityHandler;
+import org.eclipse.jetty.ee10.servlet.ServletContextHandler;
+import org.eclipse.jetty.ee10.servlet.ServletHolder;
+import org.eclipse.jetty.ee10.servlet.security.ConstraintMapping;
+import org.eclipse.jetty.ee10.servlet.security.ConstraintSecurityHandler;
+import org.eclipse.jetty.security.Constraint;
 import org.eclipse.jetty.security.HashLoginService;
 import org.eclipse.jetty.security.UserStore;
 import org.eclipse.jetty.security.authentication.BasicAuthenticator;
@@ -9,9 +12,6 @@ import org.eclipse.jetty.security.authentication.DigestAuthenticator;
 import org.eclipse.jetty.server.Connector;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
-import org.eclipse.jetty.servlet.ServletContextHandler;
-import org.eclipse.jetty.servlet.ServletHolder;
-import org.eclipse.jetty.util.security.Constraint;
 import org.eclipse.jetty.util.security.Password;
 import peergos.server.Main;
 import peergos.server.net.MountConfigHandler;
@@ -96,21 +96,15 @@ public class WebdavServer {
         server.addBean(loginService);
 
         ConstraintSecurityHandler security = new ConstraintSecurityHandler();
-        server.setHandler(security);
 
-        Constraint constraint = new Constraint();
-        constraint.setName("auth");
-        constraint.setAuthenticate(true);
-        constraint.setRoles(new String[] { "user"});
+        Constraint constraint = Constraint.from("auth", Constraint.Authorization.SPECIFIC_ROLE, "user");
 
         ConstraintMapping mapping = new ConstraintMapping();
         mapping.setPathSpec("/*");
         mapping.setConstraint(constraint);
 
         // Allow unauthenticated OPTIONS so Windows WebClient can discover DAV capabilities
-        Constraint optionsConstraint = new Constraint();
-        optionsConstraint.setName("options");
-        optionsConstraint.setAuthenticate(false);
+        Constraint optionsConstraint = Constraint.from("options", Constraint.Authorization.ALLOWED);
 
         ConstraintMapping optionsMapping = new ConstraintMapping();
         optionsMapping.setMethod("OPTIONS");
@@ -131,7 +125,8 @@ public class WebdavServer {
 
         ServletContextHandler context = new ServletContextHandler(ServletContextHandler.SESSIONS);
         context.setContextPath("/");
-        security.setHandler(context);
+        context.setSecurityHandler(security);
+        server.setHandler(context);
 
         if (snapshotFs != null) {
             context.addServlet(new ServletHolder("snapshot", new SnapshotServlet(snapshotFs)),
