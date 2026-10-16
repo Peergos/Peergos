@@ -195,7 +195,33 @@ To make that persistent for the desktop app, add the following to `~/.peergos/co
 ```ini
 server-url = https://YOUR_PEERGOS_SERVER_DOMAIN
 ```
-For security, prefer `https` for remote servers, and only use plain `http` for loopback addresses such as `http://localhost:8000`.
+For security, prefer `https` for remote servers. Plain `http` is only accepted for a server on the same machine, such as `http://localhost:8000`, or on your local network (see below).
+
+Usage - logging in over your local network
+-----
+Use this method to run Peergos on one machine at home, like a NAS or an always-on desktop, and log in to it from the desktop app or the CLI on other machines on the same network, without a domain name or TLS certificate.
+
+1. On the server machine, run Peergos listening on the network, and allow its port (8000 by default) through the firewall:
+```
+java -jar Peergos.jar daemon -generate-token true -listen-host 0.0.0.0
+```
+Sign up through the localhost link it prints, in a browser on that machine.
+
+2. On each other machine, point the desktop app at the server's LAN address, either from the server settings on the login page, or with:
+```bash
+peergos -server-url http://192.168.1.10:8000
+```
+or persistently in `~/.peergos/config`:
+```ini
+server-url = http://192.168.1.10:8000
+```
+
+3. To use the CLI from another machine:
+```
+java -jar Peergos.jar shell -peergos-url http://192.168.1.10:8000
+```
+
+Plain `http` is accepted for private addresses (`10.x.x.x`, `172.16.x.x` - `172.31.x.x` and `192.168.x.x`) and for host names that resolve to one. Your password never leaves your machine, and everything you store is encrypted before it is sent, so others on the network can't read your files, but they can see and interfere with the traffic. If you don't trust everyone on your network, or want to log in from outside it, set up a domain name and TLS as described in self hosting below. Log in through the desktop app rather than a browser pointed at the LAN address: browsers only allow apps and large downloads on `https` or localhost pages.
 
 Usage - self hosting
 -----

@@ -2,6 +2,7 @@ package peergos.server.net;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
+import peergos.server.Main;
 import peergos.server.UserService;
 import peergos.server.util.HttpUtil;
 import peergos.server.util.Logging;
@@ -39,15 +40,7 @@ public class ConfigHandler implements HttpHandler {
         this.localAppProps = localAppProps;
     }
 
-    private static boolean isLoopbackHost(String host) {
-        if (host == null || host.isEmpty())
-            return false;
-        if ("localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host) || "::1".equals(host) || "[::1]".equals(host))
-            return true;
-            return false;
-    }
-
-    private static String validateServerUrl(String serverUrl) {
+    public static String validateServerUrl(String serverUrl) {
         String trimmed = serverUrl.trim();
         if (trimmed.isEmpty())
             return "";
@@ -59,9 +52,9 @@ public class ConfigHandler implements HttpHandler {
                 throw new IllegalStateException("server-url must not include embedded credentials");
             if (target.getQuery() != null || target.getRef() != null)
                 throw new IllegalStateException("server-url must not include query parameters or fragments");
-            boolean secureLoopback = "http".equalsIgnoreCase(target.getProtocol()) && isLoopbackHost(target.getHost());
-            if (! "https".equalsIgnoreCase(target.getProtocol()) && ! secureLoopback)
-                throw new IllegalStateException("desktop/proxy mode requires https, or http only for a loopback self-hosted server");
+            boolean plainHttpAllowed = "http".equalsIgnoreCase(target.getProtocol()) && Main.allowsPlainHttp(target.getHost());
+            if (! "https".equalsIgnoreCase(target.getProtocol()) && ! plainHttpAllowed)
+                throw new IllegalStateException("desktop/proxy mode requires https, or http only for a server on this machine or the local network");
             return target.toString();
         } catch (MalformedURLException e) {
             throw new IllegalStateException("Invalid server-url: " + trimmed, e);
