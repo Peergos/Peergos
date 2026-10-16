@@ -17,6 +17,8 @@ import peergos.shared.util.ProgressConsumer;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.function.Supplier;
 
 public class RetryStorageTests {
 
@@ -164,6 +166,48 @@ public class RetryStorageTests {
         @Override
         public Optional<BlockCache> getBlockCache() {
             return Optional.empty();
+        }
+    }
+
+    public class FailingCommits extends FailingStorage {
+        private final int failures;
+        private final Supplier<RuntimeException> failure;
+        public int calls = 0;
+
+        public FailingCommits(int failures, Supplier<RuntimeException> failure) {
+            super(1);
+            this.failures = failures;
+            this.failure = failure;
+        }
+
+        @Override
+        public CompletableFuture<List<Cid>> bulkCommit(PublicKeyHash owner, BulkCommit commit) {
+            if (calls++ < failures)
+                return CompletableFuture.failedFuture(failure.get());
+            return Futures.of(Collections.emptyList());
+        }
+    }
+
+    @Test
+    public void bulkCommitRetriedOnTooManyRequests() {
+        FailingCommits target = new FailingCommits(2, () -> new TooManyRequestsException("Too Many Requests"));
+        new RetryStorage(target, 3).bulkCommit(null, null).join();
+        Assert.assertEquals(3, target.calls);
+    }
+
+    @Test
+    public void bulkCommitNotRetriedOnOtherFailures() {
+        List<Supplier<RuntimeException>> failures = List.of(
+                RateLimitException::new, // a 502 or 504, after which the commit may have landed
+                () -> new MajorRateLimitException("Rate Limit: User request limit exceeded"),
+                () -> new IllegalStateException("failure!"));
+        for (Supplier<RuntimeException> failure : failures) {
+            FailingCommits target = new FailingCommits(1, failure);
+            try {
+                new RetryStorage(target, 3).bulkCommit(null, null).join();
+                Assert.fail("Should throw exception");
+            } catch (CompletionException expected) {}
+            Assert.assertEquals(1, target.calls);
         }
     }
 

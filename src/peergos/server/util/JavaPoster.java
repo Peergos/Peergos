@@ -2,8 +2,7 @@ package peergos.server.util;
 
 import peergos.server.net.Multipart;
 import peergos.shared.io.ipfs.api.*;
-import peergos.shared.storage.PointerCasException;
-import peergos.shared.storage.RateLimitException;
+import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -108,7 +107,9 @@ public class JavaPoster implements HttpPoster {
                 byte[] resp = Serialize.readFully(din);
                 din.close();
                 int statusCode = response.statusCode();
-                if (statusCode == 429 || statusCode == 502 || statusCode == 503 || statusCode == 504) {
+                if (statusCode == 429) {
+                    res.completeExceptionally(tooManyRequests(response));
+                } else if (statusCode == 502 || statusCode == 503 || statusCode == 504) {
                     res.completeExceptionally(new RateLimitException());
                 } else if (statusCode != 200) {
                     handleError(url, res, response, new IOException(resp.length == 0 ?
@@ -128,6 +129,16 @@ public class JavaPoster implements HttpPoster {
             }
         }, reqPool);
         return res;
+    }
+
+    /** A per user or server wide limit, named in the trailer, will not clear by retrying soon. */
+    private static RuntimeException tooManyRequests(HttpResponse<?> response) {
+        String msg = response.headers().firstValue("Trailer")
+                .map(t -> URLDecoder.decode(t, StandardCharsets.UTF_8))
+                .orElse("Too Many Requests");
+        return msg.startsWith("Rate Limit") ?
+                new MajorRateLimitException(msg) :
+                new TooManyRequestsException(msg);
     }
 
     public static void handleError(String url, CompletableFuture<byte[]> res, HttpResponse<InputStream> response, Exception e) {
@@ -280,7 +291,9 @@ public class JavaPoster implements HttpPoster {
                 byte[] resp = Serialize.readFully(din);
                 din.close();
                 int statusCode = response.statusCode();
-                if (statusCode == 429 || statusCode == 502 || statusCode == 503 || statusCode == 504) {
+                if (statusCode == 429) {
+                    res.completeExceptionally(tooManyRequests(response));
+                } else if (statusCode == 502 || statusCode == 503 || statusCode == 504) {
                     res.completeExceptionally(new RateLimitException());
                 } else if (statusCode != 200) {
                     handleError(url, res, response, new IOException(resp.length == 0 ?

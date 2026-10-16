@@ -21,6 +21,8 @@ import peergos.shared.login.mfa.MultiFactorAuthResponse;
 import peergos.shared.mutable.HttpMutablePointers;
 import peergos.shared.social.HttpSocialNetwork;
 import peergos.shared.storage.HttpSpaceUsage;
+import peergos.shared.storage.MajorRateLimitException;
+import peergos.shared.storage.RateLimitException;
 import peergos.shared.storage.RetryStorage;
 import peergos.shared.storage.UnauthedCachingStorage;
 import peergos.shared.user.CommittedWriterData;
@@ -353,8 +355,8 @@ public class DirectorySync {
                     errored = true;
                     ERROR.accept(e);
                     if (pairLog != null)
-                        pairLog.error(e.getMessage());
-                    pairStatus.setError(e.getMessage());
+                        pairLog.error(describeError(e));
+                    pairStatus.setError(describeError(e));
                     pairStatus.setStatus(SyncStatus.ERROR);
                     e.printStackTrace();
                     DirectorySync.LOG.log(Level.WARNING, e, e::getMessage);
@@ -883,6 +885,12 @@ public class DirectorySync {
     /** A failed request is thrown with the url as its message, which tells the user nothing
      *  they can act on, and repeats their owner key back at them. */
     public static String describeError(Throwable t) {
+        // a transient rate limit has no message of its own, so it would show as its class name
+        Throwable cause = Exceptions.getRootCause(t);
+        if (cause instanceof MajorRateLimitException)
+            return cause.getMessage();
+        if (cause instanceof RateLimitException)
+            return "The server is busy, sync will retry shortly";
         String msg = t.getMessage();
         // android reports a name lookup failure as a raw resolver error, not as the exception
         // type, so the text is what tells them apart

@@ -8,4 +8,8 @@ public class RateLimitException extends RuntimeException {
     public RateLimitException() {
         super();
     }
+
+    protected RateLimitException(String msg) {
+        super(msg);
+    }
 }

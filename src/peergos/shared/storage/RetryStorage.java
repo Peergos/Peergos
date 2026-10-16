@@ -17,6 +17,7 @@ import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 public class RetryStorage implements ContentAddressedStorage {
@@ -53,6 +54,13 @@ public class RetryStorage implements ContentAddressedStorage {
     }
 
     private static <V> CompletableFuture<V> recurse(int retriesLeft, int maxAttempts, Supplier<CompletableFuture<V>> f) {
+        return recurse(retriesLeft, maxAttempts, f, e -> true);
+    }
+
+    private static <V> CompletableFuture<V> recurse(int retriesLeft,
+                                                    int maxAttempts,
+                                                    Supplier<CompletableFuture<V>> f,
+                                                    Predicate<Throwable> retryable) {
         CompletableFuture<V> res = new CompletableFuture<>();
         try {
             f.get()
@@ -60,6 +68,8 @@ public class RetryStorage implements ContentAddressedStorage {
                     .exceptionally(g -> {
                         Throwable e = Exceptions.getRootCause(g);
                         if (retriesLeft == 1) {
+                            res.completeExceptionally(e);
+                        } else if (! retryable.test(e)) {
                             res.completeExceptionally(e);
                         } else if (e instanceof StorageQuotaExceededException) {
                             res.completeExceptionally(e);
@@ -74,7 +84,7 @@ public class RetryStorage implements ContentAddressedStorage {
                             // waits on a loading page for as long as the retries take
                             res.completeExceptionally(e);
                         } else {
-                            retryAfter(() -> recurse(retriesLeft - 1, maxAttempts, f)
+                            retryAfter(() -> recurse(retriesLeft - 1, maxAttempts, f, retryable)
                                             .thenAccept(res::complete)
                                             .exceptionally(t -> {
                                                 res.completeExceptionally(t);
@@ -154,8 +164,10 @@ public class RetryStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<List<Cid>> bulkCommit(PublicKeyHash owner, BulkCommit commit) {
         // Not retried: the pointer half of a commit is a CAS, so a retry of one that actually landed
-        // fails the CAS, which the caller resolves by merging rather than by trying again.
-        return target.bulkCommit(owner, commit);
+        // fails the CAS, which the caller resolves by merging rather than by trying again. Except a
+        // 429: the server refuses those while writing blocks, before it sets any pointer.
+        return recurse(maxAttempts, maxAttempts, () -> target.bulkCommit(owner, commit),
+                e -> e instanceof TooManyRequestsException);
     }
 
     @Override
