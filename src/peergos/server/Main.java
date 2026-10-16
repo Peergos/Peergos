@@ -668,7 +668,8 @@ public class Main extends Builder {
                     if (proxy.isPresent())
                         System.out.println("Using http proxy " + proxy.get());
                     JavaPoster poster = new JavaPoster(target,
-                            ! isLoopbackHost(target.getHost()),
+                            // a LAN server is usually a private one, which only accepts POSTs
+                            ! allowsPlainHttp(target.getHost()),
                             Optional.empty(),
                             Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-proxy"),
                             proxy);
@@ -778,15 +779,20 @@ public class Main extends Builder {
         return false;
     }
 
+    /** Plain http only where the traffic stays on this machine or the local network. */
+    public static boolean allowsPlainHttp(String host) {
+        return isLoopbackHost(host) || isLanIP(host);
+    }
+
     private static String getAppServerUrl(Args args) {
         String serverUrl = args.getArg(ARG_SERVER_URL.name, args.getArg("peergos-url", null));
         if (serverUrl == null)
             serverUrl = readSavedServerUrl(args.getPeergosDir()).orElse("https://peergos.net");
         try {
             URL target = new URL(serverUrl);
-            boolean secureLoopback = "http".equalsIgnoreCase(target.getProtocol()) && isLoopbackHost(target.getHost());
-            if (! "https".equalsIgnoreCase(target.getProtocol()) && ! secureLoopback)
-                throw new IllegalStateException("Warning: desktop/proxy mode should use https, or http only for a loopback self-hosted server: " + serverUrl);
+            boolean plainHttpAllowed = "http".equalsIgnoreCase(target.getProtocol()) && allowsPlainHttp(target.getHost());
+            if (! "https".equalsIgnoreCase(target.getProtocol()) && ! plainHttpAllowed)
+                throw new IllegalStateException("Warning: desktop/proxy mode should use https, or http only for a server on this machine or the local network: " + serverUrl);
             return serverUrl;
         } catch (MalformedURLException e) {
             throw new IllegalStateException("Invalid server-url: " + serverUrl, e);
@@ -1200,8 +1206,9 @@ public class Main extends Builder {
                     "███████╗   ██║     ███████╗███████╗██║  ██║╚██████╔╝╚██████╔╝███████║   ███████╗\n" +
                     "╚══════╝   ╚═╝     ╚══════╝╚══════╝╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚══════╝   ╚══════╝");
             boolean generateToken = a.getBoolean("generate-token", ! localhostApi);
-            String host = (publicHostname.isPresent() ? "https://" : "http://") +
-                    (publicHostname.orElse(localAPIAddress.getHostString())) +
+            boolean anyInterface = localAPIAddress.getAddress() != null && localAPIAddress.getAddress().isAnyLocalAddress();
+            String host = (publicHostname.isPresent() && ! isLanIP(publicHostname.get()) ? "https://" : "http://") +
+                    (publicHostname.orElse(anyInterface ? "localhost" : localAPIAddress.getHostString())) +
                     (webPort == 80 ? "" : ":" + webPort);
             if (generateToken) {
                 System.out.println("Generating signup token...");
