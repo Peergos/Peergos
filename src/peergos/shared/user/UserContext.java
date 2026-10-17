@@ -1405,7 +1405,8 @@ public class UserContext {
                                 }),
                         t -> {
                             if (network.batCache.isPresent() &&
-                            (t.toString().contains("ConnectException") || t.toString().contains("RateLimitException")))
+                            (t.toString().contains("ConnectException") || t.toString().contains("RateLimitException")
+                                    || t.toString().contains("TooManyRequestsException")))
                                 return network.batCache.get().getUserBats(username, loginRoot);
                             return Futures.errored(t);
                         })
