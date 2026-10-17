@@ -446,11 +446,11 @@ public class Builder {
                                          Account account,
                                          LinkRetrievalCounter linkCounts,
                                          Crypto crypto) {
-        Multihash nodeId = localStorage.id().join();
         PublicKeyHash peergosId = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
         Multihash pkiServerId = getPkiServerId(a);
-        // build a mirroring proxying corenode, unless we are the pki node
-        boolean isPkiNode = nodeId.bareMultihash().equals(pkiServerId);
+        // build a mirroring proxying corenode, unless we are the pki node, under any of our identities
+        boolean isPkiNode = localStorage.ids().join().stream()
+                .anyMatch(id -> id.bareMultihash().equals(pkiServerId.bareMultihash()));
         Optional<BatWithId> instanceBat = a.getOptionalArg("instance-bat").map(BatWithId::decode);
         if (isPkiNode)
             return buildPkiCorenode(localPointers, account, bats, localStorage, crypto, a);
