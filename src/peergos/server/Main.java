@@ -95,6 +95,9 @@ public class Main extends Builder {
 
     public static final Command.Arg ARG_ANNOUNCE_ADDRESSES = new Command.Arg("ipfs-announce-addresses",
             "Comma separated list of extra announce multi-addresses. e.g. a public NAT address with port forwarding: /ip4/$IP/tcp/4001", false);
+    public static final Command.Arg ARG_PREVIOUS_IDENTITY_SWARM_PORT = new Command.Arg("ipfs-previous-identity-swarm-port",
+            "Also run the identity this server rotated away from, on this port, for servers that still dial it. " +
+            "Give it the port the old identity used, and ipfs-swarm-port a new one.", false);
     public static final Command.Arg ARG_HTTP_PROXY = new Command.Arg("http_proxy", "Use a http proxy for all requests, format host:port", false);
     public static final Command.Arg ARG_SERVER_URL = new Command.Arg("server-url", "Address of the remote Peergos or self-hosted server to use in app/proxy mode", false);
     public static final Command.Arg ARG_NATIVE_TWEETNACL_PATH = new Command.Arg("native-tweetnacl-path",
@@ -124,6 +127,7 @@ public class Main extends Builder {
                     ARG_IPFS_PROXY_TARGET,
                     ARG_BOOTSTRAP_NODES,
                     ARG_ANNOUNCE_ADDRESSES,
+                    ARG_PREVIOUS_IDENTITY_SWARM_PORT,
                     new Command.Arg("collect-metrics", "Export aggregated metrics", false, "false"),
                     new Command.Arg("metrics.address", "Listen address for serving aggregated metrics", false, "localhost"),
                     new Command.Arg("ipfs.metrics.port", "Port for serving aggregated ipfs metrics", false, "8101"),
@@ -145,6 +149,7 @@ public class Main extends Builder {
                     ARG_IPFS_PROXY_TARGET,
                     ARG_BOOTSTRAP_NODES,
                     ARG_ANNOUNCE_ADDRESSES,
+                    ARG_PREVIOUS_IDENTITY_SWARM_PORT,
                     new Command.Arg("pki.node.swarm.port", "Swarm port of the pki node", true, "5001"),
                     LISTEN_HOST,
                     new Command.Arg("public-domain", "The public domain name for this server (required if TLS is managed upstream)", false),

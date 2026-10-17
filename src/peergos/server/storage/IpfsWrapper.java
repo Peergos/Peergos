@@ -233,6 +233,7 @@ public class IpfsWrapper implements AutoCloseable {
     public final IpfsConfigParams ipfsConfigParams;
 
     private EmbeddedPeer embeddedIpfs;
+    private Optional<EmbeddedPeer> previousIdentity = Optional.empty();
     private HttpServer apiServer;
     private HttpServer p2pServer;
     private volatile boolean running = true;
@@ -281,6 +282,8 @@ public class IpfsWrapper implements AutoCloseable {
         LOG.info("Stopping server...");
         try {
             embeddedIpfs.stop().join();
+            if (previousIdentity.isPresent())
+                previousIdentity.get().stop().join();
             apiServer.stop(0);
             p2pServer.stop(0);
             running = false;
@@ -429,6 +432,8 @@ public class IpfsWrapper implements AutoCloseable {
                 config.addresses.proxyTargetAddress.map(IpfsWrapper::proxyHandler)
         );
         ipfsWrapper.embeddedIpfs.start(args.getBoolean("async-bootstrap", false));
+        ipfsWrapper.previousIdentity = args.getOptionalArg(Main.ARG_PREVIOUS_IDENTITY_SWARM_PORT.name)
+                .map(port -> startPreviousIdentity(args, ipfsWrapper.ipfsDir, ids, config, Integer.parseInt(port)));
         io.ipfs.multiaddr.MultiAddress apiAddress = config.addresses.apiAddress;
         InetSocketAddress localAPIAddress = new InetSocketAddress(apiAddress.getHost(), apiAddress.getPort());
 
@@ -466,6 +471,35 @@ public class IpfsWrapper implements AutoCloseable {
         Runtime.getRuntime().addShutdownHook(shutdownHook);
         ipfsWrapper.startIdPublisher(ids);
         return ipfsWrapper;
+    }
+
+    /** Serves p2p http under the identity before the current one, which servers whose config still names it
+     *  dial directly rather than following the rotation, e.g. the pki node after rotating away from RSA.
+     */
+    private static EmbeddedPeer startPreviousIdentity(Args args, Path ipfsDir, ServerIdentityStore ids, Config config, int port) {
+        List<PeerId> all = ids.getIdentities();
+        if (all.size() < 2)
+            throw new IllegalStateException(Main.ARG_PREVIOUS_IDENTITY_SWARM_PORT.name + " is set, but this server has never rotated its identity");
+        PeerId previous = all.get(all.size() - 2);
+        byte[] privPb = ids.getPrivateKey(previous);
+        if (privPb == null)
+            throw new IllegalStateException("No private key for previous identity " + previous);
+        List<io.ipfs.multiaddr.MultiAddress> swarm = List.of(
+                new io.ipfs.multiaddr.MultiAddress("/ip6/::/tcp/" + port),
+                new io.ipfs.multiaddr.MultiAddress("/ip6/::/udp/" + port + "/quic-v1"));
+        if (config.addresses.getSwarmAddresses().stream().anyMatch(a -> a.getPort() == port))
+            throw new IllegalStateException("The previous identity needs its own swarm port, " + port + " is the current identity's");
+        LOG.info("Also serving previous identity " + previous + " on port " + port);
+        Path records = ipfsDir.resolve("datastore").resolve("records-previous.sqlite");
+        EmbeddedPeer peer = EmbeddedPeer.build(JdbcRecordLRU.buildSqlite(1_000, records.toAbsolutePath().toString()),
+                swarm,
+                config.bootstrap.getBootstrapAddresses(),
+                new IdentitySection(privPb, previous),
+                Collections.emptyList(),
+                JdbcAddressLRU.buildSqlite(1000, args.fromPeergosDir("previous-address-book", "address-book-previous.sqlite").toString()),
+                config.addresses.proxyTargetAddress.map(IpfsWrapper::proxyHandler));
+        peer.start(true);
+        return peer;
     }
 
     private Config configure() {
