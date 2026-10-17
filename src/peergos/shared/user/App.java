@@ -579,21 +579,68 @@ public class App implements StoreAppData, UseChosenFolder {
         List<String> parts = grantPathElements(relativePath);
         if (parts.isEmpty())
             throw new IllegalStateException("The granted folder itself cannot be deleted");
+        return findGrant(grantId).thenCompose(g -> grantedEntryForChange(g, parts, relativePath)
+                .thenCompose(entry -> entry.right.remove(entry.left,
+                        PathUtil.get(g.target.path).resolve(String.join("/", parts)), ctx)))
+                .thenApply(x -> true);
+    }
+
+    /** The entry a change in a write grant applies to, with the folder it is in. */
+    private CompletableFuture<Pair<FileWrapper, FileWrapper>> grantedEntryForChange(FolderGrant g, List<String> parts, String relativePath) {
         String name = parts.get(parts.size() - 1);
-        return findGrant(grantId).thenCompose(g -> resolveGrantRoot(g, true)
-                .thenCompose(root -> walk(root.orElseThrow(() -> new IllegalStateException("Granted folder " + grantId + " not found")),
+        return resolveGrantRoot(g, true)
+                .thenCompose(root -> walk(root.orElseThrow(() -> new IllegalStateException("Granted folder " + g.id + " not found")),
                         parts.subList(0, parts.size() - 1)))
                 .thenCompose(parent -> {
                     if (parent.isEmpty() || ! parent.get().isDirectory())
                         throw new IllegalStateException("File not found: " + relativePath);
-                    return walk(parent.get(), Collections.singletonList(name)).thenCompose(child -> {
+                    return walk(parent.get(), Collections.singletonList(name)).thenApply(child -> {
                         if (child.isEmpty())
                             throw new IllegalStateException("File not found: " + relativePath);
-                        Path ourPath = PathUtil.get(g.target.path).resolve(String.join("/", parts));
-                        return child.get().remove(parent.get(), ourPath, ctx);
+                        return new Pair<>(parent.get(), child.get());
                     });
-                }))
+                });
+    }
+
+    /** A new name in the same folder. The entry keeps its sharing, as a rename in Drive does. The path passed on is
+     *  where the entry really is, not the grant's display path, as the shares it has are recorded under it. */
+    @JsMethod
+    @Override
+    public CompletableFuture<Boolean> renameGranted(String grantId, String relativePath, String newName) {
+        List<String> parts = grantPathElements(relativePath);
+        if (parts.isEmpty())
+            throw new IllegalStateException("The granted folder itself cannot be renamed");
+        List<String> name = grantPathElements(newName);
+        if (name.size() != 1 || ! name.get(0).equals(newName))
+            throw new IllegalStateException("Not a valid name: " + newName);
+        return findGrant(grantId).thenCompose(g -> grantedEntryForChange(g, parts, relativePath)
+                .thenCompose(entry -> entry.right.getPath(ctx.network)
+                        .thenCompose(ourPath -> entry.right.rename(newName, entry.left, PathUtil.get(ourPath), ctx))))
                 .thenApply(x -> true);
+    }
+
+    /** Into a folder of this grant or of another the app may write to. A name already used there is refused, as is
+     *  moving a folder into itself. preserveAccess is asked only when the entry, or something in it, is shared - the
+     *  host asks the user, as Drive does, rather than the app deciding who keeps access. */
+    @JsMethod
+    @Override
+    public CompletableFuture<Boolean> moveGranted(String grantId, String relativePath, String targetGrantId, String targetFolder,
+                                                  Supplier<CompletableFuture<Boolean>> preserveAccess) {
+        List<String> parts = grantPathElements(relativePath);
+        List<String> targetParts = grantPathElements(targetFolder);
+        if (parts.isEmpty())
+            throw new IllegalStateException("The granted folder itself cannot be moved");
+        return findGrant(grantId).thenCompose(g -> findGrant(targetGrantId).thenCompose(t -> resolveGrantRoot(t, true)
+                .thenCompose(root -> walk(root.orElseThrow(() -> new IllegalStateException("Granted folder " + t.id + " not found")),
+                        targetParts))
+                .thenCompose(target -> {
+                    if (target.isEmpty() || ! target.get().isDirectory())
+                        throw new IllegalStateException("Folder not found: " + targetFolder);
+                    return grantedEntryForChange(g, parts, relativePath)
+                            .thenCompose(entry -> entry.right.getPath(ctx.network)
+                                    .thenCompose(ourPath -> entry.right.moveTo(target.get(), entry.left, PathUtil.get(ourPath), ctx,
+                                            preserveAccess)));
+                })));
     }
 
     @JsMethod
