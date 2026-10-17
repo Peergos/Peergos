@@ -4,6 +4,7 @@ import peergos.shared.user.fs.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 
 /**
  * Access to folders the user has chosen for an app. A grant is named by an opaque id and every path is relative to
@@ -28,4 +29,9 @@ public interface UseChosenFolder {
     CompletableFuture<Boolean> deleteGranted(String grantId, String relativePath);
 
     CompletableFuture<Boolean> mkdirGranted(String grantId, String relativePath);
+
+    CompletableFuture<Boolean> renameGranted(String grantId, String relativePath, String newName);
+
+    CompletableFuture<Boolean> moveGranted(String grantId, String relativePath, String targetGrantId, String targetFolder,
+                                           Supplier<CompletableFuture<Boolean>> preserveAccess);
 }

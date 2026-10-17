@@ -26,6 +26,7 @@ public class AppGrantsTests {
     private static UserService service;
     private static NetworkAccess network;
     private static final Random random = new Random(53);
+    private static final Supplier<CompletableFuture<Boolean>> KEEP = () -> Futures.of(true);
 
     @BeforeClass
     public static void init() {
@@ -194,6 +195,66 @@ public class AppGrantsTests {
     }
 
     @Test
+    public void renameAndMoveThroughGrants() {
+        UserContext context = newUser();
+        String username = context.username;
+        mkdirs(context, "Documents", "notes");
+        mkdirs(context, "Documents", "journal");
+        mkdirs(context, "Archive");
+        App app = App.init(context, "notesapp").join();
+        GrantInfo notes = app.addGrant(get(context, PathUtil.get(username, "Documents", "notes")),
+                "/" + username + "/Documents/notes", true, true).join();
+        GrantInfo journal = app.addGrant(get(context, PathUtil.get(username, "Documents", "journal")),
+                "/" + username + "/Documents/journal", true, true).join();
+        GrantInfo archive = app.addGrant(get(context, PathUtil.get(username, "Archive")),
+                "/" + username + "/Archive", false, true).join();
+        app.writeGranted(notes.grantId, "a.txt", "a".getBytes()).join();
+        app.writeGranted(notes.grantId, "b.txt", "b".getBytes()).join();
+
+        Assert.assertTrue(app.renameGranted(notes.grantId, "a.txt", "Groceries.txt").join());
+        Assert.assertEquals(-1, (int) app.existsGranted(notes.grantId, "a.txt").join());
+        Assert.assertArrayEquals("a".getBytes(), app.readGranted(notes.grantId, "Groceries.txt").join());
+        // a name already taken is refused, and nothing is replaced
+        Assert.assertNotNull(failure(() -> app.renameGranted(notes.grantId, "b.txt", "Groceries.txt")));
+        Assert.assertArrayEquals("a".getBytes(), app.readGranted(notes.grantId, "Groceries.txt").join());
+        for (String bad : Arrays.asList("", ".hidden", "..", "x/y", "/x", "x\\y", "x/"))
+            Assert.assertNotNull(bad, failure(() -> app.renameGranted(notes.grantId, "b.txt", bad)));
+        Assert.assertNotNull(failure(() -> app.renameGranted(notes.grantId, "", "x")));
+
+        Assert.assertTrue(app.mkdirGranted(notes.grantId, "old/inner").join());
+        // nothing of b.txt is shared, so nobody is asked whether access is kept
+        Assert.assertTrue(app.moveGranted(notes.grantId, "b.txt", notes.grantId, "old",
+                () -> { throw new AssertionError("asked about access to an unshared file"); }).join());
+        Assert.assertEquals(-1, (int) app.existsGranted(notes.grantId, "b.txt").join());
+        Assert.assertArrayEquals("b".getBytes(), app.readGranted(notes.grantId, "old/b.txt").join());
+
+        Assert.assertTrue(app.moveGranted(notes.grantId, "Groceries.txt", journal.grantId, "", KEEP).join());
+        Assert.assertEquals(-1, (int) app.existsGranted(notes.grantId, "Groceries.txt").join());
+        Assert.assertArrayEquals("a".getBytes(), read(context, PathUtil.get(username, "Documents", "journal", "Groceries.txt")));
+
+        // a name already used in the destination is refused, and nothing is replaced
+        app.writeGranted(notes.grantId, "Groceries.txt", "again".getBytes()).join();
+        Assert.assertNotNull(failure(() -> app.moveGranted(notes.grantId, "Groceries.txt", journal.grantId, "", KEEP)));
+        Assert.assertArrayEquals("a".getBytes(), app.readGranted(journal.grantId, "Groceries.txt").join());
+        Assert.assertArrayEquals("again".getBytes(), app.readGranted(notes.grantId, "Groceries.txt").join());
+
+        Assert.assertNotNull(failure(() -> app.moveGranted(notes.grantId, "old", notes.grantId, "old/inner", KEEP)));
+        Assert.assertArrayEquals("b".getBytes(), app.readGranted(notes.grantId, "old/b.txt").join());
+        // nor into itself through another grant: Documents' grant holds notes, whose own grant is the target
+        GrantInfo documents = app.addGrant(get(context, PathUtil.get(username, "Documents")),
+                "/" + username + "/Documents", true, true).join();
+        Throwable intoItself = failure(() -> app.moveGranted(documents.grantId, "notes", notes.grantId, "old", KEEP));
+        Assert.assertTrue(String.valueOf(intoItself.getMessage()), String.valueOf(intoItself.getMessage()).contains("descendant"));
+        Assert.assertArrayEquals("b".getBytes(), app.readGranted(notes.grantId, "old/b.txt").join());
+        Assert.assertNotNull(failure(() -> app.moveGranted(notes.grantId, "", journal.grantId, "", KEEP)));
+        Assert.assertNotNull(failure(() -> app.moveGranted(notes.grantId, "old/b.txt", archive.grantId, "", KEEP)));
+        Assert.assertNotNull(failure(() -> app.moveGranted(notes.grantId, "old/b.txt", "bnotagrant", "", KEEP)));
+        Assert.assertNotNull(failure(() -> app.moveGranted(notes.grantId, "old/b.txt", journal.grantId, "missing", KEEP)));
+        Assert.assertNotNull(failure(() -> app.moveGranted(notes.grantId, "old/b.txt", journal.grantId, "../x", KEEP)));
+        Assert.assertArrayEquals("b".getBytes(), app.readGranted(notes.grantId, "old/b.txt").join());
+    }
+
+    @Test
     public void grantGoesStaleAfterUnshareAndCanBeRebound() {
         UserContext context = newUser();
         String username = context.username;
@@ -267,6 +328,8 @@ public class AppGrantsTests {
         Assert.assertNotNull(failure(() -> app.mkdirGranted(ro.grantId, "new")));
         Assert.assertNotNull(failure(() -> app.deleteGranted(ro.grantId, "2026")));
         Assert.assertNotNull(failure(() -> app.appendGranted(ro.grantId, "a.md", new byte[1])));
+        Assert.assertNotNull(failure(() -> app.renameGranted(ro.grantId, "2026", "2027")));
+        Assert.assertNotNull(failure(() -> app.moveGranted(ro.grantId, "2026", ro.grantId, "", KEEP)));
         Assert.assertEquals(-1, (int) app.existsGranted(ro.grantId, "new").join());
 
         Assert.assertNotNull(failure(() -> app.readInternal(PathUtil.get("../" + App.GRANTS_FILENAME), null)));
