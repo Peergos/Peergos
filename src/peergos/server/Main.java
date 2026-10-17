@@ -449,6 +449,7 @@ public class Main extends Builder {
                     new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
                     ARG_PARTITIONED_STATUS,
                     ARG_IPFS_PROXY_TARGET,
+                    ARG_PREVIOUS_IDENTITY_SWARM_PORT,
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
                     new Command.Arg("pki.public.key.path", "The path to the pki public key file", true, "test.pki.public.key"),
                     // Secret parameters
