@@ -1,23 +1,106 @@
 package peergos.server.routing;
 
 import peergos.server.util.*;
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.routing.*;
+import peergos.shared.util.*;
 
 import java.net.*;
 import java.util.*;
 import java.util.function.*;
 import java.util.logging.*;
 
-/** Keeps this server's ServerAddresses current (remove-pki §4.1, §10.11). Until reachability is measured, the only
- *  direct addresses listed are the IP literals the operator announces, and until relays exist none are named.
- *  A record is signed only when its content changes, since peers take a burst of three and then one a month.
+/** Keeps this server's ServerAddresses current (remove-pki §4.1, §10.11). It lists the IP literals the operator
+ *  announces, and the addresses AutoNAT has confirmed dialable once they have stayed confirmed for a week, so an
+ *  address that changes more often is never listed; until relays exist none are named. A record is signed only
+ *  when its content changes, since peers take a burst of three and then one a month.
  */
 public class ServerAddressPublisher {
     private static final Logger LOG = Logging.LOG();
     private static final Set<String> NAMED = Set.of("dns", "dns4", "dns6", "dnsaddr", "p2p-circuit");
+    static final String META_KEY = "server-addresses";
+    public static final long STABLE_MILLIS = 7 * 24 * 3600_000L;
+    /** An address unconfirmed for this long is dropped, and must be confirmed for a week again to return; a shorter
+     *  gap, a restart or a failed probe, keeps it listed.
+     */
+    public static final long FORGET_MILLIS = 24 * 3600_000L;
+
+    private final RoutingReplica replica;
+    private final SigningKeyPair serverKey;
+    private final List<Address> announced;
+    private final Supplier<List<String>> confirmed;
+    private final ServerAddresses.Mode mode;
+    private final LongSupplier clock;
+
+    public ServerAddressPublisher(RoutingReplica replica,
+                                  SigningKeyPair serverKey,
+                                  List<String> announced,
+                                  Supplier<List<String>> confirmed,
+                                  ServerAddresses.Mode mode,
+                                  LongSupplier clock) {
+        this.replica = replica;
+        this.serverKey = serverKey;
+        this.announced = directAddresses(announced);
+        this.confirmed = confirmed;
+        this.mode = mode;
+        this.clock = clock;
+    }
+
+    /** Records which addresses are confirmed now, and publishes a new record if what should be listed changed. */
+    public synchronized Optional<ServerAddresses> refresh() {
+        long now = clock.getAsLong();
+        Map<Address, Seen> seen = loadSeen();
+        for (Address a : directAddresses(confirmed.get())) {
+            Seen prior = seen.get(a);
+            seen.put(a, new Seen(prior == null ? now : prior.first, now));
+        }
+        seen.values().removeIf(v -> now - v.last > FORGET_MILLIS);
+        saveSeen(seen);
+
+        List<Address> listed = new ArrayList<>(announced);
+        seen.entrySet().stream()
+                .filter(e -> now - e.getValue().first >= STABLE_MILLIS)
+                .map(Map.Entry::getKey)
+                .filter(a -> ! listed.contains(a))
+                .sorted(Comparator.comparing(a -> ArrayOps.bytesToHex(a.address)))
+                .forEach(listed::add);
+        return publish(replica, serverKey, listed, mode, clock);
+    }
+
+    private static class Seen {
+        final long first, last;
+
+        Seen(long first, long last) {
+            this.first = first;
+            this.last = last;
+        }
+    }
+
+    private Map<Address, Seen> loadSeen() {
+        Map<Address, Seen> res = new HashMap<>();
+        replica.store().getMeta(META_KEY).ifPresent(raw -> {
+            for (Cborable c : ((CborObject.CborList) CborObject.fromByteArray(raw)).value) {
+                CborObject.CborMap m = (CborObject.CborMap) c;
+                res.put(Address.fromCbor(m.get("a")), new Seen(m.getLong("f"), m.getLong("l")));
+            }
+        });
+        return res;
+    }
+
+    private void saveSeen(Map<Address, Seen> seen) {
+        List<Cborable> entries = new ArrayList<>();
+        for (Map.Entry<Address, Seen> e : seen.entrySet()) {
+            SortedMap<String, Cborable> m = new TreeMap<>();
+            m.put("a", e.getKey());
+            m.put("f", new CborObject.CborLong(e.getValue().first));
+            m.put("l", new CborObject.CborLong(e.getValue().last));
+            entries.add(CborObject.CborMap.build(m));
+        }
+        replica.store().setMeta(META_KEY, new CborObject.CborList(entries).serialize());
+    }
 
     /** The announced addresses fit to publish: public IP literals, without DNS names, relay circuits or a peerid. */
     public static List<Address> directAddresses(List<String> announced) {

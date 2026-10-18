@@ -2,6 +2,7 @@ package peergos.server.routing;
 
 import io.libp2p.core.*;
 import io.libp2p.core.crypto.*;
+import org.peergos.protocol.autonat.*;
 import peergos.server.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
@@ -21,6 +22,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.logging.*;
+import java.util.stream.*;
 
 /** The routing log in a running server, behind -routing-log while it is built: the replica and this server's
  *  records, replication with the configured sync peers, and the proof of work it owes.
@@ -52,7 +54,7 @@ public class RoutingService {
             ARG_ROUTING_POW_THREADS, ARG_ROUTING_INCEPTIONS_PER_DAY, ARG_ROUTING_LEGACY_STATE, ARG_ROUTING_LEGACY_STATE_HASH,
             ARG_ROUTING_WORK_BITS, ARG_ROUTING_EXPORT_LEGACY_STATE);
 
-    private static final long TICK_MILLIS = 60_000, SYNC_MILLIS = 10 * 60_000;
+    private static final long TICK_MILLIS = 60_000, SYNC_MILLIS = 10 * 60_000, ADDRESS_MILLIS = 10 * 60_000;
 
     public final ServerRouting server;
     public final RoutingNode node;
@@ -66,6 +68,7 @@ public class RoutingService {
 
     public static Optional<RoutingService> start(Args a,
                                                  Optional<PrivKey> identity,
+                                                 Optional<ReachabilityManager> reachability,
                                                  ServerIdentityStore ids,
                                                  Crypto crypto,
                                                  SqlSupplier commands,
@@ -97,12 +100,12 @@ public class RoutingService {
         List<String> announced = a.getOptionalArg("ipfs-announce-addresses")
                 .map(addrs -> Arrays.asList(addrs.split(",")))
                 .orElse(Collections.emptyList());
-        try {
-            ServerAddressPublisher.publish(server.replica, server.serverKey, ServerAddressPublisher.directAddresses(announced),
-                    ServerAddresses.Mode.Archival, System::currentTimeMillis);
-        } catch (Exception e) {
-            LOG.log(Level.WARNING, "Couldn't publish this server's addresses: " + e.getMessage(), e);
-        }
+        ServerAddressPublisher addresses = new ServerAddressPublisher(server.replica, server.serverKey, announced,
+                () -> reachability.map(r -> r.getConfirmedPublicAddresses().stream()
+                        .map(Object::toString)
+                        .collect(Collectors.toList()))
+                        .orElse(Collections.emptyList()),
+                ServerAddresses.Mode.Archival, System::currentTimeMillis);
         ExecutorService work = Executors.newFixedThreadPool(4, daemon("Routing replication"));
         RoutingNode node = new RoutingNode(server.replica, crypto.hasher, System::currentTimeMillis,
                 a.getInt(ARG_ROUTING_INCEPTIONS_PER_DAY.name, RateLimits.DEFAULT_INCEPTIONS_PER_DAY),
@@ -113,6 +116,8 @@ public class RoutingService {
         ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor(daemon("Routing timer"));
         timer.scheduleWithFixedDelay(() -> run(node::tick), TICK_MILLIS, TICK_MILLIS, TimeUnit.MILLISECONDS);
         timer.scheduleWithFixedDelay(() -> run(node::syncRound), 0, SYNC_MILLIS, TimeUnit.MILLISECONDS);
+        timer.scheduleWithFixedDelay(() -> run(addresses::refresh), 0, ADDRESS_MILLIS, TimeUnit.MILLISECONDS);
+        reachability.ifPresent(r -> r.addListener(state -> timer.execute(() -> run(addresses::refresh))));
         LOG.info("Routing log started for " + server.peerId + " with " + node.syncPeers().size() + " sync peers");
         return Optional.of(new RoutingService(server, node, timer));
     }
