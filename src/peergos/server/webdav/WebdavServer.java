@@ -114,7 +114,9 @@ public class WebdavServer {
         security.setConstraintMappings(List.of(optionsMapping, mapping));
         if (authScheme == null || authScheme.toLowerCase().equals("digest")) {
             logger.info("Using DIGEST authorization");
-            security.setAuthenticator(new DigestAuthenticator());
+            DigestAuthenticator digest = new DigestAuthenticator();
+            digest.setAlgorithm("MD5");
+            security.setAuthenticator(digest);
         } else if (authScheme.toLowerCase().equals("basic")) {
             logger.info("Using BASIC authorization");
             security.setAuthenticator(new BasicAuthenticator());
