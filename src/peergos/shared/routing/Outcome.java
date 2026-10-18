@@ -10,5 +10,7 @@ public enum Outcome {
     /** Depends on records not held yet; offer it again once they arrive. */
     Unconnected,
     /** Invalid against the records held. */
-    Rejected
+    Rejected,
+    /** Valid and new, but over a rate limit; it stays with whoever offered it, to be offered again. */
+    Limited
 }

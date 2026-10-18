@@ -3,7 +3,6 @@ package peergos.shared.routing;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.*;
-import peergos.shared.util.*;
 
 import java.util.*;
 
@@ -45,7 +44,15 @@ public final class Subject implements Cborable, Comparable<Subject> {
     public int compareTo(Subject o) {
         if (kind != o.kind)
             return Integer.compare(kind, o.kind);
-        return ArrayOps.compare(idBytes(), o.idBytes());
+        return compareBytes(idBytes(), o.idBytes());
+    }
+
+    /** Unsigned and lexicographic, a prefix first, as SQL orders blobs. */
+    public static int compareBytes(byte[] a, byte[] b) {
+        for (int i = 0; i < Math.min(a.length, b.length); i++)
+            if (a[i] != b[i])
+                return (a[i] & 0xff) - (b[i] & 0xff);
+        return Integer.compare(a.length, b.length);
     }
 
     @Override
