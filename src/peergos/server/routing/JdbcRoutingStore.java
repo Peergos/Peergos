@@ -26,7 +26,26 @@ public class JdbcRoutingStore {
     private static final String REMOVE_PENDING = "DELETE FROM routingpending WHERE kind = ? AND subject = ?;";
     private static final String PENDING = "SELECT kind, subject FROM routingpending;";
     private static final String GET_NEXT_KEY = "SELECT private FROM routingnextkeys WHERE peerid = ?;";
+    private static final String GET_LEGACY = "SELECT legacy FROM routinglegacy WHERE kind = ? AND subject = ?;";
+    private static final String PUT_LEGACY = "INSERT INTO routinglegacy (kind, subject, legacy) VALUES (?, ?, ?) ON CONFLICT DO NOTHING;";
+    private static final String PUT_ALIAS = "INSERT INTO routingaliases (kind, alias, subject) VALUES (?, ?, ?) ON CONFLICT DO NOTHING;";
+    private static final String GET_ALIAS = "SELECT subject FROM routingaliases WHERE kind = ? AND alias = ?;";
+    private static final String GET_META = "SELECT value FROM routingmeta WHERE name = ?;";
+    private static final String SET_META = "INSERT INTO routingmeta (name, value) VALUES (?, ?) " +
+            "ON CONFLICT (name) DO UPDATE SET value = excluded.value;";
     private static final String SET_NEXT_KEY = "INSERT INTO routingnextkeys (peerid, private) VALUES (?, ?) ON CONFLICT DO NOTHING;";
+
+    public static final class Legacy {
+        public final Subject subject;
+        public final Cborable legacy;
+        public final List<Multihash> aliases;
+
+        public Legacy(Subject subject, Cborable legacy, List<Multihash> aliases) {
+            this.subject = subject;
+            this.legacy = legacy;
+            this.aliases = aliases;
+        }
+    }
 
     public static final class State {
         public final Subject subject;
@@ -184,6 +203,91 @@ public class JdbcRoutingStore {
              PreparedStatement insert = c.prepareStatement(SET_NEXT_KEY)) {
             insert.setBytes(1, peerId.toBytes());
             insert.setBytes(2, secret);
+            insert.executeUpdate();
+        } catch (SQLException e) {
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    /** Stores legacy bases and their aliases, all in one transaction. */
+    public void putLegacy(List<Legacy> entries) {
+        try (Connection c = getConnection();
+             PreparedStatement legacy = c.prepareStatement(PUT_LEGACY);
+             PreparedStatement alias = c.prepareStatement(PUT_ALIAS)) {
+            c.setAutoCommit(false);
+            try {
+                for (Legacy e : entries) {
+                    legacy.setInt(1, e.subject.kind);
+                    legacy.setBytes(2, e.subject.idBytes());
+                    legacy.setBytes(3, e.legacy.serialize());
+                    legacy.addBatch();
+                    for (Multihash a : e.aliases) {
+                        alias.setInt(1, e.subject.kind);
+                        alias.setBytes(2, new Subject(e.subject.kind, a).idBytes());
+                        alias.setBytes(3, e.subject.idBytes());
+                        alias.addBatch();
+                    }
+                }
+                legacy.executeBatch();
+                alias.executeBatch();
+                c.commit();
+            } catch (SQLException e) {
+                c.rollback();
+                throw e;
+            } finally {
+                c.setAutoCommit(true);
+            }
+        } catch (SQLException e) {
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    public Optional<CborObject> getLegacy(Subject s) {
+        try (Connection c = getConnection();
+             PreparedStatement select = c.prepareStatement(GET_LEGACY)) {
+            select.setInt(1, s.kind);
+            select.setBytes(2, s.idBytes());
+            ResultSet rs = select.executeQuery();
+            return rs.next() ? Optional.of(CborObject.fromByteArray(rs.getBytes(1))) : Optional.empty();
+        } catch (SQLException e) {
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    /** The subject a later legacy key or peerid belongs to. */
+    public Optional<Subject> resolveAlias(Subject alias) {
+        try (Connection c = getConnection();
+             PreparedStatement select = c.prepareStatement(GET_ALIAS)) {
+            select.setInt(1, alias.kind);
+            select.setBytes(2, alias.idBytes());
+            ResultSet rs = select.executeQuery();
+            return rs.next() ? Optional.of(subject(alias.kind, rs.getBytes(1))) : Optional.empty();
+        } catch (SQLException e) {
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    public Optional<byte[]> getMeta(String name) {
+        try (Connection c = getConnection();
+             PreparedStatement select = c.prepareStatement(GET_META)) {
+            select.setString(1, name);
+            ResultSet rs = select.executeQuery();
+            return rs.next() ? Optional.of(rs.getBytes(1)) : Optional.empty();
+        } catch (SQLException e) {
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void setMeta(String name, byte[] value) {
+        try (Connection c = getConnection();
+             PreparedStatement insert = c.prepareStatement(SET_META)) {
+            insert.setString(1, name);
+            insert.setBytes(2, value);
             insert.executeUpdate();
         } catch (SQLException e) {
             LOG.log(Level.WARNING, e.getMessage(), e);

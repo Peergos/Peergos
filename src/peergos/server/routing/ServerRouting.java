@@ -44,8 +44,10 @@ public class ServerRouting {
                                       CuckooCycle identityWork,
                                       CuckooCycle serverWork,
                                       int threads,
+                                      Consumer<RoutingReplica> legacyImport,
                                       Consumer<Subject> onProven) {
         RoutingReplica replica = new RoutingReplica(store, new RecordValidator(crypto.hasher, identityWork, serverWork), identityWork, serverWork);
+        legacyImport.accept(replica);
         Multihash peerId = ServerKeys.peerId(serverKey.publicSigningKey);
         AdmissionWorker admissions = new AdmissionWorker(replica, peerId, serverKey, identityWork, serverWork, threads, onProven);
         ensureInception(replica, serverKey, committedNext, crypto);
@@ -53,14 +55,15 @@ public class ServerRouting {
         return new ServerRouting(replica, admissions, peerId, serverKey);
     }
 
-    /** Writes this server's inception if it has none, committing to the next key the operator generated with
+    /** Writes this server's inception if it has none, under its first legacy peerid if it rotated by IPNS before
+     *  the routing log, so the legacy import must come first. It commits to the next key the operator generated with
      *  gen-next, or failing that to a fresh one kept in the store until the operator moves it off the server.
      *  The proof of work is owed from then on.
      */
     static void ensureInception(RoutingReplica replica, SigningKeyPair serverKey, Optional<PublicSigningKey> committedNext, Crypto crypto) {
         Multihash peerId = ServerKeys.peerId(serverKey.publicSigningKey);
         Subject self = Subject.server(peerId);
-        if (replica.server(self).isPresent())
+        if (replica.log(self).inception().isPresent())
             return;
         JdbcRoutingStore store = replica.store();
         PublicSigningKey next = committedNext.orElseGet(() -> {

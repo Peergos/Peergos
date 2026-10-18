@@ -191,7 +191,9 @@ public interface SqlSupplier {
     }
 
     /** One row per identity or server in the routing log: its tagged records, and the hash of them that
-     *  reconciliation compares. Pending rows are inceptions this server still owes proof of work for.
+     *  reconciliation compares. Pending rows are inceptions this server still owes proof of work for. Legacy rows
+     *  are the PKI's final state, which is never gossiped, and aliases map every later legacy key or peerid to
+     *  the first.
      */
     default String createRoutingTablesCommand() {
         return "CREATE TABLE IF NOT EXISTS routingrecords (" +
@@ -206,7 +208,20 @@ public interface SqlSupplier {
                 "PRIMARY KEY (kind, subject));" +
                 "CREATE TABLE IF NOT EXISTS routingnextkeys (" +
                 "peerid " + getByteArrayType() + " PRIMARY KEY NOT NULL, " +
-                "private " + getByteArrayType() + " NOT NULL);";
+                "private " + getByteArrayType() + " NOT NULL);" +
+                "CREATE TABLE IF NOT EXISTS routinglegacy (" +
+                "kind " + sqlInteger() + " NOT NULL, " +
+                "subject " + getByteArrayType() + " NOT NULL, " +
+                "legacy " + getByteArrayType() + " NOT NULL, " +
+                "PRIMARY KEY (kind, subject));" +
+                "CREATE TABLE IF NOT EXISTS routingaliases (" +
+                "kind " + sqlInteger() + " NOT NULL, " +
+                "alias " + getByteArrayType() + " NOT NULL, " +
+                "subject " + getByteArrayType() + " NOT NULL, " +
+                "PRIMARY KEY (kind, alias));" +
+                "CREATE TABLE IF NOT EXISTS routingmeta (" +
+                "name varchar(64) PRIMARY KEY NOT NULL, " +
+                "value " + getByteArrayType() + " NOT NULL);";
     }
 
     default void createTable(String sqlTableCreate, Connection conn) throws SQLException {
