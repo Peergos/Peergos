@@ -96,7 +96,7 @@ public class RoutingReplicaTests {
         JdbcRoutingStore store = store();
         SigningKeyPair serverKey = key();
         List<Subject> proven = new CopyOnWriteArrayList<>();
-        ServerRouting routing = ServerRouting.start(store, serverKey, Optional.empty(), crypto, WORK, WORK, 2, proven::add);
+        ServerRouting routing = ServerRouting.start(store, serverKey, Optional.empty(), crypto, WORK, WORK, 2, r -> {}, proven::add);
         Subject self = Subject.server(routing.peerId);
         Assert.assertTrue(store.nextKey(routing.peerId).isPresent());
 
@@ -116,7 +116,7 @@ public class RoutingReplicaTests {
         Assert.assertTrue(store.pending().isEmpty());
         routing.stop();
 
-        ServerRouting restarted = ServerRouting.start(store, serverKey, Optional.empty(), crypto, WORK, WORK, 2, s -> {});
+        ServerRouting restarted = ServerRouting.start(store, serverKey, Optional.empty(), crypto, WORK, WORK, 2, r -> {}, s -> {});
         Assert.assertArrayEquals(routing.replica.stateHash(self), restarted.replica.stateHash(self));
         Assert.assertTrue(store.pending().isEmpty());
         restarted.stop();
@@ -134,7 +134,7 @@ public class RoutingReplicaTests {
         store.addPending(user);
 
         List<Subject> proven = new CopyOnWriteArrayList<>();
-        ServerRouting routing = ServerRouting.start(store, serverKey, Optional.empty(), crypto, WORK, WORK, 2, proven::add);
+        ServerRouting routing = ServerRouting.start(store, serverKey, Optional.empty(), crypto, WORK, WORK, 2, r -> {}, proven::add);
         waitFor(() -> proven.contains(user));
         Assert.assertTrue(routing.replica.isProven(user, false));
         routing.stop();
@@ -166,7 +166,7 @@ public class RoutingReplicaTests {
 
         JdbcRoutingStore store = store();
         ServerRouting routing = ServerRouting.start(store, ServerSigningKeys.fromLibp2p(current, crypto.signer),
-                ServerRouting.committedNext(ids, currentId, crypto), crypto, WORK, WORK, 1, s -> {});
+                ServerRouting.committedNext(ids, currentId, crypto), crypto, WORK, WORK, 1, r -> {}, s -> {});
         ServerLog log = routing.replica.server(Subject.server(routing.peerId)).get();
         Assert.assertArrayEquals(crypto.hasher.sha256(nextPair.publicSigningKey.serialize()).join(),
                 log.records.chain.currentEstablishment().get().next());

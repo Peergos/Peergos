@@ -18,6 +18,7 @@ public class RoutingReplica {
     private final RecordValidator validator;
     private final Work identityWork, serverWork;
     private final Map<Subject, SubjectLog> cache = Collections.synchronizedMap(new LRUCache<>(10_000));
+    private final Map<Subject, Subject> aliases = Collections.synchronizedMap(new LRUCache<>(10_000));
     private final Object[] locks = new Object[LOCKS];
     private final List<BiConsumer<Subject, SubjectLog>> listeners = new java.util.concurrent.CopyOnWriteArrayList<>();
 
@@ -39,32 +40,55 @@ public class RoutingReplica {
         listeners.add(listener);
     }
 
-    public SubjectLog log(Subject s) {
+    /** The subject a key or peerid belongs to: itself, or for a later legacy key or peerid, the first. */
+    public Subject canonical(Subject s) {
+        Subject cached = aliases.get(s);
+        if (cached != null)
+            return cached;
+        Subject res = store.resolveAlias(s).orElse(s);
+        aliases.put(s, res);
+        return res;
+    }
+
+    public SubjectLog log(Subject requested) {
+        Subject s = canonical(requested);
         SubjectLog cached = cache.get(s);
         if (cached != null)
             return cached;
+        SubjectLog base = store.getLegacy(s)
+                .map(c -> s.isIdentity() ?
+                        (SubjectLog) IdentityLog.legacy(LegacyIdentity.fromCbor(c)) :
+                        ServerLog.legacy(LegacyServer.fromCbor(c)))
+                .orElseGet(() -> SubjectLog.empty(s));
         List<Verified<? extends SignedRecord>> records = new ArrayList<>();
         for (SignedRecord r : store.get(s))
             records.add(validator.stored(r).join());
-        SubjectLog log = SubjectLog.build(s, records);
+        SubjectLog log = SubjectLog.build(base, records);
         cache.put(s, log);
         return log;
     }
 
     public Optional<IdentityLog> identity(Subject s) {
         SubjectLog log = log(s);
-        return log.inception().isPresent() ? Optional.of((IdentityLog) log) : Optional.empty();
+        return log.exists() ? Optional.of((IdentityLog) log) : Optional.empty();
     }
 
     public Optional<ServerLog> server(Subject s) {
         SubjectLog log = log(s);
-        return log.inception().isPresent() ? Optional.of((ServerLog) log) : Optional.empty();
+        return log.exists() ? Optional.of((ServerLog) log) : Optional.empty();
+    }
+
+    /** Called after a legacy import, which changes subjects without a record arriving. */
+    public void clearCache() {
+        cache.clear();
+        aliases.clear();
     }
 
     /** Checks a record and applies it. An inception already held is replaced by a copy whose proof is better: a
      *  proof where there was none, or an admission signed by a later key of the admitting server.
      */
-    public Outcome add(Subject s, SignedRecord record) {
+    public Outcome add(Subject requested, SignedRecord record) {
+        Subject s = canonical(requested);
         if (! s.accepts(RecordType.of(record)))
             return Outcome.Rejected;
         Verified<? extends SignedRecord> v;
@@ -80,7 +104,7 @@ public class RoutingReplica {
             Outcome outcome = c.outcome;
             if (outcome == Outcome.Duplicate && isInception(record)
                     && log.inception().map(i -> i.equals(v)).orElse(false)
-                    && proofRank(log.inception().get().record) < proofRank(record)) {
+                    && proofRank(s, log.inception().get().record) < proofRank(s, record)) {
                 updated = log.withInception(v);
                 outcome = Outcome.Added;
             }
@@ -123,24 +147,30 @@ public class RoutingReplica {
     /** -1 without a valid proof; for an identity, otherwise the index in the admitting server's chain of the key
      *  that signed the admission, so a re-signed admission by a later key outranks the old one.
      */
-    private int proofRank(SignedRecord inception) {
+    private int proofRank(Subject s, SignedRecord inception) {
         if (inception instanceof ServerInception) {
             ServerInception si = (ServerInception) inception;
             return si.proof.isPresent() && serverWork.verify(si.server.serialize(), si.proof.get()).join() ? 0 : -1;
         }
-        IdentityInception ii = (IdentityInception) inception;
-        return admittingKeyIndex(ii);
+        return admittingKeyIndex(s, (IdentityInception) inception);
     }
 
-    private int admittingKeyIndex(IdentityInception ii) {
+    /** A legacy identity is already in the pinned state, so its admission needs no proof of work (remove-pki §4.1). */
+    private Work admissionWork(Subject s) {
+        boolean legacy = identity(s).map(IdentityLog::isLegacy).orElse(false);
+        return legacy ? (subject, proof) -> java.util.concurrent.CompletableFuture.completedFuture(true) : identityWork;
+    }
+
+    private int admittingKeyIndex(Subject s, IdentityInception ii) {
         if (ii.admission.isEmpty())
             return -1;
+        Work work = admissionWork(s);
         Optional<ServerLog> admitter = server(Subject.server(ii.admittingServer()));
         if (admitter.isEmpty())
             return -1;
         List<PublicSigningKey> keys = admitter.get().records.chain.keys;
         for (int i = keys.size() - 1; i >= 0; i--)
-            if (ii.admission.get().verify(ii.identity, keys.get(i), identityWork).join())
+            if (ii.admission.get().verify(ii.identity, keys.get(i), work).join())
                 return i;
         return -1;
     }
@@ -155,9 +185,9 @@ public class RoutingReplica {
             return false;
         SignedRecord inception = log.inception().get().record;
         if (inception instanceof ServerInception)
-            return proofRank(inception) >= 0;
+            return proofRank(s, inception) >= 0;
         IdentityInception ii = (IdentityInception) inception;
-        int i = admittingKeyIndex(ii);
+        int i = admittingKeyIndex(s, ii);
         if (i < 0)
             return false;
         if (catchUp)
