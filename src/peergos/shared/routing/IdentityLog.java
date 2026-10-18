@@ -7,7 +7,7 @@ import peergos.shared.io.ipfs.*;
 import java.util.*;
 
 /** An identity's records and current state: its current key and storage providers (remove-pki §4.2). */
-public final class IdentityLog {
+public final class IdentityLog implements SubjectLog {
     public final PublicKeyHash identity;
     public final RecordLog<IdentityInception, IdentityRotation, IdentityMove> records;
 
@@ -20,6 +20,7 @@ public final class IdentityLog {
         return new IdentityLog(identity, RecordLog.empty());
     }
 
+    @Override
     public RecordLog.Change<IdentityLog> add(Verified<? extends SignedRecord> v) {
         SignedRecord r = v.record;
         if (r instanceof IdentityInception) {
@@ -36,6 +37,26 @@ public final class IdentityLog {
 
     private RecordLog.Change<IdentityLog> wrap(RecordLog.Change<RecordLog<IdentityInception, IdentityRotation, IdentityMove>> c) {
         return new RecordLog.Change<>(c.log == records ? this : new IdentityLog(identity, c.log), c.outcome);
+    }
+
+    @Override
+    public Subject subject() {
+        return Subject.identity(identity);
+    }
+
+    @Override
+    public List<Verified<? extends SignedRecord>> held() {
+        return records.records();
+    }
+
+    @Override
+    public Optional<Verified<IdentityInception>> inception() {
+        return records.inception;
+    }
+
+    @Override
+    public IdentityLog withInception(Verified<? extends SignedRecord> v) {
+        return new IdentityLog(identity, records.withInception((Verified<IdentityInception>) v));
     }
 
     public Optional<PublicSigningKey> currentKey() {

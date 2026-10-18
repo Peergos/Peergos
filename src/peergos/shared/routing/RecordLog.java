@@ -103,6 +103,12 @@ public final class RecordLog<I extends SignedRecord & Establishment, R extends S
         return added(new RecordLog<>(inception, Optional.of(v), rotations, update));
     }
 
+    public RecordLog<I, R, U> withInception(Verified<I> v) {
+        if (inception.isEmpty() || ! inception.get().equals(v))
+            throw new IllegalStateException("Not the inception held");
+        return new RecordLog<>(Optional.of(v), evidence, rotations, update);
+    }
+
     public Change<RecordLog<I, R, U>> addRotation(Verified<R> v) {
         if (inception.isEmpty())
             return unchanged(Outcome.Unconnected);
