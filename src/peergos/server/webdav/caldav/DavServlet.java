@@ -11,13 +11,13 @@ import org.xml.sax.InputSource;
 import peergos.server.util.Logging;
 import peergos.server.webdav.caldav.AppDataStore.CollectionInfo;
 import peergos.server.webdav.caldav.AppDataStore.ObjectRef;
-import peergos.server.webdav.modeshape.webdav.fromcatalina.RequestUtil;
 import peergos.server.webdav.modeshape.webdav.fromcatalina.XMLHelper;
 import peergos.server.webdav.modeshape.webdav.fromcatalina.XMLWriter;
 import peergos.shared.user.UserContext;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -1224,15 +1224,17 @@ public class DavServlet extends HttpServlet {
     }
 
     private Optional<Document> parseBody(HttpServletRequest req) {
-        if (! RequestUtil.streamNotConsumed(req))
-            return Optional.empty();
         try {
+            // available() is 0 until the body reaches the socket, so read it to know if there is one
+            byte[] raw = req.getInputStream().readAllBytes();
+            if (raw.length == 0)
+                return Optional.empty();
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             factory.setNamespaceAware(true);
             factory.setExpandEntityReferences(false);
             factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
             DocumentBuilder builder = factory.newDocumentBuilder();
-            return Optional.of(builder.parse(new InputSource(req.getInputStream())));
+            return Optional.of(builder.parse(new InputSource(new ByteArrayInputStream(raw))));
         } catch (Exception e) {
             return Optional.empty();
         }
