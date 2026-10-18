@@ -1,5 +1,6 @@
 package peergos.shared.storage;
 
+import peergos.shared.routing.IdentityKeys;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
@@ -27,6 +28,11 @@ public class BufferedStorage extends DelegatingStorage {
     private final Map<Cid, OpLog.BlockWrite> inFlight = new LinkedHashMap<>();
     private int bufferedBytes = 0;
     private final ContentAddressedStorage target;
+
+    @Override
+    public IdentityKeys identityKeys() {
+        return target.identityKeys();
+    }
     private final Hasher hasher;
 
     public BufferedStorage(ContentAddressedStorage target, Hasher hasher) {

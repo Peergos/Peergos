@@ -1,5 +1,6 @@
 package peergos.shared.storage;
 
+import peergos.shared.routing.IdentityKeys;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.io.ipfs.Cid;
@@ -13,6 +14,15 @@ import java.util.function.*;
 public class WriteFilter extends DelegatingStorage {
 
     private final ContentAddressedStorage dht;
+
+
+    @Override
+
+    public IdentityKeys identityKeys() {
+
+        return dht.identityKeys();
+
+    }
     private final TriFunction<PublicKeyHash, PublicKeyHash, Integer, Boolean> keyFilter;
 
     public WriteFilter(ContentAddressedStorage dht, TriFunction<PublicKeyHash, PublicKeyHash, Integer, Boolean> keyFilter) {

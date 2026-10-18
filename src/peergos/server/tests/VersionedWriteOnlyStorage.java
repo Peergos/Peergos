@@ -28,6 +28,11 @@ import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 public class VersionedWriteOnlyStorage implements DeletableContentAddressedStorage {
+
+    @Override
+    public peergos.shared.routing.IdentityKeys identityKeys() {
+        return peergos.shared.routing.IdentityKeys.INLINE;
+    }
     public final Map<PublicKeyHash, Map<Cid, Boolean>> storage = new EfficientHashMap<>();
     private final BlockMetadataStore metadb;
     private final AtomicLong nextVersion = new AtomicLong(0);
@@ -115,6 +120,9 @@ public class VersionedWriteOnlyStorage implements DeletableContentAddressedStora
         if (versions.isEmpty())
             storage.remove(v.cid);
     }
+
+    @Override
+    public void setIdentityKeys(peergos.shared.routing.IdentityKeys keys) {}
 
     @Override
     public void setPki(CoreNode pki) {

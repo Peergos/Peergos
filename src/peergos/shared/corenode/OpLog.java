@@ -1,5 +1,6 @@
 package peergos.shared.corenode;
 
+import peergos.shared.routing.IdentityKeys;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
@@ -24,6 +25,12 @@ import java.util.stream.*;
  */
 public class OpLog implements Cborable, Account, MutablePointers, ContentAddressedStorage, BatCave {
     private static final int SHA256_SIZE = 32;
+
+    @Override
+    public IdentityKeys identityKeys() {
+        return IdentityKeys.INLINE;
+    }
+    private static final int ED25519_SIGNATURE_SIZE = 64;
 
     public final List<Either<PointerWrite, BlockWrite>> operations;
     private final Map<Multihash, byte[]> storage = new HashMap<>();

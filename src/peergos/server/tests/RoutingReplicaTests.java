@@ -193,11 +193,11 @@ public class RoutingReplicaTests {
         try {
             SigningKeyPair identity = key();
             IdentityInception probe = IdentityInception.build(identity, List.of(routing.peerId), key().publicSigningKey, crypto.hasher).join();
-            SigningKeyPair next = RecoveryKey.nextIdentity("Abandon-Ability-Able ", probe.identityHash(), crypto).join();
+            SigningKeyPair next = RecoveryKey.derive("Abandon-Ability-Able ", probe.identityHash(), crypto).join().nextIdentity;
             Assert.assertEquals(next.publicSigningKey,
-                    RecoveryKey.nextIdentity("abandon-ability-able", probe.identityHash(), crypto).join().publicSigningKey);
+                    RecoveryKey.derive("abandon-ability-able", probe.identityHash(), crypto).join().nextIdentity.publicSigningKey);
             Assert.assertNotEquals(next.publicSigningKey,
-                    RecoveryKey.nextIdentity("abandon-ability-able", ContentAddressedStorage.hashKey(key().publicSigningKey), crypto).join().publicSigningKey);
+                    RecoveryKey.derive("abandon-ability-able", ContentAddressedStorage.hashKey(key().publicSigningKey), crypto).join().nextIdentity.publicSigningKey);
 
             IdentityInception inception = IdentityInception.build(identity, List.of(routing.peerId), next.publicSigningKey, crypto.hasher).join();
             Assert.assertEquals(Outcome.Added, routing.admissions.submit(inception));

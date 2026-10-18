@@ -36,6 +36,11 @@ public class JdbcRoutingStore {
     private static final String GET_META = "SELECT value FROM routingmeta WHERE name = ?;";
     private static final String SET_META = "INSERT INTO routingmeta (name, value) VALUES (?, ?) " +
             "ON CONFLICT (name) DO UPDATE SET value = excluded.value;";
+    private static final String PUT_RECOVERY_KEY = "INSERT INTO recoverykeys (identity, commitment, wrapped) VALUES (?, ?, ?) ON CONFLICT DO NOTHING;";
+    private static final String GET_RECOVERY_KEY = "SELECT wrapped FROM recoverykeys WHERE identity = ? AND commitment = ?;";
+    private static final String ADD_RECOVERY_COPY = "INSERT INTO recoverycopies (identity, created, copy) VALUES (?, ?, ?);";
+    private static final String RECOVERY_COPIES = "SELECT copy FROM recoverycopies WHERE identity = ? ORDER BY created DESC;";
+    private static final String COUNT_RECOVERY_COPIES = "SELECT COUNT(*) FROM recoverycopies WHERE identity = ? AND created >= ?;";
     private static final String SET_NEXT_KEY = "INSERT INTO routingnextkeys (peerid, private) VALUES (?, ?) ON CONFLICT DO NOTHING;";
 
     public static final class Legacy {
@@ -301,6 +306,75 @@ public class JdbcRoutingStore {
             insert.setString(1, name);
             insert.setBytes(2, value);
             insert.executeUpdate();
+        } catch (SQLException e) {
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    /** Write once per commitment, so a key wrapped before a compromise cannot be replaced after it. */
+    public boolean putRecoveryKey(byte[] identity, byte[] commitment, byte[] wrapped) {
+        try (Connection c = getConnection();
+             PreparedStatement insert = c.prepareStatement(PUT_RECOVERY_KEY)) {
+            insert.setBytes(1, identity);
+            insert.setBytes(2, commitment);
+            insert.setBytes(3, wrapped);
+            return insert.executeUpdate() > 0;
+        } catch (SQLException e) {
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    public Optional<byte[]> getRecoveryKey(byte[] identity, byte[] commitment) {
+        try (Connection c = getConnection();
+             PreparedStatement select = c.prepareStatement(GET_RECOVERY_KEY)) {
+            select.setBytes(1, identity);
+            select.setBytes(2, commitment);
+            ResultSet rs = select.executeQuery();
+            return rs.next() ? Optional.of(rs.getBytes(1)) : Optional.empty();
+        } catch (SQLException e) {
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void addRecoveryCopy(byte[] identity, long created, byte[] copy) {
+        try (Connection c = getConnection();
+             PreparedStatement insert = c.prepareStatement(ADD_RECOVERY_COPY)) {
+            insert.setBytes(1, identity);
+            insert.setLong(2, created);
+            insert.setBytes(3, copy);
+            insert.executeUpdate();
+        } catch (SQLException e) {
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    /** Newest first. */
+    public List<byte[]> getRecoveryCopies(byte[] identity) {
+        try (Connection c = getConnection();
+             PreparedStatement select = c.prepareStatement(RECOVERY_COPIES)) {
+            select.setBytes(1, identity);
+            ResultSet rs = select.executeQuery();
+            List<byte[]> res = new ArrayList<>();
+            while (rs.next())
+                res.add(rs.getBytes(1));
+            return res;
+        } catch (SQLException e) {
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    public long countRecoveryCopies(byte[] identity, long since) {
+        try (Connection c = getConnection();
+             PreparedStatement select = c.prepareStatement(COUNT_RECOVERY_COPIES)) {
+            select.setBytes(1, identity);
+            select.setLong(2, since);
+            ResultSet rs = select.executeQuery();
+            return rs.next() ? rs.getLong(1) : 0;
         } catch (SQLException e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
             throw new RuntimeException(e);

@@ -2,6 +2,7 @@ package peergos.server.storage;
 
 import peergos.shared.crypto.asymmetric.SigningDomain;
 
+import peergos.shared.routing.IdentityKeys;
 import peergos.server.corenode.IpfsCoreNode;
 import peergos.server.corenode.JdbcIpnsAndSocial;
 import peergos.server.space.UsageStore;
@@ -38,6 +39,18 @@ import java.util.stream.*;
  *
  */
 public class FileContentAddressedStorage implements DeletableContentAddressedStorage {
+
+    private volatile IdentityKeys identityKeys = IdentityKeys.INLINE;
+
+    @Override
+    public void setIdentityKeys(IdentityKeys keys) {
+        this.identityKeys = keys;
+    }
+
+    @Override
+    public IdentityKeys identityKeys() {
+        return identityKeys;
+    }
     private static final Logger LOG = Logging.LOG();
     private static final int CID_V1 = 1;
     private final Path root;

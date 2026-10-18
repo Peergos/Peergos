@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.shared.routing.IdentityKeys;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.*;
@@ -11,6 +12,11 @@ import java.util.concurrent.*;
 
 public class GetBlockingStorage extends DelegatingStorage {
     private final ContentAddressedStorage target;
+
+    @Override
+    public IdentityKeys identityKeys() {
+        return target.identityKeys();
+    }
 
     public GetBlockingStorage(ContentAddressedStorage target) {
         super(target);

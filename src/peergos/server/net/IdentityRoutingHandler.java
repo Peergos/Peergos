@@ -3,6 +3,7 @@ package peergos.server.net;
 import com.sun.net.httpserver.*;
 import peergos.server.util.*;
 import peergos.shared.cbor.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.routing.*;
 import peergos.shared.util.*;
@@ -10,11 +11,12 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.util.*;
 import java.util.logging.*;
+import java.util.stream.*;
 
 /** The http endpoint for IdentityRouting calls from clients hosted here. */
 public class IdentityRoutingHandler implements HttpHandler {
     private static final Logger LOG = Logging.LOG();
-    private static final int MAX_INCEPTION_SIZE = 16 * 1024;
+    private static final int MAX_BODY = 64 * 1024;
 
     private final IdentityRouting routing;
     private final boolean isPublicServer;
@@ -38,12 +40,32 @@ public class IdentityRoutingHandler implements HttpHandler {
             Cborable result;
             switch (method) {
                 case "status":
-                    result = routing.status(PublicKeyHash.fromString(params.get("identity").get(0))).join();
+                    result = routing.status(identity(params)).join();
+                    break;
+                case "records":
+                    result = new CborObject.CborList(routing.records(identity(params)).join().stream()
+                            .map(RecordType::tag)
+                            .collect(Collectors.toList()));
                     break;
                 case "commit": {
-                    byte[] raw = Serialize.readFully(exchange.getRequestBody(), MAX_INCEPTION_SIZE);
-                    IdentityInception inception = IdentityInception.fromCbor(CborObject.fromByteArray(raw));
-                    result = new CborObject.CborBoolean(routing.commit(inception).join());
+                    CborObject.CborMap m = (CborObject.CborMap) body(exchange);
+                    result = new CborObject.CborBoolean(routing.commit(IdentityInception.fromCbor(m.get("r")),
+                            RecoveryCopy.WrappedKey.fromCbor(m.get("w")), RecoveryCopy.fromCbor(m.get("c"))).join());
+                    break;
+                }
+                case "copy":
+                    result = new CborObject.CborBoolean(routing.addRecoveryCopy(identity(params),
+                            Serialize.readFully(exchange.getRequestBody(), MAX_BODY)).join());
+                    break;
+                case "recovery-data": {
+                    CborObject.CborMap m = (CborObject.CborMap) body(exchange);
+                    result = routing.recoveryData(identity(params), PublicSigningKey.fromCbor(m.get("k")), m.getByteArray("s")).join();
+                    break;
+                }
+                case "recover": {
+                    CborObject.CborMap m = (CborObject.CborMap) body(exchange);
+                    result = new CborObject.CborBoolean(routing.recover(identity(params), IdentityRotation.fromCbor(m.get("r")),
+                            RecoveryCopy.WrappedKey.fromCbor(m.get("w")), RecoveryCopy.fromCbor(m.get("c"))).join());
                     break;
                 }
                 default:
@@ -58,5 +80,13 @@ public class IdentityRoutingHandler implements HttpHandler {
         } finally {
             exchange.close();
         }
+    }
+
+    private static PublicKeyHash identity(Map<String, List<String>> params) {
+        return PublicKeyHash.fromString(params.get("identity").get(0));
+    }
+
+    private static Cborable body(HttpExchange exchange) throws IOException {
+        return CborObject.fromByteArray(Serialize.readFully(exchange.getRequestBody(), MAX_BODY));
     }
 }

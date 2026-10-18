@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.shared.routing.IdentityKeys;
 import peergos.server.storage.auth.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
@@ -14,6 +15,11 @@ import java.util.concurrent.*;
 
 public class AuthedCachingStorage extends DelegatingStorage {
     private final ContentAddressedStorage target;
+
+    @Override
+    public IdentityKeys identityKeys() {
+        return target.identityKeys();
+    }
     private final Map<Multihash, byte[]> cache;
     private final Map<Multihash, Boolean> legacyBlocks;
     private final Map<Multihash, CompletableFuture<Optional<CborObject>>> pending;

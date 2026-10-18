@@ -1,5 +1,6 @@
 package peergos.shared.storage;
 
+import peergos.shared.routing.IdentityKeys;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
@@ -12,6 +13,11 @@ import java.util.concurrent.*;
 
 public class CachingStorage extends DelegatingStorage {
     private final ContentAddressedStorage target;
+
+    @Override
+    public IdentityKeys identityKeys() {
+        return target.identityKeys();
+    }
     private final LRUCache<Multihash, byte[]> cache;
     private final LRUCache<Multihash, CompletableFuture<Optional<CborObject>>> pending;
     private final LRUCache<Multihash, CompletableFuture<Optional<byte[]>>> pendingRaw;
