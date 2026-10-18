@@ -17,6 +17,7 @@ import peergos.server.net.SyncConfigHandler;
 import peergos.server.webdav.MountConfig;
 import peergos.server.space.*;
 import peergos.server.routing.*;
+import peergos.shared.routing.IdentityRouting;
 import peergos.server.sql.*;
 import peergos.server.storage.admin.*;
 import peergos.server.storage.auth.*;
@@ -741,7 +742,7 @@ public class Main extends Builder {
                             MountConfig.disabled();
                     MountProperties mountProps = new MountProperties(mountConfig, peergosDir, getAppServerUrl(a));
                     UserService server = new UserService(withoutS3, offlineBats, crypto, offlineCorenode, offlineAccounts,
-                            httpSocial, pointerCache, admin, httpUsage, serverMessager, null, Optional.of(sync),
+                            httpSocial, pointerCache, admin, httpUsage, serverMessager, new IdentityRouting.HTTP(poster), null, Optional.of(sync),
                             Optional.of(new UserService.LocalAppProperties(peergosDir, getAppServerUrl(a))),
                             Optional.of(new MountConfigHandler(mountProps)));
 
@@ -1106,11 +1107,12 @@ public class Main extends Builder {
             MountProperties mountPropsDaemon = new MountProperties(mountConfigDaemon, a.getPeergosDir(),
                     "http://localhost:" + a.getInt("port"));
             Optional<UserService.LocalAppProperties> noConfigApi = Optional.empty();
+            HostedIdentityRouting identityRouting = new HostedIdentityRouting(core, userQuotas);
             UserService localAPI = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount,
-                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.of(sync), noConfigApi,
+                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, identityRouting, gc, Optional.of(sync), noConfigApi,
                     Optional.of(new MountConfigHandler(mountPropsDaemon)));
             UserService p2pAPI = new UserService(p2pInboundCachingStorage, p2pBats, crypto, corePropagator, verifyingAccount,
-                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.empty(), noConfigApi, Optional.empty());
+                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, IdentityRouting.DISABLED, gc, Optional.empty(), noConfigApi, Optional.empty());
             InetSocketAddress localAPIAddress = userAPIAddress;
             InetSocketAddress p2pAPIAddress = new InetSocketAddress("localhost", localP2PApi.getTCPPort());
 
@@ -1143,7 +1145,10 @@ public class Main extends Builder {
             try {
                 RoutingService.start(a, Optional.ofNullable(ipfsWrapper).flatMap(IpfsWrapper::identityKey), ids, crypto, sqlCommands, getDBConnector(a, RoutingService.ARG_ROUTING_SQL_FILE.name, dbConnectionPool),
                         localStorageForLinks, p2pHttpProxy)
-                        .ifPresent(routing -> p2pAPI.startRoutingApi(new RoutingHandler(routing.node)));
+                        .ifPresent(routing -> {
+                            p2pAPI.startRoutingApi(new RoutingHandler(routing.node));
+                            identityRouting.start(routing.server);
+                        });
                 if (isPki)
                     RoutingService.exportLegacy(a, ContentAddressedStorage.hashKey(PublicSigningKey.fromByteArray(
                             Files.readAllBytes(a.fromPeergosDir("pki.public.key.path")))), localPointers, localStorageForLinks, crypto);

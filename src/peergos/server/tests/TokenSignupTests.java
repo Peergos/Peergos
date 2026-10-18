@@ -1,5 +1,6 @@
 package peergos.server.tests;
 
+import peergos.shared.routing.IdentityRouting;
 import org.junit.*;
 import org.junit.runner.*;
 import org.junit.runners.*;
@@ -41,7 +42,7 @@ public class TokenSignupTests {
         ServerMessager.HTTP serverMessager = new ServerMessager.HTTP(new JavaPoster(new URI("http://localhost:" + args.getArg("port")).toURL(), false));
         NetworkAccess network = new NetworkAccess(service.coreNode, service.account, service.social, service.storage,
                 service.bats, Optional.empty(), service.mutable, mutableTree, synchronizer, service.controller, service.usage,
-                serverMessager, service.crypto.hasher,
+                serverMessager, IdentityRouting.DISABLED, service.crypto.hasher,
                 Arrays.asList("peergos"), false);
         return Arrays.asList(new Object[][] {
                 {network, service}
