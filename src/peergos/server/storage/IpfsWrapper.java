@@ -260,6 +260,10 @@ public class IpfsWrapper implements AutoCloseable {
         this.ipfsConfigParams= ipfsConfigParams.withIdentity(identityOpt);
     }
 
+    public Optional<org.peergos.protocol.autonat.ReachabilityManager> reachability() {
+        return Optional.ofNullable(embeddedIpfs).map(EmbeddedPeer::getReachability);
+    }
+
     public Optional<PrivKey> identityKey() {
         return ipfsConfigParams.identity.map(id -> KeyKt.unmarshalPrivateKey(id.privKeyProtobuf));
     }

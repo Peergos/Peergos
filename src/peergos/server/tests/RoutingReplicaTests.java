@@ -17,6 +17,7 @@ import peergos.shared.storage.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 
 public class RoutingReplicaTests {
     private static final Crypto crypto = Main.initCrypto();
@@ -252,6 +253,41 @@ public class RoutingReplicaTests {
             Assert.assertEquals(1001, moved.counter);
             Subject self = Subject.server(routing.peerId);
             Assert.assertEquals(moved, routing.replica.server(self).get().addresses().get());
+        } finally {
+            routing.stop();
+        }
+    }
+
+    @Test
+    public void confirmedAddressesAreListedOnceStableForAWeek() {
+        JdbcRoutingStore store = store();
+        SigningKeyPair serverKey = key();
+        ServerRouting routing = ServerRouting.start(store, serverKey, Optional.empty(), crypto, WORK, WORK, 1, r -> {}, s -> {});
+        try {
+            long day = 24 * 3600_000L;
+            long[] now = {day};
+            List<String> confirmed = new ArrayList<>(List.of("/ip4/203.0.113.7/tcp/4001"));
+            Supplier<ServerAddressPublisher> publisher = () -> new ServerAddressPublisher(routing.replica, serverKey,
+                    List.of("/ip4/198.51.100.1/tcp/4001"), () -> confirmed, ServerAddresses.Mode.Archival, () -> now[0]);
+            List<Address> announced = direct("/ip4/198.51.100.1/tcp/4001");
+            List<Address> both = new ArrayList<>(announced);
+            both.addAll(direct("/ip4/203.0.113.7/tcp/4001"));
+
+            Assert.assertEquals(announced, publisher.get().refresh().get().addrs);
+            now[0] += 6 * day;
+            Assert.assertTrue(publisher.get().refresh().isEmpty());
+            now[0] += day;
+            Assert.assertEquals(both, publisher.get().refresh().get().addrs);
+
+            confirmed.clear();
+            now[0] += day / 2;
+            Assert.assertTrue(publisher.get().refresh().isEmpty());
+            now[0] += day;
+            Assert.assertEquals(announced, publisher.get().refresh().get().addrs);
+
+            confirmed.add("/ip4/203.0.113.7/tcp/4001");
+            now[0] += day;
+            Assert.assertTrue(publisher.get().refresh().isEmpty());
         } finally {
             routing.stop();
         }
