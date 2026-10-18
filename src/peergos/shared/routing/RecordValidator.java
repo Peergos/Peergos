@@ -30,12 +30,21 @@ public class RecordValidator {
                 .thenCompose(valid -> {
                     if (! valid)
                         throw new IllegalStateException("Invalid signature on " + record.getClass().getSimpleName());
-                    return hasher.sha256(record.signedBytes());
-                })
+                    return stored(record);
+                });
+    }
+
+    /** For a record this node verified before storing it: hashes only. */
+    public <R extends SignedRecord> CompletableFuture<Verified<R>> stored(R record) {
+        return hasher.sha256(record.signedBytes())
                 .thenCompose(hash -> (record instanceof Establishment ?
                         hasher.sha256(((Establishment) record).key().serialize()) :
                         Futures.of(new byte[0]))
                         .thenApply(keyHash -> new Verified<>(record, hash, keyHash)));
+    }
+
+    public Hasher hasher() {
+        return hasher;
     }
 
     /** A new inception's admission must verify against the admitting server's current key; one taken in by
