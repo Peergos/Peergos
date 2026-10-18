@@ -17,6 +17,9 @@ public interface SubjectLog {
 
     Optional<? extends Verified<? extends SignedRecord>> inception();
 
+    /** Whether there is anything to resolve: an inception, or a legacy base. */
+    boolean exists();
+
     /** The same inception with a different admission or proof of work, which sit outside its hash. */
     SubjectLog withInception(Verified<? extends SignedRecord> v);
 
@@ -27,8 +30,8 @@ public interface SubjectLog {
     }
 
     /** Offers every record, then the unconnected ones again until nothing changes. */
-    static SubjectLog build(Subject s, List<Verified<? extends SignedRecord>> records) {
-        SubjectLog log = empty(s);
+    static SubjectLog build(SubjectLog base, List<Verified<? extends SignedRecord>> records) {
+        SubjectLog log = base;
         List<Verified<? extends SignedRecord>> pending = new ArrayList<>(records);
         boolean progress = true;
         while (progress && ! pending.isEmpty()) {

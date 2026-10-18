@@ -71,7 +71,7 @@ public class AdmissionWorker {
     public Outcome submit(IdentityInception inception) {
         if (! inception.admittingServer().bareMultihash().equals(peerId))
             return Outcome.Rejected;
-        Subject s = Subject.identity(inception.identityHash());
+        Subject s = replica.canonical(Subject.identity(inception.identityHash()));
         Outcome res = replica.add(s, inception);
         if (res == Outcome.Added || res == Outcome.Duplicate)
             owe(s);
@@ -94,7 +94,7 @@ public class AdmissionWorker {
                 SignedRecord inception = replica.log(s).inception()
                         .orElseThrow(() -> new IllegalStateException("No inception for " + s)).record;
                 Optional<SignedRecord> proven = inception instanceof IdentityInception ?
-                        admit((IdentityInception) inception) :
+                        admit(s, (IdentityInception) inception) :
                         prove((ServerInception) inception);
                 if (proven.isEmpty())
                     return;
@@ -109,7 +109,10 @@ public class AdmissionWorker {
         }
     }
 
-    private Optional<SignedRecord> admit(IdentityInception inception) {
+    /** A legacy identity is already in the pinned state, so its admission carries no proof of work. */
+    private Optional<SignedRecord> admit(Subject s, IdentityInception inception) {
+        if (replica.identity(s).map(IdentityLog::isLegacy).orElse(false))
+            return Optional.of(inception.withAdmission(Admission.build(inception.identity, new byte[0], serverKey.secretSigningKey).join()));
         byte[] subject = inception.identity.serialize();
         Optional<CuckooCycle.Proof> proof = new CuckooSolver(identityWork).solveParallel(subject, threads, Long.MAX_VALUE / threads);
         if (proof.isEmpty())

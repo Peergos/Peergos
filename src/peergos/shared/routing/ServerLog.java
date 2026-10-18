@@ -9,21 +9,30 @@ import java.util.*;
 public final class ServerLog implements SubjectLog {
     public final Multihash peerId;
     public final RecordLog<ServerInception, ServerRotation, ServerAddresses> records;
+    public final Optional<LegacyServer> legacy;
 
-    private ServerLog(Multihash peerId, RecordLog<ServerInception, ServerRotation, ServerAddresses> records) {
+    private ServerLog(Multihash peerId,
+                      RecordLog<ServerInception, ServerRotation, ServerAddresses> records,
+                      Optional<LegacyServer> legacy) {
         this.peerId = peerId;
         this.records = records;
+        this.legacy = legacy;
     }
 
     public static ServerLog empty(Multihash peerId) {
-        return new ServerLog(peerId, RecordLog.empty());
+        return new ServerLog(peerId, RecordLog.empty(), Optional.empty());
+    }
+
+    public static ServerLog legacy(LegacyServer legacy) {
+        return new ServerLog(legacy.first(), RecordLog.empty(), Optional.of(legacy));
     }
 
     @Override
     public RecordLog.Change<ServerLog> add(Verified<? extends SignedRecord> v) {
         SignedRecord r = v.record;
         if (r instanceof ServerInception) {
-            if (! ((ServerInception) r).peerId().equals(peerId))
+            Multihash named = legacy.map(LegacyServer::current).orElse(peerId);
+            if (! ((ServerInception) r).peerId().equals(named.bareMultihash()))
                 return new RecordLog.Change<>(this, Outcome.Rejected);
             return wrap(records.addInception((Verified<ServerInception>) v));
         }
@@ -35,7 +44,7 @@ public final class ServerLog implements SubjectLog {
     }
 
     private RecordLog.Change<ServerLog> wrap(RecordLog.Change<RecordLog<ServerInception, ServerRotation, ServerAddresses>> c) {
-        return new RecordLog.Change<>(c.log == records ? this : new ServerLog(peerId, c.log), c.outcome);
+        return new RecordLog.Change<>(c.log == records ? this : new ServerLog(peerId, c.log, legacy), c.outcome);
     }
 
     @Override
@@ -55,7 +64,7 @@ public final class ServerLog implements SubjectLog {
 
     @Override
     public ServerLog withInception(Verified<? extends SignedRecord> v) {
-        return new ServerLog(peerId, records.withInception((Verified<ServerInception>) v));
+        return new ServerLog(peerId, records.withInception((Verified<ServerInception>) v), legacy);
     }
 
     public Optional<PublicSigningKey> currentKey() {
@@ -64,6 +73,11 @@ public final class ServerLog implements SubjectLog {
 
     public Optional<ServerAddresses> addresses() {
         return records.update.map(v -> v.record);
+    }
+
+    @Override
+    public boolean exists() {
+        return records.inception.isPresent() || legacy.isPresent();
     }
 
     public boolean isFrozen() {
