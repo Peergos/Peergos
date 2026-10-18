@@ -209,4 +209,55 @@ public class RoutingReplicaTests {
             routing.stop();
         }
     }
+
+    @Test
+    public void onlyPublicIpLiteralsArePublished() {
+        List<Address> addrs = ServerAddressPublisher.directAddresses(List.of(
+                "/ip4/203.0.113.7/tcp/4001/p2p/12D3KooWFeNXWhKkHecwJZGZEanQbniMs57XhJMvMhbXZkN4hPmF",
+                "/ip4/203.0.113.7/tcp/4001",
+                "/ip6/2001:db8::7/tcp/4001",
+                "/dns4/peergos.net/tcp/4001",
+                "/ip4/example.com/tcp/4001",
+                "/ip4/192.168.1.2/tcp/4001",
+                "/ip4/10.0.0.2/tcp/4001",
+                "/ip4/100.64.0.1/tcp/4001",
+                "/ip4/127.0.0.1/tcp/4001",
+                "/ip4/0.0.0.0/tcp/4001",
+                "/ip6/::1/tcp/4001",
+                "/ip6/fd00::1/tcp/4001",
+                "/ip4/203.0.113.8/tcp/4001/p2p/12D3KooWFeNXWhKkHecwJZGZEanQbniMs57XhJMvMhbXZkN4hPmF/p2p-circuit"));
+        Assert.assertEquals(List.of(
+                new Address(Address.LIBP2P, new MultiAddress("/ip4/203.0.113.7/tcp/4001").getBytes()),
+                new Address(Address.LIBP2P, new MultiAddress("/ip6/2001:db8::7/tcp/4001").getBytes())), addrs);
+    }
+
+    @Test
+    public void serverAddressesArePublishedOnlyWhenTheyChange() {
+        JdbcRoutingStore store = store();
+        SigningKeyPair serverKey = key();
+        ServerRouting routing = ServerRouting.start(store, serverKey, Optional.empty(), crypto, WORK, WORK, 1, r -> {}, s -> {});
+        try {
+            List<Address> addrs = direct("/ip4/203.0.113.7/tcp/4001");
+            ServerAddresses first = ServerAddressPublisher.publish(routing.replica, serverKey, addrs,
+                    ServerAddresses.Mode.Archival, () -> 1000).get();
+            Assert.assertEquals(1000, first.counter);
+            Assert.assertEquals(serverKey.publicSigningKey, first.endpoint);
+            Assert.assertTrue(ServerAddressPublisher.publish(routing.replica, serverKey, addrs,
+                    ServerAddresses.Mode.Archival, () -> 2000).isEmpty());
+            Assert.assertTrue(ServerAddressPublisher.publish(replica(store), serverKey, addrs,
+                    ServerAddresses.Mode.Archival, () -> 3000).isEmpty());
+
+            ServerAddresses moved = ServerAddressPublisher.publish(routing.replica, serverKey,
+                    direct("/ip4/203.0.113.9/tcp/4001"), ServerAddresses.Mode.Archival, () -> 10).get();
+            Assert.assertEquals(1001, moved.counter);
+            Subject self = Subject.server(routing.peerId);
+            Assert.assertEquals(moved, routing.replica.server(self).get().addresses().get());
+        } finally {
+            routing.stop();
+        }
+    }
+
+    private static List<Address> direct(String addr) {
+        return ServerAddressPublisher.directAddresses(List.of(addr));
+    }
 }
