@@ -23,6 +23,11 @@ import java.util.function.Supplier;
 public class RetryStorageTests {
 
     public class FailingStorage implements ContentAddressedStorage {
+
+        @Override
+        public peergos.shared.routing.IdentityKeys identityKeys() {
+            return peergos.shared.routing.IdentityKeys.INLINE;
+        }
         private int counter = 1;
         private final int retryLimit;
         public FailingStorage(int retryLimit) {

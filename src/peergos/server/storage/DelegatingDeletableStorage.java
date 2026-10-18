@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.shared.routing.IdentityKeys;
 import peergos.server.corenode.JdbcIpnsAndSocial;
 import peergos.server.space.UsageStore;
 import peergos.server.storage.auth.*;
@@ -24,6 +25,15 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
 
     private final DeletableContentAddressedStorage target;
 
+
+    @Override
+
+    public IdentityKeys identityKeys() {
+
+        return target.identityKeys();
+
+    }
+
     public DelegatingDeletableStorage(DeletableContentAddressedStorage target) {
         this.target = target;
     }
@@ -31,6 +41,11 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     @Override
     public void setPki(CoreNode pki) {
         target.setPki(pki);
+    }
+
+    @Override
+    public void setIdentityKeys(IdentityKeys keys) {
+        target.setIdentityKeys(keys);
     }
 
     @Override

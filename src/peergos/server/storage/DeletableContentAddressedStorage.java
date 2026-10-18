@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.shared.routing.IdentityKeys;
 import peergos.server.corenode.JdbcIpnsAndSocial;
 import peergos.server.space.UsageStore;
 import peergos.server.storage.auth.*;
@@ -64,6 +65,9 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
     }
 
     void setPki(CoreNode pki);
+
+    /** Set once the routing log, which starts after storage, can say which identities have rotated. */
+    void setIdentityKeys(IdentityKeys keys);
 
     void partitionByUser(UsageStore usage,
                          JdbcIpnsAndSocial mutable,
@@ -434,6 +438,18 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
         @Override
         public void setPki(CoreNode pki) {}
+
+        private volatile IdentityKeys identityKeys = IdentityKeys.INLINE;
+
+        @Override
+        public void setIdentityKeys(IdentityKeys keys) {
+            this.identityKeys = keys;
+        }
+
+        @Override
+        public IdentityKeys identityKeys() {
+            return identityKeys;
+        }
 
         @Override
         public void partitionByUser(UsageStore usage,

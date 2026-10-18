@@ -1,5 +1,6 @@
 package peergos.shared.storage;
 
+import peergos.shared.routing.IdentityKeys;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
@@ -15,6 +16,15 @@ import java.util.stream.*;
 public class HashVerifyingStorage extends DelegatingStorage {
 
     private final ContentAddressedStorage source;
+
+
+    @Override
+
+    public IdentityKeys identityKeys() {
+
+        return source.identityKeys();
+
+    }
     private final Hasher hasher;
 
     public HashVerifyingStorage(ContentAddressedStorage source, Hasher hasher) {

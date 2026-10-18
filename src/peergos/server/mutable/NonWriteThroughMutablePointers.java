@@ -32,7 +32,7 @@ public class NonWriteThroughMutablePointers implements MutablePointers {
             Optional<PublicSigningKey> opt = storage.getSigningKey(owner, writer).get();
             if (! opt.isPresent())
                 throw new IllegalStateException("Couldn't retrieve signing key!");
-            return MutablePointers.isValidUpdate(opt.get(), Optional.ofNullable(modifications.get(writer)), writerSignedBtreeRootHash)
+            return MutablePointers.isValidUpdate(opt.get(), MutablePointers.priorKey(owner, writer, storage).join(), Optional.ofNullable(modifications.get(writer)), writerSignedBtreeRootHash)
                     .thenApply(x -> {
                         modifications.put(writer, writerSignedBtreeRootHash);
                         return true;
@@ -65,7 +65,7 @@ public class NonWriteThroughMutablePointers implements MutablePointers {
                 Optional<PublicSigningKey> opt = storage.getSigningKey(owner, u.writer).get();
                 if (!opt.isPresent())
                     throw new IllegalStateException("Couldn't retrieve signing key!");
-                MutablePointers.isValidUpdate(opt.get(), Optional.ofNullable(modifications.get(u.writer)), u.signed).get();
+                MutablePointers.isValidUpdate(opt.get(), MutablePointers.priorKey(owner, u.writer, storage).join(), Optional.ofNullable(modifications.get(u.writer)), u.signed).get();
             }
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);

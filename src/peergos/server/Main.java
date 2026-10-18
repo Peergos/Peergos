@@ -1107,7 +1107,7 @@ public class Main extends Builder {
             MountProperties mountPropsDaemon = new MountProperties(mountConfigDaemon, a.getPeergosDir(),
                     "http://localhost:" + a.getInt("port"));
             Optional<UserService.LocalAppProperties> noConfigApi = Optional.empty();
-            HostedIdentityRouting identityRouting = new HostedIdentityRouting(core, userQuotas);
+            HostedIdentityRouting identityRouting = new HostedIdentityRouting(core, userQuotas, rawAccount);
             UserService localAPI = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount,
                     p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, identityRouting, gc, Optional.of(sync), noConfigApi,
                     Optional.of(new MountConfigHandler(mountPropsDaemon)));
@@ -1148,6 +1148,7 @@ public class Main extends Builder {
                         localStorageForLinks, p2pHttpProxy)
                         .ifPresent(routing -> {
                             p2pAPI.startRoutingApi(new RoutingHandler(routing.node));
+                            localStorage.setIdentityKeys(HostedIdentityRouting.keys(routing.server.replica));
                             identityRouting.start(routing.server);
                         });
                 if (isPki)

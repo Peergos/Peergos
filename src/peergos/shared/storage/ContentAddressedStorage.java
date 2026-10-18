@@ -12,6 +12,7 @@ import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.bases.Multibase;
+import peergos.shared.routing.IdentityKeys;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -368,7 +369,22 @@ public interface ContentAddressedStorage {
                 .thenApply(PublicKeyHash::new);
     }
 
+    /** Where the current key of an identity that rotated comes from. Every storage that wraps another passes its
+     *  target's on, so a wrapper can never fall back to the key in the hash after a rotation.
+     */
+    IdentityKeys identityKeys();
+
     default CompletableFuture<Optional<PublicSigningKey>> getSigningKey(PublicKeyHash owner, PublicKeyHash hash) {
+        if (hash.equals(owner) && hash.isIdentity())
+            return identityKeys().rotated(hash)
+                    .thenCompose(rotated -> rotated.isPresent() ?
+                            Futures.of(rotated) :
+                            getInlineSigningKey(owner, hash));
+        return getInlineSigningKey(owner, hash);
+    }
+
+    /** The key a hash names, which is not an identity's current key once it has rotated. */
+    default CompletableFuture<Optional<PublicSigningKey>> getInlineSigningKey(PublicKeyHash owner, PublicKeyHash hash) {
         return (hash.isIdentity() ?
                 CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(hash.getHash()))) :
                 get(owner, hash.target, Optional.empty()))
@@ -385,6 +401,11 @@ public interface ContentAddressedStorage {
     class HTTP implements ContentAddressedStorage {
 
         private final HttpPoster poster;
+
+        @Override
+        public IdentityKeys identityKeys() {
+            return IdentityKeys.INLINE;
+        }
         public static final String apiPrefix = "api/v0/";
         public static final String ID = "id";
         public static final String IDS = "ids";
@@ -879,6 +900,11 @@ public interface ContentAddressedStorage {
 
     class Proxying implements ContentAddressedStorage {
         private final ContentAddressedStorage local;
+
+        @Override
+        public IdentityKeys identityKeys() {
+            return local.identityKeys();
+        }
         private final ContentAddressedStorageProxy p2p;
         private final List<Cid> ourNodeIds;
         private final CoreNode core;

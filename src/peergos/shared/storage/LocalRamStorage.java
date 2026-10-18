@@ -1,5 +1,6 @@
 package peergos.shared.storage;
 
+import peergos.shared.routing.IdentityKeys;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.crypto.hash.Hasher;
 import peergos.shared.crypto.hash.PublicKeyHash;
@@ -25,6 +26,11 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public class LocalRamStorage implements ContentAddressedStorage {
+
+    @Override
+    public IdentityKeys identityKeys() {
+        return IdentityKeys.INLINE;
+    }
     private final Hasher h;
     private Map<Cid, byte[]> blocks;
 
