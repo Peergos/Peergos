@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.shared.routing.IdentityKeys;
 import com.webauthn4j.data.client.Origin;
 import io.netty.handler.ssl.SslClosedEngineException;
 import io.prometheus.client.Histogram;
@@ -46,6 +47,18 @@ import java.util.logging.Logger;
 import java.util.stream.*;
 
 public class S3BlockStorage implements DeletableContentAddressedStorage {
+
+    private volatile IdentityKeys identityKeys = IdentityKeys.INLINE;
+
+    @Override
+    public void setIdentityKeys(IdentityKeys keys) {
+        this.identityKeys = keys;
+    }
+
+    @Override
+    public IdentityKeys identityKeys() {
+        return identityKeys;
+    }
 
     private static final Logger LOG = Logger.getGlobal();
     private static final int LIST_PARALLELISM = 64;

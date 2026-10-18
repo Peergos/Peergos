@@ -27,6 +27,11 @@ import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 public class WriteOnlyStorage implements DeletableContentAddressedStorage {
+
+    @Override
+    public peergos.shared.routing.IdentityKeys identityKeys() {
+        return peergos.shared.routing.IdentityKeys.INLINE;
+    }
     public final Map<PublicKeyHash, Map<Cid, Boolean>> storage = new EfficientHashMap<>();
     private final BlockMetadataStore metadb;
 
@@ -86,6 +91,9 @@ public class WriteOnlyStorage implements DeletableContentAddressedStorage {
     public void delete(PublicKeyHash owner, Cid block) {
         storage.getOrDefault(owner, Collections.emptyMap()).remove(block);
     }
+
+    @Override
+    public void setIdentityKeys(peergos.shared.routing.IdentityKeys keys) {}
 
     @Override
     public void setPki(CoreNode pki) {

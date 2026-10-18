@@ -77,6 +77,14 @@ public class UserStaticData implements Cborable {
             return new EntryPoints(version, entries, identity, Optional.of(newBoxer));
         }
 
+        public EntryPoints withIdentity(Optional<SigningKeyPair> identity) {
+            return new EntryPoints(version, entries, identity, boxer);
+        }
+
+        public EntryPoints withEntries(List<EntryPoint> entries) {
+            return new EntryPoints(version, entries, identity, boxer);
+        }
+
         public EntryPoints addEntryPoint(EntryPoint entry) {
             List<EntryPoint> updated = Stream.concat(entries.stream(), Stream.of(entry)).collect(Collectors.toList());
             return new EntryPoints(version, updated, identity, boxer);

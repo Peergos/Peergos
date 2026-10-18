@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.shared.routing.IdentityKeys;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
@@ -35,6 +36,15 @@ public class BulkCommitStorage extends DelegatingStorage {
     }
 
     private final ContentAddressedStorage target;
+
+
+    @Override
+
+    public IdentityKeys identityKeys() {
+
+        return target.identityKeys();
+
+    }
     private final DeletableContentAddressedStorage unfiltered;
     private final MutablePointers pointers;
     private final Hasher hasher;

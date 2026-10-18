@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.shared.routing.IdentityKeys;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
@@ -14,6 +15,15 @@ import java.util.concurrent.atomic.*;
 public class RequestCountingStorage extends DelegatingStorage {
 
     private final ContentAddressedStorage target;
+
+
+    @Override
+
+    public IdentityKeys identityKeys() {
+
+        return target.identityKeys();
+
+    }
     public AtomicInteger get = new AtomicInteger(0);
     public AtomicInteger put = new AtomicInteger(0);
     public AtomicInteger getRaw = new AtomicInteger(0);

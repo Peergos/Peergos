@@ -221,7 +221,17 @@ public interface SqlSupplier {
                 "PRIMARY KEY (kind, alias));" +
                 "CREATE TABLE IF NOT EXISTS routingmeta (" +
                 "name varchar(64) PRIMARY KEY NOT NULL, " +
-                "value " + getByteArrayType() + " NOT NULL);";
+                "value " + getByteArrayType() + " NOT NULL);" +
+                "CREATE TABLE IF NOT EXISTS recoverykeys (" +
+                "identity " + getByteArrayType() + " NOT NULL, " +
+                "commitment " + getByteArrayType() + " NOT NULL, " +
+                "wrapped " + getByteArrayType() + " NOT NULL, " +
+                "PRIMARY KEY (identity, commitment));" +
+                "CREATE TABLE IF NOT EXISTS recoverycopies (" +
+                "identity " + getByteArrayType() + " NOT NULL, " +
+                "created " + sqlInteger() + " NOT NULL, " +
+                "copy " + getByteArrayType() + " NOT NULL);" +
+                "CREATE INDEX IF NOT EXISTS recoverycopies_identity ON recoverycopies (identity, created);";
     }
 
     default void createTable(String sqlTableCreate, Connection conn) throws SQLException {

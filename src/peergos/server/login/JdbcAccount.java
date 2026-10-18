@@ -49,6 +49,7 @@ public class JdbcAccount implements LoginCache {
     private static final String GET_CHALLENGE = "SELECT challenge FROM mfa_challenge WHERE username = ?;";
     private static final String ENABLE_AUTH = "UPDATE mfa SET enabled=? WHERE username = ? AND credid = ?;";
     private static final String DELETE_AUTH = "DELETE FROM mfa WHERE username = ? AND credid = ?";
+    private static final String DELETE_ALL_AUTH = "DELETE FROM mfa WHERE username = ?";
     private static final String GET_AUTH_METHODS = "SELECT name, credid, created, type, enabled FROM mfa WHERE username = ?;";
     private static final String GET_IDS_OF_TYPE = "SELECT credid FROM mfa WHERE username = ? AND type = ?;";
     private static final String COUNT_MFA = "SELECT COUNT(*) FROM mfa WHERE username = ?;";
@@ -864,6 +865,18 @@ public class JdbcAccount implements LoginCache {
         } catch (Exception e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
             throw new IllegalStateException(e);
+        }
+    }
+
+    /** For recovery from a compromise, when any second factor may be the thief's. */
+    public void removeAllMfa(String username) {
+        try (Connection conn = getConnection();
+             PreparedStatement delete = conn.prepareStatement(DELETE_ALL_AUTH)) {
+            delete.setString(1, username);
+            delete.executeUpdate();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new IllegalStateException(sqe);
         }
     }
 

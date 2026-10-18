@@ -11,6 +11,10 @@ import peergos.shared.io.ipfs.Cid;
 import peergos.shared.login.mfa.*;
 import peergos.shared.resolution.*;
 import peergos.shared.routing.IdentityInception;
+import peergos.shared.routing.IdentityKeys;
+import peergos.shared.routing.IdentityRotation;
+import peergos.shared.routing.IdentityRouting;
+import peergos.shared.routing.RecoveryCopy;
 import peergos.shared.routing.RecoveryKey;
 import peergos.shared.storage.auth.*;
 import peergos.shared.storage.controller.InstanceAdmin;
@@ -68,6 +72,8 @@ public class UserContext {
     private final BoxingKeyPair boxer;
     @JsProperty
     private final SymmetricKey rootKey;
+    /** Absent for a secret link or a legacy account. */
+    private final Optional<UserStaticData.EntryPoints> entryPoints;
 
     private final WriteSynchronizer writeSynchronizer;
     private final TransactionService transactions;
@@ -102,6 +108,7 @@ public class UserContext {
                        SigningPrivateKeyAndPublicHash signer,
                        BoxingKeyPair boxer,
                        SymmetricKey rootKey,
+                       Optional<UserStaticData.EntryPoints> entryPoints,
                        NetworkAccess network,
                        Crypto crypto,
                        CommittedWriterData userData,
@@ -114,6 +121,7 @@ public class UserContext {
         this.signer = signer;
         this.boxer = boxer;
         this.rootKey = rootKey;
+        this.entryPoints = entryPoints;
         this.network = network;
         this.crypto = crypto;
         this.entrie = entrie;
@@ -330,6 +338,7 @@ public class UserContext {
                                                                             signer,
                                                                             boxer,
                                                                             login,
+                                                                            userData.staticData.isPresent() ? Optional.empty() : Optional.of(staticData),
                                                                             network.withCorenode(tofuCorenode),
                                                                             crypto,
                                                                             new CommittedWriterData(pair.left.updated, userData, pair.left.sequence),
@@ -429,7 +438,10 @@ public class UserContext {
                                             .thenCompose(newBoxer -> writeSynchronizer.applyComplexUpdate(signer.publicKeyHash, signer,
                                                     (s, c) -> IpfsTransaction.call(signer.publicKeyHash,
                                                             tid -> updateBoxerAndCommit(s, username, newBoxer, entryData.left,
-                                                                    loginPub, signer, loginRoot, c, crypto, network, tid), network.dhtClient)))
+                                                                    loginPub, signer, loginRoot, c, crypto, network, tid), network.dhtClient))
+                                                    .thenCompose(x -> legacyAccount ?
+                                                            Futures.of(false) :
+                                                            writeRecoveryCopy(entryData.left.getData(loginRoot).withBoxer(newBoxer), signer, network, crypto)))
                                             .thenApply(x -> true)
                                     );
                         });
@@ -865,7 +877,7 @@ public class UserContext {
                 Optional.empty(),
                 Optional.empty());
         CommittedWriterData userData = new CommittedWriterData(MaybeMultihash.empty(), empty, Optional.empty());
-        UserContext context = new UserContext(null, null, null, null, network,
+        UserContext context = new UserContext(null, null, null, null, Optional.empty(), network,
                 crypto, userData, TrieNodeImpl.empty(), null, null,
                 new SharedWithCache(null, null, network, crypto), Optional.empty());
         return buildTrieFromCap(cap, context.entrie, network, crypto)
@@ -888,7 +900,7 @@ public class UserContext {
                 Optional.empty(),
                 Optional.empty());
         CommittedWriterData userData = new CommittedWriterData(MaybeMultihash.empty(), empty, Optional.empty());
-        UserContext context = new UserContext(null, null, null, null, network,
+        UserContext context = new UserContext(null, null, null, null, Optional.empty(), network,
                 crypto, userData, TrieNodeImpl.empty(), null, null,
                 new SharedWithCache(null, null, network, crypto), Optional.empty());
         return buildTrieFromCaps(caps, context.entrie, network)
@@ -4565,27 +4577,186 @@ public class UserContext {
     /** Whether this identity still has to commit to the next key its recovery key derives (remove-pki §3.2). */
     @JsMethod
     public CompletableFuture<Boolean> needsRecoveryKey() {
-        if (signer == null)
+        if (signer == null || entryPoints.isEmpty())
             return Futures.of(false);
         return network.identityRouting.status(signer.publicKeyHash)
                 .thenApply(s -> s.running && ! s.committed)
                 .exceptionally(t -> false);
     }
 
-    /** Commits this identity to the next identity key derived from a recovery key, which the user must have saved
-     *  first: it is the only way to rotate away from a stolen identity key.
+    /** Commits this identity to the next identity key a recovery key derives, and leaves the home server what that
+     *  key alone needs to recover the account: a recovery keypair wrapped by it, and a copy of the login data
+     *  encrypted to that keypair. The user must have saved the recovery key first.
      */
     @JsMethod
     public CompletableFuture<Boolean> commitRecoveryKey(String recoveryKey) {
+        if (entryPoints.isEmpty())
+            return Futures.errored(new IllegalStateException("Change your password to upgrade your account first"));
         PublicKeyHash identity = signer.publicKeyHash;
         return network.identityRouting.status(identity).thenCompose(status -> {
             if (! status.running || status.server.isEmpty())
                 return Futures.errored(new IllegalStateException("Your server doesn't run the routing log yet"));
             return network.dhtClient.getSigningKey(identity, identity)
-                    .thenCompose(pub -> RecoveryKey.nextIdentity(recoveryKey, identity, crypto)
-                            .thenCompose(next -> IdentityInception.build(new SigningKeyPair(pub.get(), signer.secret),
-                                    Collections.singletonList(status.server.get()), next.publicSigningKey, crypto.hasher)))
-                    .thenCompose(network.identityRouting::commit);
+                    .thenCompose(pub -> RecoveryKey.derive(recoveryKey, identity, crypto)
+                            .thenCompose(derived -> BoxingKeyPair.randomHybrid(crypto)
+                                    .thenCompose(recovery -> RecoveryCopy.build(entryPoints.get(), recovery.publicBoxingKey, crypto)
+                                            .thenCompose(copy -> IdentityInception.build(new SigningKeyPair(pub.get(), signer.secret),
+                                                            Collections.singletonList(status.server.get()), derived.nextIdentity.publicSigningKey, crypto.hasher)
+                                                    .thenCompose(inception -> network.identityRouting.commit(inception,
+                                                            RecoveryCopy.WrappedKey.wrap(recovery, derived.wrapKey), copy))))));
+        });
+    }
+
+    /** Keeps the home server's recovery copy of the login data current, once a recovery key is committed. */
+    private static CompletableFuture<Boolean> writeRecoveryCopy(UserStaticData.EntryPoints entries,
+                                                                SigningPrivateKeyAndPublicHash identity,
+                                                                NetworkAccess network,
+                                                                Crypto crypto) {
+        return network.identityRouting.status(identity.publicKeyHash).thenCompose(status -> {
+            if (status.recoveryKey.isEmpty())
+                return Futures.of(false);
+            return RecoveryCopy.build(entries, status.recoveryKey.get(), crypto)
+                    .thenCompose(copy -> identity.secret.signMessage(copy.serialize()))
+                    .thenCompose(signed -> network.identityRouting.addRecoveryCopy(identity.publicKeyHash, signed));
+        }).exceptionally(t -> {
+            LOG.log(Level.WARNING, "Couldn't update the recovery copy of the login data: " + t.getMessage(), t);
+            return false;
+        });
+    }
+
+    /** Takes an account back with its recovery key alone, after a thief may have had both the password and the
+     *  identity key: the identity rotates to the key the recovery key derives, which the thief cannot sign with, the
+     *  login data is restored from the recovery copies under a new password, every second factor is removed, and
+     *  the account commits to a new recovery key, which the user must have saved first.
+     */
+    @JsMethod
+    public static CompletableFuture<UserContext> recoverAccount(String username,
+                                                                String recoveryKey,
+                                                                String newPassword,
+                                                                String newRecoveryKey,
+                                                                NetworkAccess network,
+                                                                Crypto crypto,
+                                                                Consumer<String> progress) {
+        return network.coreNode.getPublicKeyHash(username).thenCompose(ownerOpt -> {
+            PublicKeyHash owner = ownerOpt.orElseThrow(() -> new IllegalStateException("Unknown username " + username));
+            progress.accept("Deriving keys from your recovery key");
+            return RecoveryKey.derive(recoveryKey, owner, crypto).thenCompose(derived -> {
+                SigningKeyPair next = derived.nextIdentity;
+                return next.secretSigningKey.signMessage(new IdentityRouting.RecoveryRequest(owner, System.currentTimeMillis()).serialize())
+                        .thenCompose(signedReq -> network.identityRouting.recoveryData(owner, next.publicSigningKey, signedReq))
+                        .thenCompose(data -> {
+                            progress.accept("Restoring your login data");
+                            BoxingKeyPair recovery = data.wrapped.unwrap(derived.wrapKey);
+                            return restoreEntryPoints(data.copies, recovery)
+                                    .thenCompose(restored -> RecoveryKey.derive(newRecoveryKey, owner, crypto)
+                                            .thenCompose(nextDerived -> rotate(username, owner, next, restored, nextDerived,
+                                                    newPassword, network, crypto, progress)));
+                        });
+            });
+        }).thenCompose(x -> {
+            progress.accept("Logging in");
+            return signIn(username, newPassword, req -> Futures.errored(new IllegalStateException("No second factor after recovery")),
+                    false, false, network.clear(), crypto, progress);
+        });
+    }
+
+    /** Every copy that decrypts counts, newest first: one a thief wrote can add an entry point but not hide ours. */
+    private static CompletableFuture<UserStaticData.EntryPoints> restoreEntryPoints(List<RecoveryCopy> copies, BoxingKeyPair recovery) {
+        List<CompletableFuture<Optional<UserStaticData.EntryPoints>>> decrypted = copies.stream()
+                .map(c -> c.decrypt(recovery)
+                        .thenApply(Optional::of)
+                        .exceptionally(t -> Optional.empty()))
+                .collect(Collectors.toList());
+        return Futures.combineAllInOrder(decrypted).thenApply(all -> {
+            List<UserStaticData.EntryPoints> valid = all.stream()
+                    .filter(Optional::isPresent)
+                    .map(Optional::get)
+                    .collect(Collectors.toList());
+            if (valid.isEmpty())
+                throw new IllegalStateException("No recovery copy of your login data could be decrypted");
+            List<EntryPoint> entries = new ArrayList<>();
+            for (UserStaticData.EntryPoints e : valid)
+                for (EntryPoint entry : e.entries)
+                    if (! entries.contains(entry))
+                        entries.add(entry);
+            UserStaticData.EntryPoints newest = valid.stream()
+                    .filter(e -> e.boxer.isPresent())
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException("No social keypair in the recovery copies"));
+            return newest.withEntries(entries);
+        });
+    }
+
+    private static CompletableFuture<Boolean> rotate(String username,
+                                                     PublicKeyHash owner,
+                                                     SigningKeyPair next,
+                                                     UserStaticData.EntryPoints restored,
+                                                     RecoveryKey nextRecovery,
+                                                     String newPassword,
+                                                     NetworkAccess network,
+                                                     Crypto crypto,
+                                                     Consumer<String> progress) {
+        return network.identityRouting.status(owner).thenCompose(status -> network.identityRouting.records(owner)
+                .thenCompose(records -> IdentityKeys.rotated(owner, records, crypto.hasher))
+                .thenCompose(rotated -> rotated.isPresent() ?
+                        Futures.of(rotated) :
+                        network.dhtClient.getInlineSigningKey(owner, owner))
+                .thenCompose(current -> IdentityRotation.build(current.get(), next,
+                        Collections.singletonList(status.server.orElseThrow(() -> new IllegalStateException("Your server doesn't run the routing log"))),
+                        nextRecovery.nextIdentity.publicSigningKey, crypto.hasher))
+                .thenCompose(rotation -> BoxingKeyPair.randomHybrid(crypto)
+                        .thenCompose(nextKeypair -> {
+                            UserStaticData.EntryPoints entries = restored.withIdentity(Optional.of(next));
+                            return RecoveryCopy.build(entries, nextKeypair.publicBoxingKey, crypto)
+                                    .thenCompose(copy -> {
+                                        progress.accept("Rotating your identity");
+                                        return network.identityRouting.recover(owner, rotation,
+                                                RecoveryCopy.WrappedKey.wrap(nextKeypair, nextRecovery.wrapKey), copy);
+                                    })
+                                    .thenCompose(x -> {
+                                        if (network.dhtClient.identityKeys() instanceof IdentityKeys.Verifying)
+                                            ((IdentityKeys.Verifying) network.dhtClient.identityKeys()).invalidate(owner);
+                                        progress.accept("Setting your new password");
+                                        return setRecoveredLogin(username, owner, next, entries, newPassword, network, crypto);
+                                    });
+                        })));
+    }
+
+    /** As a password change does, but signed by the identity's new key. */
+    private static CompletableFuture<Boolean> setRecoveredLogin(String username,
+                                                                PublicKeyHash owner,
+                                                                SigningKeyPair identity,
+                                                                UserStaticData.EntryPoints entries,
+                                                                String newPassword,
+                                                                NetworkAccess network,
+                                                                Crypto crypto) {
+        SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(owner, identity.secretSigningKey);
+        return WriterData.getWriterData(owner, owner, network.mutable, network.dhtClient).thenCompose(cwd -> {
+            SecretGenerationAlgorithm alg = cwd.props.get().generationAlgorithm
+                    .orElseThrow(() -> new IllegalStateException("No login algorithm specified in user data!"));
+            SecretGenerationAlgorithm newAlgorithm = SecretGenerationAlgorithm.withNewSalt(alg, crypto.random).withoutBoxerOrIdentity();
+            return UserUtil.generateUser(username, newPassword, crypto, newAlgorithm).thenCompose(login -> {
+                UserStaticData staticData = new UserStaticData(entries, login.getRoot());
+                WriterData newIdBlock = cwd.props.get().withAlgorithm(newAlgorithm);
+                byte[] rawBlock = newIdBlock.serialize();
+                return crypto.hasher.sha256(rawBlock)
+                        .thenCompose(blockHash -> signer.secret.signMessage(blockHash)
+                                .thenCompose(signedBlock -> {
+                                    OpLog.BlockWrite blockWrite = new OpLog.BlockWrite(owner, signedBlock, rawBlock, false, Optional.empty());
+                                    MaybeMultihash newHash = MaybeMultihash.of(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, blockHash));
+                                    PointerUpdate cas = new PointerUpdate(cwd.hash, newHash, PointerUpdate.increment(cwd.sequence));
+                                    return signer.secret.signMessage(cas.serialize())
+                                            .thenCompose(signedCas -> network.account.setLoginData(
+                                                    new LoginData(username, staticData, login.getUser().publicSigningKey,
+                                                            Optional.of(new Pair<>(blockWrite, new OpLog.PointerWrite(owner, signedCas)))),
+                                                    signer, false));
+                                }))
+                        .thenApply(b -> {
+                            if (! b)
+                                throw new IllegalStateException("Couldn't set the new password");
+                            return true;
+                        });
+            });
         });
     }
 

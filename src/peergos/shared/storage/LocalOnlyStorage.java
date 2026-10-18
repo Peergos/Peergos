@@ -1,5 +1,6 @@
 package peergos.shared.storage;
 
+import peergos.shared.routing.IdentityKeys;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
@@ -15,6 +16,11 @@ import java.util.function.*;
 import java.util.stream.*;
 
 public class LocalOnlyStorage implements ContentAddressedStorage {
+
+    @Override
+    public IdentityKeys identityKeys() {
+        return IdentityKeys.INLINE;
+    }
     private final BlockCache cache;
     private final Supplier<CompletableFuture<List<byte[]>>> bulkFetcher;
     private final Hasher h;

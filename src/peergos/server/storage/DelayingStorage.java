@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.shared.routing.IdentityKeys;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
@@ -15,6 +16,11 @@ import java.util.concurrent.*;
 
 public class DelayingStorage implements ContentAddressedStorage {
     private final ContentAddressedStorage source;
+
+    @Override
+    public IdentityKeys identityKeys() {
+        return source.identityKeys();
+    }
     private final int readDelay, writeDelay;
 
     public DelayingStorage(ContentAddressedStorage source, int readDelay, int writeDelay) {
