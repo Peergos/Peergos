@@ -94,6 +94,15 @@ public class RoutingService {
                 ServerRouting.committedNext(ids, current, crypto), crypto,
                 testWork.orElse(CuckooCycle.IDENTITY), testWork.orElse(CuckooCycle.SERVER), threads,
                 replica -> importLegacy(a, replica, storage, crypto), s -> {});
+        List<String> announced = a.getOptionalArg("ipfs-announce-addresses")
+                .map(addrs -> Arrays.asList(addrs.split(",")))
+                .orElse(Collections.emptyList());
+        try {
+            ServerAddressPublisher.publish(server.replica, server.serverKey, ServerAddressPublisher.directAddresses(announced),
+                    ServerAddresses.Mode.Archival, System::currentTimeMillis);
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Couldn't publish this server's addresses: " + e.getMessage(), e);
+        }
         ExecutorService work = Executors.newFixedThreadPool(4, daemon("Routing replication"));
         RoutingNode node = new RoutingNode(server.replica, crypto.hasher, System::currentTimeMillis,
                 a.getInt(ARG_ROUTING_INCEPTIONS_PER_DAY.name, RateLimits.DEFAULT_INCEPTIONS_PER_DAY),
