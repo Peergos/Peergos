@@ -53,4 +53,15 @@ public class ServerIdentityTests {
         Assert.assertEquals(prevRes.moved, true);
         Assert.assertEquals(prevRes.host, Optional.of(Multihash.fromBase58(nextPeerId.toBase58())));
     }
+
+    @Test
+    public void nextIdentityDependsOnThePasswordAndCurrentId() {
+        Crypto crypto = Main.initCrypto();
+        PeerId a = PeerId.fromPubKey(Ed25519Kt.generateEd25519KeyPair().getSecond());
+        PeerId b = PeerId.fromPubKey(Ed25519Kt.generateEd25519KeyPair().getSecond());
+        PeerId next = PeerId.fromPubKey(ServerIdentity.generateNextIdentity("password", a, crypto).publicKey());
+        Assert.assertEquals(next, PeerId.fromPubKey(ServerIdentity.generateNextIdentity("password", a, crypto).publicKey()));
+        Assert.assertNotEquals(next, PeerId.fromPubKey(ServerIdentity.generateNextIdentity("other", a, crypto).publicKey()));
+        Assert.assertNotEquals(next, PeerId.fromPubKey(ServerIdentity.generateNextIdentity("password", b, crypto).publicKey()));
+    }
 }
