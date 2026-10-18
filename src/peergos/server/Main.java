@@ -1143,7 +1143,8 @@ public class Main extends Builder {
             p2pAPI.initAndStart(p2pAPIAddress, nodeIds, Optional.empty(), publicHostname, blockstoreDomains, frameDomains, appSubdomains,
                     a.getBoolean("include-csp", true), basicAuth, webroot, Optional.empty(), useWebAssetCache, isPublicServer, maxConnectionQueue, handlerThreads);
             try {
-                RoutingService.start(a, Optional.ofNullable(ipfsWrapper).flatMap(IpfsWrapper::identityKey), ids, crypto, sqlCommands, getDBConnector(a, RoutingService.ARG_ROUTING_SQL_FILE.name, dbConnectionPool),
+                RoutingService.start(a, Optional.ofNullable(ipfsWrapper).flatMap(IpfsWrapper::identityKey),
+                        Optional.ofNullable(ipfsWrapper).flatMap(IpfsWrapper::reachability), ids, crypto, sqlCommands, getDBConnector(a, RoutingService.ARG_ROUTING_SQL_FILE.name, dbConnectionPool),
                         localStorageForLinks, p2pHttpProxy)
                         .ifPresent(routing -> {
                             p2pAPI.startRoutingApi(new RoutingHandler(routing.node));
