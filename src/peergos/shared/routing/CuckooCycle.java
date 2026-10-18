@@ -21,6 +21,11 @@ public final class CuckooCycle implements Work {
     private static final String KEYS = "peergos/routing/v1/cuckoo-keys";
     private static final String DIFFICULTY = "peergos/routing/v1/cuckoo-difficulty";
 
+    /** About a CPU-minute with the reference solver: 2^24 edges, ~42 graphs of ~1.7 s on one core. */
+    public static final CuckooCycle IDENTITY = new CuckooCycle(24, 0);
+    /** About a CPU-hour: 2^27 edges, 48 MiB of bitmaps, ~84 graphs of ~35 s. */
+    public static final CuckooCycle SERVER = new CuckooCycle(27, 1);
+
     public final int edgeBits, difficultyBits;
 
     public CuckooCycle(int edgeBits, int difficultyBits) {

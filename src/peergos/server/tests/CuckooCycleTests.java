@@ -67,6 +67,14 @@ public class CuckooCycleTests {
     }
 
     @Test
+    public void parallelSolving() {
+        CuckooCycle params = new CuckooCycle(16, 2);
+        byte[] subject = "parallel".getBytes();
+        CuckooCycle.Proof proof = new CuckooSolver(params).solveParallel(subject, 4, 100_000).get();
+        Assert.assertTrue(params.check(subject, proof));
+    }
+
+    @Test
     public void verifyIsCheap() {
         CuckooCycle params = new CuckooCycle(16, 0);
         byte[] subject = "subject".getBytes();
