@@ -16,6 +16,7 @@ import peergos.server.net.ProxyChooser;
 import peergos.server.net.SyncConfigHandler;
 import peergos.server.webdav.MountConfig;
 import peergos.server.space.*;
+import peergos.server.routing.*;
 import peergos.server.sql.*;
 import peergos.server.storage.admin.*;
 import peergos.server.storage.auth.*;
@@ -140,7 +141,7 @@ public class Main extends Builder {
     public static final Command<ServerProcesses> PEERGOS = new Command<>("daemon",
             "The user facing Peergos server",
             Main::startPeergos,
-            Stream.of(
+            Stream.concat(Stream.of(
                     new Command.Arg("port", "service port", false, "8000"),
                     new Command.Arg("peergos.identity.hash", "The hash of peergos user's public key, this is used to bootstrap the pki", true, "z59vuwzfFDp3ZA8ZpnnmHEuMtyA1q34m3Th49DYXQVJntWpxdGrRqXi"),
                     new Command.Arg("pki-node-id", "Ipfs node id of the pki node", true, "QmVdFZgHnEgcedCS2G2ZNiEN59LuVrnRm7z3yXtEBv2XiF"),
@@ -195,7 +196,7 @@ public class Main extends Builder {
                     new Command.Arg("ipfs.metrics.port", "Port for serving aggregated ipfs metrics", false),
                     ARG_NATIVE_TWEETNACL_PATH,
                     ARG_NATIVE_SQLITE_PATH
-            ).collect(Collectors.toList())
+            ), RoutingService.ARGS.stream()).collect(Collectors.toList())
     );
 
     private static Args bootstrap(Args args) {
@@ -1132,6 +1133,16 @@ public class Main extends Builder {
             }
             p2pAPI.initAndStart(p2pAPIAddress, nodeIds, Optional.empty(), publicHostname, blockstoreDomains, frameDomains, appSubdomains,
                     a.getBoolean("include-csp", true), basicAuth, webroot, Optional.empty(), useWebAssetCache, isPublicServer, maxConnectionQueue, handlerThreads);
+            try {
+                RoutingService.start(a, Optional.ofNullable(ipfsWrapper).flatMap(IpfsWrapper::identityKey), ids, crypto, sqlCommands, getDBConnector(a, RoutingService.ARG_ROUTING_SQL_FILE.name, dbConnectionPool),
+                        localStorageForLinks, p2pHttpProxy)
+                        .ifPresent(routing -> p2pAPI.startRoutingApi(new RoutingHandler(routing.node)));
+                if (isPki)
+                    RoutingService.exportLegacy(a, ContentAddressedStorage.hashKey(PublicSigningKey.fromByteArray(
+                            Files.readAllBytes(a.fromPeergosDir("pki.public.key.path")))), localPointers, localStorageForLinks, crypto);
+            } catch (Exception e) {
+                Logging.LOG().log(Level.WARNING, "The routing log did not start: " + e.getMessage(), e);
+            }
 
             if (! isPki) {
                 if (core instanceof MirrorCoreNode)
