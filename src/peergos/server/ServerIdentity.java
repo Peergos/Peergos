@@ -98,12 +98,12 @@ public class ServerIdentity extends Builder {
         byte[] keyBytes = crypto.hasher.hashToKeyBytes(current.toBase58(), password, alg).join();
         byte[] sk = new byte[64];
         byte[] pk = new byte[32];
-        System.arraycopy(keyBytes, 0, sk, 32, 32);
+        System.arraycopy(keyBytes, 0, sk, 0, 32);
         crypto.signer.crypto_sign_keypair(pk, sk);
 
         // update ipns record with next peer id
         byte[] privateProto = new byte[36];
-        System.arraycopy(sk, 32, privateProto, 4, 32);
+        System.arraycopy(sk, 0, privateProto, 4, 32);
         // protobuf header
         System.arraycopy(new byte[]{8, 1, 18, 32}, 0, privateProto, 0, 4);
         return Ed25519Kt.unmarshalEd25519PrivateKey(privateProto);
