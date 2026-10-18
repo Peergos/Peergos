@@ -1,5 +1,6 @@
 package peergos.server.net;
 
+import peergos.shared.routing.IdentityRouting;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import peergos.server.HostDirChooser;
@@ -70,7 +71,7 @@ public class SyncConfigHandler implements HttpHandler {
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, storage, crypto.hasher);
         MutableTreeImpl tree = new MutableTreeImpl(mutable, storage, crypto.hasher, synchronizer);
         this.network = new NetworkAccess(core, null, null, storage, null, Optional.empty(),
-                mutable, tree, synchronizer, null, null, null, crypto.hasher,
+                mutable, tree, synchronizer, null, null, null, IdentityRouting.DISABLED, crypto.hasher,
                 Collections.emptyList(), false);
         this.crypto = crypto;
         this.hostPaths = hostPaths;

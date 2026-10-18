@@ -29,6 +29,7 @@ public class Constants {
     public static final String GC = PEERGOS_API_PREFIX + "gc/";
     public static final String LOCAL_AUTH = PEERGOS_API_PREFIX + "local-auth/";
     public static final String ROUTING_URL = PEERGOS_API_PREFIX + "routing/";
+    public static final String IDENTITY_ROUTING_URL = PEERGOS_API_PREFIX + "identity-routing/";
 
     public static final String PUBLIC_FILES_URL = "public/";
 }
