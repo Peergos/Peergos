@@ -40,14 +40,19 @@ public class LegacyImport {
         return Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.sha2_256, crypto.hasher.sha256(state).join());
     }
 
-    /** Reads every chain in the PKI's champ as of the pinned WriterData, from local storage. */
+    /** Reads every chain in the PKI's champ as of the pinned WriterData, from local storage or the given servers,
+     *  the pki node typically, for blocks this server's mirror of the PKI lacks.
+     */
     public static Map<String, List<UserPublicKeyLink>> chains(LegacyState state,
                                                               PublicKeyHash pkiOwner,
+                                                              List<Multihash> sources,
                                                               DeletableContentAddressedStorage storage,
                                                               Crypto crypto) {
         Map<String, List<UserPublicKeyLink>> chains = new HashMap<>();
         Cid ourId = storage.id().join();
-        IpfsCoreNode.updateAllMappings(List.of(ourId), pkiOwner, MaybeMultihash.empty(), MaybeMultihash.of(state.pki),
+        List<Multihash> peers = new ArrayList<>(sources);
+        peers.add(ourId);
+        IpfsCoreNode.updateAllMappings(peers, pkiOwner, MaybeMultihash.empty(), MaybeMultihash.of(state.pki),
                 ourId, crypto.hasher, storage, chains, new HashMap<>(), new ArrayList<>());
         return chains;
     }

@@ -339,6 +339,11 @@ public class UserService {
         return true;
     }
 
+    /** Only for the p2p api, where nabu's proxy sets the Source header to the authenticated remote peer. */
+    public void startRoutingApi(HttpHandler routing) {
+        localhostServer.createContext("/" + Constants.ROUTING_URL, routing);
+    }
+
     /** Only for the user facing api: remote peers reach the p2p api over loopback */
     public void startGcApi(PartitionStatus partitionStatus, Path tokenFile) throws IOException {
         localhostServer.createContext("/" + Constants.GC,

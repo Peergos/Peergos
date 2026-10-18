@@ -260,6 +260,10 @@ public class IpfsWrapper implements AutoCloseable {
         this.ipfsConfigParams= ipfsConfigParams.withIdentity(identityOpt);
     }
 
+    public Optional<PrivKey> identityKey() {
+        return ipfsConfigParams.identity.map(id -> KeyKt.unmarshalPrivateKey(id.privKeyProtobuf));
+    }
+
     public static boolean isHttpApiListening(String ipfsApiAddress) {
         try {
             MultiAddress ipfsApi = new MultiAddress(ipfsApiAddress);
