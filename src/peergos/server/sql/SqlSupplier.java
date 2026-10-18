@@ -190,6 +190,25 @@ public interface SqlSupplier {
                 ");";
     }
 
+    /** One row per identity or server in the routing log: its tagged records, and the hash of them that
+     *  reconciliation compares. Pending rows are inceptions this server still owes proof of work for.
+     */
+    default String createRoutingTablesCommand() {
+        return "CREATE TABLE IF NOT EXISTS routingrecords (" +
+                "kind " + sqlInteger() + " NOT NULL, " +
+                "subject " + getByteArrayType() + " NOT NULL, " +
+                "records " + getByteArrayType() + " NOT NULL, " +
+                "statehash " + getByteArrayType() + " NOT NULL, " +
+                "PRIMARY KEY (kind, subject));" +
+                "CREATE TABLE IF NOT EXISTS routingpending (" +
+                "kind " + sqlInteger() + " NOT NULL, " +
+                "subject " + getByteArrayType() + " NOT NULL, " +
+                "PRIMARY KEY (kind, subject));" +
+                "CREATE TABLE IF NOT EXISTS routingnextkeys (" +
+                "peerid " + getByteArrayType() + " PRIMARY KEY NOT NULL, " +
+                "private " + getByteArrayType() + " NOT NULL);";
+    }
+
     default void createTable(String sqlTableCreate, Connection conn) throws SQLException {
         Statement createStmt = conn.createStatement();
         createStmt.executeUpdate(sqlTableCreate);
