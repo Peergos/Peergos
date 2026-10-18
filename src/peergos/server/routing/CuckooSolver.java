@@ -29,6 +29,34 @@ public class CuckooSolver {
         return Optional.empty();
     }
 
+    /** Searches disjoint nonces on several threads, each with its own graph, and returns the first proof found. */
+    public Optional<CuckooCycle.Proof> solveParallel(byte[] subject, int threads, long attemptsPerThread) {
+        java.util.concurrent.atomic.AtomicReference<CuckooCycle.Proof> found = new java.util.concurrent.atomic.AtomicReference<>();
+        List<Thread> workers = new ArrayList<>();
+        for (int t = 0; t < threads; t++) {
+            long first = t;
+            Thread worker = new Thread(() -> {
+                for (long i = 0; i < attemptsPerThread && found.get() == null; i++) {
+                    Optional<CuckooCycle.Proof> res = solveNonce(subject, first + i * threads);
+                    if (res.isPresent())
+                        found.compareAndSet(null, res.get());
+                }
+            }, "Cuckoo solver " + t);
+            worker.setDaemon(true);
+            worker.start();
+            workers.add(worker);
+        }
+        for (Thread worker : workers) {
+            try {
+                worker.join();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return Optional.empty();
+            }
+        }
+        return Optional.ofNullable(found.get());
+    }
+
     public Optional<CuckooCycle.Proof> solveNonce(byte[] subject, long nonce) {
         int edgeBits = params.edgeBits;
         long[] keys = CuckooCycle.keys(subject, nonce, edgeBits);
