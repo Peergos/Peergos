@@ -6,7 +6,7 @@ import peergos.shared.io.ipfs.*;
 import java.util.*;
 
 /** A server's records and current state: its current key and addresses (remove-pki §4.2). */
-public final class ServerLog {
+public final class ServerLog implements SubjectLog {
     public final Multihash peerId;
     public final RecordLog<ServerInception, ServerRotation, ServerAddresses> records;
 
@@ -19,6 +19,7 @@ public final class ServerLog {
         return new ServerLog(peerId, RecordLog.empty());
     }
 
+    @Override
     public RecordLog.Change<ServerLog> add(Verified<? extends SignedRecord> v) {
         SignedRecord r = v.record;
         if (r instanceof ServerInception) {
@@ -35,6 +36,26 @@ public final class ServerLog {
 
     private RecordLog.Change<ServerLog> wrap(RecordLog.Change<RecordLog<ServerInception, ServerRotation, ServerAddresses>> c) {
         return new RecordLog.Change<>(c.log == records ? this : new ServerLog(peerId, c.log), c.outcome);
+    }
+
+    @Override
+    public Subject subject() {
+        return Subject.server(peerId);
+    }
+
+    @Override
+    public List<Verified<? extends SignedRecord>> held() {
+        return records.records();
+    }
+
+    @Override
+    public Optional<Verified<ServerInception>> inception() {
+        return records.inception;
+    }
+
+    @Override
+    public ServerLog withInception(Verified<? extends SignedRecord> v) {
+        return new ServerLog(peerId, records.withInception((Verified<ServerInception>) v));
     }
 
     public Optional<PublicSigningKey> currentKey() {
