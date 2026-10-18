@@ -19,10 +19,11 @@ public class JdbcRoutingStore {
     private static final String GET = "SELECT records FROM routingrecords WHERE kind = ? AND subject = ?;";
     private static final String PUT = "INSERT INTO routingrecords (kind, subject, records, statehash) VALUES (?, ?, ?, ?) " +
             "ON CONFLICT (kind, subject) DO UPDATE SET records = excluded.records, statehash = excluded.statehash;";
-    private static final String STATES = "SELECT subject, statehash FROM routingrecords WHERE kind = ? AND subject > ? " +
-            "ORDER BY subject LIMIT ?;";
-    private static final String STATES_UP_TO = "SELECT subject, statehash FROM routingrecords WHERE kind = ? AND subject > ? " +
-            "AND subject <= ? ORDER BY subject LIMIT ?;";
+    private static final String NOT_PENDING = "AND NOT EXISTS (SELECT 1 FROM routingpending p WHERE p.kind = r.kind AND p.subject = r.subject) ";
+    private static final String STATES = "SELECT subject, statehash FROM routingrecords r WHERE kind = ? AND subject > ? " +
+            NOT_PENDING + "ORDER BY subject LIMIT ?;";
+    private static final String STATES_UP_TO = "SELECT subject, statehash FROM routingrecords r WHERE kind = ? AND subject > ? " +
+            "AND subject <= ? " + NOT_PENDING + "ORDER BY subject LIMIT ?;";
     private static final String COUNT = "SELECT COUNT(*) FROM routingrecords WHERE kind = ?;";
     private static final String ADD_PENDING = "INSERT INTO routingpending (kind, subject) VALUES (?, ?) ON CONFLICT DO NOTHING;";
     private static final String REMOVE_PENDING = "DELETE FROM routingpending WHERE kind = ? AND subject = ?;";
@@ -123,7 +124,9 @@ public class JdbcRoutingStore {
         return states(kind, after, Optional.empty(), limit);
     }
 
-    /** States with subject ids after one id, and up to another if given, in order. */
+    /** States with subject ids after one id, and up to another if given, in order: what reconciliation compares,
+     *  so not the inceptions this server still owes proof of work for.
+     */
     public List<State> states(int kind, byte[] after, Optional<byte[]> upTo, int limit) {
         try (Connection c = getConnection();
              PreparedStatement select = c.prepareStatement(upTo.isPresent() ? STATES_UP_TO : STATES)) {

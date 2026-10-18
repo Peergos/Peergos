@@ -13,8 +13,12 @@ import java.util.*;
 public class ServerSigningKeys {
     private static final byte[] ED25519_PROTOBUF_PREFIX = {0x08, 0x01, 0x12, 0x20};
 
+    public static boolean isEd25519(PrivKey priv) {
+        return priv.getKeyType() == crypto.pb.Crypto.KeyType.Ed25519;
+    }
+
     public static SigningKeyPair fromLibp2p(PrivKey priv, Ed25519 signer) {
-        if (priv.getKeyType() != crypto.pb.Crypto.KeyType.Ed25519)
+        if (! isEd25519(priv))
             throw new IllegalStateException("Only Ed25519 servers are in the routing log");
         return fromSeed(priv.raw(), signer);
     }
