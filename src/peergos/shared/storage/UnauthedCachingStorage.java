@@ -1,5 +1,6 @@
 package peergos.shared.storage;
 
+import peergos.shared.routing.IdentityKeys;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
@@ -18,6 +19,11 @@ import java.util.stream.*;
 
 public class UnauthedCachingStorage extends DelegatingStorage {
     private final ContentAddressedStorage target;
+
+    @Override
+    public IdentityKeys identityKeys() {
+        return target.identityKeys();
+    }
     private final BlockCache cache;
     private final LRUCache<Multihash, CompletableFuture<Optional<byte[]>>> pending;
     private final Hasher hasher;

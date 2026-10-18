@@ -1,5 +1,6 @@
 package peergos.shared.storage;
 
+import peergos.shared.routing.IdentityKeys;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
@@ -25,6 +26,11 @@ public class RetryStorage implements ContentAddressedStorage {
     private static final Random random = new Random(1);
     private static final ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1);
     private final ContentAddressedStorage target;
+
+    @Override
+    public IdentityKeys identityKeys() {
+        return target.identityKeys();
+    }
     private final int maxAttempts;
 
     public RetryStorage(ContentAddressedStorage target, int maxAttempts) {

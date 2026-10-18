@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.shared.routing.IdentityKeys;
 import peergos.server.corenode.JdbcIpnsAndSocial;
 import peergos.server.space.UsageStore;
 import peergos.server.storage.auth.*;
@@ -21,6 +22,18 @@ import java.util.function.*;
 import java.util.stream.*;
 
 public class RAMStorage implements DeletableContentAddressedStorage {
+
+    private volatile IdentityKeys identityKeys = IdentityKeys.INLINE;
+
+    @Override
+    public void setIdentityKeys(IdentityKeys keys) {
+        this.identityKeys = keys;
+    }
+
+    @Override
+    public IdentityKeys identityKeys() {
+        return identityKeys;
+    }
     private static final int CID_V1 = 1;
 
     private Map<PublicKeyHash, Map<Cid, byte[]>> storage = new EfficientHashMap<>();
