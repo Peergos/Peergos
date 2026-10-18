@@ -21,6 +21,7 @@ import peergos.shared.storage.*;
 import peergos.server.net.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.storage.controller.*;
+import peergos.shared.routing.IdentityRouting;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -89,6 +90,7 @@ public class UserService {
     public final InstanceAdmin controller;
     public final SpaceUsage usage;
     public final ServerMessager serverMessages;
+    public final IdentityRouting identityRouting;
     public final GarbageCollector gc; // not exposed
     private final Optional<BlockCache> blockCache;
     private final Optional<SyncProperties> syncProps;
@@ -107,6 +109,7 @@ public class UserService {
                        InstanceAdmin controller,
                        SpaceUsage usage,
                        ServerMessager serverMessages,
+                       IdentityRouting identityRouting,
                        GarbageCollector gc,
                        Optional<SyncProperties> syncProps,
                        Optional<LocalAppProperties> localAppProps,
@@ -121,6 +124,7 @@ public class UserService {
         this.controller = controller;
         this.usage = usage;
         this.serverMessages = serverMessages;
+        this.identityRouting = identityRouting;
         this.gc = gc;
         this.blockCache = storage.getBlockCache();
         this.syncProps = syncProps;
@@ -290,6 +294,9 @@ public class UserService {
                 new SpaceHandler(this.usage, isPublicServer), basicAuth, local, host, nodeIds, false);
         addHandler(localhostServer, tlsServer, "/" + Constants.SERVER_MESSAGE_URL,
                 new ServerMessageHandler(this.serverMessages, coreNode, storage, isPublicServer),
+                basicAuth, local, host, nodeIds, false);
+        addHandler(localhostServer, tlsServer, "/" + Constants.IDENTITY_ROUTING_URL,
+                new IdentityRoutingHandler(this.identityRouting, isPublicServer),
                 basicAuth, local, host, nodeIds, false);
         addHandler(localhostServer, tlsServer, "/" + Constants.PUBLIC_FILES_URL,
                 new PublicFileHandler(crypto.hasher, coreNode, mutable, storage),

@@ -67,11 +67,19 @@ public class AdmissionWorker {
         servers.shutdownNow();
     }
 
-    /** Takes in an inception signed by a client signing up here, and schedules its admission. */
-    public Outcome submit(IdentityInception inception) {
+    /** Takes in an inception signed by a client hosted here, and schedules its admission. A second, different
+     *  inception is refused rather than kept as duplicity evidence: two devices committing at once would otherwise
+     *  make every client warn about the identity.
+     */
+    public synchronized Outcome submit(IdentityInception inception) {
         if (! inception.admittingServer().bareMultihash().equals(peerId))
             return Outcome.Rejected;
         Subject s = replica.canonical(Subject.identity(inception.identityHash()));
+        Optional<IdentityInception> held = replica.identity(s)
+                .flatMap(IdentityLog::inception)
+                .map(v -> v.record);
+        if (held.isPresent() && ! held.get().equals(inception))
+            return Outcome.Rejected;
         Outcome res = replica.add(s, inception);
         if (res == Outcome.Added || res == Outcome.Duplicate)
             owe(s);

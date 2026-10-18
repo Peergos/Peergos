@@ -10,6 +10,8 @@ import peergos.shared.inode.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.login.mfa.*;
 import peergos.shared.resolution.*;
+import peergos.shared.routing.IdentityInception;
+import peergos.shared.routing.RecoveryKey;
 import peergos.shared.storage.auth.*;
 import peergos.shared.storage.controller.InstanceAdmin;
 import peergos.shared.storage.controller.HttpInstanceAdmin;
@@ -4584,6 +4586,33 @@ public class UserContext {
 
     public void logout() {
         entrie = TrieNodeImpl.empty();
+    }
+
+    /** Whether this identity still has to commit to the next key its recovery key derives (remove-pki §3.2). */
+    @JsMethod
+    public CompletableFuture<Boolean> needsRecoveryKey() {
+        if (signer == null)
+            return Futures.of(false);
+        return network.identityRouting.status(signer.publicKeyHash)
+                .thenApply(s -> s.running && ! s.committed)
+                .exceptionally(t -> false);
+    }
+
+    /** Commits this identity to the next identity key derived from a recovery key, which the user must have saved
+     *  first: it is the only way to rotate away from a stolen identity key.
+     */
+    @JsMethod
+    public CompletableFuture<Boolean> commitRecoveryKey(String recoveryKey) {
+        PublicKeyHash identity = signer.publicKeyHash;
+        return network.identityRouting.status(identity).thenCompose(status -> {
+            if (! status.running || status.server.isEmpty())
+                return Futures.errored(new IllegalStateException("Your server doesn't run the routing log yet"));
+            return network.dhtClient.getSigningKey(identity, identity)
+                    .thenCompose(pub -> RecoveryKey.nextIdentity(recoveryKey, identity, crypto)
+                            .thenCompose(next -> IdentityInception.build(new SigningKeyPair(pub.get(), signer.secret),
+                                    Collections.singletonList(status.server.get()), next.publicSigningKey, crypto.hasher)))
+                    .thenCompose(network.identityRouting::commit);
+        });
     }
 
     @JsMethod

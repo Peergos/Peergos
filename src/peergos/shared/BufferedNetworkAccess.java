@@ -12,6 +12,7 @@ import peergos.shared.social.*;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.storage.controller.*;
+import peergos.shared.routing.IdentityRouting;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.cryptree.*;
@@ -51,11 +52,12 @@ public class BufferedNetworkAccess extends NetworkAccess {
                                  InstanceAdmin instanceAdmin,
                                  SpaceUsage spaceUsage,
                                  ServerMessager serverMessager,
+                                 IdentityRouting identityRouting,
                                  Hasher hasher,
                                  List<String> usernames,
                                  boolean isJavascript) {
         super(coreNode, account, social, blockBuffer, batCave, batCache, unbufferedMutable, tree, synchronizer, instanceAdmin, spaceUsage,
-                serverMessager, hasher, usernames, isJavascript);
+                serverMessager, identityRouting, hasher, usernames, isJavascript);
         this.blockBuffer = blockBuffer;
         this.pointerBuffer = mutableBuffer;
         this.bulkCommitter = new ServerBulkCommitter(blockBuffer.target(),
@@ -100,7 +102,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
         WriteSynchronizer synchronizer = new WriteSynchronizer(base.mutable, blockBuffer, hasher);
         MutableTree tree = new MutableTreeImpl(base.mutable, blockBuffer, hasher, synchronizer);
         return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, base.coreNode, base.account, base.social,
-                base.mutable, base.batCave, base.batCache, tree, synchronizer, base.instanceAdmin, base.spaceUsage, base.serverMessager, hasher, usernames, isJavascript());
+                base.mutable, base.batCave, base.batCache, tree, synchronizer, base.instanceAdmin, base.spaceUsage, base.serverMessager, base.identityRouting, hasher, usernames, isJavascript());
     }
 
     public void forceClear() {
@@ -115,7 +117,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
         WriteSynchronizer synchronizer = new WriteSynchronizer(super.mutable, blockBuffer, hasher);
         MutableTree tree = new MutableTreeImpl(mutable, blockBuffer, hasher, synchronizer);
         return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, coreNode, account, social,
-                mutable, batCave, batCache, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, hasher, usernames, isJavascript());
+                mutable, batCave, batCache, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, identityRouting, hasher, usernames, isJavascript());
     }
 
     @Override
@@ -125,24 +127,24 @@ public class BufferedNetworkAccess extends NetworkAccess {
         WriteSynchronizer synchronizer = new WriteSynchronizer(newMutable, blockBuffer, hasher);
         MutableTree tree = new MutableTreeImpl(newMutable, blockBuffer, hasher, synchronizer);
         return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, coreNode, account, social,
-                newMutable, batCave, batCache, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, hasher, usernames, isJavascript());
+                newMutable, batCave, batCache, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, identityRouting, hasher, usernames, isJavascript());
     }
 
     @Override
     public NetworkAccess withBatOfflineCache(Optional<EncryptedBatCache> batCache) {
         return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, coreNode, account, social,
-                mutable, batCave, batCache, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, hasher, usernames, isJavascript());
+                mutable, batCave, batCache, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, identityRouting, hasher, usernames, isJavascript());
     }
 
     @Override
     public NetworkAccess withAccountCache(Function<Account, Account> wrapper) {
         return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, coreNode, wrapper.apply(account), social,
-                mutable, batCave, batCache, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, hasher, usernames, isJavascript());
+                mutable, batCave, batCache, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, identityRouting, hasher, usernames, isJavascript());
     }
 
     public NetworkAccess withCorenode(CoreNode newCore) {
         return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, newCore, account, social,
-                mutable, batCave, batCache, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, hasher, usernames, isJavascript());
+                mutable, batCave, batCache, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, identityRouting, hasher, usernames, isJavascript());
     }
 
     @Override

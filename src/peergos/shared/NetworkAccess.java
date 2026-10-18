@@ -16,6 +16,7 @@ import peergos.shared.social.*;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.storage.controller.*;
+import peergos.shared.routing.IdentityRouting;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.cryptree.*;
@@ -48,6 +49,7 @@ public class NetworkAccess {
     public final InstanceAdmin instanceAdmin;
     public final SpaceUsage spaceUsage;
     public final ServerMessager serverMessager;
+    public final IdentityRouting identityRouting;
 
     @JsProperty
     public final List<String> usernames;
@@ -67,6 +69,7 @@ public class NetworkAccess {
                          InstanceAdmin instanceAdmin,
                          SpaceUsage spaceUsage,
                          ServerMessager serverMessager,
+                         IdentityRouting identityRouting,
                          Hasher hasher,
                          List<String> usernames,
                          CryptreeCache cache,
@@ -83,6 +86,7 @@ public class NetworkAccess {
         this.instanceAdmin = instanceAdmin;
         this.spaceUsage = spaceUsage;
         this.serverMessager = serverMessager;
+        this.identityRouting = identityRouting;
         this.hasher = hasher;
         this.usernames = usernames;
         this.cache = cache;
@@ -102,10 +106,11 @@ public class NetworkAccess {
                          InstanceAdmin instanceAdmin,
                          SpaceUsage spaceUsage,
                          ServerMessager serverMessager,
+                         IdentityRouting identityRouting,
                          Hasher hasher,
                          List<String> usernames,
                          boolean isJavascript) {
-        this(coreNode, account, social, dhtClient, batCave, batCache, mutable, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager,
+        this(coreNode, account, social, dhtClient, batCave, batCache, mutable, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, identityRouting,
                 hasher, usernames, new CryptreeCache(), isJavascript);
     }
 
@@ -115,30 +120,30 @@ public class NetworkAccess {
 
     public NetworkAccess withStorage(Function<ContentAddressedStorage, ContentAddressedStorage> modifiedStorage) {
         return new NetworkAccess(coreNode, account, social, modifiedStorage.apply(dhtClient), batCave, batCache, mutable, tree, synchronizer, instanceAdmin,
-                spaceUsage, serverMessager, hasher, usernames, cache, isJavascript);
+                spaceUsage, serverMessager, identityRouting, hasher, usernames, cache, isJavascript);
     }
 
     public NetworkAccess withMutablePointerOfflineCache(Function<MutablePointers, MutablePointers> modifiedPointers) {
         return new NetworkAccess(coreNode, account, social, dhtClient, batCave, batCache, modifiedPointers.apply(mutable),
                 tree, synchronizer, instanceAdmin,
-                spaceUsage, serverMessager, hasher, usernames, cache, isJavascript);
+                spaceUsage, serverMessager, identityRouting, hasher, usernames, cache, isJavascript);
     }
 
     public NetworkAccess withBatOfflineCache(Optional<EncryptedBatCache> batCache) {
         return new NetworkAccess(coreNode, account, social, dhtClient, batCave, batCache, mutable,
                 tree, synchronizer, instanceAdmin,
-                spaceUsage, serverMessager, hasher, usernames, cache, isJavascript);
+                spaceUsage, serverMessager, identityRouting, hasher, usernames, cache, isJavascript);
     }
 
     public NetworkAccess withAccountCache(Function<Account, Account> wrapper) {
         return new NetworkAccess(coreNode, wrapper.apply(account), social, dhtClient, batCave, batCache, mutable,
                 tree, synchronizer, instanceAdmin,
-                spaceUsage, serverMessager, hasher, usernames, cache, isJavascript);
+                spaceUsage, serverMessager, identityRouting, hasher, usernames, cache, isJavascript);
     }
 
     public NetworkAccess withCorenode(CoreNode newCore) {
         return new NetworkAccess(newCore, account, social, dhtClient, batCave, batCache, mutable, tree, synchronizer, instanceAdmin,
-                spaceUsage, serverMessager, hasher, usernames, cache, isJavascript);
+                spaceUsage, serverMessager, identityRouting, hasher, usernames, cache, isJavascript);
     }
 
     public NetworkAccess withoutS3BlockStore() {
@@ -146,7 +151,7 @@ public class NetworkAccess {
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, directDht, hasher);
         MutableTree tree = new MutableTreeImpl(mutable, directDht, hasher, synchronizer);
         return new NetworkAccess(coreNode, account, social, directDht, batCave, batCache, mutable, tree, synchronizer, instanceAdmin,
-                spaceUsage, serverMessager, hasher, usernames, isJavascript);
+                spaceUsage, serverMessager, identityRouting, hasher, usernames, isJavascript);
     }
 
     public static BufferedNetworkAccess nonCommittingForSignup(Account account,
@@ -163,7 +168,7 @@ public class NetworkAccess {
         int bufferSize = 1024 * 1024;
         return new BufferedNetworkAccess(blockBuffer, mutableBuffer, bufferSize, null, account,
                 null, unbufferedMutable, bats, Optional.empty(), tree, synchronizer, null,
-                null, null, hasher, Collections.emptyList(), false);
+                null, null, IdentityRouting.DISABLED, hasher, Collections.emptyList(), false);
     }
 
     @JsMethod
@@ -185,7 +190,7 @@ public class NetworkAccess {
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dhtClient, hasher);
         MutableTree mutableTree = new MutableTreeImpl(mutable, dhtClient, hasher, synchronizer);
         return new NetworkAccess(coreNode, account, social, dhtClient, batCave, batCache, mutable, mutableTree, synchronizer, instanceAdmin,
-                spaceUsage, serverMessager, hasher, usernames, isJavascript);
+                spaceUsage, serverMessager, identityRouting, hasher, usernames, isJavascript);
     }
 
     public NetworkAccess withMutablePointerCache(int ttl) {
@@ -193,7 +198,7 @@ public class NetworkAccess {
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dhtClient, hasher);
         MutableTree mutableTree = new MutableTreeImpl(mutable, dhtClient, hasher, synchronizer);
         return new NetworkAccess(coreNode, account, social, dhtClient, batCave, batCache, mutable, mutableTree, synchronizer, instanceAdmin,
-                spaceUsage, serverMessager, hasher, usernames, isJavascript);
+                spaceUsage, serverMessager, identityRouting, hasher, usernames, isJavascript);
     }
 
     public static CoreNode buildProxyingCorenode(HttpPoster poster, Multihash pkiServerNodeId) {
@@ -327,7 +332,7 @@ public class NetworkAccess {
                     BatCave batCave = new HttpBatCave(apiPoster, p2pPoster);
                     RetryMutablePointers retryMutable = new RetryMutablePointers(p2pMutable);
                     return buildBuffered(p2pDht, batCave, core, account, retryMutable, mutableCacheTime, p2pSocial,
-                            new HttpInstanceAdmin(apiPoster), p2pUsage, serverMessager, hasher, usernames, isJavascript);
+                            new HttpInstanceAdmin(apiPoster), p2pUsage, serverMessager, new IdentityRouting.HTTP(apiPoster), hasher, usernames, isJavascript);
                 });
     }
 
@@ -352,7 +357,7 @@ public class NetworkAccess {
         BatCave batCave = new HttpBatCave(apiPoster, p2pPoster);
         RetryMutablePointers retryMutable = new RetryMutablePointers(httpMutable);
         return buildBuffered(p2pDht, batCave, core, account, retryMutable, mutableCacheTime, httpSocial,
-                new HttpInstanceAdmin(apiPoster), httpUsage, serverMessager, hasher, usernames, isJavascript);
+                new HttpInstanceAdmin(apiPoster), httpUsage, serverMessager, new IdentityRouting.HTTP(apiPoster), hasher, usernames, isJavascript);
     }
 
     public static NetworkAccess buildBuffered(ContentAddressedStorage dht,
@@ -368,6 +373,24 @@ public class NetworkAccess {
                                                Hasher hasher,
                                                List<String> usernames,
                                                boolean isJavascript) {
+        return buildBuffered(dht, batCave, coreNode, account, mutable, mutableCacheTime, social, instanceAdmin, usage,
+                serverMessager, IdentityRouting.DISABLED, hasher, usernames, isJavascript);
+    }
+
+    public static NetworkAccess buildBuffered(ContentAddressedStorage dht,
+                                               BatCave batCave,
+                                               CoreNode coreNode,
+                                               Account account,
+                                               MutablePointers mutable,
+                                               int mutableCacheTime,
+                                               SocialNetwork social,
+                                               InstanceAdmin instanceAdmin,
+                                               SpaceUsage usage,
+                                               ServerMessager serverMessager,
+                                               IdentityRouting identityRouting,
+                                               Hasher hasher,
+                                               List<String> usernames,
+                                               boolean isJavascript) {
         BufferedStorage blockBuffer = new BufferedStorage(dht, hasher);
         MutablePointers unbufferedMutable = mutableCacheTime > 0 ? new CachingPointers(mutable, mutableCacheTime) : mutable;
         BufferedPointers mutableBuffer = new BufferedPointers(unbufferedMutable);
@@ -376,7 +399,7 @@ public class NetworkAccess {
 
         int bufferSize = 20 * 1024 * 1024;
         return new BufferedNetworkAccess(blockBuffer, mutableBuffer, bufferSize, coreNode, account,
-                social, unbufferedMutable, batCave, Optional.empty(), tree, synchronizer, instanceAdmin, usage, serverMessager, hasher, usernames, isJavascript);
+                social, unbufferedMutable, batCave, Optional.empty(), tree, synchronizer, instanceAdmin, usage, serverMessager, identityRouting, hasher, usernames, isJavascript);
     }
 
     public static CompletableFuture<NetworkAccess> buildPublicNetworkAccess(Hasher hasher,
@@ -386,7 +409,7 @@ public class NetworkAccess {
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, storage, hasher);
         MutableTree mutableTree = new MutableTreeImpl(mutable, storage, null, synchronizer);
         return CompletableFuture.completedFuture(new NetworkAccess(core, null, null, storage, null, Optional.empty(), mutable, mutableTree,
-                synchronizer, null, null, null, hasher, Collections.emptyList(), false));
+                synchronizer, null, null, null, IdentityRouting.DISABLED, hasher, Collections.emptyList(), false));
     }
 
     public boolean isFull() {
