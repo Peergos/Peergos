@@ -1,5 +1,6 @@
 package peergos.server.tests.simulation;
 
+import peergos.shared.routing.IdentityRouting;
 import peergos.server.*;
 import peergos.server.simulation.AccessControl;
 import peergos.server.simulation.FileSystem;
@@ -758,7 +759,7 @@ public class Simulator {
                 MutableTree mutableTree = new MutableTreeImpl(service.mutable, service.storage, crypto.hasher, synchronizer);
                 NetworkAccess networkAccess = new NetworkAccess(service.coreNode, service.account, service.social, service.storage,
                         service.bats, Optional.empty(), service.mutable, mutableTree, synchronizer, service.controller, service.usage,
-                        service.serverMessages, service.crypto.hasher, Arrays.asList("peergos"), false);
+                        service.serverMessages, IdentityRouting.DISABLED, service.crypto.hasher, Arrays.asList("peergos"), false);
                 UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, usernameToPassword(username), networkAccess, crypto);
                 PeergosFileSystemImpl peergosFileSystem = new PeergosFileSystemImpl(userContext);
                 Path root = Files.createTempDirectory("test_filesystem-" + username);

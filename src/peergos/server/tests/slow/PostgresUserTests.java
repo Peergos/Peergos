@@ -1,5 +1,6 @@
 package peergos.server.tests.slow;
 
+import peergos.shared.routing.IdentityRouting;
 import io.libp2p.core.*;
 import io.libp2p.core.crypto.*;
 import io.libp2p.crypto.keys.*;
@@ -63,7 +64,7 @@ public class PostgresUserTests extends UserTests {
         MutableTree mutableTree = new MutableTreeImpl(service.mutable, service.storage, crypto.hasher, synchronizer);
         NetworkAccess network = new NetworkAccess(service.coreNode, service.account, service.social, service.storage,
                 service.bats, Optional.empty(), service.mutable, mutableTree, synchronizer, service.controller, service.usage, service.serverMessages,
-                service.crypto.hasher, Arrays.asList("peergos"), false);
+                IdentityRouting.DISABLED, service.crypto.hasher, Arrays.asList("peergos"), false);
         return Arrays.asList(new Object[][] {
                 {network, service}
         });

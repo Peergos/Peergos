@@ -183,4 +183,30 @@ public class RoutingReplicaTests {
         ids.addIdentity(currentId, ServerIdentity.generateSignedIpnsRecord(current, Optional.of(Multihash.decode(broken.getBytes())), false, 1));
         Assert.assertTrue(ServerRouting.committedNext(ids, currentId, crypto).isEmpty());
     }
+
+    @Test
+    public void aClientCommitsToTheKeyItsRecoveryKeyDerives() throws Exception {
+        JdbcRoutingStore store = store();
+        SigningKeyPair serverKey = key();
+        ServerRouting routing = ServerRouting.start(store, serverKey, Optional.empty(), crypto, WORK, WORK, 1, r -> {}, s -> {});
+        try {
+            SigningKeyPair identity = key();
+            IdentityInception probe = IdentityInception.build(identity, List.of(routing.peerId), key().publicSigningKey, crypto.hasher).join();
+            SigningKeyPair next = RecoveryKey.nextIdentity("Abandon-Ability-Able ", probe.identityHash(), crypto).join();
+            Assert.assertEquals(next.publicSigningKey,
+                    RecoveryKey.nextIdentity("abandon-ability-able", probe.identityHash(), crypto).join().publicSigningKey);
+            Assert.assertNotEquals(next.publicSigningKey,
+                    RecoveryKey.nextIdentity("abandon-ability-able", ContentAddressedStorage.hashKey(key().publicSigningKey), crypto).join().publicSigningKey);
+
+            IdentityInception inception = IdentityInception.build(identity, List.of(routing.peerId), next.publicSigningKey, crypto.hasher).join();
+            Assert.assertEquals(Outcome.Added, routing.admissions.submit(inception));
+            Assert.assertEquals(Outcome.Duplicate, routing.admissions.submit(inception));
+            Assert.assertEquals(Outcome.Rejected, routing.admissions.submit(probe));
+            Subject s = Subject.identity(inception.identityHash());
+            Assert.assertFalse(routing.replica.identity(s).get().hasDuplicityEvidence());
+            waitFor(() -> routing.replica.isProven(s, false));
+        } finally {
+            routing.stop();
+        }
+    }
 }
