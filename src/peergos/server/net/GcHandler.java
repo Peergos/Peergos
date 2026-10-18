@@ -29,17 +29,7 @@ public class GcHandler implements HttpHandler {
         new SecureRandom().nextBytes(raw);
         String encoded = ArrayOps.bytesToHex(raw);
         this.token = encoded.getBytes(StandardCharsets.UTF_8);
-        writeOwnerOnly(tokenFile, encoded);
-    }
-
-    private static void writeOwnerOnly(Path file, String contents) throws IOException {
-        Files.deleteIfExists(file);
-        try {
-            Files.createFile(file, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
-        } catch (UnsupportedOperationException e) {
-            Files.createFile(file);
-        }
-        Files.writeString(file, contents);
+        LocalApiAuth.writeOwnerOnly(tokenFile, encoded);
     }
 
     @Override

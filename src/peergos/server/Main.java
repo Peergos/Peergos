@@ -10,6 +10,7 @@ import peergos.server.cli.CLI;
 import peergos.server.crypto.hash.ScryptJava;
 import peergos.server.login.*;
 import peergos.server.messages.*;
+import peergos.server.net.LocalApiAuth;
 import peergos.server.net.MountConfigHandler;
 import peergos.server.net.ProxyChooser;
 import peergos.server.net.SyncConfigHandler;
@@ -385,8 +386,7 @@ public class Main extends Builder {
             args -> {
                 try {
                     int port = args.getInt("port");
-                    new JavaPoster(new URL("http://localhost:" + port), false)
-                            .post(Constants.STOP, new byte[0], false).join();
+                    LocalApiAuth.post(port, args.getPeergosDir(), Constants.STOP);
                     return true;
                 } catch (Exception e) {
                     throw new RuntimeException(e);
@@ -746,6 +746,7 @@ public class Main extends Builder {
                             Collections.emptyList(), Collections.emptyList(), appSubdomains, true,
                             Optional.empty(), Optional.empty(), Optional.empty(), true, false,
                             connectionBacklog, handlerPoolSize);
+                    server.localAuth.writeTokenFile(peergosDir);
                     return null;
                 } catch (IOException e) {
                     throw new IllegalStateException(e);
@@ -1124,6 +1125,11 @@ public class Main extends Builder {
             localAPI.initAndStart(localAPIAddress, nodeIds, tlsProps, publicHostname, blockstoreDomains, frameDomains, appSubdomains,
                     a.getBoolean("include-csp", true), basicAuth, webroot, appDevTarget, useWebAssetCache, isPublicServer, maxConnectionQueue, handlerThreads);
             localAPI.startGcApi(partitionStatus, GcCLI.tokenFile(a));
+            if (! isPublicServer && publicHostname.isEmpty()) {
+                localAPI.localAuth.writeTokenFile(a.getPeergosDir());
+                System.out.println("To manage sync and the drive from a browser on this machine, open "
+                        + localAPI.localAuth.launchUrl(localAPIAddress.getPort()));
+            }
             p2pAPI.initAndStart(p2pAPIAddress, nodeIds, Optional.empty(), publicHostname, blockstoreDomains, frameDomains, appSubdomains,
                     a.getBoolean("include-csp", true), basicAuth, webroot, Optional.empty(), useWebAssetCache, isPublicServer, maxConnectionQueue, handlerThreads);
 
