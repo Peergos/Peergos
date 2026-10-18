@@ -1,5 +1,6 @@
 package peergos.shared.storage;
 
+import peergos.shared.routing.IdentityKeys;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
@@ -16,6 +17,15 @@ import java.util.concurrent.*;
 public abstract class DelegatingStorage implements ContentAddressedStorage {
 
     private final ContentAddressedStorage target;
+
+
+    @Override
+
+    public IdentityKeys identityKeys() {
+
+        return target.identityKeys();
+
+    }
 
     public DelegatingStorage(ContentAddressedStorage target) {
         this.target = target;

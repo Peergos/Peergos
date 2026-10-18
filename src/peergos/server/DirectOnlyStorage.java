@@ -1,5 +1,6 @@
 package peergos.server;
 
+import peergos.shared.routing.IdentityKeys;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
@@ -8,6 +9,11 @@ import java.util.concurrent.*;
 
 public class DirectOnlyStorage extends DelegatingStorage {
     private final ContentAddressedStorage target;
+
+    @Override
+    public IdentityKeys identityKeys() {
+        return target.identityKeys();
+    }
 
     public DirectOnlyStorage(ContentAddressedStorage target) {
         super(target);

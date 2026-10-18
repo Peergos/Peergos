@@ -1,5 +1,6 @@
 package peergos.shared.storage;
 
+import peergos.shared.routing.IdentityKeys;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
@@ -31,6 +32,11 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     private final Optional<String> baseAuthedUrl;
     private final HttpPoster direct;
     private final ContentAddressedStorage fallback;
+
+    @Override
+    public IdentityKeys identityKeys() {
+        return fallback.identityKeys();
+    }
     private final List<Cid> nodeIds;
     private final LRUCache<PublicKeyHash, Multihash> storageNodeByOwner = new LRUCache<>(100);
     private final CoreNode core;

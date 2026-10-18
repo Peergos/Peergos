@@ -74,18 +74,37 @@ public interface MutablePointers {
                                                                PublicKeyHash writerKeyHash,
                                                                ContentAddressedStorage ipfs) {
         return ipfs.getSigningKey(owner, writerKeyHash)
-                .thenCompose(writerOpt -> writerOpt.map(writerKey -> writerKey.unsignMessage(pointerCas)
-                                .thenApply(signed -> PointerUpdate.fromCbor(CborObject.fromByteArray(signed))))
-                        .orElse(Futures.of(PointerUpdate.empty())));
+                .thenCompose(writerOpt -> priorKey(owner, writerKeyHash, ipfs)
+                        .thenCompose(prior -> writerOpt.map(writerKey -> unsignStored(pointerCas, writerKey, prior)
+                                        .thenApply(signed -> PointerUpdate.fromCbor(CborObject.fromByteArray(signed))))
+                                .orElse(Futures.of(PointerUpdate.empty()))));
+    }
+
+    /** For an identity's own pointer, the key in its hash, which signed what was stored before it rotated. */
+    static CompletableFuture<Optional<PublicSigningKey>> priorKey(PublicKeyHash owner, PublicKeyHash writer, ContentAddressedStorage ipfs) {
+        return owner.equals(writer) ? ipfs.getInlineSigningKey(owner, writer) : Futures.of(Optional.empty());
+    }
+
+    /** A stored pointer was checked when it was written, which for an identity that has rotated since was against
+     *  its key from before, so either key reads it. Only a new update must be signed by the current key.
+     */
+    static CompletableFuture<byte[]> unsignStored(byte[] signed, PublicSigningKey key, Optional<PublicSigningKey> prior) {
+        if (prior.isEmpty() || prior.get().equals(key))
+            return key.unsignMessage(signed);
+        return Futures.asyncExceptionally(() -> key.unsignMessage(signed), t -> prior.get().unsignMessage(signed));
     }
 
     static CompletableFuture<Boolean> isValidUpdate(PublicSigningKey writerKey, Optional<byte[]> current, byte[] writerSignedBtreeRootHash) {
+        return isValidUpdate(writerKey, Optional.empty(), current, writerSignedBtreeRootHash);
+    }
+
+    static CompletableFuture<Boolean> isValidUpdate(PublicSigningKey writerKey,
+                                                    Optional<PublicSigningKey> priorKey,
+                                                    Optional<byte[]> current,
+                                                    byte[] writerSignedBtreeRootHash) {
         return writerKey.unsignMessage(writerSignedBtreeRootHash).thenCompose(bothHashes -> {
             PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
-            MaybeMultihash claimedCurrentHash = cas.original;
-            Multihash newHash = cas.updated.get();
-
-            return isValidUpdate(writerKey, current, claimedCurrentHash, cas.sequence);
+            return isValidUpdate(writerKey, priorKey, current, cas.original, cas.sequence);
         });
     }
 
@@ -93,8 +112,16 @@ public interface MutablePointers {
                                                     Optional<byte[]> current,
                                                     MaybeMultihash claimedCurrentHash,
                                                     Optional<Long> newSequence) {
+        return isValidUpdate(writerKey, Optional.empty(), current, claimedCurrentHash, newSequence);
+    }
+
+    static CompletableFuture<Boolean> isValidUpdate(PublicSigningKey writerKey,
+                                                    Optional<PublicSigningKey> priorKey,
+                                                    Optional<byte[]> current,
+                                                    MaybeMultihash claimedCurrentHash,
+                                                    Optional<Long> newSequence) {
         Optional<CompletableFuture<PointerUpdate>> decoded = current.map(signed ->
-                writerKey.unsignMessage(signed)
+                unsignStored(signed, writerKey, priorKey)
                         .thenApply(msg -> PointerUpdate.fromCbor(CborObject.fromByteArray(msg))));
         return decoded.map(f -> f.thenApply(p -> p.updated)).orElse(Futures.of(MaybeMultihash.empty()))
                 .thenCompose(existing -> decoded.map(f -> f.thenApply(p -> p.sequence))

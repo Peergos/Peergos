@@ -77,7 +77,7 @@ public class UserRepository implements SocialNetwork, MutablePointers {
                                 PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
                                 MaybeMultihash claimedCurrentHash = cas.original;
 
-                                return MutablePointers.isValidUpdate(writerKey, current, claimedCurrentHash, cas.sequence)
+                                return MutablePointers.isValidUpdate(writerKey, MutablePointers.priorKey(owner, writer, ipfs).join(), current, claimedCurrentHash, cas.sequence)
                                         .thenCompose(x -> {
 
                                             // check the new target is valid for this writer (or a deletion)
@@ -120,7 +120,7 @@ public class UserRepository implements SocialNetwork, MutablePointers {
                                 PublicSigningKey writerKey = writerOpt.get();
                                 byte[] bothHashes = writerKey.unsignMessage(u.signed).join();
                                 PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
-                                return MutablePointers.isValidUpdate(writerKey, current, cas.original, cas.sequence)
+                                return MutablePointers.isValidUpdate(writerKey, MutablePointers.priorKey(owner, u.writer, ipfs).join(), current, cas.original, cas.sequence)
                                         .thenCompose(x -> {
                                             if (cas.updated.isPresent()) {
                                                 Multihash newHash = cas.updated.get();

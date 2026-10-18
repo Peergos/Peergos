@@ -16,6 +16,7 @@ import peergos.shared.social.*;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.storage.controller.*;
+import peergos.shared.routing.IdentityKeys;
 import peergos.shared.routing.IdentityRouting;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -317,7 +318,8 @@ public class NetworkAccess {
                     if (isPeergosServer)
                         return buildToPeergosServer(nodeIds, core, localDht, apiPoster, p2pPoster, mutableCacheTime, hasher, usernames, isJavascript, deviceTokens);
                     ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(p2pPoster);
-                    ContentAddressedStorage storage = new ContentAddressedStorage.Proxying(localDht, proxingDht, nodeIds, core, true, true, n -> true);
+                    ContentAddressedStorage storage = new ContentAddressedStorage.Proxying(withIdentityKeys(localDht, apiPoster, hasher),
+                            proxingDht, nodeIds, core, true, true, n -> true);
                     ContentAddressedStorage p2pDht = new CachingVerifyingStorage(new RetryStorage(storage, 7),
                             100 * 1024, 1_000, nodeIds, hasher);
                     MutablePointersProxy httpMutable = new HttpMutablePointers(apiPoster, p2pPoster);
@@ -336,6 +338,11 @@ public class NetworkAccess {
                 });
     }
 
+    /** Identities' current keys come from the records the home server holds, checked here. */
+    private static ContentAddressedStorage withIdentityKeys(ContentAddressedStorage base, HttpPoster apiPoster, Hasher hasher) {
+        return new IdentityKeyedStorage(base, new IdentityKeys.Verifying(new IdentityRouting.HTTP(apiPoster), hasher));
+    }
+
     public static NetworkAccess buildToPeergosServer(List<Cid> nodeIds,
                                                      CoreNode core,
                                                      ContentAddressedStorage localDht,
@@ -346,7 +353,7 @@ public class NetworkAccess {
                                                      List<String> usernames,
                                                      boolean isJavascript,
                                                      DeviceTokenStore deviceTokens) {
-        ContentAddressedStorage p2pDht = new CachingVerifyingStorage(new RetryStorage(localDht, 7),
+        ContentAddressedStorage p2pDht = new CachingVerifyingStorage(new RetryStorage(withIdentityKeys(localDht, apiPoster, hasher), 7),
                 100 * 1024, 1_000, nodeIds, hasher);
         MutablePointersProxy httpMutable = new HttpMutablePointers(apiPoster, p2pPoster);
         Account account = new HttpAccount(apiPoster, p2pPoster, Optional.of(deviceTokens));
