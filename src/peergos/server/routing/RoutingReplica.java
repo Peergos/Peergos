@@ -87,7 +87,18 @@ public class RoutingReplica {
     /** Checks a record and applies it. An inception already held is replaced by a copy whose proof is better: a
      *  proof where there was none, or an admission signed by a later key of the admitting server.
      */
+    /** Decides, once a record is known to be new, whether this node takes it now. */
+    public interface Gate {
+        Gate OPEN = (s, record, isNewInception) -> true;
+
+        boolean allow(Subject s, SignedRecord record, boolean isNewInception);
+    }
+
     public Outcome add(Subject requested, SignedRecord record) {
+        return add(requested, record, Gate.OPEN);
+    }
+
+    public Outcome add(Subject requested, SignedRecord record, Gate gate) {
         Subject s = canonical(requested);
         if (! s.accepts(RecordType.of(record)))
             return Outcome.Rejected;
@@ -108,13 +119,29 @@ public class RoutingReplica {
                 updated = log.withInception(v);
                 outcome = Outcome.Added;
             }
+            if (outcome == Outcome.Added && ! gate.allow(s, record, isInception(record) && log.inception().isEmpty()))
+                return Outcome.Limited;
             if (outcome == Outcome.Added)
                 save(s, updated);
             return outcome;
         }
     }
 
-    private static boolean isInception(SignedRecord r) {
+    /** The subject's log as it would be with these records, without storing them. */
+    public SubjectLog preview(Subject requested, List<SignedRecord> records) {
+        Subject s = canonical(requested);
+        List<Verified<? extends SignedRecord>> verified = new ArrayList<>();
+        for (SignedRecord r : records) {
+            if (! s.accepts(RecordType.of(r)))
+                continue;
+            try {
+                verified.add(validator.verify(r).join());
+            } catch (RuntimeException e) {}
+        }
+        return SubjectLog.build(log(s), verified);
+    }
+
+    static boolean isInception(SignedRecord r) {
         return r instanceof IdentityInception || r instanceof ServerInception;
     }
 
@@ -183,7 +210,11 @@ public class RoutingReplica {
         SubjectLog log = log(s);
         if (log.inception().isEmpty())
             return false;
-        SignedRecord inception = log.inception().get().record;
+        return isProven(s, log.inception().get().record, catchUp);
+    }
+
+    /** The same, for an inception that may not be held yet. */
+    public boolean isProven(Subject s, SignedRecord inception, boolean catchUp) {
         if (inception instanceof ServerInception)
             return proofRank(s, inception) >= 0;
         IdentityInception ii = (IdentityInception) inception;

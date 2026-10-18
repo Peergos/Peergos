@@ -21,6 +21,8 @@ public class JdbcRoutingStore {
             "ON CONFLICT (kind, subject) DO UPDATE SET records = excluded.records, statehash = excluded.statehash;";
     private static final String STATES = "SELECT subject, statehash FROM routingrecords WHERE kind = ? AND subject > ? " +
             "ORDER BY subject LIMIT ?;";
+    private static final String STATES_UP_TO = "SELECT subject, statehash FROM routingrecords WHERE kind = ? AND subject > ? " +
+            "AND subject <= ? ORDER BY subject LIMIT ?;";
     private static final String COUNT = "SELECT COUNT(*) FROM routingrecords WHERE kind = ?;";
     private static final String ADD_PENDING = "INSERT INTO routingpending (kind, subject) VALUES (?, ?) ON CONFLICT DO NOTHING;";
     private static final String REMOVE_PENDING = "DELETE FROM routingpending WHERE kind = ? AND subject = ?;";
@@ -118,11 +120,18 @@ public class JdbcRoutingStore {
 
     /** States in subject order after the given subject id, for reconciliation and snapshots. */
     public List<State> states(int kind, byte[] after, int limit) {
+        return states(kind, after, Optional.empty(), limit);
+    }
+
+    /** States with subject ids after one id, and up to another if given, in order. */
+    public List<State> states(int kind, byte[] after, Optional<byte[]> upTo, int limit) {
         try (Connection c = getConnection();
-             PreparedStatement select = c.prepareStatement(STATES)) {
+             PreparedStatement select = c.prepareStatement(upTo.isPresent() ? STATES_UP_TO : STATES)) {
             select.setInt(1, kind);
             select.setBytes(2, after);
-            select.setInt(3, limit);
+            if (upTo.isPresent())
+                select.setBytes(3, upTo.get());
+            select.setInt(upTo.isPresent() ? 4 : 3, limit);
             ResultSet rs = select.executeQuery();
             List<State> res = new ArrayList<>();
             while (rs.next())
