@@ -11,9 +11,9 @@ import java.util.logging.*;
 /** Everything that keeps a local only api local, in one place.
  *
  *  These apis add a sync pair for any local folder, unmount the drive, repoint the app at
- *  another server, or stop the process, and none of them authenticate their caller. A page
- *  in the user's browser can POST to them cross site without a preflight, so each of the
- *  checks below has to hold before the request reaches the handler itself.
+ *  another server, or stop the process. A page in the user's browser can POST to them cross
+ *  site without a preflight, and any other process on the machine can call them directly, so
+ *  each of the checks below has to hold before the request reaches the handler itself.
  */
 public class LocalOnlyHandler implements HttpHandler {
     private static final Logger LOG = Logging.LOG();
@@ -22,16 +22,19 @@ public class LocalOnlyHandler implements HttpHandler {
     private final String allowedHost;
     private final String allowedOrigin;
     private final boolean allowGet;
+    private final Optional<LocalApiAuth> auth;
 
-    public LocalOnlyHandler(HttpHandler handler, int localPort) {
-        this(handler, localPort, false);
+    public LocalOnlyHandler(HttpHandler handler, int localPort, LocalApiAuth auth) {
+        this(handler, localPort, Optional.of(auth), false);
     }
 
-    /** @param allowGet for an api a browser reaches by navigation rather than from script */
-    public LocalOnlyHandler(HttpHandler handler, int localPort, boolean allowGet) {
+    /** @param auth empty only for an api that authenticates its caller some other way
+     *  @param allowGet for an api a browser reaches by navigation rather than from script */
+    public LocalOnlyHandler(HttpHandler handler, int localPort, Optional<LocalApiAuth> auth, boolean allowGet) {
         this.handler = handler;
         this.allowedHost = "localhost:" + localPort;
         this.allowedOrigin = "http://" + allowedHost;
+        this.auth = auth;
         this.allowGet = allowGet;
     }
 
@@ -75,6 +78,15 @@ public class LocalOnlyHandler implements HttpHandler {
         if (site != null && ! site.isEmpty()
                 && ! site.get(0).equals("same-origin") && ! site.get(0).equals("none")) {
             refuse(exchange, 403, "sec-fetch-site " + site.get(0));
+            return;
+        }
+
+        // Everything above is a header a browser sets for us, which any other process on the
+        // machine simply leaves out
+        if (auth.isPresent() && ! auth.get().isAuthorised(exchange)) {
+            LOG.info("Refusing local only request to " + exchange.getRequestURI().getPath() + ": no local api token");
+            HttpUtil.replyErrorWithCode(exchange, 403, "Open Peergos from the app to change its local settings");
+            exchange.close();
             return;
         }
 

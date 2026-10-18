@@ -93,6 +93,7 @@ public class UserService {
     private final Optional<BlockCache> blockCache;
     private final Optional<SyncProperties> syncProps;
     private final Optional<LocalAppProperties> localAppProps;
+    public final LocalApiAuth localAuth = new LocalApiAuth();
     private final Optional<peergos.server.net.MountConfigHandler> mountHandler;
     private HttpServer localhostServer;
 
@@ -294,30 +295,34 @@ public class UserService {
                 new PublicFileHandler(crypto.hasher, coreNode, mutable, storage),
                 basicAuth, local, host, nodeIds, false);
         if (! isPublicServer && publicHostname.isEmpty()) {
-            // the file reflector is loaded by navigating to it, the rest are called from script
+            int port = local.getPort();
+            // the file reflector is loaded by navigating to it, and only serves caps the caller already has
             addHandler(localhostServer, null, "/" + Constants.ANDROID_FILE_REFLECTOR,
-                    new LocalOnlyHandler(new AndroidFileReflector(crypto, coreNode, mutable, storage), local.getPort(), true),
+                    new LocalOnlyHandler(new AndroidFileReflector(crypto, coreNode, mutable, storage), port, Optional.empty(), true),
+                    basicAuth, local, host, nodeIds, false);
+            addHandler(localhostServer, null, "/" + Constants.LOCAL_AUTH,
+                    new LocalOnlyHandler(new LocalAuthHandler(localAuth, port), port, Optional.empty(), false),
                     basicAuth, local, host, nodeIds, false);
             addHandler(localhostServer, null, "/" + Constants.STOP,
-                    new LocalOnlyHandler(new StopHandler(), local.getPort()), basicAuth, local, host, nodeIds, false);
+                    new LocalOnlyHandler(new StopHandler(), port, localAuth), basicAuth, local, host, nodeIds, false);
             blockCache.ifPresent(cache -> addHandler(localhostServer, null, "/" + Constants.CONFIG,
-                    new LocalOnlyHandler(new ConfigHandler(cache, localAppProps), local.getPort()),
+                    new LocalOnlyHandler(new ConfigHandler(cache, localAppProps), port, localAuth),
                     basicAuth, local, host, nodeIds, false));
             syncProps.ifPresent(props -> {
                 SyncConfigHandler sync = new SyncConfigHandler(props.config, props.peergosDir, props.syncer, storage, mutable, props.hostDirs, coreNode, crypto);
                 sync.start();
                 addHandler(localhostServer, null, "/" + Constants.SYNC,
-                        new LocalOnlyHandler(sync, local.getPort()), basicAuth, local, host, nodeIds, false);
+                        new LocalOnlyHandler(sync, port, localAuth), basicAuth, local, host, nodeIds, false);
             });
             mountHandler.ifPresent(mount -> {
                 mount.start();
                 addHandler(localhostServer, null, "/" + Constants.MOUNT,
-                        new LocalOnlyHandler(mount, local.getPort()), basicAuth, local, host, nodeIds, false);
+                        new LocalOnlyHandler(mount, port, localAuth), basicAuth, local, host, nodeIds, false);
             });
             // the desktop webview has no WebAuthn of its own, so we drive the key here
             localAppProps.ifPresent(props ->
                     addHandler(localhostServer, null, "/" + Constants.WEBAUTHN,
-                            new LocalOnlyHandler(new peergos.server.net.WebAuthnHandler(props.currentServerUrl, local.getPort()), local.getPort()),
+                            new LocalOnlyHandler(new peergos.server.net.WebAuthnHandler(props.currentServerUrl, port), port, localAuth),
                             basicAuth, local, host, nodeIds, false));
         }
         addHandler(localhostServer, tlsServer, UI_URL, handler, basicAuth, local, host, nodeIds, true);
@@ -337,7 +342,7 @@ public class UserService {
     /** Only for the user facing api: remote peers reach the p2p api over loopback */
     public void startGcApi(PartitionStatus partitionStatus, Path tokenFile) throws IOException {
         localhostServer.createContext("/" + Constants.GC,
-                new LocalOnlyHandler(new GcHandler(gc, partitionStatus, tokenFile), localhostServer.getAddress().getPort()));
+                new LocalOnlyHandler(new GcHandler(gc, partitionStatus, tokenFile), localhostServer.getAddress().getPort(), Optional.empty(), false));
     }
 
     private static void addHandler(HttpServer localhostServer,

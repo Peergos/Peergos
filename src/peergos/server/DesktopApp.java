@@ -1,12 +1,16 @@
 package peergos.server;
 
+import peergos.server.net.LocalApiAuth;
 import peergos.server.util.Args;
+import peergos.shared.util.Constants;
 
 import java.awt.*;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
+import java.util.Map;
+import java.util.Optional;
 
 public class DesktopApp {
 
@@ -19,7 +23,16 @@ public class DesktopApp {
     /** Our own pid, so a window host can tell when the server it belongs to has gone. */
     private static final String SERVER_PID_ENV = "PEERGOS_SERVER_PID";
 
-    public static void launch(Args args, int port, URI api) throws IOException {
+    /** Where the window host loads the ui from, with a single use code the page swaps for the local api token */
+    private static final String URL_ENV = "PEERGOS_URL";
+
+    /** For the window host's own calls to the local only apis, like the tray's sync status */
+    private static final String LOCAL_TOKEN_ENV = "PEERGOS_LOCAL_TOKEN";
+
+    public static void launch(Args args, int port, URI plainApi) throws IOException {
+        // the server may be another process, so we can't ask it for a launch code directly
+        Optional<String> token = LocalApiAuth.readTokenFile(args.getPeergosDir());
+        URI api = launchUri(args, port).orElse(plainApi);
         boolean flatpak = args.hasArg("flatpak");
         boolean minimised = args.getBoolean("minimised", false);
         boolean isLinux = "linux".equalsIgnoreCase(System.getProperty("os.name"));
@@ -36,6 +49,7 @@ public class DesktopApp {
                 );
                 if (minimised)
                     pb.environment().put(MINIMISED_ENV, "1");
+                addLocalAuth(pb.environment(), api, token);
                 pb.inheritIO();
                 Process p = pb.start();
                 p.onExit().thenAccept(done -> {
@@ -56,6 +70,7 @@ public class DesktopApp {
                     pb.environment().put(SERVER_PID_ENV, Long.toString(ProcessHandle.current().pid()));
                     if (minimised)
                         pb.environment().put(MINIMISED_ENV, "1");
+                    addLocalAuth(pb.environment(), api, token);
                     pb.inheritIO();
                     Process webviewProcess = pb.start();
                     webviewProcess.onExit().thenAccept(done -> {
@@ -64,7 +79,7 @@ public class DesktopApp {
                             System.exit(0);
                         } else {
                             // WebView2 runtime not installed — fall back to Edge
-                            launchWindowsFallback(port, api);
+                            launchWindowsFallback(port, launchUri(args, port).orElse(plainApi));
                         }
                     });
                 } else {
@@ -81,6 +96,7 @@ public class DesktopApp {
                 );
                 // pass port via env var
                 pb.environment().put("PEERGOS_PORT", "" + port);
+                addLocalAuth(pb.environment(), api, token);
                 pb.inheritIO();
                 Process webviewProcess = pb.start();
 
@@ -91,7 +107,7 @@ public class DesktopApp {
                     } else {
                         try {
                             if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE))
-                                Desktop.getDesktop().browse(api);
+                                Desktop.getDesktop().browse(launchUri(args, port).orElse(plainApi));
                         } catch (Throwable t) {
                             t.printStackTrace();
                         }
@@ -102,18 +118,32 @@ public class DesktopApp {
                 Desktop.getDesktop().browse(api);
             } else {
                 if (isLinux) // Fix Snap installer
-                    Runtime.getRuntime().exec(new String[] {"xdg-open", "http://localhost:" + port});
-                System.out.println("Please open http://localhost:" + port + " in your browser.");
+                    Runtime.getRuntime().exec(new String[] {"xdg-open", api.toString()});
+                System.out.println("Please open " + api + " in your browser.");
             }
         } catch (Throwable t) {
             if (isLinux)
-                Runtime.getRuntime().exec(new String[] {"xdg-open", "http://localhost:" + port});
+                Runtime.getRuntime().exec(new String[] {"xdg-open", api.toString()});
             if (isWindows || isMacOS)
                 if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE))
                     Desktop.getDesktop().browse(api);
             t.printStackTrace();
             System.out.println("Please open http://localhost:" + port + " in your browser.");
         }
+    }
+
+    private static Optional<URI> launchUri(Args args, int port) {
+        try {
+            return Optional.of(new URI(LocalApiAuth.post(port, args.getPeergosDir(), Constants.LOCAL_AUTH + "launch-url").trim()));
+        } catch (Exception e) {
+            System.out.println("Couldn't get a launch link from the local server: " + e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    private static void addLocalAuth(Map<String, String> env, URI api, Optional<String> token) {
+        env.put(URL_ENV, api.toString());
+        token.ifPresent(t -> env.put(LOCAL_TOKEN_ENV, t));
     }
 
     // No WebView2, so no tray either: this shows a window even when minimised was asked
@@ -125,7 +155,7 @@ public class DesktopApp {
         try {
             ProcessBuilder pb = new ProcessBuilder(
                     edgePath,
-                    "--app=http://localhost:" + port,
+                    "--app=" + api,
                     "--disable-extensions",
                     "--user-data-dir=" + System.getenv("APPDATA") + "\\Peergos\\edge-data"
             );
