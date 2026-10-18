@@ -1,5 +1,6 @@
 package peergos.server;
 
+import peergos.shared.routing.IdentityRouting;
 import peergos.server.corenode.*;
 import peergos.server.login.*;
 import peergos.server.mutable.*;
@@ -30,7 +31,7 @@ public class NonWriteThroughNetwork extends NetworkAccess {
                                      Hasher hasher,
                                      List<String> usernames,
                                      boolean isJavascript) {
-        super(coreNode, account, social, ipfs, null, Optional.empty(), mutable, tree, synchronizer, instanceAdmin, spaceUsage, null, hasher, usernames, isJavascript);
+        super(coreNode, account, social, ipfs, null, Optional.empty(), mutable, tree, synchronizer, instanceAdmin, spaceUsage, null, IdentityRouting.DISABLED, hasher, usernames, isJavascript);
     }
 
     public static NetworkAccess build(NetworkAccess source) {
