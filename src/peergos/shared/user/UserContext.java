@@ -4640,6 +4640,22 @@ public class UserContext {
                 .exceptionally(t -> false);
     }
 
+    /** Names this server in the routing log if it hosts the user but the log doesn't, as after a move that didn't
+     *  get written.
+     *
+     * @return whether the user still needs to commit a recovery key
+     */
+    @JsMethod
+    public CompletableFuture<Boolean> checkRoutingLog() {
+        if (signer == null || entryPoints.isEmpty())
+            return Futures.of(false);
+        return network.identityRouting.status(signer.publicKeyHash)
+                .thenCompose(s -> s.running && s.committed && ! s.listed ?
+                        isHome().thenCompose(home -> home ? publishMove() : Futures.of(false)).thenApply(x -> false) :
+                        Futures.of(s.running && ! s.committed))
+                .exceptionally(t -> false);
+    }
+
     /** Commits this identity to the next identity key a recovery key derives, and leaves the home server what that
      *  key alone needs to recover the account: a recovery keypair wrapped by it, and a copy of the login data
      *  encrypted to that keypair. The user must have saved the recovery key first.
