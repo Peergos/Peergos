@@ -21,6 +21,10 @@ import java.util.stream.*;
  */
 public class Relays {
     public static final int MAX_CLIENTS = 1_000, DIALS_PER_INITIATOR_PER_MINUTE = 60, DIALS_PER_TARGET_PER_MINUTE = 600;
+    /** The two named and a spare, so one that is briefly unreachable is reserved on again when it returns, as nabu
+     *  dials candidates in order only while it holds fewer than this, and a replacement is already held for a while.
+     */
+    public static final int HELD = ServerAddressPublisher.NAMED_RELAYS + 1;
     private static final int MAX_SCANNED = 10_000;
 
     private final List<Multihash> configured;
@@ -43,7 +47,7 @@ public class Relays {
     }
 
     public RelayPolicy policy() {
-        return new RelayPolicy(this::candidates, (requestor, observed) -> mayReserve(requestor), this::mayConnect, MAX_CLIENTS);
+        return new RelayPolicy(this::candidates, (requestor, observed) -> mayReserve(requestor), this::mayConnect, MAX_CLIENTS, HELD);
     }
 
     /** A server that relays: it says so, and lists a direct address to reach it on. */
@@ -57,13 +61,24 @@ public class Relays {
                 .filter(addrs -> ! addrs.isEmpty());
     }
 
+    /** Those this server names first, so after a restart or a new IP it reserves on them again and its record
+     *  stays the same, then those the operator configured, then any, spread over address buckets. A relay dropped
+     *  lately is skipped.
+     */
     public List<CandidateRelay> candidates(Host us) {
         if (lookup.isEmpty())
             return Collections.emptyList();
         RoutingReplica replica = lookup.get().replica();
-        List<CandidateRelay> preferred = new ArrayList<>(), others = new ArrayList<>();
+        Set<Multihash> failed = ServerAddressPublisher.recentlyFailed(replica, clock.getAsLong());
+        List<Multihash> named = replica.server(Subject.server(self)).flatMap(ServerLog::addresses)
+                .map(a -> a.relays.stream().map(Multihash::bareMultihash).collect(Collectors.toList()))
+                .orElse(List.of());
+        List<CandidateRelay> first = new ArrayList<>(), preferred = new ArrayList<>(), others = new ArrayList<>();
+        for (Multihash peer : named)
+            lookup.get().server(peer).flatMap(this::candidate).ifPresent(first::add);
         for (Multihash peer : configured)
-            lookup.get().server(peer).flatMap(this::candidate).ifPresent(preferred::add);
+            if (! named.contains(peer) && ! failed.contains(peer))
+                lookup.get().server(peer).flatMap(this::candidate).ifPresent(preferred::add);
         byte[] after = new byte[0];
         int scanned = 0;
         while (scanned < MAX_SCANNED) {
@@ -71,7 +86,8 @@ public class Relays {
             if (page.isEmpty())
                 break;
             for (JdbcRoutingStore.State st : page) {
-                if (configured.contains(st.subject.id.bareMultihash()))
+                Multihash id = st.subject.id.bareMultihash();
+                if (configured.contains(id) || named.contains(id) || failed.contains(id))
                     continue;
                 replica.server(st.subject).filter(l -> replica.isProven(st.subject, false))
                         .flatMap(this::candidate)
@@ -81,9 +97,10 @@ public class Relays {
             after = page.get(page.size() - 1).subject.idBytes();
         }
         Collections.shuffle(others, random);
-        List<CandidateRelay> all = new ArrayList<>(preferred);
-        all.addAll(others);
-        return spreadOverBuckets(all);
+        List<CandidateRelay> rest = new ArrayList<>(preferred);
+        rest.addAll(others);
+        first.addAll(spreadOverBuckets(rest));
+        return first;
     }
 
     private Optional<CandidateRelay> candidate(ServerLog log) {

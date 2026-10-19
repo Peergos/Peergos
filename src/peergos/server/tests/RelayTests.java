@@ -126,9 +126,111 @@ public class RelayTests {
         held.clear();
         now[0] += 3600_000L;
         Assert.assertTrue("kept through a short failure", publisher.refresh().isEmpty());
-        now[0] += ServerAddressPublisher.RELAY_FORGET_MILLIS;
-        Assert.assertTrue(publisher.refresh().get().relays.isEmpty());
+        now[0] += ServerAddressPublisher.RELAY_REPLACE_MILLIS;
+        Assert.assertTrue("gone, but with nothing to replace it, it stays", publisher.refresh().isEmpty());
+        Assert.assertEquals(List.of(r1), replica.server(self).get().addresses().get().relays);
         Assert.assertFalse("no direct address, so it doesn't relay", replica.server(self).get().addresses().get().relaying);
+    }
+
+    private static class Named {
+        final RoutingReplica replica = replica();
+        final SigningKeyPair serverKey = key();
+        final List<Multihash> held = new ArrayList<>();
+        final long[] now = {1_000_000_000L};
+        final ServerAddressPublisher publisher;
+        final List<SigningKeyPair> relays = new ArrayList<>();
+
+        Named(int relayCount) {
+            ServerInception inception = ServerInception.build(serverKey, key().publicSigningKey, crypto.hasher).join();
+            replica.add(Subject.server(inception.peerId()), inception);
+            for (int i = 0; i < relayCount; i++)
+                relays.add(server(replica, true, "/ip4/198.51." + i + ".1/tcp/4001", true, List.of()));
+            publisher = new ServerAddressPublisher(replica, serverKey, List.of(), List::of,
+                    ServerAddresses.Mode.Archival, () -> held, true, () -> now[0]);
+        }
+
+        Multihash relay(int i) {
+            return peer(relays.get(i)).bareMultihash();
+        }
+
+        void hold(int... indices) {
+            held.clear();
+            for (int i : indices)
+                held.add(relay(i));
+        }
+
+        Optional<ServerAddresses> after(long millis) {
+            now[0] += millis;
+            return publisher.refresh();
+        }
+
+        List<Multihash> named() {
+            return bare(replica.server(Subject.server(peer(serverKey))).get().addresses().get().relays);
+        }
+    }
+
+    private static List<Multihash> bare(List<Multihash> ids) {
+        return ids.stream().map(Multihash::bareMultihash).collect(Collectors.toList());
+    }
+
+    @Test
+    public void restartsAndNewRelaysDontChangeTheRelaysNamed() {
+        Named n = new Named(5);
+        n.hold(3, 4);
+        n.after(0);
+        List<Multihash> named = bare(n.after(ServerAddressPublisher.RELAY_STABLE_MILLIS).get().relays);
+        Assert.assertEquals(Set.of(n.relay(3), n.relay(4)), new HashSet<>(named));
+        n.hold(0, 1, 2);
+        Assert.assertTrue("others for an hour after a restart", n.after(3600_000L).isEmpty());
+        n.hold(3, 4, 0);
+        Assert.assertTrue("back on those named, with a spare", n.after(3600_000L).isEmpty());
+        for (int i = 0; i < 10; i++)
+            Assert.assertTrue(n.after(3600_000L).isEmpty());
+        Assert.assertEquals(named, n.named());
+    }
+
+    @Test
+    public void aGoneRelayIsReplacedInItsSlotAndNotUsedAgain() {
+        Named n = new Named(4);
+        n.hold(0, 1, 2);
+        n.after(0);
+        n.after(ServerAddressPublisher.RELAY_STABLE_MILLIS);
+        List<Multihash> named = n.named();
+        List<Multihash> all = n.relays.stream().map(k -> peer(k).bareMultihash()).collect(Collectors.toList());
+        int gone = all.indexOf(named.get(0)), kept = all.indexOf(named.get(1));
+        int spare = 3 - gone - kept;
+        n.hold(kept, spare);
+        Assert.assertTrue(n.after(ServerAddressPublisher.RELAY_REPLACE_MILLIS).isEmpty());
+        Assert.assertEquals("replaced in its slot", List.of(n.relay(spare), n.relay(kept)), bare(n.after(60_000).get().relays));
+
+        Relays relays = new Relays(List.of(n.relay(gone)), () -> n.now[0], new Random(1));
+        relays.start(RoutingLookup.full(n.replica), peer(n.serverKey));
+        List<PeerId> chosen = relays.candidates(null).stream().map(c -> c.id).collect(Collectors.toList());
+        Assert.assertEquals("those named first, in order", List.of(libp2p(n.relays.get(spare)), libp2p(n.relays.get(kept))),
+                chosen.subList(0, 2));
+        Assert.assertFalse("the gone one isn't reserved on again, even if configured", chosen.contains(libp2p(n.relays.get(gone))));
+        n.now[0] += ServerAddressPublisher.RELAY_FAILED_MILLIS + 1;
+        Assert.assertTrue("after a week it may be", relays.candidates(null).stream().anyMatch(c -> c.id.equals(libp2p(n.relays.get(gone)))));
+    }
+
+    @Test
+    public void aGoneRelayIsntReplacedWhileTheOtherIsMissing() {
+        Named n = new Named(4);
+        n.hold(0, 1);
+        n.after(0);
+        n.after(ServerAddressPublisher.RELAY_STABLE_MILLIS);
+        List<Multihash> named = n.named();
+        n.hold(2, 3);
+        Assert.assertTrue("both missing, but not for long", n.after(ServerAddressPublisher.RELAY_REPLACE_MILLIS - 60_000).isEmpty());
+        n.hold(2, 3, n.relays.stream().map(k -> peer(k).bareMultihash()).collect(Collectors.toList()).indexOf(named.get(1)));
+        Assert.assertTrue(n.after(120_000).isEmpty());
+        n.hold(2, 3);
+        Assert.assertTrue("the first is gone, and the other missing a minute", n.after(60_000).isEmpty());
+        List<Multihash> one = bare(n.after(ServerAddressPublisher.RELAY_REPLACE_MILLIS).get().relays);
+        Assert.assertEquals("both gone, so one at a time", named.get(1), one.get(1));
+        List<Multihash> two = bare(n.after(60_000).get().relays);
+        Assert.assertEquals(Set.of(n.relay(2), n.relay(3)), new HashSet<>(two));
+        Assert.assertEquals(one.get(0), two.get(0));
     }
 
     @Test
