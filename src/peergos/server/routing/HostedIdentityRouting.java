@@ -31,6 +31,7 @@ public class HostedIdentityRouting implements IdentityRouting {
     private final QuotaAdmin quotas;
     private final JdbcAccount account;
     private volatile Optional<ServerRouting> routing = Optional.empty();
+    private volatile RoutingLookup lookup;
     private volatile Function<Multihash, RoutingPeer> dial;
     private volatile Optional<Hints> hints = Optional.empty();
 
@@ -53,15 +54,16 @@ public class HostedIdentityRouting implements IdentityRouting {
     }
 
     /** The routing log starts after the api, so until then it reports itself not running. */
-    public void start(ServerRouting routing, Function<Multihash, RoutingPeer> dial, Optional<Hints> hints) {
+    public void start(ServerRouting routing, RoutingLookup lookup, Function<Multihash, RoutingPeer> dial, Optional<Hints> hints) {
+        this.lookup = lookup;
         this.dial = dial;
         this.hints = hints;
         this.routing = Optional.of(routing);
     }
 
     /** The current key of each identity whose log this server holds, for every signature it checks. */
-    public static IdentityKeys keys(RoutingReplica replica) {
-        return identity -> Futures.of(replica.identity(Subject.identity(identity))
+    public static IdentityKeys keys(RoutingLookup lookup) {
+        return identity -> Futures.of(lookup.identity(identity)
                 .flatMap(log -> IdentityKeys.rotated(identity, log)));
     }
 
@@ -223,7 +225,7 @@ public class HostedIdentityRouting implements IdentityRouting {
             // the server they left stops serving them once it sees this, rather than at its next sync
             List<CompletableFuture<Outcome>> offers = before.stream()
                     .filter(p -> ! p.bareMultihash().equals(r.peerId.bareMultihash()))
-                    .map(p -> RoutedCoreNode.currentPeerId(r.replica, p).orElse(p))
+                    .map(p -> RoutedCoreNode.currentPeerId(lookup, p).orElse(p))
                     .map(p -> dial.apply(p.bareMultihash()).offer(s, List.of(move))
                             .orTimeout(OFFER_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                             .exceptionally(t -> {
@@ -276,7 +278,7 @@ public class HostedIdentityRouting implements IdentityRouting {
         if (routing.isEmpty())
             return Futures.of(Collections.emptyList());
         List<SignedRecord> res = new ArrayList<>();
-        routing.get().replica.log(Subject.identity(identity)).held().forEach(v -> res.add(v.record));
+        lookup.identity(identity).ifPresent(log -> log.held().forEach(v -> res.add(v.record)));
         return Futures.of(res);
     }
 }

@@ -22,29 +22,29 @@ import java.util.stream.*;
  */
 public class RoutedCoreNode implements CoreNode {
     public final CoreNode pki;
-    private volatile Optional<RoutingReplica> replica = Optional.empty();
+    private volatile Optional<RoutingLookup> lookup = Optional.empty();
 
     public RoutedCoreNode(CoreNode pki) {
         this.pki = pki;
     }
 
-    public void start(RoutingReplica replica) {
-        this.replica = Optional.of(replica);
+    public void start(RoutingLookup lookup) {
+        this.lookup = Optional.of(lookup);
     }
 
     /** A legacy-only identity's providers are pinned at the PKI's final state, which the PKI itself is newer than. */
-    public static Optional<List<Multihash>> providers(RoutingReplica replica, PublicKeyHash owner) {
-        return replica.identity(Subject.identity(owner))
+    public static Optional<List<Multihash>> providers(RoutingLookup lookup, PublicKeyHash owner) {
+        return lookup.identity(owner)
                 .filter(log -> log.inception().isPresent())
                 .map(log -> log.providers().stream()
-                        .map(p -> currentPeerId(replica, p).orElse(asPeerId(p)))
+                        .map(p -> currentPeerId(lookup, p).orElse(asPeerId(p)))
                         .collect(Collectors.toList()))
                 .filter(ps -> ! ps.isEmpty());
     }
 
     /** The peerid to dial a server on: that of its current endpoint, or failing that its current key. */
-    public static Optional<Multihash> currentPeerId(RoutingReplica replica, Multihash server) {
-        return replica.server(Subject.server(server.bareMultihash()))
+    public static Optional<Multihash> currentPeerId(RoutingLookup lookup, Multihash server) {
+        return lookup.server(server)
                 .flatMap(log -> log.addresses().map(a -> a.endpoint)
                         .or(() -> log.currentKey().filter(k -> k.type() == PublicSigningKey.Type.Ed25519))
                         .map(ServerKeys::peerId)
@@ -60,7 +60,7 @@ public class RoutedCoreNode implements CoreNode {
 
     @Override
     public List<Multihash> getStorageProviders(PublicKeyHash owner) {
-        return replica.flatMap(r -> providers(r, owner))
+        return lookup.flatMap(r -> providers(r, owner))
                 .orElseGet(() -> pki.getStorageProviders(owner));
     }
 
@@ -72,7 +72,7 @@ public class RoutedCoreNode implements CoreNode {
 
     @Override
     public CompletableFuture<Optional<Multihash>> getNextServerId(Multihash serverId) {
-        Optional<Multihash> logged = replica.flatMap(r -> currentPeerId(r, serverId))
+        Optional<Multihash> logged = lookup.flatMap(r -> currentPeerId(r, serverId))
                 .filter(current -> ! current.bareMultihash().equals(serverId.bareMultihash()));
         if (logged.isPresent())
             return Futures.of(logged);

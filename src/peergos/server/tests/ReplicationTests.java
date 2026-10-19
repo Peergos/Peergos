@@ -290,4 +290,99 @@ public class ReplicationTests {
             throw new RuntimeException(e);
         }
     }
+
+    private static class FixedRandom extends Random {
+        final double next;
+
+        FixedRandom(double next) {
+            this.next = next;
+        }
+
+        @Override
+        public double nextDouble() {
+            return next;
+        }
+    }
+
+    private static LightLookup light(Network net, Node light, Multihash self, double sampling, Node... fullNodes) {
+        List<RoutingPeer> peers = new ArrayList<>();
+        for (Node f : fullNodes)
+            peers.add(new LocalPeer(light.id, f));
+        return new LightLookup(light.routing, self, peers, net.clock::get, new FixedRandom(sampling), work);
+    }
+
+    @Test
+    public void aLightServerResolvesFromItsFullNodeAndCachesWhatItVerified() {
+        Network net = new Network();
+        Node full = net.node(1), node = net.node(1);
+        Server x = new Server();
+        SigningKeyPair aliceKey = key();
+        IdentityInception alice = x.admit(aliceKey);
+        full.replica.add(x.subject, x.inception);
+        full.replica.add(Subject.identity(alice.identityHash()), alice);
+        LightLookup lookup = light(net, node, ServerKeys.peerId(key().publicSigningKey), 1.0, full);
+
+        Assert.assertEquals(List.of(x.peerId), lookup.identity(alice.identityHash()).get().providers());
+        Assert.assertTrue("it holds what it resolved", node.replica.log(Subject.identity(alice.identityHash())).exists());
+        Assert.assertTrue(lookup.server(x.peerId).isPresent());
+
+        full.replica.add(Subject.identity(alice.identityHash()), IdentityMove.build(aliceKey, List.of(x.peerId), 5).join());
+        Assert.assertTrue("cached while fresh", lookup.identity(alice.identityHash()).get().records.update.isEmpty());
+        net.clock.addAndGet(LightLookup.FRESH_MILLIS + 1);
+        Assert.assertEquals(5, lookup.identity(alice.identityHash()).get().records.update.get().record.counter);
+    }
+
+    @Test
+    public void aFullNodeThatWithholdsIsCaughtBySampling() throws Exception {
+        Network net = new Network();
+        Node honest = net.node(1), withholding = net.node(1), node = net.node(1);
+        Server x = new Server();
+        SigningKeyPair aliceKey = key();
+        IdentityInception alice = x.admit(aliceKey);
+        Subject s = Subject.identity(alice.identityHash());
+        for (Node f : List.of(honest, withholding)) {
+            f.replica.add(x.subject, x.inception);
+            f.replica.add(s, alice);
+        }
+        withholding.replica.add(s, IdentityMove.build(aliceKey, List.of(x.peerId), 1).join());
+        honest.replica.add(s, IdentityMove.build(aliceKey, List.of(x.peerId), 2).join());
+
+        Server y = new Server();
+        IdentityInception bob = y.admit(key());
+        honest.replica.add(y.subject, y.inception);
+        honest.replica.add(Subject.identity(bob.identityHash()), bob);
+        LightLookup lookup = light(net, node, ServerKeys.peerId(key().publicSigningKey), 0.0, withholding, honest);
+        Assert.assertTrue("not found at one full node, so it asks others", lookup.identity(bob.identityHash()).isPresent());
+
+        Assert.assertEquals(1, lookup.identity(alice.identityHash()).get().records.update.get().record.counter);
+        waitFor(() -> lookup.identity(alice.identityHash()).get().records.update.get().record.counter == 2);
+    }
+
+    @Test
+    public void aLightServerHandsItsOwnRecordsAndItsUsersToItsFullNode() throws Exception {
+        Network net = new Network();
+        Node full = net.node(100), node = net.node(100);
+        Server x = new Server();
+        IdentityInception bob = x.admit(key());
+        Subject bobSubject = Subject.identity(bob.identityHash());
+        LightLookup lookup = light(net, node, x.peerId, 1.0, full);
+        node.replica.onChange(lookup::publish);
+
+        node.replica.add(x.subject, x.inception);
+        node.replica.add(bobSubject, bob);
+        full.routing.tick();
+        full.routing.tick();
+        waitFor(() -> full.replica.log(bobSubject).exists());
+        Assert.assertTrue(full.replica.log(x.subject).exists());
+
+        Server other = new Server();
+        IdentityInception carol = other.admit(key());
+        Subject carolSubject = Subject.identity(carol.identityHash());
+        node.replica.add(other.subject, other.inception);
+        node.replica.add(carolSubject, carol);
+        full.routing.tick();
+        full.routing.tick();
+        Assert.assertFalse("it passes on only its own and its users'", full.replica.log(carolSubject).exists());
+    }
+
 }
