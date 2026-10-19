@@ -260,7 +260,7 @@ public class RoutingReplicaTests {
     }
 
     @Test
-    public void confirmedAddressesAreListedOnceStableForAWeek() {
+    public void confirmedAddressesAreListedOnceStableForAMonthAndKeptUntilReplaced() {
         JdbcRoutingStore store = store();
         SigningKeyPair serverKey = key();
         ServerRouting routing = ServerRouting.start(store, serverKey, Optional.empty(), crypto, WORK, WORK, 1, r -> {}, s -> {});
@@ -271,24 +271,30 @@ public class RoutingReplicaTests {
             Supplier<ServerAddressPublisher> publisher = () -> new ServerAddressPublisher(routing.replica, serverKey,
                     List.of("/ip4/198.51.100.1/tcp/4001"), () -> confirmed, ServerAddresses.Mode.Archival, () -> now[0]);
             List<Address> announced = direct("/ip4/198.51.100.1/tcp/4001");
-            List<Address> both = new ArrayList<>(announced);
-            both.addAll(direct("/ip4/203.0.113.7/tcp/4001"));
+            List<Address> first = new ArrayList<>(announced);
+            first.addAll(direct("/ip4/203.0.113.7/tcp/4001"));
+            List<Address> second = new ArrayList<>(announced);
+            second.addAll(direct("/ip4/203.0.113.8/tcp/4001"));
 
             Assert.assertEquals(announced, publisher.get().refresh().get().addrs);
-            now[0] += 6 * day;
+            now[0] += 29 * day;
             Assert.assertTrue(publisher.get().refresh().isEmpty());
             now[0] += day;
-            Assert.assertEquals(both, publisher.get().refresh().get().addrs);
+            Assert.assertEquals(first, publisher.get().refresh().get().addrs);
+
+            confirmed.set(0, "/ip4/203.0.113.8/tcp/4001");
+            now[0] += day;
+            Assert.assertTrue("the old address stays while the new one qualifies", publisher.get().refresh().isEmpty());
+            now[0] += 29 * day + day / 2;
+            Assert.assertTrue("even once a month unconfirmed, while the new one is still on its way", publisher.get().refresh().isEmpty());
+            now[0] += day;
+            Assert.assertEquals("replaced in one update", second, publisher.get().refresh().get().addrs);
 
             confirmed.clear();
-            now[0] += day / 2;
+            now[0] += 29 * day;
             Assert.assertTrue(publisher.get().refresh().isEmpty());
-            now[0] += day;
-            Assert.assertEquals(announced, publisher.get().refresh().get().addrs);
-
-            confirmed.add("/ip4/203.0.113.7/tcp/4001");
-            now[0] += day;
-            Assert.assertTrue(publisher.get().refresh().isEmpty());
+            now[0] += 2 * day;
+            Assert.assertEquals("gone for a month with nothing to replace it", announced, publisher.get().refresh().get().addrs);
         } finally {
             routing.stop();
         }

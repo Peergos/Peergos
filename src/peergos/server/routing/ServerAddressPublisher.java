@@ -15,24 +15,32 @@ import java.util.logging.*;
 import java.util.stream.*;
 
 /** Keeps this server's ServerAddresses current (remove-pki §4.1, §4.8, §10.11). It lists the IP literals the
- *  operator announces, and the addresses AutoNAT has confirmed dialable once they have stayed confirmed for a week,
- *  so an address that changes more often is never listed. A server with a direct address relays, if allowed; one
- *  without names the relays it holds reservations on. A record is signed only when its content changes, since
- *  peers take a burst of three and then one a month, so the relays named stay the same unless one is gone for
- *  hours.
+ *  operator announces, and the addresses AutoNAT has confirmed dialable once they have stayed confirmed for a month,
+ *  so a static address is listed without configuration and one that changes more often never is. A server with a
+ *  direct address relays, if allowed. Unless the operator announced an address, it also names the relays it holds,
+ *  so when its confirmed address changes it stays reachable while the old one is still listed, until the new one
+ *  qualifies and replaces it in a single update.
+ *
+ *  Peers take a burst of three updates and then one a month, so a record is signed only when its content changes,
+ *  the relays named stay the same unless one is gone for hours, and a change is deferred while this server's own
+ *  count of that budget is spent.
  */
 public class ServerAddressPublisher {
     private static final Logger LOG = Logging.LOG();
     private static final Set<String> NAMED = Set.of("dns", "dns4", "dns6", "dnsaddr", "p2p-circuit");
-    static final String META_KEY = "server-addresses", RELAYS_META_KEY = "server-relays", FAILED_META_KEY = "server-relays-failed";
+    static final String META_KEY = "server-addresses", RELAYS_META_KEY = "server-relays", FAILED_META_KEY = "server-relays-failed",
+            BUDGET_META_KEY = "server-addresses-budget";
     public static final int NAMED_RELAYS = 2;
     public static final long RELAY_STABLE_MILLIS = 10 * 60_000, RELAY_FORGET_MILLIS = 6 * 3600_000L,
             RELAY_REPLACE_MILLIS = 6 * 3600_000L, RELAY_FAILED_MILLIS = 7 * 24 * 3600_000L;
-    public static final long STABLE_MILLIS = 7 * 24 * 3600_000L;
-    /** An address unconfirmed for this long is dropped, and must be confirmed for a week again to return; a shorter
-     *  gap, a restart or a failed probe, keeps it listed.
+    public static final long STABLE_MILLIS = 30 * 24 * 3600_000L;
+    /** Confirmed this recently, the address is still this server's. */
+    public static final long CURRENT_MILLIS = 24 * 3600_000L;
+    /** An address unconfirmed for this long is dropped, and must be confirmed for a month again to return. Until
+     *  then it stays listed, unless a current one is, since dropping it alone would cost an update and the new
+     *  address another; while a new one is on its way to qualifying it is kept for twice as long.
      */
-    public static final long FORGET_MILLIS = 24 * 3600_000L;
+    public static final long FORGET_MILLIS = 30 * 24 * 3600_000L;
 
     private final RoutingReplica replica;
     private final SigningKeyPair serverKey;
@@ -82,19 +90,53 @@ public class ServerAddressPublisher {
             Seen prior = seen.get(a);
             seen.put(a, new Seen(prior == null ? now : prior.first, now));
         }
-        seen.values().removeIf(v -> now - v.last > FORGET_MILLIS);
+        Predicate<Seen> current = v -> now - v.last <= CURRENT_MILLIS;
+        Predicate<Seen> stable = v -> now - v.first >= STABLE_MILLIS;
+        boolean qualifying = seen.values().stream().anyMatch(v -> current.test(v) && ! stable.test(v));
+        seen.values().removeIf(v -> now - v.last > (qualifying ? 2 * FORGET_MILLIS : FORGET_MILLIS));
         saveSeen(META_KEY, seen);
 
+        boolean anyCurrent = seen.values().stream().anyMatch(v -> stable.test(v) && current.test(v));
         List<Address> listed = new ArrayList<>(announced);
         seen.entrySet().stream()
-                .filter(e -> now - e.getValue().first >= STABLE_MILLIS)
+                .filter(e -> stable.test(e.getValue()) && (! anyCurrent || current.test(e.getValue())))
                 .map(Map.Entry::getKey)
                 .filter(a -> ! listed.contains(a))
                 .sorted(Comparator.comparing(a -> ArrayOps.bytesToHex(a.address)))
                 .forEach(listed::add);
 
-        List<Multihash> named = listed.isEmpty() ? relays(now) : List.of();
-        return publish(replica, serverKey, listed, named, mayRelay && ! listed.isEmpty(), mode, clock);
+        List<Multihash> named = announced.isEmpty() ? relays(now) : List.of();
+        boolean relaying = mayRelay && ! listed.isEmpty();
+        Optional<ServerAddresses> held = replica.server(Subject.server(ServerKeys.peerId(serverKey.publicSigningKey)))
+                .flatMap(ServerLog::addresses);
+        if (held.isPresent() && ! sameContent(held.get(), serverKey.publicSigningKey, listed, named, relaying, mode)) {
+            if (! spend(now)) {
+                LOG.info("Deferring this server's address update until peers will take it");
+                return Optional.empty();
+            }
+        }
+        return publish(replica, serverKey, listed, named, relaying, mode, clock);
+    }
+
+    /** Takes one update from this server's own count of the budget peers allow, if one is due. */
+    private boolean spend(long now) {
+        RateLimits.Rate rate = RateLimits.UPDATES.get(RecordType.SERVER_ADDRESSES);
+        long full = rate.burst * rate.refillMillis;
+        long credit = full, at = now;
+        Optional<byte[]> raw = replica.store().getMeta(BUDGET_META_KEY);
+        if (raw.isPresent()) {
+            CborObject.CborMap m = (CborObject.CborMap) CborObject.fromByteArray(raw.get());
+            credit = m.getLong("c");
+            at = m.getLong("a");
+        }
+        credit = Math.min(full, credit + Math.max(0, now - at));
+        if (credit < rate.refillMillis)
+            return false;
+        SortedMap<String, Cborable> m = new TreeMap<>();
+        m.put("c", new CborObject.CborLong(credit - rate.refillMillis));
+        m.put("a", new CborObject.CborLong(now));
+        replica.store().setMeta(BUDGET_META_KEY, CborObject.CborMap.build(m).serialize());
+        return true;
     }
 
     /** The relays to name: those already named, each kept until it has been gone for hours, so a restart or a

@@ -10,7 +10,8 @@ import java.util.concurrent.*;
 import java.util.stream.*;
 
 /** ServerAddresses { server Si, endpoint E, kem, addrs, relays, mode, relaying, counter } signed by Si
- *  (remove-pki §4.1). A server behind relays lists no direct address: its current IP is observed, not published.
+ *  (remove-pki §4.1). A server behind NAT lists no direct address: its current IP is observed, not published. One
+ *  whose public address AutoNAT confirmed, rather than its operator announced, lists its relays as well.
  */
 public class ServerAddresses extends SignedRecord implements Update {
 
