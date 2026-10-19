@@ -266,7 +266,7 @@ public class SignUpFilter implements CoreNode {
     }
 
     @Override
-    public List<Multihash> getStorageProviders(PublicKeyHash owner) {
+    public CompletableFuture<List<Multihash>> getStorageProviders(PublicKeyHash owner) {
         return target.getStorageProviders(owner);
     }
 

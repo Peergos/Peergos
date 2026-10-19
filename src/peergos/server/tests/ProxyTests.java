@@ -37,8 +37,8 @@ public class ProxyTests {
         }
 
         @Override
-        public List<Multihash> getStorageProviders(PublicKeyHash owner) {
-            return List.of(home);
+        public CompletableFuture<List<Multihash>> getStorageProviders(PublicKeyHash owner) {
+            return Futures.of(List.of(home));
         }
 
         @Override

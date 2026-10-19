@@ -204,7 +204,7 @@ public class Mirror {
         PublicKeyHash owner = identity.get();
         Map<PublicKeyHash, byte[]> versions = new HashMap<>();
         Cid ourId = storage.id().join();
-        List<Multihash> storageProviders = core.getStorageProviders(owner);
+        List<Multihash> storageProviders = core.getStorageProviders(owner).join();
         Set<PublicKeyHash> ownedKeys = DeletableContentAddressedStorage.getOwnedKeysRecursive(owner, owner, p2pPointers,
                 (h, s) -> DeletableContentAddressedStorage.getWriterData(storageProviders, owner, h, s, true, ourId, hasher, storage), storage, hasher).join();
         for (PublicKeyHash ownedKey : ownedKeys) {
