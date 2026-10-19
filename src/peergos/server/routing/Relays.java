@@ -1,0 +1,172 @@
+package peergos.server.routing;
+
+import io.libp2p.core.Host;
+import io.libp2p.core.PeerId;
+import io.libp2p.core.multiformats.Multiaddr;
+import io.libp2p.protocol.circuit.RelayTransport.CandidateRelay;
+import org.peergos.protocol.circuit.RelayPolicy;
+import peergos.shared.io.ipfs.*;
+import peergos.shared.routing.*;
+import peergos.shared.util.*;
+
+import java.net.*;
+import java.util.*;
+import java.util.function.*;
+import java.util.stream.*;
+
+/** Which relays this server reserves on, whom it relays for, and how a server is dialled through its relays
+ *  (remove-pki §4.8). Relays are chosen from the log, those the operator configured first, then any, two in
+ *  different address buckets. A relay takes only servers in the log whose proof of work is done, and limits how
+ *  often each dialler and each target are connected through it.
+ */
+public class Relays {
+    public static final int MAX_CLIENTS = 1_000, DIALS_PER_INITIATOR_PER_MINUTE = 60, DIALS_PER_TARGET_PER_MINUTE = 600;
+    private static final int MAX_SCANNED = 10_000;
+
+    private final List<Multihash> configured;
+    private final LongSupplier clock;
+    private final Random random;
+    private volatile Optional<RoutingLookup> lookup = Optional.empty();
+    private volatile Multihash self;
+    private final LRUCache<PeerId, long[]> byInitiator = new LRUCache<>(10_000), byTarget = new LRUCache<>(10_000);
+
+    public Relays(List<Multihash> configured, LongSupplier clock, Random random) {
+        this.configured = configured.stream().map(Multihash::bareMultihash).collect(Collectors.toList());
+        this.clock = clock;
+        this.random = random;
+    }
+
+    /** nabu is built before the log starts, so until then it neither reserves nor relays. */
+    public void start(RoutingLookup lookup, Multihash self) {
+        this.self = self.bareMultihash();
+        this.lookup = Optional.of(lookup);
+    }
+
+    public RelayPolicy policy() {
+        return new RelayPolicy(this::candidates, (requestor, observed) -> mayReserve(requestor), this::mayConnect, MAX_CLIENTS);
+    }
+
+    /** A server that relays: it says so, and lists a direct address to reach it on. */
+    static Optional<List<Multiaddr>> relayAddresses(ServerLog log) {
+        return log.addresses()
+                .filter(a -> a.relaying && ! a.addrs.isEmpty())
+                .map(a -> a.addrs.stream()
+                        .filter(addr -> addr.transport.equals(Address.LIBP2P))
+                        .map(addr -> Multiaddr.fromString(new MultiAddress(addr.address).toString()))
+                        .collect(Collectors.toList()))
+                .filter(addrs -> ! addrs.isEmpty());
+    }
+
+    public List<CandidateRelay> candidates(Host us) {
+        if (lookup.isEmpty())
+            return Collections.emptyList();
+        RoutingReplica replica = lookup.get().replica();
+        List<CandidateRelay> preferred = new ArrayList<>(), others = new ArrayList<>();
+        for (Multihash peer : configured)
+            lookup.get().server(peer).flatMap(this::candidate).ifPresent(preferred::add);
+        byte[] after = new byte[0];
+        int scanned = 0;
+        while (scanned < MAX_SCANNED) {
+            List<JdbcRoutingStore.State> page = replica.store().states(Subject.SERVER, after, 1_000);
+            if (page.isEmpty())
+                break;
+            for (JdbcRoutingStore.State st : page) {
+                if (configured.contains(st.subject.id.bareMultihash()))
+                    continue;
+                replica.server(st.subject).filter(l -> replica.isProven(st.subject, false))
+                        .flatMap(this::candidate)
+                        .ifPresent(others::add);
+            }
+            scanned += page.size();
+            after = page.get(page.size() - 1).subject.idBytes();
+        }
+        Collections.shuffle(others, random);
+        List<CandidateRelay> all = new ArrayList<>(preferred);
+        all.addAll(others);
+        return spreadOverBuckets(all);
+    }
+
+    private Optional<CandidateRelay> candidate(ServerLog log) {
+        if (log.peerId.bareMultihash().equals(self))
+            return Optional.empty();
+        return log.addresses().flatMap(a -> relayAddresses(log).map(addrs ->
+                new CandidateRelay(PeerId.fromBase58(ServerKeys.peerId(a.endpoint).toBase58()), addrs)));
+    }
+
+    /** The two kept are the first two here, so each bucket's first candidate comes before any bucket's second. */
+    static List<CandidateRelay> spreadOverBuckets(List<CandidateRelay> ordered) {
+        Set<AddressBucket> seen = new HashSet<>();
+        List<CandidateRelay> first = new ArrayList<>(), rest = new ArrayList<>();
+        for (CandidateRelay c : ordered) {
+            AddressBucket b = bucket(c.addrs);
+            if (seen.add(b))
+                first.add(c);
+            else
+                rest.add(c);
+        }
+        first.addAll(rest);
+        return first;
+    }
+
+    static AddressBucket bucket(List<Multiaddr> addrs) {
+        for (Multiaddr a : addrs) {
+            String[] parts = a.toString().split("/");
+            if (parts.length > 2 && (parts[1].equals("ip4") || parts[1].equals("ip6"))) {
+                try {
+                    return AddressBucket.of(InetAddress.getByName(parts[2])); // an IP literal, so no DNS lookup
+                } catch (UnknownHostException e) {}
+            }
+        }
+        return AddressBucket.UNVERIFIED;
+    }
+
+    /** Only a server whose proof of work is done gets a slot, so filling a relay costs a CPU-hour per slot. */
+    public boolean mayReserve(PeerId requestor) {
+        if (lookup.isEmpty())
+            return false;
+        Multihash id;
+        try {
+            id = Multihash.decode(requestor.getBytes());
+        } catch (RuntimeException e) {
+            return false;
+        }
+        return lookup.get().server(id).isPresent() && lookup.get().replica().isProven(Subject.server(id), false);
+    }
+
+    public boolean mayConnect(PeerId target, PeerId initiator) {
+        return take(byInitiator, initiator, DIALS_PER_INITIATOR_PER_MINUTE) && take(byTarget, target, DIALS_PER_TARGET_PER_MINUTE);
+    }
+
+    private boolean take(LRUCache<PeerId, long[]> windows, PeerId peer, int perMinute) {
+        long now = clock.getAsLong();
+        synchronized (windows) {
+            long[] w = windows.get(peer);
+            if (w == null || now - w[0] > 60_000) {
+                windows.put(peer, new long[]{now, 1});
+                return true;
+            }
+            if (w[1] >= perMinute)
+                return false;
+            w[1]++;
+            return true;
+        }
+    }
+
+    /** The circuit addresses a server is dialled on through each relay it names, for the address book. */
+    public static List<Multiaddr> relayed(RoutingReplica replica, ServerLog target) {
+        Optional<ServerAddresses> addrs = target.addresses();
+        if (addrs.isEmpty())
+            return Collections.emptyList();
+        String to = ServerKeys.peerId(addrs.get().endpoint).toBase58();
+        List<Multiaddr> res = new ArrayList<>();
+        for (Multihash relay : addrs.get().relays) {
+            Optional<ServerLog> log = replica.server(Subject.server(relay.bareMultihash()));
+            if (log.isEmpty() || log.get().addresses().isEmpty())
+                continue;
+            String relayId = ServerKeys.peerId(log.get().addresses().get().endpoint).toBase58();
+            for (Multiaddr direct : relayAddresses(log.get()).orElse(List.of()))
+                res.add(Multiaddr.fromString(direct + "/p2p/" + relayId + "/p2p-circuit/p2p/" + to));
+        }
+        return res;
+    }
+}
