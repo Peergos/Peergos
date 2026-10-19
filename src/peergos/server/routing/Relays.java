@@ -29,6 +29,11 @@ import java.util.stream.*;
 public class Relays {
     public static final int MAX_CLIENTS = 1_000, DIALS_PER_INITIATOR_PER_MINUTE = 60, DIALS_PER_TARGET_PER_MINUTE = 600;
     public static final int UNPROVEN_DIALS_PER_MINUTE = 30, UNPROVEN_DIALS_PER_INITIATOR_PER_MINUTE = 5;
+    /** A server still computing its proof of work gets a short lease from a small pool, a few per address bucket of
+     *  the address it connects from, so it is reachable while it starts and filling the pool takes many ranges.
+     */
+    public static final int LEASES = 64, LEASES_PER_BUCKET = 2;
+    public static final java.time.Duration LEASE = java.time.Duration.ofMinutes(15), RESERVATION = java.time.Duration.ofHours(1);
     private static final long PROVEN_CACHE_MILLIS = 10 * 60_000, UNPROVEN_CACHE_MILLIS = 60_000;
     /** The two named and a spare, so one that is briefly unreachable is reserved on again when it returns, as nabu
      *  dials candidates in order only while it holds fewer than this, and a replacement is already held for a while.
@@ -50,6 +55,17 @@ public class Relays {
             unprovenByInitiator = new LRUCache<>(10_000);
     private final long[] unprovenPool = {0, 0};
     private final LRUCache<Multihash, long[]> proven = new LRUCache<>(10_000);
+    private final Map<PeerId, Lease> leases = new HashMap<>();
+
+    private static final class Lease {
+        final AddressBucket bucket;
+        final long expiry;
+
+        Lease(AddressBucket bucket, long expiry) {
+            this.bucket = bucket;
+            this.expiry = expiry;
+        }
+    }
     private final Set<Multihash> fetching = ConcurrentHashMap.newKeySet();
     private final ExecutorService background = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "Relay lookups");
@@ -79,7 +95,7 @@ public class Relays {
     }
 
     public RelayPolicy policy() {
-        return new RelayPolicy(this::candidates, (requestor, observed) -> mayReserve(requestor), this::mayConnect, MAX_CLIENTS, HELD,
+        return new RelayPolicy(this::candidates, this::reserve, this::mayConnect, MAX_CLIENTS, HELD,
                 holdWhilePublic ? HELD : 0,
                 Optional.of(new RelayBandwidth(PER_SERVER_BYTES_PER_SECOND, PER_SERVER_BURST,
                         totalBytesPerSecond, 10 * totalBytesPerSecond)));
@@ -175,6 +191,33 @@ public class Relays {
     /** Only a server whose proof of work is done gets a slot, so filling a relay costs a CPU-hour per slot. */
     public boolean mayReserve(PeerId requestor) {
         return isProven(requestor);
+    }
+
+    /** A full reservation for a server whose proof of work is done, otherwise a short lease if the pool has room. */
+    public Optional<java.time.Duration> reserve(PeerId requestor, Multiaddr observed) {
+        if (lookup.isEmpty())
+            return Optional.empty();
+        if (isProven(requestor)) {
+            synchronized (leases) {
+                leases.remove(requestor);
+            }
+            return Optional.of(RESERVATION);
+        }
+        AddressBucket bucket = bucket(List.of(observed));
+        long now = clock.getAsLong();
+        synchronized (leases) {
+            leases.values().removeIf(l -> l.expiry <= now);
+            Lease held = leases.get(requestor);
+            if (held == null || ! held.bucket.equals(bucket)) {
+                long inBucket = leases.entrySet().stream()
+                        .filter(e -> ! e.getKey().equals(requestor) && e.getValue().bucket.equals(bucket))
+                        .count();
+                if (inBucket >= LEASES_PER_BUCKET || (held == null && leases.size() >= LEASES))
+                    return Optional.empty();
+            }
+            leases.put(requestor, new Lease(bucket, now + LEASE.toMillis()));
+        }
+        return Optional.of(LEASE);
     }
 
     public boolean mayConnect(PeerId target, PeerId initiator) {
