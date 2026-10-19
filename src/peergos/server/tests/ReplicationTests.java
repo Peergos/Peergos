@@ -469,4 +469,62 @@ public class ReplicationTests {
         Assert.assertTrue(allStripped(compact, y.subject));
         Assert.assertTrue(allStripped(compact, elsewhereSubject));
     }
+
+    @Test
+    public void aNodeAnswersNotSyncedYetUntilARoundFindsNothingNew() throws Exception {
+        Network net = new Network();
+        Node a = net.node(100), b = net.node(100), lonely = net.node(100);
+        Server x = new Server();
+        IdentityInception alice = x.admit(key());
+        Subject aliceSubject = Subject.identity(alice.identityHash()), unknown = Subject.identity(x.admit(key()).identityHash());
+        a.replica.add(x.subject, x.inception);
+        a.replica.add(aliceSubject, alice);
+        b.syncWith(a);
+        b.routing.setConfigured(List.of(a.id));
+
+        Assert.assertFalse(b.routing.isSynced());
+        try {
+            b.routing.records(unknown);
+            Assert.fail("Absent before syncing is not yet known");
+        } catch (IllegalStateException e) {
+            Assert.assertEquals(RoutingNode.NOT_SYNCED, e.getMessage());
+        }
+        Assert.assertTrue(b.routing.syncRound() > 0);
+        Assert.assertFalse("it was behind", b.routing.isSynced());
+        Assert.assertEquals(0, b.routing.syncRound());
+        Assert.assertTrue(b.routing.isSynced());
+        Assert.assertEquals(List.of(), b.routing.records(unknown));
+        Assert.assertEquals("it holds what it had", a.routing.records(aliceSubject), b.routing.records(aliceSubject));
+
+        lonely.routing.syncRound();
+        Assert.assertTrue("with no peers there is nothing to wait for", lonely.routing.isSynced());
+
+        Node c = net.node(100), gone = net.node(100);
+        c.syncWith(a);
+        c.routing.addSyncPeer(new LocalPeer(c.id, gone) {
+            @Override
+            public CompletableFuture<List<Reconciliation.Summary>> summaries(int kind, List<Reconciliation.Range> ranges) {
+                return CompletableFuture.failedFuture(new RuntimeException("Connection refused"));
+            }
+        });
+        c.routing.setConfigured(List.of(gone.id));
+        c.routing.syncRound();
+        c.routing.syncRound();
+        Assert.assertFalse("its configured peer took no part", c.routing.isSynced());
+    }
+
+    @Test
+    public void aServerAskedForByItsEndpointIsAnsweredAndKeptUnderItsFirstPeerid() {
+        Network net = new Network();
+        Node a = net.node(100), b = net.node(100);
+        Server x = new Server();
+        SigningKeyPair endpoint = key();
+        a.replica.add(x.subject, x.inception);
+        a.replica.add(x.subject, ServerAddresses.build(x.key, endpoint.publicSigningKey, Optional.empty(), List.of(), List.of(),
+                ServerAddresses.Mode.Archival, false, 1).join());
+        Multihash endpointPeer = ServerKeys.peerId(endpoint.publicSigningKey);
+        b.routing.fetch(new LocalPeer(b.id, a), Subject.server(endpointPeer), true);
+        Assert.assertTrue(b.replica.log(x.subject).exists());
+        Assert.assertEquals(Optional.of(x.peerId.bareMultihash()), b.replica.serverForPeer(endpointPeer).map(l -> l.peerId.bareMultihash()));
+    }
 }

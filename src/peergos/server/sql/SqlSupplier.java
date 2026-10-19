@@ -219,6 +219,11 @@ public interface SqlSupplier {
                 "alias " + getByteArrayType() + " NOT NULL, " +
                 "subject " + getByteArrayType() + " NOT NULL, " +
                 "PRIMARY KEY (kind, alias));" +
+                "CREATE TABLE IF NOT EXISTS routingpeers (" +
+                "peer " + getByteArrayType() + " PRIMARY KEY NOT NULL, " +
+                "subject " + getByteArrayType() + " NOT NULL, " +
+                "keyed " + sqlInteger() + " NOT NULL);" +
+                "CREATE INDEX IF NOT EXISTS routingpeers_subject ON routingpeers (subject);" +
                 "CREATE TABLE IF NOT EXISTS routingmeta (" +
                 "name varchar(64) PRIMARY KEY NOT NULL, " +
                 "value " + getByteArrayType() + " NOT NULL);" +

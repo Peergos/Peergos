@@ -356,4 +356,40 @@ public class RelayTests {
         now[0] += Relays.LEASE.toMillis() + 1;
         Assert.assertEquals("an expired lease frees its place", Optional.of(Relays.LEASE), relays.reserve(PeerId.random(), range));
     }
+
+    @Test
+    public void aServerIsRecognisedByItsCurrentKeyAndEndpoint() {
+        RoutingReplica replica = replica();
+        long[] now = {1_000_000};
+        Relays relays = new Relays(List.of(), () -> now[0], new Random(1));
+        relays.start(RoutingLookup.full(replica), peer(key()));
+
+        SigningKeyPair first = key(), second = key(), third = key(), endpoint = key(), later = key();
+        ServerInception inception = ServerInception.build(first, second.publicSigningKey, crypto.hasher).join();
+        inception = inception.withProof(new CuckooSolver(WORK).solve(inception.server.serialize(), 0, 100_000).get().serialize());
+        Subject s = Subject.server(inception.peerId());
+        Assert.assertEquals(Outcome.Added, replica.add(s, inception));
+        Assert.assertEquals(Outcome.Added, replica.add(s, ServerRotation.build(first.publicSigningKey, second, third.publicSigningKey, crypto.hasher).join()));
+        Assert.assertEquals(Outcome.Added, replica.add(s, ServerAddresses.build(second, endpoint.publicSigningKey, Optional.empty(),
+                List.of(), List.of(), ServerAddresses.Mode.Archival, false, 1).join()));
+
+        Assert.assertEquals("its current key", Optional.of(Relays.RESERVATION), relays.reserve(libp2p(second), new Multiaddr("/ip4/198.51.100.1/tcp/4001")));
+        Assert.assertEquals("its endpoint", Optional.of(Relays.RESERVATION), relays.reserve(libp2p(endpoint), new Multiaddr("/ip4/198.51.100.2/tcp/4001")));
+        Assert.assertEquals("a key it rotated away from only gets a lease", Optional.of(Relays.LEASE),
+                relays.reserve(libp2p(first), new Multiaddr("/ip4/198.51.100.3/tcp/4001")));
+
+        Assert.assertEquals(Outcome.Added, replica.add(s, ServerAddresses.build(second, later.publicSigningKey, Optional.empty(),
+                List.of(), List.of(), ServerAddresses.Mode.Archival, false, 2).join()));
+        now[0] += 10 * 60_000 + 1;
+        Assert.assertTrue(replica.serverForPeer(peer(later)).isPresent());
+        Assert.assertTrue("an endpoint it no longer names", replica.serverForPeer(peer(endpoint)).isEmpty());
+
+        SigningKeyPair claimant = key();
+        ServerInception unproven = ServerInception.build(claimant, key().publicSigningKey, crypto.hasher).join();
+        replica.add(Subject.server(unproven.peerId()), unproven);
+        replica.add(Subject.server(unproven.peerId()), ServerAddresses.build(claimant, second.publicSigningKey, Optional.empty(),
+                List.of(), List.of(), ServerAddresses.Mode.Archival, false, 1).join());
+        Assert.assertEquals("claiming another server's key as an endpoint doesn't take it over",
+                Optional.of(s.id.bareMultihash()), replica.serverForPeer(peer(second)).map(l -> l.peerId.bareMultihash()));
+    }
 }
