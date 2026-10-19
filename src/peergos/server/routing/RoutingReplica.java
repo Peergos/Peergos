@@ -1,18 +1,29 @@
 package peergos.server.routing;
 
+import peergos.server.util.*;
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.io.ipfs.*;
 import peergos.shared.routing.*;
 import peergos.shared.util.*;
 
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.function.*;
+import java.util.logging.*;
 
 /** This node's copy of the routing log: records are checked, applied to their subject's log and stored. Whether a
  *  record may be passed on, its proof of work and admission, is a separate question, answered by
  *  {@link #isProven}.
+ *
+ *  A compact replica (remove-pki §4.7) verifies each record in full as it arrives, then stores it without its
+ *  signature, except for this server and the identities it hosts or admitted. To hand out full records it fetches
+ *  the signatures from the provider and matches them to the hashes it kept.
  */
 public class RoutingReplica {
+    private static final Logger LOG = Logging.LOG();
     private static final int LOCKS = 64;
+    private static final long FETCH_TIMEOUT_SECONDS = 15;
 
     private final JdbcRoutingStore store;
     private final RecordValidator validator;
@@ -20,7 +31,8 @@ public class RoutingReplica {
     private final Map<Subject, SubjectLog> cache = Collections.synchronizedMap(new LRUCache<>(10_000));
     private final Map<Subject, Subject> aliases = Collections.synchronizedMap(new LRUCache<>(10_000));
     private final Object[] locks = new Object[LOCKS];
-    private final List<BiConsumer<Subject, SubjectLog>> listeners = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final List<BiConsumer<Subject, SubjectLog>> listeners = new CopyOnWriteArrayList<>();
+    private volatile Optional<Multihash> compactFor = Optional.empty();
 
     public RoutingReplica(JdbcRoutingStore store, RecordValidator validator, Work identityWork, Work serverWork) {
         this.store = store;
@@ -33,6 +45,24 @@ public class RoutingReplica {
 
     public JdbcRoutingStore store() {
         return store;
+    }
+
+    /** From now on, subjects that are not this server's own are stored without signatures as they change. */
+    public void compact(Multihash self) {
+        compactFor = Optional.of(self.bareMultihash());
+    }
+
+    public boolean isCompact() {
+        return compactFor.isPresent();
+    }
+
+    /** This server, and the identities it hosts or admitted: it serves their records and re-signs admissions. */
+    static boolean keepsFull(Multihash self, SubjectLog log) {
+        if (log instanceof ServerLog)
+            return ((ServerLog) log).peerId.bareMultihash().equals(self);
+        IdentityLog id = (IdentityLog) log;
+        return id.providers().stream().anyMatch(p -> p.bareMultihash().equals(self))
+                || id.inception().map(i -> i.record.admittingServer().bareMultihash().equals(self)).orElse(false);
     }
 
     /** Called with a subject's new log whenever a record changes it. */
@@ -61,8 +91,10 @@ public class RoutingReplica {
                         ServerLog.legacy(LegacyServer.fromCbor(c)))
                 .orElseGet(() -> SubjectLog.empty(s));
         List<Verified<? extends SignedRecord>> records = new ArrayList<>();
-        for (SignedRecord r : store.get(s))
-            records.add(validator.stored(r).join());
+        for (JdbcRoutingStore.Stored r : store.get(s)) {
+            Verified<? extends SignedRecord> v = validator.stored(r.record).join();
+            records.add(r.hash.isPresent() ? withHash(v, r.hash.get()) : v);
+        }
         SubjectLog log = SubjectLog.build(base, records);
         cache.put(s, log);
         return log;
@@ -145,26 +177,114 @@ public class RoutingReplica {
         return r instanceof IdentityInception || r instanceof ServerInception;
     }
 
+    private static <R extends SignedRecord> Verified<R> withHash(Verified<R> v, byte[] hash) {
+        return new Verified<>(v.record, hash, v.keyHash);
+    }
+
     private void save(Subject s, SubjectLog log) {
-        List<SignedRecord> records = new ArrayList<>();
+        boolean strip = compactFor.map(self -> ! keepsFull(self, log)).orElse(false);
+        List<JdbcRoutingStore.Stored> records = new ArrayList<>();
         for (Verified<? extends SignedRecord> v : log.held())
-            records.add(v.record);
-        store.put(s, records, stateHash(records));
-        cache.put(s, log);
+            records.add(strip || v.record.isStripped() ?
+                    new JdbcRoutingStore.Stored(RecordType.stripped(v.record), Optional.of(v.hash)) :
+                    new JdbcRoutingStore.Stored(v.record, Optional.empty()));
+        store.put(s, records, digest(log.held()));
+        if (strip)
+            cache.remove(s);
+        else
+            cache.put(s, log);
         for (BiConsumer<Subject, SubjectLog> l : listeners)
             l.accept(s, log);
     }
 
-    /** What reconciliation compares: the hash of every record held, proofs included, in canonical order. */
+    /** What reconciliation compares, and a compact replica can compute without signatures: the hash of each record
+     *  held, with its proofs, in canonical order.
+     */
+    private byte[] digest(List<Verified<? extends SignedRecord>> held) {
+        List<Cborable> entries = new ArrayList<>();
+        for (Verified<? extends SignedRecord> v : held)
+            entries.add(new CborObject.CborList(Arrays.asList(new CborObject.CborByteArray(v.hash), RecordType.extras(v.record))));
+        return validator.hasher().sha256(new CborObject.CborList(entries).toByteArray()).join();
+    }
+
     public byte[] stateHash(List<? extends SignedRecord> records) {
-        return validator.hasher().sha256(JdbcRoutingStore.encode(records)).join();
+        List<Verified<? extends SignedRecord>> held = new ArrayList<>();
+        for (SignedRecord r : records)
+            held.add(validator.stored(r).join());
+        return digest(held);
     }
 
     public byte[] stateHash(Subject s) {
-        List<SignedRecord> records = new ArrayList<>();
-        for (Verified<? extends SignedRecord> v : log(s).held())
-            records.add(v.record);
-        return stateHash(records);
+        return digest(log(s).held());
+    }
+
+    /** The hash a record is known by: of its body and signature. */
+    public byte[] hash(SignedRecord r) {
+        return validator.stored(r).join().hash;
+    }
+
+    /** The subject's records with their signatures, fetching those a compact replica dropped from the identity's
+     *  providers, or the server itself, and matching them to the hashes kept. Fails if any can't be found.
+     */
+    public List<SignedRecord> records(Subject requested, Function<Multihash, RoutingPeer> dial) {
+        Subject s = canonical(requested);
+        SubjectLog log = log(s);
+        List<Verified<? extends SignedRecord>> held = log.held();
+        Map<ByteArrayWrapper, byte[]> signatures = new HashMap<>();
+        for (Verified<? extends SignedRecord> v : held)
+            if (v.record.isStripped())
+                signatures.put(new ByteArrayWrapper(v.hash), null);
+        if (! signatures.isEmpty()) {
+            for (Multihash source : sources(log)) {
+                if (compactFor.map(self -> self.equals(source.bareMultihash())).orElse(false))
+                    continue;
+                try {
+                    for (SignedRecord r : dial.apply(source).records(s).get(FETCH_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                        ByteArrayWrapper h = new ByteArrayWrapper(hash(r));
+                        if (! r.isStripped() && signatures.containsKey(h))
+                            signatures.put(h, r.signature);
+                    }
+                } catch (Exception e) {
+                    LOG.log(Level.FINE, "Couldn't fetch " + s + " from " + source + ": " + e.getMessage());
+                }
+                if (! signatures.containsValue(null))
+                    break;
+            }
+            if (signatures.containsValue(null))
+                throw new IllegalStateException("Couldn't fetch the full records of " + s);
+        }
+        List<SignedRecord> res = new ArrayList<>();
+        for (Verified<? extends SignedRecord> v : held)
+            res.add(v.record.isStripped() ?
+                    RecordType.withSignature(v.record, signatures.get(new ByteArrayWrapper(v.hash))) :
+                    v.record);
+        if (! signatures.isEmpty() && compactFor.map(self -> keepsFull(self, log)).orElse(false))
+            restore(s, held, res);
+        return res;
+    }
+
+    /** One of ours that was stored without signatures, as when a user moves here: keep it in full from now on. */
+    private void restore(Subject s, List<Verified<? extends SignedRecord>> held, List<SignedRecord> full) {
+        synchronized (lock(s)) {
+            if (! Arrays.equals(stateHash(s), digest(held)))
+                return;
+            List<JdbcRoutingStore.Stored> records = new ArrayList<>();
+            for (SignedRecord r : full)
+                records.add(new JdbcRoutingStore.Stored(r, Optional.empty()));
+            store.put(s, records, digest(held));
+            cache.remove(s);
+        }
+    }
+
+    private static List<Multihash> sources(SubjectLog log) {
+        if (log instanceof IdentityLog)
+            return ((IdentityLog) log).providers();
+        ServerLog server = (ServerLog) log;
+        List<Multihash> res = new ArrayList<>();
+        server.currentKey().map(ServerKeys::peerId).ifPresent(res::add);
+        if (res.stream().noneMatch(p -> p.bareMultihash().equals(server.peerId.bareMultihash())))
+            res.add(server.peerId);
+        return res;
     }
 
     private Object lock(Subject s) {
@@ -185,7 +305,7 @@ public class RoutingReplica {
     /** A legacy identity is already in the pinned state, so its admission needs no proof of work (remove-pki §4.1). */
     private Work admissionWork(Subject s) {
         boolean legacy = identity(s).map(IdentityLog::isLegacy).orElse(false);
-        return legacy ? (subject, proof) -> java.util.concurrent.CompletableFuture.completedFuture(true) : identityWork;
+        return legacy ? (subject, proof) -> CompletableFuture.completedFuture(true) : identityWork;
     }
 
     private int admittingKeyIndex(Subject s, IdentityInception ii) {

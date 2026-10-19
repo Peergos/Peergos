@@ -55,6 +55,17 @@ public class JdbcRoutingStore {
         }
     }
 
+    /** A record as stored: in full, or without its signature and with the hash it had with it. */
+    public static final class Stored {
+        public final SignedRecord record;
+        public final Optional<byte[]> hash;
+
+        public Stored(SignedRecord record, Optional<byte[]> hash) {
+            this.record = record;
+            this.hash = hash;
+        }
+    }
+
     public static final class State {
         public final Subject subject;
         public final byte[] hash;
@@ -87,7 +98,7 @@ public class JdbcRoutingStore {
         }
     }
 
-    public List<SignedRecord> get(Subject s) {
+    public List<Stored> get(Subject s) {
         try (Connection c = getConnection();
              PreparedStatement select = c.prepareStatement(GET)) {
             select.setInt(1, s.kind);
@@ -96,7 +107,12 @@ public class JdbcRoutingStore {
             if (! rs.next())
                 return Collections.emptyList();
             return ((CborObject.CborList) CborObject.fromByteArray(rs.getBytes(1))).value.stream()
-                    .map(RecordType::untag)
+                    .map(entry -> {
+                        CborObject.CborMap m = (CborObject.CborMap) entry;
+                        return new Stored(RecordType.untag(m), m.containsKey("h") ?
+                                Optional.of(m.get("h", x -> ((CborObject.CborByteArray) x).value)) :
+                                Optional.<byte[]>empty());
+                    })
                     .collect(Collectors.toList());
         } catch (SQLException e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
@@ -104,7 +120,7 @@ public class JdbcRoutingStore {
         }
     }
 
-    public void put(Subject s, List<? extends SignedRecord> records, byte[] stateHash) {
+    public void put(Subject s, List<Stored> records, byte[] stateHash) {
         try (Connection c = getConnection();
              PreparedStatement insert = c.prepareStatement(PUT)) {
             insert.setInt(1, s.kind);
@@ -118,10 +134,21 @@ public class JdbcRoutingStore {
         }
     }
 
-    public static byte[] encode(List<? extends SignedRecord> records) {
-        return new CborObject.CborList(records.stream()
-                .map(RecordType::tag)
-                .collect(Collectors.toList())).toByteArray();
+    private static byte[] encode(List<Stored> records) {
+        List<Cborable> res = new ArrayList<>();
+        for (Stored r : records) {
+            CborObject.CborMap tagged = RecordType.tag(r.record);
+            if (r.hash.isEmpty()) {
+                res.add(tagged);
+                continue;
+            }
+            Map<String, Cborable> m = new TreeMap<>();
+            for (String k : tagged.keySet())
+                m.put(k, tagged.get(k));
+            m.put("h", new CborObject.CborByteArray(r.hash.get()));
+            res.add(CborObject.CborMap.build(m));
+        }
+        return new CborObject.CborList(res).toByteArray();
     }
 
     /** States in subject order after the given subject id, for reconciliation and snapshots. */

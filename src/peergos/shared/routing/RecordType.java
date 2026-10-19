@@ -52,4 +52,31 @@ public enum RecordType {
         CborObject.CborMap m = RoutingCbor.map(cbor, "tagged record");
         return byCode(m.getLong("t")).decoder.apply(m.get("r"));
     }
+
+    /** The record without its signature, as a compact replica keeps it once verified (remove-pki §4.7). */
+    public static SignedRecord stripped(SignedRecord r) {
+        return withSignature(r, new byte[0]);
+    }
+
+    public static SignedRecord withSignature(SignedRecord r, byte[] signature) {
+        Map<String, Cborable> m = fields(r);
+        m.put("s", new CborObject.CborByteArray(signature));
+        return of(r).decoder.apply(CborObject.CborMap.build(m));
+    }
+
+    /** What sits outside a record's hash: an admission or a proof of work. */
+    public static CborObject.CborMap extras(SignedRecord r) {
+        Map<String, Cborable> m = fields(r);
+        m.remove("b");
+        m.remove("s");
+        return CborObject.CborMap.build(m);
+    }
+
+    private static Map<String, Cborable> fields(SignedRecord r) {
+        CborObject.CborMap m = (CborObject.CborMap) r.toCbor();
+        Map<String, Cborable> res = new TreeMap<>();
+        for (String k : m.keySet())
+            res.put(k, m.get(k));
+        return res;
+    }
 }

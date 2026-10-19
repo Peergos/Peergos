@@ -30,18 +30,23 @@ public class ReplicationTests {
         final AtomicLong clock = new AtomicLong(1_000_000_000L);
 
         Node node(int inceptionsPerDay) {
-            Node n = new Node(this, inceptionsPerDay);
+            return node(inceptionsPerDay, ServerKeys.peerId(key().publicSigningKey));
+        }
+
+        Node node(int inceptionsPerDay, Multihash id) {
+            Node n = new Node(this, inceptionsPerDay, id);
             nodes.put(n.id, n);
             return n;
         }
     }
 
     private static class Node {
-        final Multihash id = ServerKeys.peerId(key().publicSigningKey);
+        final Multihash id;
         final RoutingReplica replica;
         final RoutingNode routing;
 
-        Node(Network net, int inceptionsPerDay) {
+        Node(Network net, int inceptionsPerDay, Multihash id) {
+            this.id = id.bareMultihash();
             JdbcRoutingStore store = new JdbcRoutingStore(Builder.buildEphemeralSqlite(), new SqliteCommands());
             replica = new RoutingReplica(store, new RecordValidator(crypto.hasher, TEST_WORK, TEST_WORK), TEST_WORK, TEST_WORK);
             routing = new RoutingNode(replica, crypto.hasher, net.clock::get, inceptionsPerDay,
@@ -385,4 +390,83 @@ public class ReplicationTests {
         Assert.assertFalse("it passes on only its own and its users'", full.replica.log(carolSubject).exists());
     }
 
+
+    private static boolean allStripped(Node n, Subject s) {
+        List<JdbcRoutingStore.Stored> stored = n.replica.store().get(s);
+        return ! stored.isEmpty() && stored.stream().allMatch(r -> r.record.isStripped() && r.hash.isPresent());
+    }
+
+    private static boolean noneStripped(Node n, Subject s) {
+        List<JdbcRoutingStore.Stored> stored = n.replica.store().get(s);
+        return ! stored.isEmpty() && stored.stream().noneMatch(r -> r.record.isStripped() || r.hash.isPresent());
+    }
+
+    @Test
+    public void aCompactReplicaKeepsNoSignaturesButServesFullRecordsFromTheProvider() throws Exception {
+        Network net = new Network();
+        Server x = new Server();
+        Node provider = net.node(100, x.peerId), compact = net.node(100), archival = net.node(100);
+        compact.replica.compact(compact.id);
+        SigningKeyPair aliceKey = key();
+        IdentityInception alice = x.admit(aliceKey);
+        Subject aliceSubject = Subject.identity(alice.identityHash());
+        provider.replica.add(x.subject, x.inception);
+        provider.replica.add(aliceSubject, alice);
+
+        compact.syncWith(provider);
+        compact.routing.syncRound();
+        Assert.assertTrue(allStripped(compact, x.subject));
+        Assert.assertTrue(allStripped(compact, aliceSubject));
+        Assert.assertArrayEquals("compact and archival agree on the state",
+                provider.replica.stateHash(aliceSubject), compact.replica.stateHash(aliceSubject));
+        Assert.assertEquals(List.of(aliceKey.publicSigningKey), compact.replica.identity(aliceSubject).get().currentKey().stream().toList());
+        Assert.assertEquals(List.of(x.peerId), compact.replica.identity(aliceSubject).get().providers());
+        Assert.assertTrue(compact.replica.isProven(aliceSubject, false));
+
+        Assert.assertEquals(provider.routing.records(aliceSubject), compact.routing.records(aliceSubject));
+        archival.syncWith(compact);
+        archival.routing.syncRound();
+        Assert.assertTrue("an archival node syncing from a compact one gets full records", noneStripped(archival, aliceSubject));
+        Assert.assertTrue(noneStripped(archival, x.subject));
+        Assert.assertArrayEquals(provider.replica.stateHash(aliceSubject), archival.replica.stateHash(aliceSubject));
+
+        provider.replica.add(aliceSubject, IdentityMove.build(aliceKey, List.of(x.peerId), 5).join());
+        compact.routing.syncRound();
+        Assert.assertTrue("a later record is applied to the summary", allStripped(compact, aliceSubject));
+        Assert.assertEquals(5, compact.replica.identity(aliceSubject).get().records.update.get().record.counter);
+        Assert.assertArrayEquals(provider.replica.stateHash(aliceSubject), compact.replica.stateHash(aliceSubject));
+
+        RoutingReplica restarted = new RoutingReplica(compact.replica.store(),
+                new RecordValidator(crypto.hasher, TEST_WORK, TEST_WORK), TEST_WORK, TEST_WORK);
+        Assert.assertArrayEquals(compact.replica.stateHash(aliceSubject), restarted.stateHash(aliceSubject));
+        Assert.assertTrue(restarted.isProven(aliceSubject, false));
+
+        net.nodes.remove(provider.id);
+        try {
+            compact.routing.records(aliceSubject);
+            Assert.fail("Without the provider the signatures can't be found");
+        } catch (IllegalStateException expected) {}
+    }
+
+    @Test
+    public void aCompactReplicaVerifiesBeforeStrippingAndKeepsItsOwnInFull() {
+        Network net = new Network();
+        Server x = new Server(), y = new Server();
+        Node compact = net.node(100, x.peerId);
+        compact.replica.compact(compact.id);
+        IdentityInception hosted = x.admit(key()), elsewhere = y.admit(key());
+        Subject hostedSubject = Subject.identity(hosted.identityHash()), elsewhereSubject = Subject.identity(elsewhere.identityHash());
+        Assert.assertEquals(Outcome.Added, compact.replica.add(x.subject, x.inception));
+        Assert.assertEquals(Outcome.Added, compact.replica.add(y.subject, y.inception));
+        Assert.assertEquals(Outcome.Rejected, compact.replica.add(hostedSubject, RecordType.stripped(hosted)));
+        byte[] forged = hosted.signature.clone();
+        forged[0] ^= 1;
+        Assert.assertEquals(Outcome.Rejected, compact.replica.add(hostedSubject, RecordType.withSignature(hosted, forged)));
+        Assert.assertEquals(Outcome.Added, compact.replica.add(hostedSubject, hosted));
+        Assert.assertEquals(Outcome.Added, compact.replica.add(elsewhereSubject, elsewhere));
+        Assert.assertTrue("this server", noneStripped(compact, x.subject));
+        Assert.assertTrue("a user it hosts", noneStripped(compact, hostedSubject));
+        Assert.assertTrue(allStripped(compact, y.subject));
+        Assert.assertTrue(allStripped(compact, elsewhereSubject));
+    }
 }
