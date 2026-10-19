@@ -83,17 +83,20 @@ public interface IdentityRouting {
     };
 
     class Status implements Cborable {
-        public static final Status NOT_RUNNING = new Status(false, false, Optional.empty(), Optional.empty());
+        public static final Status NOT_RUNNING = new Status(false, false, false, Optional.empty(), Optional.empty());
 
         public final boolean running, committed;
+        /** Whether the log names this server as the identity's provider. */
+        public final boolean listed;
         /** The peerid that admits identities here, which an inception names as its first provider. */
         public final Optional<Multihash> server;
         /** What recovery copies are encrypted to, for the identity's current commitment. */
         public final Optional<PublicBoxingKey> recoveryKey;
 
-        public Status(boolean running, boolean committed, Optional<Multihash> server, Optional<PublicBoxingKey> recoveryKey) {
+        public Status(boolean running, boolean committed, boolean listed, Optional<Multihash> server, Optional<PublicBoxingKey> recoveryKey) {
             this.running = running;
             this.committed = committed;
+            this.listed = listed;
             this.server = server;
             this.recoveryKey = recoveryKey;
         }
@@ -103,6 +106,7 @@ public interface IdentityRouting {
             SortedMap<String, Cborable> m = new TreeMap<>();
             m.put("r", new CborObject.CborBoolean(running));
             m.put("c", new CborObject.CborBoolean(committed));
+            m.put("l", new CborObject.CborBoolean(listed));
             server.ifPresent(s -> m.put("s", new CborObject.CborByteArray(s.toBytes())));
             recoveryKey.ifPresent(k -> m.put("k", k));
             return CborObject.CborMap.build(m);
@@ -110,7 +114,7 @@ public interface IdentityRouting {
 
         public static Status fromCbor(Cborable cbor) {
             CborObject.CborMap m = RoutingCbor.map(cbor, "IdentityRouting.Status");
-            return new Status(m.getBoolean("r"), m.getBoolean("c"),
+            return new Status(m.getBoolean("r"), m.getBoolean("c"), m.getBoolean("l"),
                     m.getOptional("s", c -> Multihash.decode(((CborObject.CborByteArray) c).value)),
                     m.getOptional("k", PublicBoxingKey::fromCbor));
         }

@@ -93,6 +93,10 @@ public class RoutingNode {
         return replica;
     }
 
+    public RoutingPeer dial(Multihash peer) {
+        return dial.apply(peer);
+    }
+
     public void addSyncPeer(RoutingPeer peer) {
         syncPeers.put(peer.id().bareMultihash(), peer);
     }

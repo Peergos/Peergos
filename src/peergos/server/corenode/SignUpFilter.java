@@ -266,6 +266,16 @@ public class SignUpFilter implements CoreNode {
     }
 
     @Override
+    public List<Multihash> getStorageProviders(PublicKeyHash owner) {
+        return target.getStorageProviders(owner);
+    }
+
+    @Override
+    public CompletableFuture<Optional<Multihash>> getHomeServer(String username) {
+        return target.getHomeServer(username);
+    }
+
+    @Override
     public void close() throws IOException {
         target.close();
     }
