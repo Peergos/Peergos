@@ -84,13 +84,53 @@ public class RelayTests {
         Assert.assertFalse(relays.mayReserve(libp2p(unproven)));
         Assert.assertFalse("a server not in the log", relays.mayReserve(PeerId.random()));
 
-        PeerId target = libp2p(proven), dialler = PeerId.random();
+        PeerId target = libp2p(proven), dialler = libp2p(server(replica, true, null, false, List.of()));
         for (int i = 0; i < Relays.DIALS_PER_INITIATOR_PER_MINUTE; i++)
             Assert.assertTrue(relays.mayConnect(target, dialler));
         Assert.assertFalse(relays.mayConnect(target, dialler));
-        Assert.assertTrue("another dialler", relays.mayConnect(target, PeerId.random()));
+        Assert.assertTrue("another dialler", relays.mayConnect(target, libp2p(server(replica, true, null, false, List.of()))));
         now[0] += 60_001;
         Assert.assertTrue(relays.mayConnect(target, dialler));
+    }
+
+    @Test
+    public void diallersWithoutProofOfWorkShareASmallPool() {
+        RoutingReplica replica = replica();
+        PeerId target = libp2p(server(replica, true, null, false, List.of()));
+        PeerId provenDialler = libp2p(server(replica, true, null, false, List.of()));
+        PeerId unproven = libp2p(server(replica, false, null, false, List.of()));
+        long[] now = {1_000_000};
+        Relays relays = new Relays(List.of(), () -> now[0], new Random(1));
+        relays.start(RoutingLookup.full(replica), peer(key()));
+
+        for (int i = 0; i < Relays.UNPROVEN_DIALS_PER_INITIATOR_PER_MINUTE; i++)
+            Assert.assertTrue(relays.mayConnect(target, unproven));
+        Assert.assertFalse("an unproven server gets a few dials", relays.mayConnect(target, unproven));
+        int fresh = 0;
+        while (relays.mayConnect(target, PeerId.random()))
+            fresh++;
+        Assert.assertEquals("fresh keys share what's left of the pool",
+                Relays.UNPROVEN_DIALS_PER_MINUTE - Relays.UNPROVEN_DIALS_PER_INITIATOR_PER_MINUTE, fresh);
+        Assert.assertTrue("a proven dialler is unaffected", relays.mayConnect(target, provenDialler));
+        now[0] += 60_001;
+        Assert.assertTrue(relays.mayConnect(target, PeerId.random()));
+    }
+
+    @Test
+    public void aServerOnlyNowInTheReplicaIsProvenOnceTheRefusalLapses() {
+        RoutingReplica replica = replica();
+        long[] now = {1_000_000};
+        Relays relays = new Relays(List.of(), () -> now[0], new Random(1));
+        relays.start(RoutingLookup.full(replica), peer(key()));
+        SigningKeyPair k = key();
+        ServerInception inception = ServerInception.build(k, key().publicSigningKey, crypto.hasher).join()
+                .withProof(new CuckooSolver(WORK).solve(k.publicSigningKey.serialize(), 0, 100_000).get().serialize());
+        PeerId late = PeerId.fromBase58(inception.peerId().toBase58());
+        Assert.assertFalse(relays.mayReserve(late));
+        Assert.assertEquals(Outcome.Added, replica.add(Subject.server(inception.peerId()), inception));
+        Assert.assertFalse("the refusal is cached for a minute", relays.mayReserve(late));
+        now[0] += 60_001;
+        Assert.assertTrue(relays.mayReserve(late));
     }
 
     @Test
