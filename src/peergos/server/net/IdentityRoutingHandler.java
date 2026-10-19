@@ -3,8 +3,10 @@ package peergos.server.net;
 import com.sun.net.httpserver.*;
 import peergos.server.util.*;
 import peergos.shared.cbor.*;
+import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.*;
 import peergos.shared.routing.*;
 import peergos.shared.util.*;
 
@@ -66,6 +68,15 @@ public class IdentityRoutingHandler implements HttpHandler {
                     CborObject.CborMap m = (CborObject.CborMap) body(exchange);
                     result = new CborObject.CborBoolean(routing.recover(identity(params), IdentityRotation.fromCbor(m.get("r")),
                             RecoveryCopy.WrappedKey.fromCbor(m.get("w")), RecoveryCopy.fromCbor(m.get("c"))).join());
+                    break;
+                }
+                case "lookup": {
+                    String username = params.get("username").get(0);
+                    if (! username.matches(Usernames.REGEX))
+                        throw new IllegalStateException("Invalid username");
+                    result = routing.lookup(username, Cid.decodePeerId(params.get("server").get(0))).join()
+                            .<Cborable>map(h -> h)
+                            .orElse(new CborObject.CborNull());
                     break;
                 }
                 case "hint":

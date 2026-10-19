@@ -44,6 +44,9 @@ public interface IdentityRouting {
     /** Where to reach this server, for a link to carry. */
     CompletableFuture<ServerHint> hint();
 
+    /** The identity a username labels on the named server, asked of that server (remove-pki §12.1). */
+    CompletableFuture<Optional<PublicKeyHash>> lookup(String username, Multihash server);
+
     /** Has this server dial a server the log may not hold yet, from a link's hint, and pull its records and the
      *  identity's.
      *
@@ -94,6 +97,11 @@ public interface IdentityRouting {
 
         @Override
         public CompletableFuture<ServerHint> hint() {
+            return notRunning();
+        }
+
+        @Override
+        public CompletableFuture<Optional<PublicKeyHash>> lookup(String username, Multihash server) {
             return notRunning();
         }
 
@@ -261,6 +269,15 @@ public interface IdentityRouting {
         public CompletableFuture<ServerHint> hint() {
             return poster.get(Constants.IDENTITY_ROUTING_URL + "hint")
                     .thenApply(res -> ServerHint.fromCbor(CborObject.fromByteArray(res)));
+        }
+
+        @Override
+        public CompletableFuture<Optional<PublicKeyHash>> lookup(String username, Multihash server) {
+            return poster.get(Constants.IDENTITY_ROUTING_URL + "lookup?username=" + username + "&server=" + new Cid(1, Cid.Codec.LibP2pKey, server.type, server.getHash()))
+                    .thenApply(res -> {
+                        CborObject cbor = CborObject.fromByteArray(res);
+                        return cbor instanceof CborObject.CborNull ? Optional.empty() : Optional.of(PublicKeyHash.fromCbor(cbor));
+                    });
         }
 
         @Override

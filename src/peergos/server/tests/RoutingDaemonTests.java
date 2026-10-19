@@ -39,9 +39,11 @@ public class RoutingDaemonTests {
         }
     }
 
-    /** The second server has no routing peers, so it learns of an identity on the first only from a hint. */
+    /** The second server has no routing peers, so it learns of an identity on the first only from a hint; then
+     *  that identity logs in through the second server by naming the first.
+     */
     @Test
-    public void aHintPullsAnIdentityTheLogDoesNotHoldYet() throws Exception {
+    public void aHintPullsAnIdentityAndANamedServerLogsItIn() throws Exception {
         Args pkiArgs = UserTests.buildArgs()
                 .with("useIPFS", "true")
                 .with("async-bootstrap", "true")
@@ -89,6 +91,11 @@ public class RoutingDaemonTests {
             Assert.assertTrue("not synced: only the hint brings alice", nodeStore.get(Subject.identity(aliceId)).isEmpty());
             bob.addHint(hint, Optional.of(aliceId)).join();
             waitFor("the hinted identity is pulled", () -> ! nodeStore.get(Subject.identity(aliceId)).isEmpty(), 60_000);
+
+            UserContext aliceViaNode = UserContext.signIn("alice" + suffix + "@" + pkiNodeId, "password", UserTests::noMfa,
+                    Builder.buildLocalJavaNetworkAccess(nodeArgs.getInt("port")).join(), crypto).join();
+            Assert.assertEquals("alice" + suffix, aliceViaNode.username);
+            Assert.assertEquals(aliceId, aliceViaNode.signer.publicKeyHash);
 
             try {
                 new ServerHint(pkiNodeId, List.of("/dns4/peergos.net/tcp/4001"));
