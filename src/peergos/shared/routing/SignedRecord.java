@@ -18,6 +18,11 @@ public abstract class SignedRecord implements Cborable {
 
     public abstract CborObject.CborMap body();
 
+    /** Kept by a compact replica, which verified the signature on arrival and then dropped it. */
+    public boolean isStripped() {
+        return signature.length == 0;
+    }
+
     public abstract String context();
 
     public abstract PublicSigningKey signer();
