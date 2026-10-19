@@ -68,6 +68,17 @@ public class IdentityRoutingHandler implements HttpHandler {
                             RecoveryCopy.WrappedKey.fromCbor(m.get("w")), RecoveryCopy.fromCbor(m.get("c"))).join());
                     break;
                 }
+                case "hint":
+                    result = routing.hint().join();
+                    break;
+                case "add-hint": {
+                    CborObject.CborMap m = (CborObject.CborMap) body(exchange);
+                    result = new CborObject.CborList(routing.addHint(identity(params), m.getByteArray("t"),
+                                    ServerHint.fromCbor(m.get("h")), m.getOptional("i", PublicKeyHash::fromCbor)).join().stream()
+                            .map(CborObject.CborString::new)
+                            .collect(Collectors.toList()));
+                    break;
+                }
                 case "move":
                     result = new CborObject.CborBoolean(routing.move(identity(params),
                             IdentityMove.fromCbor(CborObject.fromByteArray(Serialize.readFully(exchange.getRequestBody(), MAX_BODY)))).join());

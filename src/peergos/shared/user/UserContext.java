@@ -17,6 +17,7 @@ import peergos.shared.routing.IdentityMove;
 import peergos.shared.routing.IdentityRouting;
 import peergos.shared.routing.RecoveryCopy;
 import peergos.shared.routing.RecoveryKey;
+import peergos.shared.routing.ServerHint;
 import peergos.shared.storage.auth.*;
 import peergos.shared.storage.controller.InstanceAdmin;
 import peergos.shared.storage.controller.HttpInstanceAdmin;
@@ -735,6 +736,19 @@ public class UserContext {
                                     .thenCompose(newChain -> network.coreNode.migrateUser(username, newChain, originalNodeId, mirrorBat, LocalDateTime.now(ZoneOffset.UTC), usage, true))
                                     .thenCompose(snapshot -> publishMove().thenApply(x -> snapshot));
                         })));
+    }
+
+    /** Where to reach this user's server, for a link to carry. */
+    public CompletableFuture<ServerHint> serverHint() {
+        return network.identityRouting.hint();
+    }
+
+    /** Has this user's server dial a server from a link's hint, and pull its records and those of the identity the
+     *  link is for, when the routing log doesn't hold them yet.
+     */
+    public CompletableFuture<List<String>> addHint(ServerHint hint, Optional<PublicKeyHash> identity) {
+        return TimeLimitedClient.signNow(signer.secret)
+                .thenCompose(signedTime -> network.identityRouting.addHint(signer.publicKeyHash, signedTime, hint, identity));
     }
 
     /** Names the server this context talks to as the identity's provider in the routing log, once it hosts the

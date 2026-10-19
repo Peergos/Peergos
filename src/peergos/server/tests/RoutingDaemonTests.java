@@ -13,6 +13,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.routing.*;
 import peergos.shared.storage.*;
+import peergos.shared.user.*;
 
 import java.nio.file.*;
 import java.util.*;
@@ -35,6 +36,72 @@ public class RoutingDaemonTests {
             if (System.currentTimeMillis() > end)
                 throw new TimeoutException(what);
             Thread.sleep(500);
+        }
+    }
+
+    /** The second server has no routing peers, so it learns of an identity on the first only from a hint. */
+    @Test
+    public void aHintPullsAnIdentityTheLogDoesNotHoldYet() throws Exception {
+        Args pkiArgs = UserTests.buildArgs()
+                .with("useIPFS", "true")
+                .with("async-bootstrap", "true")
+                .with(RoutingService.ARG_ROUTING_LOG.name, "true")
+                .with(RoutingService.ARG_ROUTING_WORK_BITS.name, "16")
+                .removeArg(IpfsWrapper.IPFS_BOOTSTRAP_NODES);
+        ServerProcesses pki = Main.PKI_INIT.main(pkiArgs);
+        List<ServerProcesses> services = new ArrayList<>(List.of(pki));
+        List<Args> dirs = new ArrayList<>(List.of(pkiArgs));
+        try {
+            PublicKeyHash peergosId = pki.localApi.coreNode.getPublicKeyHash("peergos").join().get();
+            Multihash pkiNodeId = pki.localApi.storage.id().get().bareMultihash();
+            int proxyTargetPort = TestPorts.getPort(), ipfsApiPort = TestPorts.getPort(), swarmPort = TestPorts.getTcpAndUdpPort();
+            Args nodeArgs = UserTests.buildArgs()
+                    .with(Main.PEERGOS_PATH, Files.createTempDirectory("peergos-routing-" + System.nanoTime()).toString())
+                    .with("useIPFS", "true")
+                    .with("async-bootstrap", "false")
+                    .with("port", "" + TestPorts.getPort())
+                    .with("pki-node-id", pkiNodeId.toString())
+                    .with("peergos.identity.hash", peergosId.toString())
+                    .with("ipfs-api-address", Main.getLocalMultiAddress(ipfsApiPort).toString())
+                    .with("ipfs-gateway-address", "/ip4/127.0.0.1/tcp/" + TestPorts.getPort())
+                    .with("ipfs-swarm-port", "" + swarmPort)
+                    .with("proxy-target", Main.getLocalMultiAddress(proxyTargetPort).toString())
+                    .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, Main.getLocalBootstrapAddress(pkiArgs.getInt("ipfs-swarm-port"), pkiNodeId).toString())
+                    .with(RoutingService.ARG_ROUTING_LOG.name, "true")
+                    .with(RoutingService.ARG_ROUTING_WORK_BITS.name, "16");
+            dirs.add(nodeArgs);
+            ServerProcesses node = Main.PEERGOS.main(nodeArgs);
+            services.add(node);
+
+            String suffix = "" + (System.currentTimeMillis() % 100_000);
+            UserContext alice = UserContext.signUp("alice" + suffix, "password", "",
+                    Builder.buildLocalJavaNetworkAccess(pkiArgs.getInt("port")).join(), crypto).join();
+            Assert.assertTrue(alice.commitRecoveryKey("abandon-ability-able-about-above-absent-absorb").join());
+            PublicKeyHash aliceId = alice.signer.publicKeyHash;
+            JdbcRoutingStore pkiStore = store(pkiArgs), nodeStore = store(nodeArgs);
+            waitFor("the inception is admitted", () -> pkiStore.get(Subject.identity(aliceId)).stream()
+                    .anyMatch(r -> r instanceof IdentityInception && ((IdentityInception) r).admission.isPresent()), 120_000);
+
+            ServerHint hint = alice.serverHint().join();
+            Assert.assertEquals(pkiNodeId, hint.peerId);
+            UserContext bob = UserContext.signUp("bob" + suffix, "password", "",
+                    Builder.buildLocalJavaNetworkAccess(nodeArgs.getInt("port")).join(), crypto).join();
+            Assert.assertTrue("not synced: only the hint brings alice", nodeStore.get(Subject.identity(aliceId)).isEmpty());
+            bob.addHint(hint, Optional.of(aliceId)).join();
+            waitFor("the hinted identity is pulled", () -> ! nodeStore.get(Subject.identity(aliceId)).isEmpty(), 60_000);
+
+            try {
+                new ServerHint(pkiNodeId, List.of("/dns4/peergos.net/tcp/4001"));
+                Assert.fail("a hint with a DNS name");
+            } catch (IllegalStateException expected) {}
+        } finally {
+            for (ServerProcesses s : services) {
+                try { s.localApi.stop(); } catch (Exception e) {}
+                try { s.p2pApi.stop(); } catch (Exception e) {}
+                try { if (s.ipfs != null) s.ipfs.stop(); } catch (Exception e) {}
+            }
+            for (Args a : dirs)
+                deleteFiles(a.fromPeergosDir("", "").toFile());
         }
     }
 
