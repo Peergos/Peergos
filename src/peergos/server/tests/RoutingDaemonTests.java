@@ -39,38 +39,95 @@ public class RoutingDaemonTests {
         }
     }
 
-    /** The second server has no routing peers, so it learns of an identity on the first only from a hint; then
-     *  that identity logs in through the second server by naming the first.
-     */
-    @Test
-    public void aHintPullsAnIdentityAndANamedServerLogsItIn() throws Exception {
-        Args pkiArgs = UserTests.buildArgs()
+    private static Args secondServer(Args pkiArgs, PublicKeyHash peergosId, Multihash pkiNodeId) throws Exception {
+        int proxyTargetPort = TestPorts.getPort(), ipfsApiPort = TestPorts.getPort(), swarmPort = TestPorts.getTcpAndUdpPort();
+        return UserTests.buildArgs()
+                .with(Main.PEERGOS_PATH, Files.createTempDirectory("peergos-routing-" + System.nanoTime()).toString())
+                .with("useIPFS", "true")
+                .with("async-bootstrap", "false")
+                .with("port", "" + TestPorts.getPort())
+                .with("pki-node-id", pkiNodeId.toString())
+                .with("peergos.identity.hash", peergosId.toString())
+                .with("ipfs-api-address", Main.getLocalMultiAddress(ipfsApiPort).toString())
+                .with("ipfs-gateway-address", "/ip4/127.0.0.1/tcp/" + TestPorts.getPort())
+                .with("ipfs-swarm-port", "" + swarmPort)
+                .with("proxy-target", Main.getLocalMultiAddress(proxyTargetPort).toString())
+                .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, Main.getLocalBootstrapAddress(pkiArgs.getInt("ipfs-swarm-port"), pkiNodeId).toString())
+                .with(RoutingService.ARG_ROUTING_LOG.name, "true")
+                .with(RoutingService.ARG_ROUTING_WORK_BITS.name, "16");
+    }
+
+    private static Args pkiArgs() {
+        return UserTests.buildArgs()
                 .with("useIPFS", "true")
                 .with("async-bootstrap", "true")
                 .with(RoutingService.ARG_ROUTING_LOG.name, "true")
                 .with(RoutingService.ARG_ROUTING_WORK_BITS.name, "16")
                 .removeArg(IpfsWrapper.IPFS_BOOTSTRAP_NODES);
+    }
+
+    private static void stop(List<ServerProcesses> services, List<Args> dirs) {
+        for (ServerProcesses s : services) {
+            try { s.localApi.stop(); } catch (Exception e) {}
+            try { s.p2pApi.stop(); } catch (Exception e) {}
+            try { if (s.ipfs != null) s.ipfs.stop(); } catch (Exception e) {}
+        }
+        for (Args a : dirs)
+            deleteFiles(a.fromPeergosDir("", "").toFile());
+    }
+
+    /** A light server asks the pki node, as its full node, for an identity there, and hands it its own records. */
+    @Test
+    public void aLightServerResolvesThroughItsFullNodeAndPublishesThroughIt() throws Exception {
+        Args pkiArgs = pkiArgs();
         ServerProcesses pki = Main.PKI_INIT.main(pkiArgs);
         List<ServerProcesses> services = new ArrayList<>(List.of(pki));
         List<Args> dirs = new ArrayList<>(List.of(pkiArgs));
         try {
             PublicKeyHash peergosId = pki.localApi.coreNode.getPublicKeyHash("peergos").join().get();
             Multihash pkiNodeId = pki.localApi.storage.id().get().bareMultihash();
-            int proxyTargetPort = TestPorts.getPort(), ipfsApiPort = TestPorts.getPort(), swarmPort = TestPorts.getTcpAndUdpPort();
-            Args nodeArgs = UserTests.buildArgs()
-                    .with(Main.PEERGOS_PATH, Files.createTempDirectory("peergos-routing-" + System.nanoTime()).toString())
-                    .with("useIPFS", "true")
-                    .with("async-bootstrap", "false")
-                    .with("port", "" + TestPorts.getPort())
-                    .with("pki-node-id", pkiNodeId.toString())
-                    .with("peergos.identity.hash", peergosId.toString())
-                    .with("ipfs-api-address", Main.getLocalMultiAddress(ipfsApiPort).toString())
-                    .with("ipfs-gateway-address", "/ip4/127.0.0.1/tcp/" + TestPorts.getPort())
-                    .with("ipfs-swarm-port", "" + swarmPort)
-                    .with("proxy-target", Main.getLocalMultiAddress(proxyTargetPort).toString())
-                    .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, Main.getLocalBootstrapAddress(pkiArgs.getInt("ipfs-swarm-port"), pkiNodeId).toString())
-                    .with(RoutingService.ARG_ROUTING_LOG.name, "true")
-                    .with(RoutingService.ARG_ROUTING_WORK_BITS.name, "16");
+            Args nodeArgs = secondServer(pkiArgs, peergosId, pkiNodeId)
+                    .with(RoutingService.ARG_ROUTING_MODE.name, "light")
+                    .with(RoutingService.ARG_ROUTING_PEERS.name, pkiNodeId.toString());
+            dirs.add(nodeArgs);
+            ServerProcesses node = Main.PEERGOS.main(nodeArgs);
+            services.add(node);
+            Multihash nodeId = node.localApi.storage.id().get().bareMultihash();
+            JdbcRoutingStore pkiStore = store(pkiArgs), nodeStore = store(nodeArgs);
+            waitFor("the full node takes the light server's records", () -> ! pkiStore.get(Subject.server(nodeId)).isEmpty(), 180_000);
+
+            String suffix = "" + (System.currentTimeMillis() % 100_000);
+            UserContext alice = UserContext.signUp("alice" + suffix, "password", "",
+                    Builder.buildLocalJavaNetworkAccess(pkiArgs.getInt("port")).join(), crypto).join();
+            Assert.assertTrue(alice.commitRecoveryKey("abandon-ability-able-about-above-absent-absorb").join());
+            PublicKeyHash aliceId = alice.signer.publicKeyHash;
+            waitFor("the inception is admitted", () -> pkiStore.get(Subject.identity(aliceId)).stream()
+                    .anyMatch(r -> r instanceof IdentityInception && ((IdentityInception) r).admission.isPresent()), 120_000);
+            Assert.assertTrue("a light server holds no full set", nodeStore.get(Subject.identity(aliceId)).isEmpty());
+
+            UserContext bob = UserContext.signUp("bob" + suffix, "password", "",
+                    Builder.buildLocalJavaNetworkAccess(nodeArgs.getInt("port")).join(), crypto).join();
+            List<SignedRecord> records = bob.network.identityRouting.records(aliceId).join();
+            Assert.assertTrue("resolved from the full node", records.stream().anyMatch(r -> r instanceof IdentityInception));
+            Assert.assertFalse("and cached", nodeStore.get(Subject.identity(aliceId)).isEmpty());
+        } finally {
+            stop(services, dirs);
+        }
+    }
+
+    /** The second server has no routing peers, so it learns of an identity on the first only from a hint; then
+     *  that identity logs in through the second server by naming the first.
+     */
+    @Test
+    public void aHintPullsAnIdentityAndANamedServerLogsItIn() throws Exception {
+        Args pkiArgs = pkiArgs();
+        ServerProcesses pki = Main.PKI_INIT.main(pkiArgs);
+        List<ServerProcesses> services = new ArrayList<>(List.of(pki));
+        List<Args> dirs = new ArrayList<>(List.of(pkiArgs));
+        try {
+            PublicKeyHash peergosId = pki.localApi.coreNode.getPublicKeyHash("peergos").join().get();
+            Multihash pkiNodeId = pki.localApi.storage.id().get().bareMultihash();
+            Args nodeArgs = secondServer(pkiArgs, peergosId, pkiNodeId);
             dirs.add(nodeArgs);
             ServerProcesses node = Main.PEERGOS.main(nodeArgs);
             services.add(node);
@@ -102,13 +159,7 @@ public class RoutingDaemonTests {
                 Assert.fail("a hint with a DNS name");
             } catch (IllegalStateException expected) {}
         } finally {
-            for (ServerProcesses s : services) {
-                try { s.localApi.stop(); } catch (Exception e) {}
-                try { s.p2pApi.stop(); } catch (Exception e) {}
-                try { if (s.ipfs != null) s.ipfs.stop(); } catch (Exception e) {}
-            }
-            for (Args a : dirs)
-                deleteFiles(a.fromPeergosDir("", "").toFile());
+            stop(services, dirs);
         }
     }
 
