@@ -12,16 +12,24 @@ import peergos.shared.util.*;
 
 import java.net.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.stream.*;
 
 /** Which relays this server reserves on, whom it relays for, and how a server is dialled through its relays
  *  (remove-pki §4.8). Relays are chosen from the log, those the operator configured first, then any, two in
  *  different address buckets. A relay takes only servers in the log whose proof of work is done, and limits how
- *  often each dialler and each target are connected through it.
+ *  often each dialler and each target are connected through it. A dialler whose proof of work isn't done, so whose
+ *  key cost nothing, shares a small pool with every other such dialler, so a server just created can still reach
+ *  its friends while fresh keys can't get round the per-dialler limit.
+ *
+ *  Both are decided while the relay handles the request, so from the local replica only: a server it doesn't hold
+ *  is refused for now, and looked up in the background for next time.
  */
 public class Relays {
     public static final int MAX_CLIENTS = 1_000, DIALS_PER_INITIATOR_PER_MINUTE = 60, DIALS_PER_TARGET_PER_MINUTE = 600;
+    public static final int UNPROVEN_DIALS_PER_MINUTE = 30, UNPROVEN_DIALS_PER_INITIATOR_PER_MINUTE = 5;
+    private static final long PROVEN_CACHE_MILLIS = 10 * 60_000, UNPROVEN_CACHE_MILLIS = 60_000;
     /** The two named and a spare, so one that is briefly unreachable is reserved on again when it returns, as nabu
      *  dials candidates in order only while it holds fewer than this, and a replacement is already held for a while.
      */
@@ -38,7 +46,16 @@ public class Relays {
     private final Random random;
     private volatile Optional<RoutingLookup> lookup = Optional.empty();
     private volatile Multihash self;
-    private final LRUCache<PeerId, long[]> byInitiator = new LRUCache<>(10_000), byTarget = new LRUCache<>(10_000);
+    private final LRUCache<PeerId, long[]> byInitiator = new LRUCache<>(10_000), byTarget = new LRUCache<>(10_000),
+            unprovenByInitiator = new LRUCache<>(10_000);
+    private final long[] unprovenPool = {0, 0};
+    private final LRUCache<Multihash, long[]> proven = new LRUCache<>(10_000);
+    private final Set<Multihash> fetching = ConcurrentHashMap.newKeySet();
+    private final ExecutorService background = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "Relay lookups");
+        t.setDaemon(true);
+        return t;
+    });
 
     public Relays(List<Multihash> configured, LongSupplier clock, Random random) {
         this(configured, true, TOTAL_BYTES_PER_SECOND, clock, random);
@@ -157,19 +174,67 @@ public class Relays {
 
     /** Only a server whose proof of work is done gets a slot, so filling a relay costs a CPU-hour per slot. */
     public boolean mayReserve(PeerId requestor) {
+        return isProven(requestor);
+    }
+
+    public boolean mayConnect(PeerId target, PeerId initiator) {
+        if (isProven(initiator))
+            return take(byInitiator, initiator, DIALS_PER_INITIATOR_PER_MINUTE)
+                    && take(byTarget, target, DIALS_PER_TARGET_PER_MINUTE);
+        return take(unprovenByInitiator, initiator, UNPROVEN_DIALS_PER_INITIATOR_PER_MINUTE)
+                && take(unprovenPool, UNPROVEN_DIALS_PER_MINUTE)
+                && take(byTarget, target, DIALS_PER_TARGET_PER_MINUTE);
+    }
+
+    /** A server in the local replica whose proof of work is done. */
+    public boolean isProven(PeerId peer) {
         if (lookup.isEmpty())
             return false;
         Multihash id;
         try {
-            id = Multihash.decode(requestor.getBytes());
+            id = Multihash.decode(peer.getBytes()).bareMultihash();
         } catch (RuntimeException e) {
             return false;
         }
-        return lookup.get().server(id).isPresent() && lookup.get().replica().isProven(Subject.server(id), false);
+        long now = clock.getAsLong();
+        synchronized (proven) {
+            long[] cached = proven.get(id);
+            if (cached != null && now - cached[0] < (cached[1] == 1 ? PROVEN_CACHE_MILLIS : UNPROVEN_CACHE_MILLIS))
+                return cached[1] == 1;
+        }
+        RoutingReplica replica = lookup.get().replica();
+        Subject s = Subject.server(id);
+        boolean res = replica.server(s).isPresent() && replica.isProven(s, false);
+        synchronized (proven) {
+            proven.put(id, new long[]{now, res ? 1 : 0});
+        }
+        if (! res && fetching.add(id))
+            background.submit(() -> {
+                try {
+                    if (lookup.get().server(id).isPresent())
+                        synchronized (proven) {
+                            proven.remove(id);
+                        }
+                } catch (RuntimeException e) {
+                } finally {
+                    fetching.remove(id);
+                }
+            });
+        return res;
     }
 
-    public boolean mayConnect(PeerId target, PeerId initiator) {
-        return take(byInitiator, initiator, DIALS_PER_INITIATOR_PER_MINUTE) && take(byTarget, target, DIALS_PER_TARGET_PER_MINUTE);
+    private boolean take(long[] w, int perMinute) {
+        long now = clock.getAsLong();
+        synchronized (w) {
+            if (now - w[0] > 60_000) {
+                w[0] = now;
+                w[1] = 0;
+            }
+            if (w[1] >= perMinute)
+                return false;
+            w[1]++;
+            return true;
+        }
     }
 
     private boolean take(LRUCache<PeerId, long[]> windows, PeerId peer, int perMinute) {
