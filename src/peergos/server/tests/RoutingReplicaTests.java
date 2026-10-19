@@ -301,26 +301,26 @@ public class RoutingReplicaTests {
         ServerInception serverA = ServerInception.build(a, key().publicSigningKey, crypto.hasher).join();
         Multihash peerA = serverA.peerId(), peerB = ServerKeys.peerId(b.publicSigningKey);
         Assert.assertEquals(Outcome.Added, replica.add(Subject.server(peerA), serverA));
-        Assert.assertEquals(Optional.of(peer(peerA)), RoutedCoreNode.currentPeerId(replica, peerA));
+        Assert.assertEquals(Optional.of(peer(peerA)), RoutedCoreNode.currentPeerId(RoutingLookup.full(replica), peerA));
 
         SigningKeyPair first = key();
         IdentityInception inception = IdentityInception.build(first, List.of(peerA), key().publicSigningKey, crypto.hasher).join();
         PublicKeyHash owner = inception.identityHash();
-        Assert.assertEquals("the PKI answers until the identity commits", Optional.empty(), RoutedCoreNode.providers(replica, owner));
+        Assert.assertEquals("the PKI answers until the identity commits", Optional.empty(), RoutedCoreNode.providers(RoutingLookup.full(replica), owner));
         Assert.assertEquals(Outcome.Added, replica.add(Subject.identity(owner), inception));
-        Assert.assertEquals(Optional.of(List.of(peer(peerA))), RoutedCoreNode.providers(replica, owner));
+        Assert.assertEquals(Optional.of(List.of(peer(peerA))), RoutedCoreNode.providers(RoutingLookup.full(replica), owner));
 
         ServerAddresses addrs = ServerAddresses.build(a, endpoint.publicSigningKey, Optional.empty(), direct("/ip4/198.51.100.1/tcp/4001"),
                 List.of(), ServerAddresses.Mode.Archival, false, 1).join();
         Assert.assertEquals(Outcome.Added, replica.add(Subject.server(peerA), addrs));
         Multihash dialled = peer(ServerKeys.peerId(endpoint.publicSigningKey));
-        Assert.assertEquals("a server is dialled on its current endpoint", Optional.of(List.of(dialled)), RoutedCoreNode.providers(replica, owner));
-        Assert.assertEquals(Optional.of(dialled), RoutedCoreNode.currentPeerId(replica, peerA));
+        Assert.assertEquals("a server is dialled on its current endpoint", Optional.of(List.of(dialled)), RoutedCoreNode.providers(RoutingLookup.full(replica), owner));
+        Assert.assertEquals(Optional.of(dialled), RoutedCoreNode.currentPeerId(RoutingLookup.full(replica), peerA));
 
         IdentityMove move = IdentityMove.build(first, List.of(peerB), 1).join();
         Assert.assertEquals(Outcome.Added, replica.add(Subject.identity(owner), move));
         Assert.assertEquals("a server not in the log is named as the move names it",
-                Optional.of(List.of(peer(peerB))), RoutedCoreNode.providers(replica, owner));
+                Optional.of(List.of(peer(peerB))), RoutedCoreNode.providers(RoutingLookup.full(replica), owner));
     }
 
     private static Multihash peer(Multihash m) {
