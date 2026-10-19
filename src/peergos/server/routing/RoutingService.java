@@ -45,6 +45,8 @@ public class RoutingService {
     public static final Command.Arg ARG_ROUTING_LEGACY_STATE_HASH = new Command.Arg("routing-legacy-state-hash",
             "The pinned hash of the PKI's final state", false);
 
+    public static final Command.Arg ARG_ROUTING_MODE = new Command.Arg("routing-mode",
+            "archival, holding every record, or light, asking the routing-peers as its full nodes", false, "archival");
     public static final Command.Arg ARG_ROUTING_WORK_BITS = new Command.Arg("routing-work-bits",
             "Test networks only: one proof of work graph size for identities and servers, which every node must share", false);
     public static final Command.Arg ARG_ROUTING_EXPORT_LEGACY_STATE = new Command.Arg("routing-export-legacy-state",
@@ -52,17 +54,19 @@ public class RoutingService {
 
     public static final List<Command.Arg> ARGS = List.of(ARG_ROUTING_LOG, ARG_ROUTING_SQL_FILE, ARG_ROUTING_PEERS,
             ARG_ROUTING_POW_THREADS, ARG_ROUTING_INCEPTIONS_PER_DAY, ARG_ROUTING_LEGACY_STATE, ARG_ROUTING_LEGACY_STATE_HASH,
-            ARG_ROUTING_WORK_BITS, ARG_ROUTING_EXPORT_LEGACY_STATE);
+            ARG_ROUTING_MODE, ARG_ROUTING_WORK_BITS, ARG_ROUTING_EXPORT_LEGACY_STATE);
 
     private static final long TICK_MILLIS = 60_000, SYNC_MILLIS = 10 * 60_000, ADDRESS_MILLIS = 10 * 60_000;
 
     public final ServerRouting server;
     public final RoutingNode node;
+    public final RoutingLookup lookup;
     private final ScheduledExecutorService timer;
 
-    private RoutingService(ServerRouting server, RoutingNode node, ScheduledExecutorService timer) {
+    private RoutingService(ServerRouting server, RoutingNode node, RoutingLookup lookup, ScheduledExecutorService timer) {
         this.server = server;
         this.node = node;
+        this.lookup = lookup;
         this.timer = timer;
     }
 
@@ -89,6 +93,10 @@ public class RoutingService {
             return Optional.empty();
         }
         PeerId current = PeerId.fromPubKey(priv.publicKey());
+        ServerAddresses.Mode mode = ServerAddresses.Mode.byName(a.getArg(ARG_ROUTING_MODE.name, ARG_ROUTING_MODE.defaultValue.get()));
+        if (mode == ServerAddresses.Mode.Compact)
+            throw new IllegalStateException("Compact routing is not implemented yet");
+        boolean light = mode == ServerAddresses.Mode.Light;
         JdbcRoutingStore store = new JdbcRoutingStore(db, commands);
         int threads = a.getInt(ARG_ROUTING_POW_THREADS.name, Math.max(1, Runtime.getRuntime().availableProcessors() / 2));
         Optional<CuckooCycle> testWork = a.getOptionalArg(ARG_ROUTING_WORK_BITS.name)
@@ -105,21 +113,38 @@ public class RoutingService {
                         .map(Object::toString)
                         .collect(Collectors.toList()))
                         .orElse(Collections.emptyList()),
-                ServerAddresses.Mode.Archival, System::currentTimeMillis);
+                mode, System::currentTimeMillis);
         ExecutorService work = Executors.newFixedThreadPool(4, daemon("Routing replication"));
         RoutingNode node = new RoutingNode(server.replica, crypto.hasher, System::currentTimeMillis,
                 a.getInt(ARG_ROUTING_INCEPTIONS_PER_DAY.name, RateLimits.DEFAULT_INCEPTIONS_PER_DAY),
                 peer -> AddressBucket.UNVERIFIED, peer -> new HttpRoutingPeer(peer, p2p), work);
+        List<RoutingPeer> peers = new ArrayList<>();
         for (String peer : a.getOptionalArg(ARG_ROUTING_PEERS.name).map(s -> s.split(",")).orElse(new String[0]))
             if (! peer.isBlank())
-                node.addSyncPeer(new HttpRoutingPeer(Cid.decodePeerId(peer.trim()).bareMultihash(), p2p));
+                peers.add(new HttpRoutingPeer(Cid.decodePeerId(peer.trim()).bareMultihash(), p2p));
+        RoutingLookup lookup;
+        if (light) {
+            LightLookup lightLookup = new LightLookup(node, server.peerId, peers, System::currentTimeMillis, new Random(), work);
+            server.replica.onChange((s, log) -> work.submit(() -> lightLookup.publish(s, log)));
+            lookup = lightLookup;
+        } else {
+            peers.forEach(node::addSyncPeer);
+            lookup = RoutingLookup.full(server.replica);
+        }
         ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor(daemon("Routing timer"));
         timer.scheduleWithFixedDelay(() -> run(node::tick), TICK_MILLIS, TICK_MILLIS, TimeUnit.MILLISECONDS);
-        timer.scheduleWithFixedDelay(() -> run(node::syncRound), 0, SYNC_MILLIS, TimeUnit.MILLISECONDS);
+        if (light) {
+            Subject self = Subject.server(server.peerId);
+            timer.scheduleWithFixedDelay(() -> run(() -> ((LightLookup) lookup).publish(self, server.replica.log(self))),
+                    0, SYNC_MILLIS, TimeUnit.MILLISECONDS);
+        } else
+            timer.scheduleWithFixedDelay(() -> run(node::syncRound), 0, SYNC_MILLIS, TimeUnit.MILLISECONDS);
         timer.scheduleWithFixedDelay(() -> run(addresses::refresh), 0, ADDRESS_MILLIS, TimeUnit.MILLISECONDS);
         reachability.ifPresent(r -> r.addListener(state -> timer.execute(() -> run(addresses::refresh))));
-        LOG.info("Routing log started for " + server.peerId + " with " + node.syncPeers().size() + " sync peers");
-        return Optional.of(new RoutingService(server, node, timer));
+        LOG.info("Routing log started for " + server.peerId + (light ?
+                " as a light server asking " + peers.size() + " full nodes" :
+                " with " + node.syncPeers().size() + " sync peers"));
+        return Optional.of(new RoutingService(server, node, lookup, timer));
     }
 
     private static void run(Runnable r) {
