@@ -12,19 +12,22 @@ import java.net.*;
 import java.util.*;
 import java.util.function.*;
 import java.util.logging.*;
+import java.util.stream.*;
 
 /** Keeps this server's ServerAddresses current (remove-pki §4.1, §4.8, §10.11). It lists the IP literals the
  *  operator announces, and the addresses AutoNAT has confirmed dialable once they have stayed confirmed for a week,
  *  so an address that changes more often is never listed. A server with a direct address relays, if allowed; one
  *  without names the relays it holds reservations on. A record is signed only when its content changes, since
- *  peers take a burst of three and then one a month, so a relay is named only once held for a while, and kept for
- *  hours after it fails, while the other covers the gap.
+ *  peers take a burst of three and then one a month, so the relays named stay the same unless one is gone for
+ *  hours.
  */
 public class ServerAddressPublisher {
     private static final Logger LOG = Logging.LOG();
     private static final Set<String> NAMED = Set.of("dns", "dns4", "dns6", "dnsaddr", "p2p-circuit");
-    static final String META_KEY = "server-addresses", RELAYS_META_KEY = "server-relays";
-    public static final long RELAY_STABLE_MILLIS = 10 * 60_000, RELAY_FORGET_MILLIS = 6 * 3600_000L;
+    static final String META_KEY = "server-addresses", RELAYS_META_KEY = "server-relays", FAILED_META_KEY = "server-relays-failed";
+    public static final int NAMED_RELAYS = 2;
+    public static final long RELAY_STABLE_MILLIS = 10 * 60_000, RELAY_FORGET_MILLIS = 6 * 3600_000L,
+            RELAY_REPLACE_MILLIS = 6 * 3600_000L, RELAY_FAILED_MILLIS = 7 * 24 * 3600_000L;
     public static final long STABLE_MILLIS = 7 * 24 * 3600_000L;
     /** An address unconfirmed for this long is dropped, and must be confirmed for a week again to return; a shorter
      *  gap, a restart or a failed probe, keeps it listed.
@@ -90,22 +93,96 @@ public class ServerAddressPublisher {
                 .sorted(Comparator.comparing(a -> ArrayOps.bytesToHex(a.address)))
                 .forEach(listed::add);
 
-        Map<Multihash, Seen> held = loadSeen(RELAYS_META_KEY, c -> Multihash.decode(((CborObject.CborByteArray) c).value));
-        for (Multihash relay : relays.get()) {
-            Seen prior = held.get(relay.bareMultihash());
-            held.put(relay.bareMultihash(), new Seen(prior == null ? now : prior.first, now));
-        }
-        held.values().removeIf(v -> now - v.last > RELAY_FORGET_MILLIS);
-        saveSeen(RELAYS_META_KEY, held);
-        List<Multihash> named = listed.isEmpty() ?
-                held.entrySet().stream()
-                        .filter(e -> now - e.getValue().first >= RELAY_STABLE_MILLIS)
-                        .map(Map.Entry::getKey)
-                        .sorted(Comparator.comparing(Multihash::toString))
-                        .limit(2)
-                        .collect(java.util.stream.Collectors.toList()) :
-                List.of();
+        List<Multihash> named = listed.isEmpty() ? relays(now) : List.of();
         return publish(replica, serverKey, listed, named, mayRelay && ! listed.isEmpty(), mode, clock);
+    }
+
+    /** The relays to name: those already named, each kept until it has been gone for hours, so a restart or a
+     *  new IP, after which this server reserves on them again, changes nothing. A gone one is replaced by a
+     *  relay held for a while, in its slot, one at a time and only while the other is held, and is not used again
+     *  for a week.
+     */
+    private List<Multihash> relays(long now) {
+        Set<Multihash> current = new HashSet<>();
+        relays.get().forEach(r -> current.add(r.bareMultihash()));
+        Map<Multihash, Seen> held = loadSeen(RELAYS_META_KEY, ServerAddressPublisher::multihash);
+        for (Multihash relay : current) {
+            Seen prior = held.get(relay);
+            held.put(relay, new Seen(prior == null ? now : prior.first, now));
+        }
+        List<Multihash> named = new ArrayList<>(published(replica, serverKey));
+        for (Multihash r : named)
+            held.putIfAbsent(r, new Seen(now, now)); // a lost store gives the named relays a fresh grace period
+        held.entrySet().removeIf(e -> ! named.contains(e.getKey()) && now - e.getValue().last > RELAY_FORGET_MILLIS);
+        Map<Multihash, Seen> failed = loadSeen(FAILED_META_KEY, ServerAddressPublisher::multihash);
+        failed.values().removeIf(v -> now - v.last > RELAY_FAILED_MILLIS);
+
+        Predicate<Multihash> gone = r -> now - held.get(r).last > RELAY_REPLACE_MILLIS || retired(r);
+        for (int i = 0; i < named.size(); i++) {
+            Multihash r = named.get(i);
+            if (! gone.test(r))
+                continue;
+            boolean othersHeld = named.stream().filter(o -> ! o.equals(r)).allMatch(current::contains);
+            if (! othersHeld && ! named.stream().allMatch(gone))
+                continue;
+            Optional<Multihash> spare = spare(current, held, named, failed, now);
+            if (spare.isEmpty())
+                break;
+            named.set(i, spare.get());
+            failed.put(r, new Seen(now, now));
+            break;
+        }
+        while (named.size() < NAMED_RELAYS) {
+            Optional<Multihash> spare = spare(current, held, named, failed, now);
+            if (spare.isEmpty())
+                break;
+            named.add(spare.get());
+        }
+        saveSeen(RELAYS_META_KEY, held);
+        saveSeen(FAILED_META_KEY, failed);
+        return named;
+    }
+
+    /** The relay held longest, if held long enough, that isn't named and hasn't failed lately. */
+    private static Optional<Multihash> spare(Set<Multihash> current, Map<Multihash, Seen> held, List<Multihash> named,
+                                             Map<Multihash, Seen> failed, long now) {
+        return current.stream()
+                .filter(r -> ! named.contains(r) && ! failed.containsKey(r))
+                .filter(r -> now - held.get(r).first >= RELAY_STABLE_MILLIS)
+                .min(Comparator.<Multihash>comparingLong(r -> held.get(r).first).thenComparing(Multihash::toString));
+    }
+
+    /** A relay whose own record says it no longer relays. One we hold no record of isn't retired, since a light
+     *  server holds few.
+     */
+    private boolean retired(Multihash relay) {
+        return replica.server(Subject.server(relay)).flatMap(ServerLog::addresses)
+                .map(a -> ! a.relaying || a.addrs.isEmpty())
+                .orElse(false);
+    }
+
+    static List<Multihash> published(RoutingReplica replica, SigningKeyPair serverKey) {
+        return replica.server(Subject.server(ServerKeys.peerId(serverKey.publicSigningKey)))
+                .flatMap(ServerLog::addresses)
+                .map(a -> a.relays.stream().map(Multihash::bareMultihash).collect(Collectors.toList()))
+                .orElse(List.of());
+    }
+
+    /** Relays dropped from this server's record in the last week, which it doesn't reserve on again. */
+    public static Set<Multihash> recentlyFailed(RoutingReplica replica, long now) {
+        Set<Multihash> res = new HashSet<>();
+        replica.store().getMeta(FAILED_META_KEY).ifPresent(raw -> {
+            for (Cborable c : ((CborObject.CborList) CborObject.fromByteArray(raw)).value) {
+                CborObject.CborMap m = (CborObject.CborMap) c;
+                if (now - m.getLong("l") <= RELAY_FAILED_MILLIS)
+                    res.add(multihash(m.get("a")));
+            }
+        });
+        return res;
+    }
+
+    private static Multihash multihash(Cborable c) {
+        return Multihash.decode(((CborObject.CborByteArray) c).value);
     }
 
     private static class Seen {
@@ -232,8 +309,8 @@ public class ServerAddressPublisher {
         return held.endpoint.equals(endpoint)
                 && held.kem.isEmpty()
                 && held.addrs.equals(addrs)
-                && held.relays.stream().map(Multihash::bareMultihash).collect(java.util.stream.Collectors.toList())
-                        .equals(relays.stream().map(Multihash::bareMultihash).collect(java.util.stream.Collectors.toList()))
+                && held.relays.stream().map(Multihash::bareMultihash).collect(Collectors.toList())
+                        .equals(relays.stream().map(Multihash::bareMultihash).collect(Collectors.toList()))
                 && held.mode == mode
                 && held.relaying == relaying;
     }
