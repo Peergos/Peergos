@@ -1143,11 +1143,11 @@ public class Main extends Builder {
                         localStorageForLinks, p2pHttpProxy)
                         .ifPresent(routing -> {
                             p2pAPI.startRoutingApi(new RoutingHandler(routing.node));
-                            localStorage.setIdentityKeys(HostedIdentityRouting.keys(routing.server.replica));
+                            localStorage.setIdentityKeys(HostedIdentityRouting.keys(routing.lookup));
                             Optional<Hints> hints = Optional.ofNullable(ipfsWrapper).flatMap(IpfsWrapper::addressBook)
                                     .map(book -> new Hints(book, routing.node, routing.server.peerId, ipfsWrapper.swarmAddresses(), Hints::interfaceAddresses));
-                            identityRouting.start(routing.server, routing.node::dial, hints);
-                            core.start(routing.server.replica);
+                            identityRouting.start(routing.server, routing.lookup, routing.node::dial, hints);
+                            core.start(routing.lookup);
                         });
                 if (isPki)
                     RoutingService.exportLegacy(a, ContentAddressedStorage.hashKey(PublicSigningKey.fromByteArray(
