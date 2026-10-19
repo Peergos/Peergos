@@ -262,7 +262,7 @@ public class MirrorCoreNode implements CoreNode {
             Map<String, Cborable> res = new TreeMap<>();
             res.put("peergosKey", roots.pkiOwnerIdentity);
             res.put("peergosTarget", roots.pkiOwnerTarget);
-            res.put("pkiKey", roots.pkiOwnerIdentity);
+            res.put("pkiKey", roots.pkiKey);
             res.put("pkiTarget", roots.pkiKeyTarget);
 
             TreeMap<String, Cborable> chainsMap = chains.entrySet()
