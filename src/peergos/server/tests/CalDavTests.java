@@ -223,6 +223,27 @@ public class CalDavTests {
             Assert.assertFalse("unrequested event: " + multiget.body(), multiget.body().contains("UID:march-event"));
             Assert.assertTrue("missing href reported: " + multiget.body(), multiget.body().contains("404"));
 
+            // free-busy-query answers with a VFREEBUSY: the weekly series' Monday and the
+            // March event, nothing of the July one, and nothing of what they are.
+            HttpResponse<String> freeBusy = report(client, auth, base + calendarHref,
+                    "<C:free-busy-query xmlns:C=\"urn:ietf:params:xml:ns:caldav\">"
+                            + "<C:time-range start=\"20240311T000000Z\" end=\"20240318T000000Z\"/></C:free-busy-query>");
+            Assert.assertEquals(200, freeBusy.statusCode());
+            Assert.assertTrue(freeBusy.headers().firstValue("Content-Type").orElse("").startsWith("text/calendar"));
+            Assert.assertTrue("weekly occurrence: " + freeBusy.body(),
+                    freeBusy.body().contains("FREEBUSY;FBTYPE=BUSY:20240311T090000Z/20240311T100000Z"));
+            Assert.assertTrue("March event: " + freeBusy.body(),
+                    freeBusy.body().contains("FREEBUSY;FBTYPE=BUSY:20240315T090000Z/20240315T100000Z"));
+            Assert.assertEquals("exactly those two: " + freeBusy.body(), 2, freeBusy.body().split("FREEBUSY;").length - 1);
+            Assert.assertFalse("no titles: " + freeBusy.body(), freeBusy.body().contains("SUMMARY"));
+            Assert.assertEquals(400, report(client, auth, base + calendarHref,
+                    "<C:free-busy-query xmlns:C=\"urn:ietf:params:xml:ns:caldav\"/>").statusCode());
+            HttpResponse<String> reports = propfind(client, auth, base + calendarHref, "0",
+                    "<D:propfind xmlns:D=\"DAV:\"><D:prop><D:supported-report-set/><D:current-user-privilege-set/>"
+                            + "</D:prop></D:propfind>");
+            Assert.assertTrue("free-busy-query advertised: " + reports.body(), reports.body().contains("free-busy-query"));
+            Assert.assertTrue("read-free-busy granted: " + reports.body(), reports.body().contains("read-free-busy"));
+
             // An initial sync-collection enumerates everything and hands back a token; the
             // same token means nothing changed.
             HttpResponse<String> initialSync = report(client, auth, base + calendarHref,
