@@ -752,7 +752,7 @@ public class MirrorCoreNode implements CoreNode {
                 if (! localMirrorBats.contains(bat))
                     batCave.addBat(username, bat.id(), bat.bat, new byte[0]);
             }
-            List<Multihash> storageProviders = getStorageProviders(owner);
+            List<Multihash> storageProviders = getStorageProviders(owner).join();
             // Mirror all the data locally
             Mirror.mirrorUser(username, Optional.empty(), mirrorBat, this, routingPointers, null,
                     ipfs, rawPointers, rawAccount, transactions, linkCounts, usageStore, hasher);
@@ -859,16 +859,14 @@ public class MirrorCoreNode implements CoreNode {
     }
 
     @Override
-    public List<Multihash> getStorageProviders(PublicKeyHash owner) {
-        String username = getUsername(owner).join();
-        List<UserPublicKeyLink> chain = getChain(username).join();
-        if (chain.isEmpty())
-            return Collections.emptyList();
-        List<Multihash> fromPki = chain.get(chain.size() - 1).claim.storageProviders;
-        List<Multihash> withIdRotations = fromPki.stream()
-                .map(h -> rotatedServers.getOrDefault(h.bareMultihash(), h))
-                .collect(Collectors.toList());
-        return withIdRotations;
+    public CompletableFuture<List<Multihash>> getStorageProviders(PublicKeyHash owner) {
+        return getUsername(owner)
+                .thenCompose(this::getChain)
+                .thenApply(chain -> chain.isEmpty() ?
+                        Collections.emptyList() :
+                        chain.get(chain.size() - 1).claim.storageProviders.stream()
+                                .map(h -> rotatedServers.getOrDefault(h.bareMultihash(), h))
+                                .collect(Collectors.toList()));
     }
 
     private final LRUCache<Multihash, Multihash> rotatedServers = new LRUCache<>(100);

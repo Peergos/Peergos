@@ -59,15 +59,18 @@ public class RoutedCoreNode implements CoreNode {
     }
 
     @Override
-    public List<Multihash> getStorageProviders(PublicKeyHash owner) {
+    public CompletableFuture<List<Multihash>> getStorageProviders(PublicKeyHash owner) {
         return lookup.flatMap(r -> providers(r, owner))
+                .map(Futures::of)
                 .orElseGet(() -> pki.getStorageProviders(owner));
     }
 
     @Override
     public CompletableFuture<Optional<Multihash>> getHomeServer(String username) {
         return getPublicKeyHash(username)
-                .thenApply(owner -> owner.flatMap(o -> getStorageProviders(o).stream().findFirst()));
+                .thenCompose(owner -> owner.isEmpty() ?
+                        Futures.of(Optional.empty()) :
+                        getStorageProviders(owner.get()).thenApply(ids -> ids.stream().findFirst()));
     }
 
     @Override
