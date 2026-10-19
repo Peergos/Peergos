@@ -279,8 +279,11 @@ public class HostedIdentityRouting implements IdentityRouting {
         if (routing.isEmpty())
             return Futures.of(Collections.emptyList());
         try {
-            if (lookup.identity(identity).isEmpty())
+            if (lookup.identity(identity).isEmpty()) {
+                if (! lookup.isSynced())
+                    return Futures.errored(new IllegalStateException(RoutingNode.NOT_SYNCED));
                 return Futures.of(Collections.emptyList());
+            }
             return Futures.of(running().replica.records(Subject.identity(identity), dial));
         } catch (Exception e) {
             return Futures.errored(e);

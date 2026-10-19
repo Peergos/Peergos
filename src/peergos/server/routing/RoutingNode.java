@@ -22,6 +22,8 @@ public class RoutingNode {
     public static final int ITEMS = 32, SPLIT = 8, PAGE = 1000, BATCH = 16;
     public static final int MAX_FETCHING_PER_PEER = 64, UNPROVEN_CACHE = 1000, MAX_OFFERS_PER_SERVER = 1000;
     public static final long MAX_BYTES_PER_PEER = 64 * 1024 * 1024;
+    /** Peers a round must reach, or all of them if fewer, before it can show this node is synced. */
+    public static final int SYNCED_PEERS = 3;
 
     private final RoutingReplica replica;
     private final Hasher hasher;
@@ -37,6 +39,8 @@ public class RoutingNode {
     private final Map<Multihash, AtomicInteger> fetching = new ConcurrentHashMap<>();
     private final Map<Multihash, AtomicLong> charged = new ConcurrentHashMap<>();
     private final ExecutorService work;
+    private volatile Set<Multihash> configured = Set.of();
+    private volatile boolean synced;
 
     private static final class Offer {
         final RoutingPeer from;
@@ -93,6 +97,27 @@ public class RoutingNode {
         return replica;
     }
 
+    /** The operator's own choice of peers, one of which must take part in the round that shows this node synced. */
+    public void setConfigured(Collection<Multihash> peers) {
+        Set<Multihash> res = new HashSet<>();
+        peers.forEach(p -> res.add(p.bareMultihash()));
+        configured = res;
+    }
+
+    /** Whether a round of reconciliation has found nothing to fetch (remove-pki §4.3.1 step 6). Until then a subject
+     *  this node lacks may simply not have reached it, so it answers "not synced yet" rather than "not found".
+     */
+    public boolean isSynced() {
+        return synced;
+    }
+
+    public void requireSynced(Subject s) {
+        if (! synced && ! replica.log(s).exists())
+            throw new IllegalStateException(NOT_SYNCED);
+    }
+
+    public static final String NOT_SYNCED = "The routing log here is not synced yet";
+
     public RoutingPeer dial(Multihash peer) {
         return dial.apply(peer);
     }
@@ -111,7 +136,14 @@ public class RoutingNode {
 
     // ---- answering other nodes
 
+    /** A server asked for by a later peerid, its current key's or its endpoint's, is answered with its records. */
     public List<SignedRecord> records(Subject s) {
+        if (! s.isIdentity() && ! replica.log(s).exists()) {
+            Optional<ServerLog> byPeer = replica.serverForPeer(s.id);
+            if (byPeer.isPresent())
+                return replica.records(byPeer.get().subject(), dial);
+        }
+        requireSynced(s);
         return replica.records(s, dial);
     }
 
@@ -205,7 +237,7 @@ public class RoutingNode {
      *  its turn in its admitting server's address bucket unless it comes from that queue or is catch-up.
      */
     Outcome accept(RoutingPeer from, Subject requested, List<SignedRecord> records, boolean fromQueue) {
-        Subject s = replica.canonical(requested);
+        Subject s = ownSubject(replica.canonical(requested), records);
         boolean catchUp = isCatchUp(s, replica.stateHash(records));
         SubjectLog log = replica.log(s);
         if (log.inception().isEmpty()) {
@@ -263,6 +295,18 @@ public class RoutingNode {
         if (replica.log(s).inception().isPresent())
             unproven.remove(s);
         return res;
+    }
+
+    /** A server's records sent for one of its later peerids belong to its first. */
+    private Subject ownSubject(Subject s, List<SignedRecord> records) {
+        if (s.isIdentity() || replica.log(s).exists())
+            return s;
+        return records.stream()
+                .filter(r -> r instanceof ServerInception)
+                .map(r -> Subject.server(((ServerInception) r).peerId()))
+                .findFirst()
+                .map(replica::canonical)
+                .orElse(s);
     }
 
     private static Optional<Multihash> admitter(SignedRecord inception) {
@@ -402,7 +446,11 @@ public class RoutingNode {
     public int syncRound() {
         Map<Subject, Map<ByteArrayWrapper, List<RoutingPeer>>> wanted = new TreeMap<>(
                 Comparator.comparingInt((Subject s) -> s.isIdentity() ? 1 : 0).thenComparing(s -> s));
-        for (RoutingPeer peer : new ArrayList<>(syncPeers.values())) {
+        List<RoutingPeer> peers = new ArrayList<>(syncPeers.values());
+        int reached = 0;
+        boolean reachedConfigured = false;
+        for (RoutingPeer peer : peers) {
+            boolean ok = true;
             for (int kind : new int[]{Subject.SERVER, Subject.IDENTITY}) {
                 try {
                     for (JdbcRoutingStore.State st : differences(peer, kind))
@@ -410,11 +458,16 @@ public class RoutingNode {
                                 .computeIfAbsent(new ByteArrayWrapper(st.hash), h -> new ArrayList<>())
                                 .add(peer);
                 } catch (Throwable t) {
+                    ok = false;
                     LOG.log(Level.INFO, "Reconciling with " + peer.id() + " failed: " + t.getMessage());
                 }
             }
+            if (ok) {
+                reached++;
+                reachedConfigured |= configured.contains(peer.id().bareMultihash());
+            }
         }
-        int changed = 0;
+        int changed = 0, failed = 0;
         for (Map.Entry<Subject, Map<ByteArrayWrapper, List<RoutingPeer>>> e : wanted.entrySet()) {
             List<RoutingPeer> holders = e.getValue().values().stream()
                     .max(Comparator.comparingInt(List::size))
@@ -425,9 +478,17 @@ public class RoutingNode {
                         changed++;
                     break;
                 } catch (Throwable t) {
+                    if (holder == holders.get(holders.size() - 1))
+                        failed++;
                     LOG.log(Level.FINE, "Fetching " + e.getKey() + " failed: " + t.getMessage());
                 }
             }
+        }
+        boolean enough = reached >= Math.min(SYNCED_PEERS, peers.size())
+                && (reachedConfigured || peers.stream().noneMatch(p -> configured.contains(p.id().bareMultihash())));
+        if (! synced && changed == 0 && failed == 0 && enough) {
+            synced = true;
+            LOG.info("The routing log is synced, after a round with " + reached + " peers found nothing new");
         }
         return changed;
     }
