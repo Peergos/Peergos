@@ -1146,7 +1146,8 @@ public class Main extends Builder {
                     a.getBoolean("include-csp", true), basicAuth, webroot, Optional.empty(), useWebAssetCache, isPublicServer, maxConnectionQueue, handlerThreads);
             try {
                 RoutingService.start(a, Optional.ofNullable(ipfsWrapper).flatMap(IpfsWrapper::identityKey),
-                        Optional.ofNullable(ipfsWrapper).flatMap(IpfsWrapper::reachability), ids, crypto, sqlCommands, getDBConnector(a, RoutingService.ARG_ROUTING_SQL_FILE.name, dbConnectionPool),
+                        Optional.ofNullable(ipfsWrapper).flatMap(IpfsWrapper::reachability),
+                        () -> ipfsWrapper == null ? List.of() : ipfsWrapper.heldRelays(), ids, crypto, sqlCommands, getDBConnector(a, RoutingService.ARG_ROUTING_SQL_FILE.name, dbConnectionPool),
                         localStorageForLinks, p2pHttpProxy)
                         .ifPresent(routing -> {
                             p2pAPI.startRoutingApi(new RoutingHandler(routing.node));
@@ -1155,6 +1156,8 @@ public class Main extends Builder {
                                     .map(book -> new Hints(book, routing.node, routing.server.peerId, ipfsWrapper.swarmAddresses(), Hints::interfaceAddresses));
                             identityRouting.start(routing.server, routing.lookup, routing.node::dial, hints);
                             core.start(routing.lookup);
+                            Optional.ofNullable(ipfsWrapper).flatMap(IpfsWrapper::relays)
+                                    .ifPresent(relays -> relays.start(routing.lookup, routing.server.peerId));
                         });
                 if (isPki)
                     RoutingService.exportLegacy(a, ContentAddressedStorage.hashKey(PublicSigningKey.fromByteArray(

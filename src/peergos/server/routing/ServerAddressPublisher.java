@@ -13,15 +13,18 @@ import java.util.*;
 import java.util.function.*;
 import java.util.logging.*;
 
-/** Keeps this server's ServerAddresses current (remove-pki §4.1, §10.11). It lists the IP literals the operator
- *  announces, and the addresses AutoNAT has confirmed dialable once they have stayed confirmed for a week, so an
- *  address that changes more often is never listed; until relays exist none are named. A record is signed only
- *  when its content changes, since peers take a burst of three and then one a month.
+/** Keeps this server's ServerAddresses current (remove-pki §4.1, §4.8, §10.11). It lists the IP literals the
+ *  operator announces, and the addresses AutoNAT has confirmed dialable once they have stayed confirmed for a week,
+ *  so an address that changes more often is never listed. A server with a direct address relays, if allowed; one
+ *  without names the relays it holds reservations on. A record is signed only when its content changes, since
+ *  peers take a burst of three and then one a month, so a relay is named only once held for a while, and kept for
+ *  hours after it fails, while the other covers the gap.
  */
 public class ServerAddressPublisher {
     private static final Logger LOG = Logging.LOG();
     private static final Set<String> NAMED = Set.of("dns", "dns4", "dns6", "dnsaddr", "p2p-circuit");
-    static final String META_KEY = "server-addresses";
+    static final String META_KEY = "server-addresses", RELAYS_META_KEY = "server-relays";
+    public static final long RELAY_STABLE_MILLIS = 10 * 60_000, RELAY_FORGET_MILLIS = 6 * 3600_000L;
     public static final long STABLE_MILLIS = 7 * 24 * 3600_000L;
     /** An address unconfirmed for this long is dropped, and must be confirmed for a week again to return; a shorter
      *  gap, a restart or a failed probe, keeps it listed.
@@ -33,6 +36,8 @@ public class ServerAddressPublisher {
     private final List<Address> announced;
     private final Supplier<List<String>> confirmed;
     private final ServerAddresses.Mode mode;
+    private final Supplier<List<Multihash>> relays;
+    private final boolean mayRelay;
     private final LongSupplier clock;
 
     public ServerAddressPublisher(RoutingReplica replica,
@@ -41,24 +46,41 @@ public class ServerAddressPublisher {
                                   Supplier<List<String>> confirmed,
                                   ServerAddresses.Mode mode,
                                   LongSupplier clock) {
+        this(replica, serverKey, announced, confirmed, mode, Collections::emptyList, false, clock);
+    }
+
+    /**
+     * @param relays the relays this server holds reservations on now
+     * @param mayRelay whether the operator lets this server relay for others once it has a direct address
+     */
+    public ServerAddressPublisher(RoutingReplica replica,
+                                  SigningKeyPair serverKey,
+                                  List<String> announced,
+                                  Supplier<List<String>> confirmed,
+                                  ServerAddresses.Mode mode,
+                                  Supplier<List<Multihash>> relays,
+                                  boolean mayRelay,
+                                  LongSupplier clock) {
         this.replica = replica;
         this.serverKey = serverKey;
         this.announced = directAddresses(announced);
         this.confirmed = confirmed;
         this.mode = mode;
+        this.relays = relays;
+        this.mayRelay = mayRelay;
         this.clock = clock;
     }
 
     /** Records which addresses are confirmed now, and publishes a new record if what should be listed changed. */
     public synchronized Optional<ServerAddresses> refresh() {
         long now = clock.getAsLong();
-        Map<Address, Seen> seen = loadSeen();
+        Map<Address, Seen> seen = loadSeen(META_KEY, Address::fromCbor);
         for (Address a : directAddresses(confirmed.get())) {
             Seen prior = seen.get(a);
             seen.put(a, new Seen(prior == null ? now : prior.first, now));
         }
         seen.values().removeIf(v -> now - v.last > FORGET_MILLIS);
-        saveSeen(seen);
+        saveSeen(META_KEY, seen);
 
         List<Address> listed = new ArrayList<>(announced);
         seen.entrySet().stream()
@@ -67,7 +89,23 @@ public class ServerAddressPublisher {
                 .filter(a -> ! listed.contains(a))
                 .sorted(Comparator.comparing(a -> ArrayOps.bytesToHex(a.address)))
                 .forEach(listed::add);
-        return publish(replica, serverKey, listed, mode, clock);
+
+        Map<Multihash, Seen> held = loadSeen(RELAYS_META_KEY, c -> Multihash.decode(((CborObject.CborByteArray) c).value));
+        for (Multihash relay : relays.get()) {
+            Seen prior = held.get(relay.bareMultihash());
+            held.put(relay.bareMultihash(), new Seen(prior == null ? now : prior.first, now));
+        }
+        held.values().removeIf(v -> now - v.last > RELAY_FORGET_MILLIS);
+        saveSeen(RELAYS_META_KEY, held);
+        List<Multihash> named = listed.isEmpty() ?
+                held.entrySet().stream()
+                        .filter(e -> now - e.getValue().first >= RELAY_STABLE_MILLIS)
+                        .map(Map.Entry::getKey)
+                        .sorted(Comparator.comparing(Multihash::toString))
+                        .limit(2)
+                        .collect(java.util.stream.Collectors.toList()) :
+                List.of();
+        return publish(replica, serverKey, listed, named, mayRelay && ! listed.isEmpty(), mode, clock);
     }
 
     private static class Seen {
@@ -79,27 +117,28 @@ public class ServerAddressPublisher {
         }
     }
 
-    private Map<Address, Seen> loadSeen() {
-        Map<Address, Seen> res = new HashMap<>();
-        replica.store().getMeta(META_KEY).ifPresent(raw -> {
+    private <K> Map<K, Seen> loadSeen(String key, Function<Cborable, K> fromCbor) {
+        Map<K, Seen> res = new HashMap<>();
+        replica.store().getMeta(key).ifPresent(raw -> {
             for (Cborable c : ((CborObject.CborList) CborObject.fromByteArray(raw)).value) {
                 CborObject.CborMap m = (CborObject.CborMap) c;
-                res.put(Address.fromCbor(m.get("a")), new Seen(m.getLong("f"), m.getLong("l")));
+                res.put(fromCbor.apply(m.get("a")), new Seen(m.getLong("f"), m.getLong("l")));
             }
         });
         return res;
     }
 
-    private void saveSeen(Map<Address, Seen> seen) {
+    private <K> void saveSeen(String key, Map<K, Seen> seen) {
         List<Cborable> entries = new ArrayList<>();
-        for (Map.Entry<Address, Seen> e : seen.entrySet()) {
+        for (Map.Entry<K, Seen> e : seen.entrySet()) {
             SortedMap<String, Cborable> m = new TreeMap<>();
-            m.put("a", e.getKey());
+            K k = e.getKey();
+            m.put("a", k instanceof Multihash ? new CborObject.CborByteArray(((Multihash) k).toBytes()) : (Cborable) k);
             m.put("f", new CborObject.CborLong(e.getValue().first));
             m.put("l", new CborObject.CborLong(e.getValue().last));
             entries.add(CborObject.CborMap.build(m));
         }
-        replica.store().setMeta(META_KEY, new CborObject.CborList(entries).serialize());
+        replica.store().setMeta(key, new CborObject.CborList(entries).serialize());
     }
 
     /** The announced addresses fit to publish: public IP literals, without DNS names, relay circuits or a peerid. */
@@ -162,27 +201,40 @@ public class ServerAddressPublisher {
                                                     List<Address> addrs,
                                                     ServerAddresses.Mode mode,
                                                     LongSupplier clock) {
+        return publish(replica, serverKey, addrs, List.of(), false, mode, clock);
+    }
+
+    public static Optional<ServerAddresses> publish(RoutingReplica replica,
+                                                    SigningKeyPair serverKey,
+                                                    List<Address> addrs,
+                                                    List<Multihash> relays,
+                                                    boolean relaying,
+                                                    ServerAddresses.Mode mode,
+                                                    LongSupplier clock) {
         Subject self = Subject.server(ServerKeys.peerId(serverKey.publicSigningKey));
         Optional<ServerAddresses> held = replica.server(self).flatMap(ServerLog::addresses);
         PublicSigningKey endpoint = serverKey.publicSigningKey;
-        if (held.isPresent() && sameContent(held.get(), endpoint, addrs, mode))
+        if (held.isPresent() && sameContent(held.get(), endpoint, addrs, relays, relaying, mode))
             return Optional.empty();
         long counter = Math.max(clock.getAsLong(), held.map(h -> h.counter + 1).orElse(0L));
-        ServerAddresses record = ServerAddresses.build(serverKey, endpoint, Optional.empty(), addrs, List.of(), mode,
-                false, counter).join();
+        ServerAddresses record = ServerAddresses.build(serverKey, endpoint, Optional.empty(), addrs, relays, mode,
+                relaying, counter).join();
         Outcome res = replica.add(self, record);
         if (res != Outcome.Added)
             throw new IllegalStateException("Couldn't add our own server addresses: " + res);
-        LOG.info("Published this server's addresses to the routing log: " + addrs.size() + " direct");
+        LOG.info("Published this server's addresses to the routing log: " + addrs.size() + " direct, " +
+                relays.size() + " relays" + (relaying ? ", relaying" : ""));
         return Optional.of(record);
     }
 
-    private static boolean sameContent(ServerAddresses held, PublicSigningKey endpoint, List<Address> addrs, ServerAddresses.Mode mode) {
+    private static boolean sameContent(ServerAddresses held, PublicSigningKey endpoint, List<Address> addrs,
+                                       List<Multihash> relays, boolean relaying, ServerAddresses.Mode mode) {
         return held.endpoint.equals(endpoint)
                 && held.kem.isEmpty()
                 && held.addrs.equals(addrs)
-                && held.relays.isEmpty()
+                && held.relays.stream().map(Multihash::bareMultihash).collect(java.util.stream.Collectors.toList())
+                        .equals(relays.stream().map(Multihash::bareMultihash).collect(java.util.stream.Collectors.toList()))
                 && held.mode == mode
-                && ! held.relaying;
+                && held.relaying == relaying;
     }
 }
