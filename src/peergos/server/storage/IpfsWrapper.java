@@ -292,6 +292,18 @@ public class IpfsWrapper implements AutoCloseable {
                 .collect(Collectors.toList());
     }
 
+    /** Connects to a peer at these addresses, giving the IP the connection reached it on. */
+    public java.util.concurrent.CompletableFuture<Optional<java.net.InetAddress>> reach(peergos.shared.io.ipfs.Multihash peer, List<String> addrs) {
+        if (embeddedIpfs == null)
+            return java.util.concurrent.CompletableFuture.completedFuture(Optional.empty());
+        io.libp2p.core.PeerId id = io.libp2p.core.PeerId.fromBase58(peer.bareMultihash().toBase58());
+        io.libp2p.core.multiformats.Multiaddr[] targets = addrs.stream()
+                .map(io.libp2p.core.multiformats.Multiaddr::fromString)
+                .toArray(io.libp2p.core.multiformats.Multiaddr[]::new);
+        return embeddedIpfs.node.getNetwork().connect(id, targets)
+                .thenApply(conn -> peergos.server.routing.BucketVerifier.ip(conn.remoteAddress().toString()));
+    }
+
     public Optional<PrivKey> identityKey() {
         return ipfsConfigParams.identity.map(id -> KeyKt.unmarshalPrivateKey(id.privKeyProtobuf));
     }
