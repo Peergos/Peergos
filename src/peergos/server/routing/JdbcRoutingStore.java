@@ -33,6 +33,11 @@ public class JdbcRoutingStore {
     private static final String PUT_LEGACY = "INSERT INTO routinglegacy (kind, subject, legacy) VALUES (?, ?, ?) ON CONFLICT DO NOTHING;";
     private static final String PUT_ALIAS = "INSERT INTO routingaliases (kind, alias, subject) VALUES (?, ?, ?) ON CONFLICT DO NOTHING;";
     private static final String GET_ALIAS = "SELECT subject FROM routingaliases WHERE kind = ? AND alias = ?;";
+    private static final String REMOVE_PEERS = "DELETE FROM routingpeers WHERE subject = ?;";
+    private static final String PUT_PEER = "INSERT INTO routingpeers (peer, subject, keyed) VALUES (?, ?, ?) " +
+            "ON CONFLICT (peer) DO UPDATE SET subject = excluded.subject, keyed = excluded.keyed " +
+            "WHERE routingpeers.keyed = 0 OR excluded.keyed = 1;";
+    private static final String GET_PEER = "SELECT subject FROM routingpeers WHERE peer = ?;";
     private static final String GET_META = "SELECT value FROM routingmeta WHERE name = ?;";
     private static final String SET_META = "INSERT INTO routingmeta (name, value) VALUES (?, ?) " +
             "ON CONFLICT (name) DO UPDATE SET value = excluded.value;";
@@ -309,6 +314,42 @@ public class JdbcRoutingStore {
             select.setBytes(2, alias.idBytes());
             ResultSet rs = select.executeQuery();
             return rs.next() ? Optional.of(subject(alias.kind, rs.getBytes(1))) : Optional.empty();
+        } catch (SQLException e) {
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    /** Records the peerids a server is reached by other than its first: its current key's, which its rotations
+     *  prove, and its endpoint's, which it only claims, so a key's mapping is never replaced by a claim.
+     */
+    public void putPeers(Subject server, Optional<Multihash> key, Optional<Multihash> endpoint) {
+        try (Connection c = getConnection();
+             PreparedStatement remove = c.prepareStatement(REMOVE_PEERS);
+             PreparedStatement insert = c.prepareStatement(PUT_PEER)) {
+            remove.setBytes(1, server.idBytes());
+            remove.executeUpdate();
+            for (int i = 0; i < 2; i++) {
+                Optional<Multihash> peer = i == 0 ? key : endpoint;
+                if (peer.isEmpty())
+                    continue;
+                insert.setBytes(1, peer.get().bareMultihash().toBytes());
+                insert.setBytes(2, server.idBytes());
+                insert.setInt(3, i == 0 ? 1 : 0);
+                insert.executeUpdate();
+            }
+        } catch (SQLException e) {
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    public Optional<Subject> resolvePeer(Multihash peer) {
+        try (Connection c = getConnection();
+             PreparedStatement select = c.prepareStatement(GET_PEER)) {
+            select.setBytes(1, peer.bareMultihash().toBytes());
+            ResultSet rs = select.executeQuery();
+            return rs.next() ? Optional.of(Subject.server(Multihash.decode(rs.getBytes(1)))) : Optional.empty();
         } catch (SQLException e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
             throw new RuntimeException(e);
