@@ -59,7 +59,10 @@ public class IdentityRecoveryTests {
 
         Assert.assertTrue(user.commitRecoveryKey("abandon-ability-able-about-above-absent-absorb").join());
         IdentityRouting routing = user.network.identityRouting;
-        Multihash here = routing.status(identity).join().server.get();
+        IdentityRouting.Status status = routing.status(identity).join();
+        Assert.assertTrue("the inception names the admitting server", status.listed);
+        Assert.assertFalse(user.checkRoutingLog().join());
+        Multihash here = status.server.get();
         Assert.assertTrue(user.publishMove().join());
         Assert.assertTrue("a later move supersedes it", user.publishMove().join());
         List<IdentityMove> moves = routing.records(identity).join().stream()

@@ -2,28 +2,36 @@ package peergos.server.routing;
 
 import peergos.server.login.*;
 import peergos.server.storage.admin.*;
+import peergos.server.util.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.*;
 import peergos.shared.routing.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
+import java.util.logging.*;
+import java.util.stream.*;
 
 /** The routing log for the users hosted here, and the recovery data that lets one of them take their account back
  *  with their recovery key alone. An inception is admitted only from the current identity key of a user with quota
  *  here, since the server owes proof of work for each one.
  */
 public class HostedIdentityRouting implements IdentityRouting {
+    private static final Logger LOG = Logging.LOG();
     public static final int MAX_COPIES_PER_DAY = 20, MAX_COPIES = 1_000;
+    private static final long OFFER_TIMEOUT_SECONDS = 10;
 
     private final CoreNode core;
     private final QuotaAdmin quotas;
     private final JdbcAccount account;
     private volatile Optional<ServerRouting> routing = Optional.empty();
+    private volatile Function<Multihash, RoutingPeer> dial;
 
     public HostedIdentityRouting(CoreNode core, QuotaAdmin quotas, JdbcAccount account) {
         this.core = core;
@@ -32,7 +40,8 @@ public class HostedIdentityRouting implements IdentityRouting {
     }
 
     /** The routing log starts after the api, so until then it reports itself not running. */
-    public void start(ServerRouting routing) {
+    public void start(ServerRouting routing, Function<Multihash, RoutingPeer> dial) {
+        this.dial = dial;
         this.routing = Optional.of(routing);
     }
 
@@ -80,7 +89,9 @@ public class HostedIdentityRouting implements IdentityRouting {
                 r.replica.store().getRecoveryKey(identity.serialize(), commitment(log.get()))
                         .map(b -> RecoveryCopy.WrappedKey.fromCbor(CborObject.fromByteArray(b)).publicKey) :
                 Optional.empty();
-        return Futures.of(new Status(true, committed, Optional.of(r.peerId), recoveryKey));
+        boolean listed = log.map(l -> l.providers().stream().anyMatch(p -> p.bareMultihash().equals(r.peerId.bareMultihash())))
+                .orElse(false);
+        return Futures.of(new Status(true, committed, listed, Optional.of(r.peerId), recoveryKey));
     }
 
     /** The wrapped key and copy are stored only with a new inception, so replaying a public one stores nothing. */
@@ -190,10 +201,23 @@ public class HostedIdentityRouting implements IdentityRouting {
             if (! move.providers.equals(List.of(r.peerId)))
                 throw new IllegalStateException("A move added here must name only this server");
             hostedUser(identity);
-            Outcome res = r.replica.add(Subject.identity(identity), move);
+            Subject s = Subject.identity(identity);
+            List<Multihash> before = log(identity).map(IdentityLog::providers).orElse(Collections.emptyList());
+            Outcome res = r.replica.add(s, move);
             if (res != Outcome.Added && res != Outcome.Duplicate)
                 throw new IllegalStateException("The move was not taken: " + res);
-            return Futures.of(true);
+            // the server they left stops serving them once it sees this, rather than at its next sync
+            List<CompletableFuture<Outcome>> offers = before.stream()
+                    .filter(p -> ! p.bareMultihash().equals(r.peerId.bareMultihash()))
+                    .map(p -> RoutedCoreNode.currentPeerId(r.replica, p).orElse(p))
+                    .map(p -> dial.apply(p.bareMultihash()).offer(s, List.of(move))
+                            .orTimeout(OFFER_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                            .exceptionally(t -> {
+                                LOG.log(Level.INFO, "Couldn't tell " + p + " that " + identity + " moved: " + t.getMessage());
+                                return Outcome.Ignored;
+                            }))
+                    .collect(Collectors.toList());
+            return Futures.combineAll(offers).thenApply(x -> true);
         } catch (Exception e) {
             return Futures.errored(e);
         }
