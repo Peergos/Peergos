@@ -233,6 +233,8 @@ public class IpfsWrapper implements AutoCloseable {
     public final IpfsConfigParams ipfsConfigParams;
 
     private EmbeddedPeer embeddedIpfs;
+    private HintedAddressBook addressBook;
+    private List<String> swarmAddresses = Collections.emptyList();
     private Optional<EmbeddedPeer> previousIdentity = Optional.empty();
     private HttpServer apiServer;
     private HttpServer p2pServer;
@@ -262,6 +264,14 @@ public class IpfsWrapper implements AutoCloseable {
 
     public Optional<org.peergos.protocol.autonat.ReachabilityManager> reachability() {
         return Optional.ofNullable(embeddedIpfs).map(EmbeddedPeer::getReachability);
+    }
+
+    public Optional<HintedAddressBook> addressBook() {
+        return Optional.ofNullable(addressBook);
+    }
+
+    public List<String> swarmAddresses() {
+        return swarmAddresses;
     }
 
     public Optional<PrivKey> identityKey() {
@@ -427,6 +437,12 @@ public class IpfsWrapper implements AutoCloseable {
         datastorePath.getParent().toFile().mkdirs();
         RecordStore records = JdbcRecordLRU.buildSqlite(1_000, datastorePath.toAbsolutePath().toString());
 
+        ipfsWrapper.addressBook = new HintedAddressBook(
+                JdbcAddressLRU.buildSqlite(1000, args.fromPeergosDir("address-book", "address-book.sqlite").toString()),
+                System::currentTimeMillis);
+        ipfsWrapper.swarmAddresses = config.addresses.getSwarmAddresses().stream()
+                .map(Object::toString)
+                .collect(Collectors.toList());
         ipfsWrapper.embeddedIpfs = EmbeddedPeer.build(records,
                 config.addresses.getSwarmAddresses(),
                 config.bootstrap.getBootstrapAddresses(),
@@ -436,7 +452,7 @@ public class IpfsWrapper implements AutoCloseable {
                                 .map(io.ipfs.multiaddr.MultiAddress::new)
                                 .collect(Collectors.toList()))
                         .orElse(Collections.emptyList()),
-                JdbcAddressLRU.buildSqlite(1000, args.fromPeergosDir("address-book", "address-book.sqlite").toString()),
+                ipfsWrapper.addressBook,
                 config.addresses.proxyTargetAddress.map(IpfsWrapper::proxyHandler)
         );
         ipfsWrapper.embeddedIpfs.start(args.getBoolean("async-bootstrap", false));
