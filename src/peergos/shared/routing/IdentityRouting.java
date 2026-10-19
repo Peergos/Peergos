@@ -35,6 +35,9 @@ public interface IdentityRouting {
      */
     CompletableFuture<Boolean> recover(PublicKeyHash identity, IdentityRotation rotation, RecoveryCopy.WrappedKey wrapped, RecoveryCopy copy);
 
+    /** Names this server as the identity's provider, after the user migrates here. */
+    CompletableFuture<Boolean> move(PublicKeyHash identity, IdentityMove move);
+
     /** The identity's records, for a client to find its current key itself. */
     CompletableFuture<List<SignedRecord>> records(PublicKeyHash identity);
 
@@ -65,6 +68,11 @@ public interface IdentityRouting {
 
         @Override
         public CompletableFuture<Boolean> recover(PublicKeyHash identity, IdentityRotation rotation, RecoveryCopy.WrappedKey wrapped, RecoveryCopy copy) {
+            return notRunning();
+        }
+
+        @Override
+        public CompletableFuture<Boolean> move(PublicKeyHash identity, IdentityMove move) {
             return notRunning();
         }
 
@@ -207,6 +215,12 @@ public interface IdentityRouting {
         public CompletableFuture<Boolean> recover(PublicKeyHash identity, IdentityRotation rotation, RecoveryCopy.WrappedKey wrapped, RecoveryCopy copy) {
             return poster.post(Constants.IDENTITY_ROUTING_URL + "recover?identity=" + identity,
                             recovery(rotation, wrapped, copy).serialize(), false)
+                    .thenApply(HTTP::bool);
+        }
+
+        @Override
+        public CompletableFuture<Boolean> move(PublicKeyHash identity, IdentityMove move) {
+            return poster.post(Constants.IDENTITY_ROUTING_URL + "move?identity=" + identity, move.serialize(), false)
                     .thenApply(HTTP::bool);
         }
 

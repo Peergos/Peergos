@@ -68,6 +68,10 @@ public class IdentityRoutingHandler implements HttpHandler {
                             RecoveryCopy.WrappedKey.fromCbor(m.get("w")), RecoveryCopy.fromCbor(m.get("c"))).join());
                     break;
                 }
+                case "move":
+                    result = new CborObject.CborBoolean(routing.move(identity(params),
+                            IdentityMove.fromCbor(CborObject.fromByteArray(Serialize.readFully(exchange.getRequestBody(), MAX_BODY)))).join());
+                    break;
                 default:
                     throw new IOException("Unknown method in IdentityRoutingHandler!");
             }
