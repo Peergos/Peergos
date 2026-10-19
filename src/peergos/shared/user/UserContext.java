@@ -181,7 +181,8 @@ public class UserContext {
                                                         NetworkAccess network,
                                                         Crypto crypto,
                                                         Consumer<String> progressCallback) {
-        return Futures.asyncExceptionally(() -> getWriterDataCbor(network, username),
+        LoginName name = LoginName.parse(username);
+        return Futures.asyncExceptionally(() -> getWriterDataCbor(network, name),
                 e ->  {
                     if (e.getMessage().contains("hash not present") || e.getMessage().contains("No pointer present for writer"))
                         return Futures.errored(new IllegalStateException("User has been deleted. Did you mean a different username?"));
@@ -193,10 +194,10 @@ public class UserContext {
             SecretGenerationAlgorithm algorithm = WriterData.fromCbor(pair.right).generationAlgorithm
                     .orElseThrow(() -> new IllegalStateException("No login algorithm specified in user data!"));
             progressCallback.accept("Generating keys");
-            return UserUtil.generateUser(username, password, crypto, algorithm)
+            return UserUtil.generateUser(name.username, password, crypto, algorithm)
                     .thenCompose(userWithRoot -> {
                         progressCallback.accept("Logging in");
-                        return login(username, userWithRoot, mfa, cacheMfaLoginData, forceProxy, pair, network, crypto, progressCallback);
+                        return login(name, userWithRoot, mfa, cacheMfaLoginData, forceProxy, pair, network, crypto, progressCallback);
                     });
                 }).thenCompose(ctx -> ctx.isPostQuantum() ? Futures.of(ctx) : ctx.ensurePostQuantum(password, mfa, progressCallback)
                         .thenCompose(updated -> updated ?
@@ -212,8 +213,9 @@ public class UserContext {
                                                         Crypto crypto,
                                                         Consumer<String> progressCallback) {
         progressCallback.accept("Logging in");
-        return getWriterDataCbor(network, username)
-                .thenCompose(pair -> login(username, userWithRoot, mfa, false, false, pair, network, crypto, progressCallback))
+        LoginName name = LoginName.parse(username);
+        return getWriterDataCbor(network, name)
+                .thenCompose(pair -> login(name, userWithRoot, mfa, false, false, pair, network, crypto, progressCallback))
                 .exceptionally(Futures::logAndThrow);
     }
 
@@ -285,7 +287,8 @@ public class UserContext {
                 });
     }
 
-    private static CompletableFuture<UserContext> login(String username,
+    /** The login data is asked for by the name as given, so a username@peerid reaches the server it names. */
+    private static CompletableFuture<UserContext> login(LoginName name,
                                                         UserWithRoot generatedCredentials,
                                                         Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa,
                                                         boolean cacheMfaLoginData,
@@ -302,7 +305,7 @@ public class UserContext {
             SecretSigningKey loginSecret = generatedCredentials.getUser().secretSigningKey;
             return (legacyAccount ?
                     Futures.of(userData.staticData.get().getData(loginRoot)) :
-                    getLoginData(username, loginPub, loginSecret, loginRoot, mfa, cacheMfaLoginData, forceProxy, network)
+                    getLoginData(name.toString(), loginPub, loginSecret, loginRoot, mfa, cacheMfaLoginData, forceProxy, network)
                             .thenApply(p -> p.right)).thenCompose(staticData -> {
 
                 // Use generated signer for legacy logins, or get from UserStaticData for newer logins
@@ -310,7 +313,7 @@ public class UserContext {
                         new SigningPrivateKeyAndPublicHash(userData.controller,
                                 legacyAccount ? loginSecret : staticData.identity.get().secretSigningKey);
                 BoxingKeyPair boxer = staticData.boxer.orElse(generatedCredentials.getBoxingPair());
-                return login(username, userData, staticData, signer, boxer, loginRoot, pair, network, crypto, progressCallback);
+                return login(name.username, userData, staticData, signer, boxer, loginRoot, pair, network, crypto, progressCallback);
             });
         } catch (Throwable t) {
             throw new IllegalStateException("Incorrect password");
@@ -3931,6 +3934,16 @@ public class UserContext {
                                                                        PublicKeyHash writer) {
         return getWriterDataCbor(ipfs, mutable, owner, writer)
                 .thenApply(pair -> new CommittedWriterData(pair.left.updated, WriterData.fromCbor(pair.right), pair.left.sequence));
+    }
+
+    /** For a username@peerid, the identity is the one the named server gives the username. */
+    private static CompletableFuture<Pair<PointerUpdate, CborObject>> getWriterDataCbor(NetworkAccess network, LoginName name) {
+        if (name.server.isEmpty())
+            return getWriterDataCbor(network, name.username);
+        return network.identityRouting.lookup(name.username, name.server.get())
+                .thenCompose(owner -> getWriterDataCbor(network.dhtClient, network.mutable,
+                        owner.orElseThrow(() -> new IllegalStateException("No public-key for user " + name)),
+                        owner.get()));
     }
 
     public static CompletableFuture<Pair<PointerUpdate, CborObject>> getWriterDataCbor(NetworkAccess network, String username) {

@@ -51,6 +51,26 @@ public class IdentityRecoveryTests {
     }
 
     @Test
+    public void aLoginCanNameTheServerItsUsernameBelongsTo() throws Exception {
+        String username = "named" + (System.currentTimeMillis() % 100_000);
+        NetworkAccess net = Builder.buildLocalJavaNetworkAccess(port).join();
+        UserContext user = UserContext.signUp(username, "password", "", net, crypto).join();
+        Cid server = net.dhtClient.id().join();
+
+        UserContext named = UserContext.signIn(username + "@" + server, "password", UserTests::noMfa,
+                Builder.buildLocalJavaNetworkAccess(port).join(), crypto).join();
+        Assert.assertEquals(username, named.username);
+        Assert.assertEquals(user.signer.publicKeyHash, named.signer.publicKeyHash);
+        Assert.assertEquals(username + "@" + server, LoginName.parse(user.getMigrationId().join()).toString());
+
+        Cid elsewhere = Cid.decodePeerId(ServerKeys.peerId(SigningKeyPair.random(crypto.random, crypto.signer).publicSigningKey).toString());
+        Assert.assertTrue("a server that can't be reached knows no one", failed(() -> UserContext.signIn(username + "@" + elsewhere,
+                "password", UserTests::noMfa, Builder.buildLocalJavaNetworkAccess(port).join(), crypto).join()));
+        Assert.assertTrue(failed(() -> LoginName.parse(username + "@not-a-peerid")));
+        Assert.assertTrue(failed(() -> LoginName.parse("Not Valid@" + server)));
+    }
+
+    @Test
     public void aMoveNamesTheNewServerOnlyWhenSignedByTheCurrentKey() throws Exception {
         String username = "move" + (System.currentTimeMillis() % 100_000);
         UserContext user = UserContext.signUp(username, "password", "", Builder.buildLocalJavaNetworkAccess(port).join(), crypto).join();
