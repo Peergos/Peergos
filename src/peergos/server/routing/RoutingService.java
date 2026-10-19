@@ -46,7 +46,8 @@ public class RoutingService {
             "The pinned hash of the PKI's final state", false);
 
     public static final Command.Arg ARG_ROUTING_MODE = new Command.Arg("routing-mode",
-            "archival, holding every record, or light, asking the routing-peers as its full nodes", false, "archival");
+            "compact, verifying every record and keeping it without its signature, archival, keeping every record " +
+                    "in full, or light, asking the routing-peers as its full nodes", false, "compact");
     public static final Command.Arg ARG_ROUTING_RELAYS = new Command.Arg("routing-relays",
             "Comma separated peerids of relays to prefer when this server has no direct address", false);
     public static final Command.Arg ARG_ROUTING_RELAY = new Command.Arg("routing-relay",
@@ -99,8 +100,6 @@ public class RoutingService {
         }
         PeerId current = PeerId.fromPubKey(priv.publicKey());
         ServerAddresses.Mode mode = ServerAddresses.Mode.byName(a.getArg(ARG_ROUTING_MODE.name, ARG_ROUTING_MODE.defaultValue.get()));
-        if (mode == ServerAddresses.Mode.Compact)
-            throw new IllegalStateException("Compact routing is not implemented yet");
         boolean light = mode == ServerAddresses.Mode.Light;
         JdbcRoutingStore store = new JdbcRoutingStore(db, commands);
         int threads = a.getInt(ARG_ROUTING_POW_THREADS.name, Math.max(1, Runtime.getRuntime().availableProcessors() / 2));
@@ -110,6 +109,8 @@ public class RoutingService {
                 ServerRouting.committedNext(ids, current, crypto), crypto,
                 testWork.orElse(CuckooCycle.IDENTITY), testWork.orElse(CuckooCycle.SERVER), threads,
                 replica -> importLegacy(a, replica, storage, crypto), s -> {});
+        if (mode == ServerAddresses.Mode.Compact)
+            server.replica.compact(server.peerId);
         List<String> announced = a.getOptionalArg("ipfs-announce-addresses")
                 .map(addrs -> Arrays.asList(addrs.split(",")))
                 .orElse(Collections.emptyList());

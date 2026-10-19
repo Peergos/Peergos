@@ -102,7 +102,7 @@ public class RoutingDaemonTests {
             Assert.assertTrue(alice.commitRecoveryKey("abandon-ability-able-about-above-absent-absorb").join());
             PublicKeyHash aliceId = alice.signer.publicKeyHash;
             waitFor("the inception is admitted", () -> pkiStore.get(Subject.identity(aliceId)).stream()
-                    .anyMatch(r -> r instanceof IdentityInception && ((IdentityInception) r).admission.isPresent()), 120_000);
+                    .anyMatch(r -> r.record instanceof IdentityInception && ((IdentityInception) r.record).admission.isPresent()), 120_000);
             Assert.assertTrue("a light server holds no full set", nodeStore.get(Subject.identity(aliceId)).isEmpty());
 
             UserContext bob = UserContext.signUp("bob" + suffix, "password", "",
@@ -139,7 +139,7 @@ public class RoutingDaemonTests {
             PublicKeyHash aliceId = alice.signer.publicKeyHash;
             JdbcRoutingStore pkiStore = store(pkiArgs), nodeStore = store(nodeArgs);
             waitFor("the inception is admitted", () -> pkiStore.get(Subject.identity(aliceId)).stream()
-                    .anyMatch(r -> r instanceof IdentityInception && ((IdentityInception) r).admission.isPresent()), 120_000);
+                    .anyMatch(r -> r.record instanceof IdentityInception && ((IdentityInception) r.record).admission.isPresent()), 120_000);
 
             ServerHint hint = alice.serverHint().join();
             Assert.assertEquals(pkiNodeId, hint.peerId);
