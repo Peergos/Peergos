@@ -2,6 +2,7 @@ package peergos.server.webdav.caldav;
 
 import java.time.*;
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.*;
 
 /**
@@ -72,28 +73,35 @@ public final class ICal {
         /** Absent when the start could not be read, or when the object recurs without end. */
         public final Optional<Instant> start;
         public final Optional<Instant> end;
+        /** True if the start is a floating time, so start and end are only right to within a day. */
+        public final boolean floating;
 
         public Summary(Optional<String> uid,
                        Optional<String> componentType,
                        boolean recurring,
                        Optional<Instant> start,
-                       Optional<Instant> end) {
+                       Optional<Instant> end,
+                       boolean floating) {
             this.uid = uid;
             this.componentType = componentType;
             this.recurring = recurring;
             this.start = start;
             this.end = end;
+            this.floating = floating;
         }
 
         /**
          * Conservative overlap test: anything we could not parse, and anything that
-         * recurs, is reported as overlapping.
+         * recurs, is reported as overlapping. A floating time is read as UTC, but it means
+         * that wall clock wherever the client is, so it is widened by the furthest any zone
+         * is from UTC.
          */
         public boolean overlaps(Optional<Instant> rangeStart, Optional<Instant> rangeEnd) {
             if (recurring || start.isEmpty())
                 return true;
-            Instant from = start.get();
-            Instant to = end.orElse(from);
+            Duration slack = floating ? Duration.ofHours(14) : Duration.ZERO;
+            Instant from = start.get().minus(slack);
+            Instant to = end.orElse(start.get()).plus(slack);
             if (rangeEnd.isPresent() && ! from.isBefore(rangeEnd.get()))
                 return false;
             if (rangeStart.isPresent() && to.isBefore(rangeStart.get()))
@@ -209,23 +217,27 @@ public final class ICal {
 
     public static Summary summarise(String ics) {
         return parse(ics).map(ICal::summarise).orElseGet(() ->
-                new Summary(Optional.empty(), Optional.empty(), false, Optional.empty(), Optional.empty()));
+                new Summary(Optional.empty(), Optional.empty(), false, Optional.empty(), Optional.empty(), false));
     }
 
     public static Summary summarise(Component vcalendar) {
         List<Component> parts = vcalendar.scheduleComponents();
         if (parts.isEmpty())
-            return new Summary(Optional.empty(), Optional.empty(), false, Optional.empty(), Optional.empty());
+            return new Summary(Optional.empty(), Optional.empty(), false, Optional.empty(), Optional.empty(), false);
         boolean recurring = parts.stream()
                 .anyMatch(c -> c.property("RRULE").isPresent() || c.property("RDATE").isPresent());
         Component first = parts.get(0);
-        Optional<Instant> start = first.property("DTSTART").flatMap(ICal::toInstant);
-        Optional<Instant> end = first.property("DTEND").flatMap(ICal::toInstant)
-                .or(() -> first.property("DUE").flatMap(ICal::toInstant))
+        TimeZones zones = TimeZones.of(vcalendar);
+        Function<Property, Optional<Instant>> instant = p -> toInstant(p, zones, ZoneOffset.UTC);
+        Optional<Property> dtstart = first.property("DTSTART");
+        Optional<Instant> start = dtstart.flatMap(instant);
+        Optional<Instant> end = first.property("DTEND").flatMap(instant)
+                .or(() -> first.property("DUE").flatMap(instant))
                 .or(() -> start.flatMap(s -> first.value("DURATION")
                         .flatMap(ICal::parseDuration)
                         .map(s::plus)));
-        return new Summary(first.value("UID"), Optional.of(first.name), recurring, start, end);
+        boolean floating = dtstart.or(() -> first.property("DUE")).map(ICal::isFloating).orElse(false);
+        return new Summary(first.value("UID"), Optional.of(first.name), recurring, start, end, floating);
     }
 
     /**
@@ -239,40 +251,62 @@ public final class ICal {
 
     /**
      * DATE, DATE-TIME with a trailing Z, or a local DATE-TIME read in its TZID. A local
-     * time with no TZID is floating; we read it as UTC, which is what the web app does.
+     * time with no TZID is floating, and on the server, which has no zone of its own to
+     * read it in, it is read as UTC.
      */
     public static Optional<Instant> toInstant(Property property) {
+        return toInstant(property, TimeZones.none(), ZoneOffset.UTC);
+    }
+
+    /**
+     * As {@link #toInstant(Property)}, with a TZID resolved against the object's own
+     * zones, and a floating time read in {@code floating}, the zone of whoever is looking
+     * at it. A TZID that cannot be placed is read as floating too, which is what the web
+     * calendar app does with one.
+     */
+    public static Optional<Instant> toInstant(Property property, TimeZones zones, ZoneId floating) {
         String v = property.value.trim();
-        ZoneId zone = property.param("TZID")
-                .flatMap(ICal::zone)
-                .orElse(ZoneOffset.UTC);
+        Optional<String> tzid = property.param("TZID");
         try {
-            if (v.length() == 8)
-                return Optional.of(LocalDate.parse(v, java.time.format.DateTimeFormatter.BASIC_ISO_DATE)
-                        .atStartOfDay(zone).toInstant());
-            boolean utc = v.endsWith("Z");
-            if (utc) {
-                v = v.substring(0, v.length() - 1);
-                zone = ZoneOffset.UTC;
+            if (v.length() == 8) {
+                // A date names a day, not an instant, so it is placed at the start of that
+                // day in its zone if it names one, and otherwise at UTC midnight, which is
+                // where an all-day event is kept.
+                LocalDate date = LocalDate.parse(v, java.time.format.DateTimeFormatter.BASIC_ISO_DATE);
+                return Optional.of(tzid.flatMap(z -> zones.instant(z, date.atStartOfDay()))
+                        .orElse(date.atStartOfDay(ZoneOffset.UTC).toInstant()));
             }
-            if (v.length() != 15 || v.charAt(8) != 'T')
+            boolean utc = v.endsWith("Z");
+            Optional<LocalDateTime> local = localDateTime(utc ? v.substring(0, v.length() - 1) : v);
+            if (local.isEmpty())
                 return Optional.empty();
-            LocalDateTime local = LocalDateTime.of(
-                    Integer.parseInt(v.substring(0, 4)),
-                    Integer.parseInt(v.substring(4, 6)),
-                    Integer.parseInt(v.substring(6, 8)),
-                    Integer.parseInt(v.substring(9, 11)),
-                    Integer.parseInt(v.substring(11, 13)),
-                    Integer.parseInt(v.substring(13, 15)));
-            return Optional.of(local.atZone(zone).toInstant());
+            if (utc)
+                return Optional.of(local.get().toInstant(ZoneOffset.UTC));
+            return Optional.of(tzid.flatMap(z -> zones.instant(z, local.get()))
+                    .orElseGet(() -> local.get().atZone(floating).toInstant()));
         } catch (RuntimeException e) {
             return Optional.empty();
         }
     }
 
-    private static Optional<ZoneId> zone(String tzid) {
+    /** True for a DATE-TIME with neither a Z nor a TZID, which means the same wall clock in any zone. */
+    public static boolean isFloating(Property property) {
+        String v = property.value.trim();
+        return v.length() == 15 && property.param("TZID").isEmpty();
+    }
+
+    /** A DATE-TIME's local part, yyyyMMdd'T'HHmmss, with no zone. */
+    public static Optional<LocalDateTime> localDateTime(String v) {
+        if (v.length() != 15 || v.charAt(8) != 'T')
+            return Optional.empty();
         try {
-            return Optional.of(ZoneId.of(tzid));
+            return Optional.of(LocalDateTime.of(
+                    Integer.parseInt(v.substring(0, 4)),
+                    Integer.parseInt(v.substring(4, 6)),
+                    Integer.parseInt(v.substring(6, 8)),
+                    Integer.parseInt(v.substring(9, 11)),
+                    Integer.parseInt(v.substring(11, 13)),
+                    Integer.parseInt(v.substring(13, 15))));
         } catch (RuntimeException e) {
             return Optional.empty();
         }

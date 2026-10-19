@@ -572,6 +572,9 @@ public class DavServlet extends HttpServlet {
             case "sync-collection":
                 syncCollection(req, resp, resolved.get(), root);
                 return;
+            case "free-busy-query":
+                freeBusy(resp, resolved.get(), root);
+                return;
             default:
                 resp.sendError(HttpServletResponse.SC_FORBIDDEN, "Unsupported report: " + report);
         }
@@ -611,6 +614,42 @@ public class DavServlet extends HttpServlet {
                 writeResponse(out, req, resource.child(object), requested);
         }
         endMultistatus(out);
+    }
+
+    /**
+     * RFC 4791 free-busy-query: when the calendar's events take up time within the range,
+     * as a VFREEBUSY rather than a multistatus. Both ends of the range are required, since
+     * an open range has no answer worth sending.
+     */
+    private void freeBusy(HttpServletResponse resp, Resource resource, Element root) throws IOException {
+        if (resource.kind != Kind.COLLECTION || resource.type != Type.CALENDAR) {
+            resp.sendError(HttpServletResponse.SC_FORBIDDEN, "free-busy-query needs a calendar collection");
+            return;
+        }
+        Node range = XMLHelper.findSubElement(root, "time-range");
+        Optional<Instant> start = range == null ? Optional.empty() : rangeEnd((Element) range, "start");
+        Optional<Instant> end = range == null ? Optional.empty() : rangeEnd((Element) range, "end");
+        if (start.isEmpty() || end.isEmpty() || ! end.get().isAfter(start.get())) {
+            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "free-busy-query needs a time-range with a start and an end");
+            return;
+        }
+        List<String> objects = new ArrayList<>();
+        for (ObjectRef object : resource.store.listObjects(resource.collection.directory)) {
+            String content = new String(resource.store.read(object), StandardCharsets.UTF_8);
+            if (ICal.summarise(content).overlaps(start, end))
+                objects.add(content);
+        }
+        byte[] body = FreeBusy.report(objects, start.get(), end.get(), Instant.now()).getBytes(StandardCharsets.UTF_8);
+        resp.setStatus(HttpServletResponse.SC_OK);
+        resp.setContentType("text/calendar; charset=UTF-8");
+        resp.setContentLength(body.length);
+        resp.getOutputStream().write(body);
+    }
+
+    private static Optional<Instant> rangeEnd(Element range, String attribute) {
+        String value = range.getAttribute(attribute);
+        return value == null || value.isEmpty() ? Optional.empty()
+                : ICal.toInstant(new ICal.Property("TIME-RANGE", Map.of(), value));
     }
 
     /**
@@ -764,9 +803,9 @@ public class DavServlet extends HttpServlet {
         }
         if (property.equals(dav("current-user-privilege-set"))) {
             out.writeElement(dav("current-user-privilege-set"), XMLWriter.OPENING);
-            for (String privilege : privileges(resource.kind)) {
+            for (String privilege : privileges(resource)) {
                 out.writeElement(dav("privilege"), XMLWriter.OPENING);
-                out.writeElement(dav(privilege), XMLWriter.NO_CONTENT);
+                out.writeElement(privilege, XMLWriter.NO_CONTENT);
                 out.writeElement(dav("privilege"), XMLWriter.CLOSING);
             }
             out.writeElement(dav("current-user-privilege-set"), XMLWriter.CLOSING);
@@ -780,6 +819,8 @@ public class DavServlet extends HttpServlet {
                 writeSupportedReport(out, namespace + ":" + kind + "-multiget");
                 writeSupportedReport(out, namespace + ":" + kind + "-query");
                 writeSupportedReport(out, dav("sync-collection"));
+                if (resource.type == Type.CALENDAR)
+                    writeSupportedReport(out, caldav("free-busy-query"));
             }
             out.writeElement(dav("supported-report-set"), XMLWriter.CLOSING);
             return true;
@@ -913,19 +954,22 @@ public class DavServlet extends HttpServlet {
 
     /**
      * What the client may do here. A calendar and its members are writable; the home only
-     * accepts new collections; everything above it is fixed structure.
+     * accepts new collections; everything above it is fixed structure. A calendar can also
+     * be asked when it is busy.
      */
-    private static List<String> privileges(Kind kind) {
-        List<String> privileges = new ArrayList<>(List.of("read", "read-acl", "read-current-user-privilege-set"));
-        switch (kind) {
+    private static List<String> privileges(Resource resource) {
+        List<String> privileges = new ArrayList<>(List.of(dav("read"), dav("read-acl"), dav("read-current-user-privilege-set")));
+        switch (resource.kind) {
             case COLLECTION:
-                privileges.addAll(List.of("write", "write-content", "write-properties", "bind", "unbind"));
+                privileges.addAll(List.of(dav("write"), dav("write-content"), dav("write-properties"), dav("bind"), dav("unbind")));
+                if (resource.type == Type.CALENDAR)
+                    privileges.add(caldav("read-free-busy"));
                 break;
             case OBJECT:
-                privileges.addAll(List.of("write", "write-content"));
+                privileges.addAll(List.of(dav("write"), dav("write-content")));
                 break;
             case HOME:
-                privileges.addAll(List.of("bind", "unbind"));
+                privileges.addAll(List.of(dav("bind"), dav("unbind")));
                 break;
             default:
                 break;

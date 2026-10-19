@@ -4,6 +4,7 @@ import org.junit.Assert;
 import org.junit.Test;
 import peergos.server.webdav.caldav.CalendarStore;
 import peergos.server.webdav.caldav.ICal;
+import peergos.server.webdav.caldav.TimeZones;
 
 import java.time.*;
 import java.util.Optional;
@@ -132,5 +133,75 @@ public class ICalTests {
     public void unbalancedComponentsAreRejected() {
         Assert.assertEquals(Optional.empty(), ICal.parse("BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nEND:VCALENDAR\r\n"));
         Assert.assertEquals(Optional.empty(), ICal.summarise("BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n").uid);
+    }
+
+    private static final String BERLIN_RULES = "BEGIN:STANDARD\r\nDTSTART:16010101T030000\r\nTZOFFSETFROM:+0200\r\n"
+            + "TZOFFSETTO:+0100\r\nRRULE:FREQ=YEARLY;INTERVAL=1;BYDAY=-1SU;BYMONTH=10\r\nEND:STANDARD\r\n"
+            + "BEGIN:DAYLIGHT\r\nDTSTART:16010101T020000\r\nTZOFFSETFROM:+0100\r\nTZOFFSETTO:+0200\r\n"
+            + "RRULE:FREQ=YEARLY;INTERVAL=1;BYDAY=-1SU;BYMONTH=3\r\nEND:DAYLIGHT\r\n";
+
+    /** As Outlook writes one: a zone of its own naming, defined in the file. */
+    private static ICal.Component withOwnZone(String tzid, String start) {
+        return ICal.parse("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTIMEZONE\r\nTZID:" + tzid + "\r\n" + BERLIN_RULES
+                + "END:VTIMEZONE\r\nBEGIN:VEVENT\r\nUID:a\r\nDTSTART;TZID=\"" + tzid + "\":" + start + "\r\n"
+                + "END:VEVENT\r\nEND:VCALENDAR\r\n").orElseThrow();
+    }
+
+    private static Optional<Instant> start(ICal.Component vcalendar, ZoneId floating) {
+        return ICal.toInstant(vcalendar.scheduleComponents().get(0).property("DTSTART").get(),
+                TimeZones.of(vcalendar), floating);
+    }
+
+    @Test
+    public void readsAZoneTheFileDefines() {
+        ICal.Component summer = withOwnZone("Customized Time Zone", "20260715T090000");
+        ICal.Component winter = withOwnZone("Customized Time Zone", "20260115T090000");
+        Assert.assertEquals(Optional.of(Instant.parse("2026-07-15T07:00:00Z")), start(summer, ZoneOffset.UTC));
+        Assert.assertEquals(Optional.of(Instant.parse("2026-01-15T08:00:00Z")), start(winter, ZoneOffset.UTC));
+        Assert.assertEquals(Optional.of(Instant.parse("2026-07-15T07:00:00Z")), ICal.summarise(summer).start);
+        // The changes are on the same days as Berlin's, so whatever zone it is matched with does too.
+        ZoneId matched = TimeZones.of(summer).zone("Customized Time Zone").orElseThrow();
+        Assert.assertEquals(ZoneId.of("Europe/Berlin").getRules().nextTransition(Instant.parse("2026-01-01T00:00:00Z")),
+                matched.getRules().nextTransition(Instant.parse("2026-01-01T00:00:00Z")));
+    }
+
+    @Test
+    public void aZoneTheFileDefinesIsMatchedToACityItNames() {
+        String tzid = "(UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna";
+        Assert.assertEquals(Optional.of(ZoneId.of("Europe/Amsterdam")),
+                TimeZones.of(withOwnZone(tzid, "20260715T090000")).zone(tzid));
+    }
+
+    @Test
+    public void readsWindowsAndPathZoneNames() {
+        Assert.assertEquals(Optional.of(Instant.parse("2026-07-15T07:00:00Z")),
+                ICal.summarise(event("UID:a", "DTSTART;TZID=W. Europe Standard Time:20260715T090000")).start);
+        Assert.assertEquals(Optional.of(Instant.parse("2026-07-15T13:00:00Z")),
+                ICal.summarise(event("UID:a", "DTSTART;TZID=/mozilla.org/20050126_1/America/New_York:20260715T090000")).start);
+        Assert.assertEquals(Optional.of(ZoneId.of("Europe/Berlin")), TimeZones.none().zone("W. Europe Standard Time"));
+        Assert.assertEquals(Optional.empty(), TimeZones.none().zone("+02:00"));
+    }
+
+    @Test
+    public void floatingTimesAreReadInTheZoneAskedFor() {
+        ICal.Component floating = ICal.parse(event("UID:a", "DTSTART:20260715T090000")).orElseThrow();
+        Assert.assertEquals(Optional.of(Instant.parse("2026-07-15T00:00:00Z")), start(floating, ZoneId.of("Asia/Tokyo")));
+        Assert.assertTrue(ICal.isFloating(floating.scheduleComponents().get(0).property("DTSTART").get()));
+        // A zone nothing can place is floating too, as it is in the web app.
+        ICal.Component unknown = ICal.parse(event("UID:a", "DTSTART;TZID=Nowhere:20260715T090000")).orElseThrow();
+        Assert.assertEquals(Optional.of(Instant.parse("2026-07-15T00:00:00Z")), start(unknown, ZoneId.of("Asia/Tokyo")));
+        // A date is an all-day event's UTC midnight wherever the viewer is.
+        ICal.Component date = ICal.parse(event("UID:a", "DTSTART;VALUE=DATE:20260715")).orElseThrow();
+        Assert.assertEquals(Optional.of(Instant.parse("2026-07-15T00:00:00Z")), start(date, ZoneId.of("Asia/Tokyo")));
+    }
+
+    @Test
+    public void aFloatingEventMatchesARangeItCouldFallInAnywhere() {
+        // 23:00 floating is the next day in UTC for anyone west of it.
+        ICal.Summary late = ICal.summarise(event("UID:a", "DTSTART:20260715T230000", "DTEND:20260715T233000"));
+        Assert.assertTrue(late.floating);
+        Assert.assertTrue(late.overlaps(Optional.of(Instant.parse("2026-07-16T00:00:00Z")),
+                Optional.of(Instant.parse("2026-07-17T00:00:00Z"))));
+        Assert.assertFalse(late.overlaps(Optional.of(Instant.parse("2026-07-18T00:00:00Z")), Optional.empty()));
     }
 }
