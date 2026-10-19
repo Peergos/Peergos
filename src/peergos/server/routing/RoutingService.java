@@ -52,6 +52,9 @@ public class RoutingService {
             "Comma separated peerids of relays to prefer when this server has no direct address", false);
     public static final Command.Arg ARG_ROUTING_RELAY = new Command.Arg("routing-relay",
             "Relay for other servers once this server has a stable public address", false, "true");
+    public static final Command.Arg ARG_ROUTING_RELAY_BANDWIDTH = new Command.Arg("routing-relay-bandwidth",
+            "Bytes a second this server forwards as a relay, for all the servers it relays for together", false,
+            "" + Relays.TOTAL_BYTES_PER_SECOND);
     public static final Command.Arg ARG_ROUTING_WORK_BITS = new Command.Arg("routing-work-bits",
             "Test networks only: one proof of work graph size for identities and servers, which every node must share", false);
     public static final Command.Arg ARG_ROUTING_EXPORT_LEGACY_STATE = new Command.Arg("routing-export-legacy-state",
@@ -59,7 +62,7 @@ public class RoutingService {
 
     public static final List<Command.Arg> ARGS = List.of(ARG_ROUTING_LOG, ARG_ROUTING_SQL_FILE, ARG_ROUTING_PEERS,
             ARG_ROUTING_POW_THREADS, ARG_ROUTING_INCEPTIONS_PER_DAY, ARG_ROUTING_LEGACY_STATE, ARG_ROUTING_LEGACY_STATE_HASH,
-            ARG_ROUTING_MODE, ARG_ROUTING_RELAYS, ARG_ROUTING_RELAY, ARG_ROUTING_WORK_BITS, ARG_ROUTING_EXPORT_LEGACY_STATE);
+            ARG_ROUTING_MODE, ARG_ROUTING_RELAYS, ARG_ROUTING_RELAY, ARG_ROUTING_RELAY_BANDWIDTH, ARG_ROUTING_WORK_BITS, ARG_ROUTING_EXPORT_LEGACY_STATE);
 
     private static final long TICK_MILLIS = 60_000, SYNC_MILLIS = 10 * 60_000, ADDRESS_MILLIS = 10 * 60_000;
 
