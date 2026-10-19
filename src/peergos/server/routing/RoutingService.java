@@ -64,24 +64,30 @@ public class RoutingService {
             ARG_ROUTING_POW_THREADS, ARG_ROUTING_INCEPTIONS_PER_DAY, ARG_ROUTING_LEGACY_STATE, ARG_ROUTING_LEGACY_STATE_HASH,
             ARG_ROUTING_MODE, ARG_ROUTING_RELAYS, ARG_ROUTING_RELAY, ARG_ROUTING_RELAY_BANDWIDTH, ARG_ROUTING_WORK_BITS, ARG_ROUTING_EXPORT_LEGACY_STATE);
 
-    private static final long TICK_MILLIS = 60_000, SYNC_MILLIS = 10 * 60_000, ADDRESS_MILLIS = 10 * 60_000;
+    private static final long TICK_MILLIS = 60_000, SYNC_MILLIS = 10 * 60_000, ADDRESS_MILLIS = 10 * 60_000,
+            PEERS_MILLIS = 60 * 60_000;
 
     public final ServerRouting server;
     public final RoutingNode node;
     public final RoutingLookup lookup;
-    private final ScheduledExecutorService timer;
+    public final SyncPeers syncPeers;
+    private final ScheduledExecutorService timer, peerTimer;
 
-    private RoutingService(ServerRouting server, RoutingNode node, RoutingLookup lookup, ScheduledExecutorService timer) {
+    private RoutingService(ServerRouting server, RoutingNode node, RoutingLookup lookup, SyncPeers syncPeers,
+                           ScheduledExecutorService timer, ScheduledExecutorService peerTimer) {
         this.server = server;
         this.node = node;
         this.lookup = lookup;
+        this.syncPeers = syncPeers;
         this.timer = timer;
+        this.peerTimer = peerTimer;
     }
 
     public static Optional<RoutingService> start(Args a,
                                                  Optional<PrivKey> identity,
                                                  Optional<ReachabilityManager> reachability,
                                                  Supplier<List<Multihash>> heldRelays,
+                                                 BucketVerifier.Dialler dialler,
                                                  ServerIdentityStore ids,
                                                  Crypto crypto,
                                                  SqlSupplier commands,
@@ -124,16 +130,20 @@ public class RoutingService {
                         .orElse(Collections.emptyList()),
                 mode, heldRelays, a.getBoolean(ARG_ROUTING_RELAY.name, true), System::currentTimeMillis);
         ExecutorService work = Executors.newFixedThreadPool(4, daemon("Routing replication"));
+        BucketVerifier buckets = new BucketVerifier(RoutingLookup.full(server.replica), dialler, System::currentTimeMillis,
+                Executors.newFixedThreadPool(2, daemon("Routing bucket checks")));
         RoutingNode node = new RoutingNode(server.replica, crypto.hasher, System::currentTimeMillis,
                 a.getInt(ARG_ROUTING_INCEPTIONS_PER_DAY.name, RateLimits.DEFAULT_INCEPTIONS_PER_DAY),
-                peer -> AddressBucket.UNVERIFIED, peer -> new HttpRoutingPeer(peer, p2p), work);
+                buckets::bucket, peer -> new HttpRoutingPeer(peer, p2p), work);
         List<RoutingPeer> peers = new ArrayList<>();
         for (String peer : a.getOptionalArg(ARG_ROUTING_PEERS.name).map(s -> s.split(",")).orElse(new String[0]))
             if (! peer.isBlank())
                 peers.add(new HttpRoutingPeer(Cid.decodePeerId(peer.trim()).bareMultihash(), p2p));
+        SyncPeers syncPeers = new SyncPeers(node, buckets, peers, server.peerId, light, new Random());
         RoutingLookup lookup;
         if (light) {
             LightLookup lightLookup = new LightLookup(node, server.peerId, peers, System::currentTimeMillis, new Random(), work);
+            lightLookup.sampleFrom(syncPeers::drawn);
             server.replica.onChange((s, log) -> work.submit(() -> lightLookup.publish(s, log)));
             lookup = lightLookup;
         } else {
@@ -142,6 +152,8 @@ public class RoutingService {
         }
         ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor(daemon("Routing timer"));
         timer.scheduleWithFixedDelay(() -> run(node::tick), TICK_MILLIS, TICK_MILLIS, TimeUnit.MILLISECONDS);
+        ScheduledExecutorService peerTimer = Executors.newSingleThreadScheduledExecutor(daemon("Routing peer choice"));
+        peerTimer.scheduleWithFixedDelay(() -> run(syncPeers::refresh), SYNC_MILLIS / 2, PEERS_MILLIS, TimeUnit.MILLISECONDS);
         if (light) {
             Subject self = Subject.server(server.peerId);
             timer.scheduleWithFixedDelay(() -> run(() -> ((LightLookup) lookup).publish(self, server.replica.log(self))),
@@ -153,7 +165,7 @@ public class RoutingService {
         LOG.info("Routing log started for " + server.peerId + (light ?
                 " as a light server asking " + peers.size() + " full nodes" :
                 " with " + node.syncPeers().size() + " sync peers"));
-        return Optional.of(new RoutingService(server, node, lookup, timer));
+        return Optional.of(new RoutingService(server, node, lookup, syncPeers, timer, peerTimer));
     }
 
     private static void run(Runnable r) {
@@ -220,6 +232,7 @@ public class RoutingService {
 
     public void stop() {
         timer.shutdownNow();
+        peerTimer.shutdownNow();
         server.stop();
     }
 }

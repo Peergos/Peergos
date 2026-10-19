@@ -27,6 +27,7 @@ public class LightLookup implements RoutingLookup {
     private final RoutingNode node;
     private final Multihash self;
     private final List<RoutingPeer> fullNodes;
+    private volatile Supplier<List<RoutingPeer>> drawn = Collections::emptyList;
     private final LongSupplier clock;
     private final Random random;
     private final ExecutorService background;
@@ -42,6 +43,11 @@ public class LightLookup implements RoutingLookup {
         this.clock = clock;
         this.random = random;
         this.background = background;
+    }
+
+    /** Full nodes drawn by the sync-peer rules, sampled alongside the configured ones. */
+    public void sampleFrom(Supplier<List<RoutingPeer>> drawn) {
+        this.drawn = drawn;
     }
 
     @Override
@@ -114,12 +120,22 @@ public class LightLookup implements RoutingLookup {
         }
     }
 
+    private List<RoutingPeer> others() {
+        List<RoutingPeer> res = new ArrayList<>(fullNodes.subList(1, fullNodes.size()));
+        for (RoutingPeer p : drawn.get())
+            if (res.stream().noneMatch(q -> q.id().bareMultihash().equals(p.id().bareMultihash()))
+                    && ! fullNodes.get(0).id().bareMultihash().equals(p.id().bareMultihash()))
+                res.add(p);
+        return res;
+    }
+
     private RoutingPeer other() {
-        return fullNodes.size() == 1 ? fullNodes.get(0) : fullNodes.get(1 + random.nextInt(fullNodes.size() - 1));
+        List<RoutingPeer> others = others();
+        return others.isEmpty() ? fullNodes.get(0) : others.get(random.nextInt(others.size()));
     }
 
     private List<RoutingPeer> sample() {
-        List<RoutingPeer> others = new ArrayList<>(fullNodes.subList(1, fullNodes.size()));
+        List<RoutingPeer> others = others();
         Collections.shuffle(others, random);
         return others.subList(0, Math.min(SAMPLE, others.size()));
     }

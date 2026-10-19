@@ -1147,7 +1147,8 @@ public class Main extends Builder {
             try {
                 RoutingService.start(a, Optional.ofNullable(ipfsWrapper).flatMap(IpfsWrapper::identityKey),
                         Optional.ofNullable(ipfsWrapper).flatMap(IpfsWrapper::reachability),
-                        () -> ipfsWrapper == null ? List.of() : ipfsWrapper.heldRelays(), ids, crypto, sqlCommands, getDBConnector(a, RoutingService.ARG_ROUTING_SQL_FILE.name, dbConnectionPool),
+                        () -> ipfsWrapper == null ? List.of() : ipfsWrapper.heldRelays(),
+                        (peer, addrs) -> ipfsWrapper == null ? Futures.of(Optional.empty()) : ipfsWrapper.reach(peer, addrs), ids, crypto, sqlCommands, getDBConnector(a, RoutingService.ARG_ROUTING_SQL_FILE.name, dbConnectionPool),
                         localStorageForLinks, p2pHttpProxy)
                         .ifPresent(routing -> {
                             p2pAPI.startRoutingApi(new RoutingHandler(routing.node));

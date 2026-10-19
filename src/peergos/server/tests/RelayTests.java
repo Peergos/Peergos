@@ -335,4 +335,25 @@ public class RelayTests {
         Assert.assertEquals("a burst for setup and hole-punching", 0, bw.charge(target, Relays.PER_SERVER_BURST));
         Assert.assertTrue("then it is slowed", bw.charge(target, 100_000) >= 1_000);
     }
+
+    @Test
+    public void aServerStillComputingItsProofOfWorkGetsAShortLease() {
+        RoutingReplica replica = replica();
+        PeerId provenServer = libp2p(server(replica, true, null, false, List.of()));
+        long[] now = {1_000_000};
+        Relays relays = new Relays(List.of(), () -> now[0], new Random(1));
+        relays.start(RoutingLookup.full(replica), peer(key()));
+        Multiaddr range = new Multiaddr("/ip4/198.51.100.1/tcp/4001"), otherRange = new Multiaddr("/ip4/203.0.113.1/tcp/4001");
+
+        Assert.assertEquals(Optional.of(Relays.RESERVATION), relays.reserve(provenServer, range));
+        PeerId first = PeerId.random(), second = PeerId.random(), third = PeerId.random();
+        Assert.assertEquals(Optional.of(Relays.LEASE), relays.reserve(first, range));
+        Assert.assertEquals(Optional.of(Relays.LEASE), relays.reserve(second, range));
+        Assert.assertEquals("a few per address bucket", Optional.empty(), relays.reserve(third, range));
+        Assert.assertEquals(Optional.of(Relays.LEASE), relays.reserve(third, otherRange));
+        Assert.assertEquals("renewing a lease isn't a new one", Optional.of(Relays.LEASE), relays.reserve(first, range));
+
+        now[0] += Relays.LEASE.toMillis() + 1;
+        Assert.assertEquals("an expired lease frees its place", Optional.of(Relays.LEASE), relays.reserve(PeerId.random(), range));
+    }
 }
