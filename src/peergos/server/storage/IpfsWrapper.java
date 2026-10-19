@@ -234,6 +234,7 @@ public class IpfsWrapper implements AutoCloseable {
 
     private EmbeddedPeer embeddedIpfs;
     private HintedAddressBook addressBook;
+    private Optional<peergos.server.routing.Relays> relays = Optional.empty();
     private List<String> swarmAddresses = Collections.emptyList();
     private Optional<EmbeddedPeer> previousIdentity = Optional.empty();
     private HttpServer apiServer;
@@ -272,6 +273,23 @@ public class IpfsWrapper implements AutoCloseable {
 
     public List<String> swarmAddresses() {
         return swarmAddresses;
+    }
+
+    /** Present when the routing log chooses this server's relays and whom it relays for. */
+    public Optional<peergos.server.routing.Relays> relays() {
+        return relays;
+    }
+
+    /** The relays this server holds a reservation on now. */
+    public List<peergos.shared.io.ipfs.Multihash> heldRelays() {
+        if (embeddedIpfs == null)
+            return Collections.emptyList();
+        return embeddedIpfs.relayAddresses().stream()
+                .map(a -> a.toString().split("/p2p-circuit")[0])
+                .map(prefix -> prefix.substring(prefix.lastIndexOf("/p2p/") + "/p2p/".length()))
+                .distinct()
+                .map(id -> peergos.shared.io.ipfs.Cid.decodePeerId(id).bareMultihash())
+                .collect(Collectors.toList());
     }
 
     public Optional<PrivKey> identityKey() {
@@ -440,6 +458,15 @@ public class IpfsWrapper implements AutoCloseable {
         ipfsWrapper.addressBook = new HintedAddressBook(
                 JdbcAddressLRU.buildSqlite(1000, args.fromPeergosDir("address-book", "address-book.sqlite").toString()),
                 System::currentTimeMillis);
+        if (args.getBoolean(peergos.server.routing.RoutingService.ARG_ROUTING_LOG.name, false))
+            ipfsWrapper.relays = Optional.of(new peergos.server.routing.Relays(
+                    args.getOptionalArg(peergos.server.routing.RoutingService.ARG_ROUTING_RELAYS.name)
+                            .map(s -> Arrays.stream(s.split(","))
+                                    .filter(p -> ! p.isBlank())
+                                    .map(p -> (peergos.shared.io.ipfs.Multihash) peergos.shared.io.ipfs.Cid.decodePeerId(p.trim()))
+                                    .collect(Collectors.toList()))
+                            .orElse(Collections.emptyList()),
+                    System::currentTimeMillis, new Random()));
         ipfsWrapper.swarmAddresses = config.addresses.getSwarmAddresses().stream()
                 .map(Object::toString)
                 .collect(Collectors.toList());
@@ -453,7 +480,8 @@ public class IpfsWrapper implements AutoCloseable {
                                 .collect(Collectors.toList()))
                         .orElse(Collections.emptyList()),
                 ipfsWrapper.addressBook,
-                config.addresses.proxyTargetAddress.map(IpfsWrapper::proxyHandler)
+                config.addresses.proxyTargetAddress.map(IpfsWrapper::proxyHandler),
+                ipfsWrapper.relays.map(peergos.server.routing.Relays::policy)
         );
         ipfsWrapper.embeddedIpfs.start(args.getBoolean("async-bootstrap", false));
         ipfsWrapper.previousIdentity = args.getOptionalArg(Main.ARG_PREVIOUS_IDENTITY_SWARM_PORT.name)
