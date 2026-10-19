@@ -5,6 +5,7 @@ import peergos.shared.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.login.mfa.*;
 import peergos.shared.user.*;
@@ -111,6 +112,9 @@ public class Migrate {
         List<UserPublicKeyLink> updatedChain = network.coreNode.getChain(username).join();
         if (!updatedChain.get(updatedChain.size() - 1).claim.storageProviders.contains(newStorageNodeId))
             throw new IllegalStateException("Migration failed. Please try again later");
+        PublicKeyHash owner = updatedChain.get(updatedChain.size() - 1).owner;
+        if (! UserContext.publishMove(new SigningPrivateKeyAndPublicHash(owner, identity), network).join())
+            System.out.println("The routing log doesn't name this server yet; it will once " + username + " commits a recovery key here.");
         System.out.println("Migration complete.");
         return true;
     }
