@@ -4,6 +4,7 @@ import io.libp2p.core.Host;
 import io.libp2p.core.PeerId;
 import io.libp2p.core.multiformats.Multiaddr;
 import io.libp2p.protocol.circuit.RelayTransport.CandidateRelay;
+import org.peergos.protocol.circuit.RelayBandwidth;
 import org.peergos.protocol.circuit.RelayPolicy;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.routing.*;
@@ -25,10 +26,14 @@ public class Relays {
      *  dials candidates in order only while it holds fewer than this, and a replacement is already held for a while.
      */
     public static final int HELD = ServerAddressPublisher.NAMED_RELAYS + 1;
+    /** Enough to set up connections and hole-punch, and to keep a server that can't be punched usable, slowly. */
+    public static final long PER_SERVER_BYTES_PER_SECOND = 50_000, PER_SERVER_BURST = 10_000_000;
+    public static final long TOTAL_BYTES_PER_SECOND = 4_000_000;
     private static final int MAX_SCANNED = 10_000;
 
     private final List<Multihash> configured;
     private final boolean holdWhilePublic;
+    private final long totalBytesPerSecond;
     private final LongSupplier clock;
     private final Random random;
     private volatile Optional<RoutingLookup> lookup = Optional.empty();
@@ -36,15 +41,16 @@ public class Relays {
     private final LRUCache<PeerId, long[]> byInitiator = new LRUCache<>(10_000), byTarget = new LRUCache<>(10_000);
 
     public Relays(List<Multihash> configured, LongSupplier clock, Random random) {
-        this(configured, true, clock, random);
+        this(configured, true, TOTAL_BYTES_PER_SECOND, clock, random);
     }
 
     /** @param holdWhilePublic whether to hold relays while publicly reachable: unless the operator announced a public
      *                        address, which can be relied on, the address AutoNAT confirmed may change
      */
-    public Relays(List<Multihash> configured, boolean holdWhilePublic, LongSupplier clock, Random random) {
+    public Relays(List<Multihash> configured, boolean holdWhilePublic, long totalBytesPerSecond, LongSupplier clock, Random random) {
         this.configured = configured.stream().map(Multihash::bareMultihash).collect(Collectors.toList());
         this.holdWhilePublic = holdWhilePublic;
+        this.totalBytesPerSecond = totalBytesPerSecond;
         this.clock = clock;
         this.random = random;
     }
@@ -57,7 +63,9 @@ public class Relays {
 
     public RelayPolicy policy() {
         return new RelayPolicy(this::candidates, (requestor, observed) -> mayReserve(requestor), this::mayConnect, MAX_CLIENTS, HELD,
-                holdWhilePublic ? HELD : 0);
+                holdWhilePublic ? HELD : 0,
+                Optional.of(new RelayBandwidth(PER_SERVER_BYTES_PER_SECOND, PER_SERVER_BURST,
+                        totalBytesPerSecond, 10 * totalBytesPerSecond)));
     }
 
     /** A server that relays: it says so, and lists a direct address to reach it on. */

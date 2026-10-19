@@ -284,4 +284,15 @@ public class RelayTests {
         Assert.assertEquals(List.of(n.relay(y), n.relay(x)), n.named());
         Assert.assertEquals(List.of(n.relay(y), n.relay(3)), bare(n.after(RateLimits.MONTH).get().relays));
     }
+
+    @Test
+    public void relayedBandwidthIsMeteredPerServerAndInTotal() {
+        org.peergos.protocol.circuit.RelayBandwidth bw = new Relays(List.of(), false, 1_000_000, System::currentTimeMillis, new Random(1))
+                .policy().bandwidth.get();
+        Assert.assertEquals(Relays.PER_SERVER_BYTES_PER_SECOND, bw.perTargetBytesPerSecond);
+        Assert.assertEquals(1_000_000, bw.totalBytesPerSecond);
+        PeerId target = PeerId.random();
+        Assert.assertEquals("a burst for setup and hole-punching", 0, bw.charge(target, Relays.PER_SERVER_BURST));
+        Assert.assertTrue("then it is slowed", bw.charge(target, 100_000) >= 1_000);
+    }
 }
