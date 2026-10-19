@@ -28,6 +28,7 @@ public class Relays {
     private static final int MAX_SCANNED = 10_000;
 
     private final List<Multihash> configured;
+    private final boolean holdWhilePublic;
     private final LongSupplier clock;
     private final Random random;
     private volatile Optional<RoutingLookup> lookup = Optional.empty();
@@ -35,7 +36,15 @@ public class Relays {
     private final LRUCache<PeerId, long[]> byInitiator = new LRUCache<>(10_000), byTarget = new LRUCache<>(10_000);
 
     public Relays(List<Multihash> configured, LongSupplier clock, Random random) {
+        this(configured, true, clock, random);
+    }
+
+    /** @param holdWhilePublic whether to hold relays while publicly reachable: unless the operator announced a public
+     *                        address, which can be relied on, the address AutoNAT confirmed may change
+     */
+    public Relays(List<Multihash> configured, boolean holdWhilePublic, LongSupplier clock, Random random) {
         this.configured = configured.stream().map(Multihash::bareMultihash).collect(Collectors.toList());
+        this.holdWhilePublic = holdWhilePublic;
         this.clock = clock;
         this.random = random;
     }
@@ -47,7 +56,8 @@ public class Relays {
     }
 
     public RelayPolicy policy() {
-        return new RelayPolicy(this::candidates, (requestor, observed) -> mayReserve(requestor), this::mayConnect, MAX_CLIENTS, HELD);
+        return new RelayPolicy(this::candidates, (requestor, observed) -> mayReserve(requestor), this::mayConnect, MAX_CLIENTS, HELD,
+                holdWhilePublic ? HELD : 0);
     }
 
     /** A server that relays: it says so, and lists a direct address to reach it on. */

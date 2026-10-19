@@ -466,6 +466,9 @@ public class IpfsWrapper implements AutoCloseable {
                                     .map(p -> (peergos.shared.io.ipfs.Multihash) peergos.shared.io.ipfs.Cid.decodePeerId(p.trim()))
                                     .collect(Collectors.toList()))
                             .orElse(Collections.emptyList()),
+                    peergos.server.routing.ServerAddressPublisher.directAddresses(args.getOptionalArg("ipfs-announce-addresses")
+                            .map(addrs -> Arrays.asList(addrs.split(",")))
+                            .orElse(Collections.emptyList())).isEmpty(),
                     System::currentTimeMillis, new Random()));
         ipfsWrapper.swarmAddresses = config.addresses.getSwarmAddresses().stream()
                 .map(Object::toString)
