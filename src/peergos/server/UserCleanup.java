@@ -48,7 +48,7 @@ public class UserCleanup {
         Hasher hasher = c.crypto.hasher;
         PublicKeyHash owner = c.signer.publicKeyHash;
         FileWrapper root = c.getUserRoot().join();
-        List<Multihash> hosts = c.network.coreNode.getStorageProviders(owner);
+        List<Multihash> hosts = c.network.coreNode.getStorageProviders(owner).join();
         Set<PublicKeyHash> writers = DeletableContentAddressedStorage.getOwnedKeysRecursive(owner, owner, mutable,
                         (h, s) -> ContentAddressedStorage.getWriterData(owner, h, s, storage), storage, hasher).join()
                 .stream()

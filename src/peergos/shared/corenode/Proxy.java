@@ -16,10 +16,9 @@ public class Proxy {
                                                               PublicKeyHash ownerKey,
                                                               Supplier<CompletableFuture<V>> direct,
                                                               Function<Multihash, CompletableFuture<V>> proxied) {
-        Multihash target = homeServer(core, ownerKey);
-        if (isUs(serverIds, target))
-            return direct.get();
-        return proxyTo(core, target, proxied);
+        return homeServer(core, ownerKey).thenCompose(target -> isUs(serverIds, target) ?
+                direct.get() :
+                proxyTo(core, target, proxied));
     }
 
     /** A read for a user we hold a mirror of, which is served from our own copy before their home server.
@@ -35,16 +34,17 @@ public class Proxy {
                                                               Function<Multihash, CompletableFuture<V>> proxied,
                                                               Function<PublicKeyHash, Boolean> weMirror,
                                                               Function<V, Boolean> isPresent) {
-        Multihash target = homeServer(core, ownerKey);
-        if (isUs(serverIds, target))
-            return direct.get();
-        if (! weMirror.apply(ownerKey))
-            return proxyTo(core, target, proxied);
-        return Futures.asyncExceptionally(() -> direct.get()
-                        .thenCompose(res -> isPresent.apply(res) ?
-                                Futures.of(res) :
-                                proxyTo(core, target, proxied)),
-                t -> proxyTo(core, target, proxied));
+        return homeServer(core, ownerKey).thenCompose(target -> {
+            if (isUs(serverIds, target))
+                return direct.get();
+            if (! weMirror.apply(ownerKey))
+                return proxyTo(core, target, proxied);
+            return Futures.asyncExceptionally(() -> direct.get()
+                            .thenCompose(res -> isPresent.apply(res) ?
+                                    Futures.of(res) :
+                                    proxyTo(core, target, proxied)),
+                    t -> proxyTo(core, target, proxied));
+        });
     }
 
     /** A read of mutable state which has to come from the user's home server, falling back to our own
@@ -56,22 +56,20 @@ public class Proxy {
                                                                                 Supplier<CompletableFuture<V>> direct,
                                                                                 Function<Multihash, CompletableFuture<V>> proxied,
                                                                                 Function<PublicKeyHash, Boolean> weMirror) {
-        Multihash target = homeServer(core, ownerKey);
-        if (isUs(serverIds, target))
-            return direct.get();
-        return Futures.asyncExceptionally(() -> proxyTo(core, target, proxied),
-                t -> weMirror.apply(ownerKey) ? direct.get() : Futures.errored(t));
+        return homeServer(core, ownerKey).thenCompose(target -> isUs(serverIds, target) ?
+                direct.get() :
+                Futures.asyncExceptionally(() -> proxyTo(core, target, proxied),
+                        t -> weMirror.apply(ownerKey) ? direct.get() : Futures.errored(t)));
     }
 
-    public static boolean isHomeServer(CoreNode core, List<Cid> serverIds, PublicKeyHash ownerKey) {
-        return isUs(serverIds, homeServer(core, ownerKey));
+    public static CompletableFuture<Boolean> isHomeServer(CoreNode core, List<Cid> serverIds, PublicKeyHash ownerKey) {
+        return homeServer(core, ownerKey).thenApply(target -> isUs(serverIds, target));
     }
 
-    private static Multihash homeServer(CoreNode core, PublicKeyHash ownerKey) {
-        List<Multihash> storageIds = core.getStorageProviders(ownerKey);
-        if (storageIds.isEmpty())
-            throw new IllegalStateException("Unable to find home server to send request to for " + ownerKey);
-        return storageIds.get(0);
+    private static CompletableFuture<Multihash> homeServer(CoreNode core, PublicKeyHash ownerKey) {
+        return core.getStorageProviders(ownerKey).thenCompose(storageIds -> storageIds.isEmpty() ?
+                Futures.errored(new IllegalStateException("Unable to find home server to send request to for " + ownerKey)) :
+                Futures.of(storageIds.get(0)));
     }
 
     private static boolean isUs(List<Cid> serverIds, Multihash target) {
@@ -85,10 +83,9 @@ public class Proxy {
                                                     Multihash target,
                                                     Function<Multihash, CompletableFuture<V>> proxied) {
         return Futures.asyncExceptionally(() -> proxied.apply(target),
-                t -> {
-                    // check if the server has rotated their identity
-                    Multihash newServerIdentity = core.getNextServerId(target.bareMultihash()).join().get();
-                    return proxied.apply(new Cid(1, Cid.Codec.LibP2pKey, newServerIdentity.type, newServerIdentity.getHash()));
-                });
+                t -> core.getNextServerId(target.bareMultihash()) // the server may have rotated its identity
+                        .thenCompose(next -> next.isEmpty() ?
+                                Futures.errored(t) :
+                                proxied.apply(new Cid(1, Cid.Codec.LibP2pKey, next.get().type, next.get().getHash()))));
     }
 }
