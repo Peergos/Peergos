@@ -32,16 +32,21 @@ public class HostedIdentityRouting implements IdentityRouting {
     private final JdbcAccount account;
     private volatile Optional<ServerRouting> routing = Optional.empty();
     private volatile Function<Multihash, RoutingPeer> dial;
+    private volatile Optional<Hints> hints = Optional.empty();
 
-    public HostedIdentityRouting(CoreNode core, QuotaAdmin quotas, JdbcAccount account) {
+    private final ContentAddressedStorage storage;
+
+    public HostedIdentityRouting(CoreNode core, QuotaAdmin quotas, JdbcAccount account, ContentAddressedStorage storage) {
         this.core = core;
         this.quotas = quotas;
         this.account = account;
+        this.storage = storage;
     }
 
     /** The routing log starts after the api, so until then it reports itself not running. */
-    public void start(ServerRouting routing, Function<Multihash, RoutingPeer> dial) {
+    public void start(ServerRouting routing, Function<Multihash, RoutingPeer> dial, Optional<Hints> hints) {
         this.dial = dial;
+        this.hints = hints;
         this.routing = Optional.of(routing);
     }
 
@@ -218,6 +223,29 @@ public class HostedIdentityRouting implements IdentityRouting {
                             }))
                     .collect(Collectors.toList());
             return Futures.combineAll(offers).thenApply(x -> true);
+        } catch (Exception e) {
+            return Futures.errored(e);
+        }
+    }
+
+    @Override
+    public CompletableFuture<ServerHint> hint() {
+        try {
+            running();
+            return Futures.of(hints.orElseThrow(() -> new IllegalStateException("No address book here")).own());
+        } catch (Exception e) {
+            return Futures.errored(e);
+        }
+    }
+
+    @Override
+    public CompletableFuture<List<String>> addHint(PublicKeyHash user, byte[] signedTime, ServerHint hint, Optional<PublicKeyHash> identity) {
+        try {
+            running();
+            Hints h = hints.orElseThrow(() -> new IllegalStateException("No address book here"));
+            hostedUser(user);
+            TimeLimited.isAllowedTime(signedTime, 300, storage, user);
+            return Futures.of(h.add(user, hint, identity));
         } catch (Exception e) {
             return Futures.errored(e);
         }

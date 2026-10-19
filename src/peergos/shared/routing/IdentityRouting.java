@@ -41,6 +41,17 @@ public interface IdentityRouting {
     /** The identity's records, for a client to find its current key itself. */
     CompletableFuture<List<SignedRecord>> records(PublicKeyHash identity);
 
+    /** Where to reach this server, for a link to carry. */
+    CompletableFuture<ServerHint> hint();
+
+    /** Has this server dial a server the log may not hold yet, from a link's hint, and pull its records and the
+     *  identity's.
+     *
+     * @param signedTime the time, signed by the user's identity key
+     * @return the hint's addresses this server will dial
+     */
+    CompletableFuture<List<String>> addHint(PublicKeyHash user, byte[] signedTime, ServerHint hint, Optional<PublicKeyHash> identity);
+
     IdentityRouting DISABLED = new IdentityRouting() {
         private <T> CompletableFuture<T> notRunning() {
             return Futures.errored(new IllegalStateException("The routing log isn't running"));
@@ -79,6 +90,16 @@ public interface IdentityRouting {
         @Override
         public CompletableFuture<List<SignedRecord>> records(PublicKeyHash identity) {
             return Futures.of(Collections.emptyList());
+        }
+
+        @Override
+        public CompletableFuture<ServerHint> hint() {
+            return notRunning();
+        }
+
+        @Override
+        public CompletableFuture<List<String>> addHint(PublicKeyHash user, byte[] signedTime, ServerHint hint, Optional<PublicKeyHash> identity) {
+            return notRunning();
         }
     };
 
@@ -233,6 +254,24 @@ public interface IdentityRouting {
             return poster.get(Constants.IDENTITY_ROUTING_URL + "records?identity=" + identity)
                     .thenApply(res -> ((CborObject.CborList) CborObject.fromByteArray(res)).value.stream()
                             .map(RecordType::untag)
+                            .collect(Collectors.toList()));
+        }
+
+        @Override
+        public CompletableFuture<ServerHint> hint() {
+            return poster.get(Constants.IDENTITY_ROUTING_URL + "hint")
+                    .thenApply(res -> ServerHint.fromCbor(CborObject.fromByteArray(res)));
+        }
+
+        @Override
+        public CompletableFuture<List<String>> addHint(PublicKeyHash user, byte[] signedTime, ServerHint hint, Optional<PublicKeyHash> identity) {
+            SortedMap<String, Cborable> m = new TreeMap<>();
+            m.put("t", new CborObject.CborByteArray(signedTime));
+            m.put("h", hint);
+            identity.ifPresent(i -> m.put("i", i));
+            return poster.post(Constants.IDENTITY_ROUTING_URL + "add-hint?identity=" + user, CborObject.CborMap.build(m).serialize(), false)
+                    .thenApply(res -> ((CborObject.CborList) CborObject.fromByteArray(res)).value.stream()
+                            .map(c -> ((CborObject.CborString) c).value)
                             .collect(Collectors.toList()));
         }
     }
