@@ -941,8 +941,9 @@ public class Main extends Builder {
             boolean allowNonLocalLinks = a.getBoolean("allow-external-secret-links", "localhost".equals(listeningHost));
             DeletableContentAddressedStorage localStorage = new SecretLinkStorage(localStorageForLinks, localPointers, linkCounts, allowNonLocalLinks, userQuotas, batStore, hasher);
 
-            CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
+            CoreNode pkiCore = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
                     rawSocial, usageStore, userQuotas, rawAccount, batStore, account, linkCounts, crypto);
+            RoutedCoreNode core = new RoutedCoreNode(pkiCore);
             localStorage.setPki(core);
             userQuotas.setPki(core);
 
@@ -1154,7 +1155,8 @@ public class Main extends Builder {
                         .ifPresent(routing -> {
                             p2pAPI.startRoutingApi(new RoutingHandler(routing.node));
                             localStorage.setIdentityKeys(HostedIdentityRouting.keys(routing.server.replica));
-                            identityRouting.start(routing.server);
+                            identityRouting.start(routing.server, routing.node::dial);
+                            core.start(routing.server.replica);
                         });
                 if (isPki)
                     RoutingService.exportLegacy(a, ContentAddressedStorage.hashKey(PublicSigningKey.fromByteArray(
@@ -1164,8 +1166,8 @@ public class Main extends Builder {
             }
 
             if (! isPki) {
-                if (core instanceof MirrorCoreNode)
-                    ((MirrorCoreNode) core).start();
+                if (pkiCore instanceof MirrorCoreNode)
+                    ((MirrorCoreNode) pkiCore).start();
             }
             if (a.getBoolean("update-usage", true))
                 spaceChecker.calculateUsage();
