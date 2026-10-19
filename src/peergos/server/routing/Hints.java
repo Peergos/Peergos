@@ -42,32 +42,43 @@ public class Hints {
         book.setLogged(peer -> logged(replica, peer));
     }
 
-    /** The direct addresses a server signed in the log, when the peer dialled is that server's endpoint. */
+    /** The direct addresses a server signed in the log, then the circuits through the relays it names, when the
+     *  peer dialled is that server's endpoint.
+     */
     public static List<Multiaddr> logged(RoutingReplica replica, PeerId peer) {
         Multihash id = Multihash.decode(peer.getBytes());
-        return replica.server(Subject.server(id))
-                .flatMap(ServerLog::addresses)
-                .filter(a -> ServerKeys.peerId(a.endpoint).equals(id))
-                .map(a -> a.addrs.stream()
-                        .filter(addr -> addr.transport.equals(Address.LIBP2P))
-                        .map(addr -> Multiaddr.fromString(new MultiAddress(addr.address).toString()))
-                        .collect(Collectors.toList()))
-                .orElse(Collections.emptyList());
+        Optional<ServerLog> log = replica.server(Subject.server(id))
+                .filter(l -> l.addresses().map(a -> ServerKeys.peerId(a.endpoint).equals(id)).orElse(false));
+        if (log.isEmpty())
+            return Collections.emptyList();
+        List<Multiaddr> res = log.get().addresses().get().addrs.stream()
+                .filter(addr -> addr.transport.equals(Address.LIBP2P))
+                .map(addr -> Multiaddr.fromString(new MultiAddress(addr.address).toString()))
+                .collect(Collectors.toList());
+        res.addAll(Relays.relayed(replica, log.get()));
+        return res;
     }
 
-    /** The public addresses this server signed in the log, or failing those, its LAN addresses, so two servers on
-     *  a LAN with no internet can still be introduced.
+    /** The public addresses this server signed in the log, or failing those its relays', or its LAN addresses, so
+     *  two servers on a LAN with no internet can still be introduced.
      */
     public ServerHint own() {
-        List<String> published = replica.server(Subject.server(self))
-                .flatMap(ServerLog::addresses)
+        Optional<ServerLog> log = replica.server(Subject.server(self));
+        List<String> published = log.flatMap(ServerLog::addresses)
                 .map(a -> a.addrs.stream()
                         .filter(addr -> addr.transport.equals(Address.LIBP2P))
                         .map(addr -> new MultiAddress(addr.address).toString())
                         .filter(ServerHint::isAllowed)
                         .collect(Collectors.toList()))
                 .orElse(Collections.emptyList());
-        List<String> addrs = published.isEmpty() ? lanAddresses(swarm, interfaces.get()) : published;
+        List<String> relayed = log.map(l -> Relays.relayed(replica, l).stream()
+                        .map(Multiaddr::toString)
+                        .filter(ServerHint::isAllowed)
+                        .collect(Collectors.toList()))
+                .orElse(Collections.emptyList());
+        List<String> addrs = ! published.isEmpty() ? published :
+                ! relayed.isEmpty() ? relayed :
+                lanAddresses(swarm, interfaces.get());
         return new ServerHint(self, addrs.stream().limit(ServerHint.MAX_ADDRESSES).collect(Collectors.toList()));
     }
 
