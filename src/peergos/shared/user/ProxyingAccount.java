@@ -64,7 +64,8 @@ public class ProxyingAccount implements Account {
                 idOpt.get(),
                 // a device token is only any use from the home server, so don't let a mirror replace it
                 () -> local.getLoginData(username, authorisedReader, auth, mfa, deviceToken, false, forceProxy, forceNoCache)
-                        .thenApply(res -> Proxy.isHomeServer(core, serverIds, idOpt.get()) ? res : res.withoutDeviceToken()),
+                        .thenCompose(res -> Proxy.isHomeServer(core, serverIds, idOpt.get())
+                                .thenApply(home -> home ? res : res.withoutDeviceToken())),
                 target -> p2p.getLoginData(target, username, authorisedReader, auth, mfa, deviceToken),
                 weMirror));
     }
