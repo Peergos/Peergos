@@ -247,4 +247,41 @@ public class RelayTests {
             Assert.assertTrue("a server with a direct address names no relays", published.relays.isEmpty());
         }
     }
+
+    @Test
+    public void aServerWhoseAddressWasntAnnouncedNamesRelaysToo() {
+        RoutingReplica replica = replica();
+        SigningKeyPair serverKey = key();
+        ServerInception inception = ServerInception.build(serverKey, key().publicSigningKey, crypto.hasher).join();
+        replica.add(Subject.server(inception.peerId()), inception);
+        Multihash relay = peer(key());
+        long[] now = {1_000_000_000L};
+        ServerAddressPublisher publisher = new ServerAddressPublisher(replica, serverKey, List.of(),
+                () -> List.of("/ip4/203.0.113.7/tcp/4001"), ServerAddresses.Mode.Archival, () -> List.of(relay), true, () -> now[0]);
+        publisher.refresh();
+        now[0] += ServerAddressPublisher.STABLE_MILLIS;
+        ServerAddresses published = publisher.refresh().get();
+        Assert.assertEquals(ServerAddressPublisher.directAddresses(List.of("/ip4/203.0.113.7/tcp/4001")), published.addrs);
+        Assert.assertEquals(List.of(relay), bare(published.relays));
+        Assert.assertTrue(published.relaying);
+    }
+
+    @Test
+    public void updatesBeyondWhatPeersTakeAreDeferred() {
+        Named n = new Named(6);
+        n.hold(0);
+        Assert.assertTrue("the first record is free", n.after(0).isPresent());
+        Assert.assertTrue(n.after(ServerAddressPublisher.RELAY_STABLE_MILLIS).isPresent());
+        n.hold(0, 1, 2);
+        Assert.assertTrue(n.after(0).isEmpty());
+        Assert.assertTrue(n.after(ServerAddressPublisher.RELAY_STABLE_MILLIS).isPresent());
+        int x = n.named().get(1).equals(n.relay(1)) ? 1 : 2, y = 3 - x;
+        n.hold(x, y);
+        Assert.assertEquals(List.of(n.relay(y), n.relay(x)),
+                bare(n.after(ServerAddressPublisher.RELAY_REPLACE_MILLIS + 60_000).get().relays));
+        n.hold(y, 3);
+        Assert.assertTrue("a fourth update so soon is deferred", n.after(ServerAddressPublisher.RELAY_REPLACE_MILLIS + 60_000).isEmpty());
+        Assert.assertEquals(List.of(n.relay(y), n.relay(x)), n.named());
+        Assert.assertEquals(List.of(n.relay(y), n.relay(3)), bare(n.after(RateLimits.MONTH).get().relays));
+    }
 }
