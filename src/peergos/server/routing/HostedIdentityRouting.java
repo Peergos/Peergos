@@ -35,12 +35,21 @@ public class HostedIdentityRouting implements IdentityRouting {
     private volatile Optional<Hints> hints = Optional.empty();
 
     private final ContentAddressedStorage storage;
+    private final List<Cid> ourIds;
+    private final Function<Multihash, CoreNode> remoteCore;
 
-    public HostedIdentityRouting(CoreNode core, QuotaAdmin quotas, JdbcAccount account, ContentAddressedStorage storage) {
+    public HostedIdentityRouting(CoreNode core,
+                                 QuotaAdmin quotas,
+                                 JdbcAccount account,
+                                 ContentAddressedStorage storage,
+                                 List<Cid> ourIds,
+                                 Function<Multihash, CoreNode> remoteCore) {
         this.core = core;
         this.quotas = quotas;
         this.account = account;
         this.storage = storage;
+        this.ourIds = ourIds;
+        this.remoteCore = remoteCore;
     }
 
     /** The routing log starts after the api, so until then it reports itself not running. */
@@ -236,6 +245,17 @@ public class HostedIdentityRouting implements IdentityRouting {
         } catch (Exception e) {
             return Futures.errored(e);
         }
+    }
+
+    /** Asked of the named server itself, following its rotations, since the username is its label. */
+    @Override
+    public CompletableFuture<Optional<PublicKeyHash>> lookup(String username, Multihash server) {
+        if (ourIds.stream().anyMatch(id -> id.bareMultihash().equals(server.bareMultihash())))
+            return core.getPublicKeyHash(username);
+        return Futures.asyncExceptionally(() -> remoteCore.apply(server).getPublicKeyHash(username),
+                t -> core.getNextServerId(server).thenCompose(next -> next.isPresent() ?
+                        remoteCore.apply(new Cid(1, Cid.Codec.LibP2pKey, next.get().type, next.get().getHash())).getPublicKeyHash(username) :
+                        Futures.errored(t)));
     }
 
     @Override

@@ -52,6 +52,11 @@ public class ProxyingAccount implements Account {
                                                          boolean cacheMfaLoginData,
                                                          boolean forceProxy,
                                                          boolean forceNoCache) {
+        LoginName name = LoginName.parse(username);
+        if (name.server.isPresent())
+            return toNamedServer(name,
+                    () -> local.getLoginData(name.username, authorisedReader, auth, mfa, deviceToken, false, forceProxy, forceNoCache),
+                    target -> p2p.getLoginData(target, name.username, authorisedReader, auth, mfa, deviceToken));
         // a mirror of the login data is only used when the home server can't be reached, and only holds
         // an entry at all for a user without 2FA, whose login data we were able to mirror
         return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCallWithMirrorFallback(core,
@@ -62,6 +67,21 @@ public class ProxyingAccount implements Account {
                         .thenApply(res -> Proxy.isHomeServer(core, serverIds, idOpt.get()) ? res : res.withoutDeviceToken()),
                 target -> p2p.getLoginData(target, username, authorisedReader, auth, mfa, deviceToken),
                 weMirror));
+    }
+
+    /** A username@peerid names the server the username belongs to, so it is asked directly, following the server's
+     *  rotations, rather than found through the PKI (remove-pki §12.1).
+     */
+    private <V> CompletableFuture<V> toNamedServer(LoginName name,
+                                                   Supplier<CompletableFuture<V>> direct,
+                                                   Function<Multihash, CompletableFuture<V>> proxied) {
+        Multihash target = name.server.get();
+        if (serverIds.stream().anyMatch(id -> id.bareMultihash().equals(target.bareMultihash())))
+            return direct.get();
+        return Futures.asyncExceptionally(() -> proxied.apply(target),
+                t -> core.getNextServerId(target).thenCompose(next -> next.isPresent() ?
+                        proxied.apply(new Cid(1, Cid.Codec.LibP2pKey, next.get().type, next.get().getHash())) :
+                        Futures.errored(t)));
     }
 
     @Override
