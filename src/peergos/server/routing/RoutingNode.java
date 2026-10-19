@@ -112,9 +112,7 @@ public class RoutingNode {
     // ---- answering other nodes
 
     public List<SignedRecord> records(Subject s) {
-        return replica.log(s).held().stream()
-                .map(v -> (SignedRecord) v.record)
-                .collect(Collectors.toList());
+        return replica.records(s, dial);
     }
 
     public List<Reconciliation.Summary> summaries(int kind, List<Reconciliation.Range> ranges) {

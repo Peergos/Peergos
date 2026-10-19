@@ -192,7 +192,8 @@ public class HostedIdentityRouting implements IdentityRouting {
             String username = hostedUser(identity);
             Subject s = Subject.identity(identity);
             IdentityLog log = log(identity).orElseThrow(() -> new IllegalStateException("No recovery key is committed"));
-            if (log.held().stream().anyMatch(v -> v.record.equals(rotation)))
+            byte[] hash = r.replica.hash(rotation);
+            if (log.held().stream().anyMatch(v -> Arrays.equals(v.hash, hash)))
                 return Futures.of(true);
             IdentityLog after = (IdentityLog) r.replica.preview(s, List.of(rotation));
             if (! after.currentKey().equals(Optional.of(rotation.to)) || after.isFrozen())
@@ -277,8 +278,12 @@ public class HostedIdentityRouting implements IdentityRouting {
     public CompletableFuture<List<SignedRecord>> records(PublicKeyHash identity) {
         if (routing.isEmpty())
             return Futures.of(Collections.emptyList());
-        List<SignedRecord> res = new ArrayList<>();
-        lookup.identity(identity).ifPresent(log -> log.held().forEach(v -> res.add(v.record)));
-        return Futures.of(res);
+        try {
+            if (lookup.identity(identity).isEmpty())
+                return Futures.of(Collections.emptyList());
+            return Futures.of(running().replica.records(Subject.identity(identity), dial));
+        } catch (Exception e) {
+            return Futures.errored(e);
+        }
     }
 }
