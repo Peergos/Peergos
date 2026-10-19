@@ -1392,6 +1392,8 @@ public class Main extends Builder {
             List<UserPublicKeyLink> updatedChain = user.network.coreNode.getChain(username).join();
             if (!updatedChain.get(updatedChain.size() - 1).claim.storageProviders.contains(newStorageNodeId))
                 throw new IllegalStateException("Migration failed. Please try again later");
+            if (! user.publishMove().join())
+                System.out.println("The routing log doesn't name this server yet; it will once you commit a recovery key here.");
             System.out.println("Migration complete.");
             return true;
         } catch (Exception ex) {

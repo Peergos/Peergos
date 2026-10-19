@@ -184,6 +184,22 @@ public class HostedIdentityRouting implements IdentityRouting {
     }
 
     @Override
+    public CompletableFuture<Boolean> move(PublicKeyHash identity, IdentityMove move) {
+        try {
+            ServerRouting r = running();
+            if (! move.providers.equals(List.of(r.peerId)))
+                throw new IllegalStateException("A move added here must name only this server");
+            hostedUser(identity);
+            Outcome res = r.replica.add(Subject.identity(identity), move);
+            if (res != Outcome.Added && res != Outcome.Duplicate)
+                throw new IllegalStateException("The move was not taken: " + res);
+            return Futures.of(true);
+        } catch (Exception e) {
+            return Futures.errored(e);
+        }
+    }
+
+    @Override
     public CompletableFuture<List<SignedRecord>> records(PublicKeyHash identity) {
         if (routing.isEmpty())
             return Futures.of(Collections.emptyList());

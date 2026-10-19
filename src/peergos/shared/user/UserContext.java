@@ -13,6 +13,7 @@ import peergos.shared.resolution.*;
 import peergos.shared.routing.IdentityInception;
 import peergos.shared.routing.IdentityKeys;
 import peergos.shared.routing.IdentityRotation;
+import peergos.shared.routing.IdentityMove;
 import peergos.shared.routing.IdentityRouting;
 import peergos.shared.routing.RecoveryCopy;
 import peergos.shared.routing.RecoveryKey;
@@ -731,8 +732,37 @@ public class UserContext {
                                     .claim.storageProviders.stream().findFirst().get();
                             Cid newStorageNodeId = thisServer;
                             return Migrate.buildMigrationChain(existing, newStorageNodeId, signer.secret)
-                                    .thenCompose(newChain -> network.coreNode.migrateUser(username, newChain, originalNodeId, mirrorBat, LocalDateTime.now(ZoneOffset.UTC), usage, true));
+                                    .thenCompose(newChain -> network.coreNode.migrateUser(username, newChain, originalNodeId, mirrorBat, LocalDateTime.now(ZoneOffset.UTC), usage, true))
+                                    .thenCompose(snapshot -> publishMove().thenApply(x -> snapshot));
                         })));
+    }
+
+    /** Names the server this context talks to as the identity's provider in the routing log, once it hosts the
+     *  user. Before the identity commits there is nothing in the log to move.
+     */
+    public CompletableFuture<Boolean> publishMove() {
+        return publishMove(signer, network);
+    }
+
+    public static CompletableFuture<Boolean> publishMove(SigningPrivateKeyAndPublicHash signer, NetworkAccess network) {
+        PublicKeyHash identity = signer.publicKeyHash;
+        return network.identityRouting.status(identity).thenCompose(status -> {
+            if (! status.running || ! status.committed || status.server.isEmpty())
+                return Futures.of(false);
+            return network.identityRouting.records(identity)
+                    .thenApply(records -> records.stream()
+                            .filter(r -> r instanceof IdentityMove)
+                            .mapToLong(r -> ((IdentityMove) r).counter + 1)
+                            .max()
+                            .orElse(0))
+                    .thenCompose(next -> network.dhtClient.getSigningKey(identity, identity)
+                            .thenCompose(pub -> IdentityMove.build(new SigningKeyPair(pub.get(), signer.secret),
+                                    Collections.singletonList(status.server.get()), Math.max(System.currentTimeMillis(), next))))
+                    .thenCompose(move -> network.identityRouting.move(identity, move));
+        }).exceptionally(t -> {
+            LOG.log(Level.WARNING, "Couldn't move the identity in the routing log: " + t.getMessage(), t);
+            return false;
+        });
     }
 
     private static CompletableFuture<Boolean> retryUntilPositiveQuota(NetworkAccess network,
