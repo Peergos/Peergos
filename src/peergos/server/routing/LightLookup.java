@@ -61,8 +61,10 @@ public class LightLookup implements RoutingLookup {
     }
 
     @Override
+    /** Asked for by a later peerid, the full node answers with the server's records, kept under its first. */
     public Optional<ServerLog> server(Multihash peerId) {
-        return resolve(Subject.server(peerId.bareMultihash())).map(l -> (ServerLog) l);
+        return resolve(Subject.server(peerId.bareMultihash())).map(l -> (ServerLog) l)
+                .or(() -> replica.serverForPeer(peerId));
     }
 
     /** This server and the identities it hosts: their records arrive here first, so the replica is their source. */
