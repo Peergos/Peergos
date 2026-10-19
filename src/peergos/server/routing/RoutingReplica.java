@@ -189,6 +189,8 @@ public class RoutingReplica {
                     new JdbcRoutingStore.Stored(RecordType.stripped(v.record), Optional.of(v.hash)) :
                     new JdbcRoutingStore.Stored(v.record, Optional.empty()));
         store.put(s, records, digest(log.held()));
+        if (log instanceof ServerLog)
+            index(s, (ServerLog) log);
         if (strip)
             cache.remove(s);
         else
@@ -274,6 +276,33 @@ public class RoutingReplica {
             store.put(s, records, digest(held));
             cache.remove(s);
         }
+    }
+
+    private void index(Subject s, ServerLog log) {
+        Multihash id = s.id.bareMultihash();
+        Optional<Multihash> key = log.currentKey().map(k -> ServerKeys.peerId(k).bareMultihash()).filter(p -> ! p.equals(id));
+        Optional<Multihash> endpoint = log.addresses().map(a -> ServerKeys.peerId(a.endpoint).bareMultihash())
+                .filter(p -> ! p.equals(id) && ! key.equals(Optional.of(p)));
+        store.putPeers(s, key, endpoint);
+    }
+
+    /** The server a connection authenticated as this peerid belongs to: the one whose current key or endpoint it
+     *  is, whether that is its first peerid or a later one. A key it has rotated away from no longer counts.
+     */
+    public Optional<ServerLog> serverForPeer(Multihash peer) {
+        Multihash p = peer.bareMultihash();
+        Optional<ServerLog> direct = server(Subject.server(p));
+        if (direct.isPresent())
+            return direct.filter(log -> isReachedAs(log, p));
+        return store.resolvePeer(p).flatMap(this::server).filter(log -> isReachedAs(log, p));
+    }
+
+    private static boolean isReachedAs(ServerLog log, Multihash peer) {
+        if (log.currentKey().map(k -> ServerKeys.peerId(k).bareMultihash().equals(peer)).orElse(false))
+            return true;
+        if (log.addresses().map(a -> ServerKeys.peerId(a.endpoint).bareMultihash().equals(peer)).orElse(false))
+            return true;
+        return log.currentKey().isEmpty() && log.peerId.bareMultihash().equals(peer);
     }
 
     private static List<Multihash> sources(SubjectLog log) {

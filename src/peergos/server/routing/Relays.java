@@ -246,15 +246,14 @@ public class Relays {
                 return cached[1] == 1;
         }
         RoutingReplica replica = lookup.get().replica();
-        Subject s = Subject.server(id);
-        boolean res = replica.server(s).isPresent() && replica.isProven(s, false);
+        boolean res = replica.serverForPeer(id).filter(log -> replica.isProven(log.subject(), false)).isPresent();
         synchronized (proven) {
             proven.put(id, new long[]{now, res ? 1 : 0});
         }
         if (! res && fetching.add(id))
             background.submit(() -> {
                 try {
-                    if (lookup.get().server(id).isPresent())
+                    if (lookup.get().server(id).isPresent() || lookup.get().replica().serverForPeer(id).isPresent())
                         synchronized (proven) {
                             proven.remove(id);
                         }

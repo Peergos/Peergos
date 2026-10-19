@@ -66,6 +66,8 @@ public class RoutingService {
 
     private static final long TICK_MILLIS = 60_000, SYNC_MILLIS = 10 * 60_000, ADDRESS_MILLIS = 10 * 60_000,
             PEERS_MILLIS = 60 * 60_000;
+    /** Until synced, rounds run back to back, so a node catches up in minutes rather than one round per period. */
+    private static final int CATCH_UP_ROUNDS = 5;
 
     public final ServerRouting server;
     public final RoutingNode node;
@@ -148,7 +150,8 @@ public class RoutingService {
             lookup = lightLookup;
         } else {
             peers.forEach(node::addSyncPeer);
-            lookup = RoutingLookup.full(server.replica);
+            node.setConfigured(peers.stream().map(RoutingPeer::id).collect(Collectors.toList()));
+            lookup = RoutingLookup.full(server.replica, node::isSynced);
         }
         ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor(daemon("Routing timer"));
         timer.scheduleWithFixedDelay(() -> run(node::tick), TICK_MILLIS, TICK_MILLIS, TimeUnit.MILLISECONDS);
@@ -159,7 +162,11 @@ public class RoutingService {
             timer.scheduleWithFixedDelay(() -> run(() -> ((LightLookup) lookup).publish(self, server.replica.log(self))),
                     0, SYNC_MILLIS, TimeUnit.MILLISECONDS);
         } else
-            timer.scheduleWithFixedDelay(() -> run(node::syncRound), 0, SYNC_MILLIS, TimeUnit.MILLISECONDS);
+            timer.scheduleWithFixedDelay(() -> run(() -> {
+                for (int i = 0; i < CATCH_UP_ROUNDS; i++)
+                    if (node.syncRound() == 0 && node.isSynced())
+                        return;
+            }), 0, SYNC_MILLIS, TimeUnit.MILLISECONDS);
         timer.scheduleWithFixedDelay(() -> run(addresses::refresh), 0, ADDRESS_MILLIS, TimeUnit.MILLISECONDS);
         reachability.ifPresent(r -> r.addListener(state -> timer.execute(() -> run(addresses::refresh))));
         LOG.info("Routing log started for " + server.peerId + (light ?
