@@ -140,6 +140,19 @@ public class RoutingSimulationTests {
             neighbours.add(neighbour.admit(key()));
         }
         List<SimNode> victims = nodes.subList(1, nodes.size()).stream().filter(n -> n != nodes.get(5)).collect(Collectors.toList());
+        net.work.drain();
+        int honestMinutes = reachedAll(victims, honestUsers) ? 0 : -1, neighbourMinutes = reachedAll(victims, neighbours) ? 0 : -1;
+        for (int minute = 1; minute <= 9 && (honestMinutes < 0 || neighbourMinutes < 0); minute++) {
+            net.tick(MINUTE);
+            if (honestMinutes < 0 && victims.stream().allMatch(v -> held(v, honestUsers) == honestUsers.size()))
+                honestMinutes = minute;
+            if (neighbourMinutes < 0 && victims.stream().allMatch(v -> held(v, neighbours) == neighbours.size()))
+                neighbourMinutes = minute;
+        }
+        log("Before any reconciliation round: honest users reached every node in " + honestMinutes
+                + " minutes (0 being by announcements alone), the neighbour's in " + neighbourMinutes
+                + "; the flood reached at most " + victims.stream().mapToLong(v -> held(v, flood)).max().getAsLong());
+        Assert.assertEquals("honest signups spread by announcement, without waiting for a tick or a round", 0, honestMinutes);
         int honestHours = -1, neighbourHours = -1;
         for (int hour = 1; hour <= 48; hour++) {
             net.step(HOUR);
@@ -181,6 +194,15 @@ public class RoutingSimulationTests {
                 flood.add(a.admit(key()));
         for (int i = 0; i < 5; i++)
             users.add(honestRelayed.admit(key()));
+        net.work.drain();
+        int minutes = reachedAll(nodes.subList(1, nodes.size()), users) ? 0 : -1;
+        for (int minute = 1; minute <= 9 && minutes < 0; minute++) {
+            net.tick(MINUTE);
+            if (nodes.subList(1, nodes.size()).stream().allMatch(v -> held(v, users) == users.size()))
+                minutes = minute;
+        }
+        log("Before any reconciliation round, the relayed server's users reached every node in " + minutes
+                + " minutes (0 being by announcements alone)");
         int hours = -1;
         for (int hour = 1; hour <= 24 && hours < 0; hour++) {
             net.step(HOUR);
@@ -191,6 +213,10 @@ public class RoutingSimulationTests {
         log("Relayed servers: a flood of " + flood.size() + " shares the unverified bucket with an honest relayed server, "
                 + "whose users reached every node in " + hours + " hours; the flood reached at most " + most + " per node");
         Assert.assertTrue("round-robin by admitting server still gives it turns", hours > 0);
+    }
+
+    private static boolean reachedAll(List<SimNode> nodes, List<Subject> users) {
+        return nodes.stream().allMatch(v -> held(v, users) == users.size());
     }
 
     /** A server's records known to these nodes, as if it had registered long ago. */

@@ -115,7 +115,7 @@ public class ReplicationTests {
     }
 
     @Test
-    public void announcementsSpreadAndNewInceptionsWaitTheirTurn() throws Exception {
+    public void announcementsSpreadAndNewInceptionsAreTakenWhileTheirBucketHasTokens() throws Exception {
         Network net = new Network();
         Node a = net.node(100), b = net.node(100), c = net.node(100);
         a.syncWith(b);
@@ -127,14 +127,10 @@ public class ReplicationTests {
 
         a.replica.add(x.subject, x.inception);
         a.replica.add(aliceSubject, alice);
-        waitFor(() -> b.routing.waitingInceptions() == 2);
-        Assert.assertFalse("new inceptions wait for the bucket's rate", b.replica.log(x.subject).exists());
-
-        b.routing.tick();
+        waitFor(() -> b.replica.log(aliceSubject).inception().isPresent());
         Assert.assertTrue(b.replica.log(x.subject).inception().isPresent());
-        b.routing.tick();
-        Assert.assertTrue(b.replica.log(aliceSubject).inception().isPresent());
         Assert.assertArrayEquals(a.replica.stateHash(aliceSubject), b.replica.stateHash(aliceSubject));
+        Assert.assertEquals(0, b.routing.waitingInceptions());
     }
 
     @Test
@@ -200,9 +196,7 @@ public class ReplicationTests {
         b.syncWith(a);
         b.syncWith(c);
         Assert.assertEquals(0, b.routing.syncRound());
-        Assert.assertEquals(5, b.routing.waitingInceptions());
-        b.routing.tick();
-        Assert.assertEquals(3, b.routing.waitingInceptions());
+        Assert.assertEquals("the bucket's two tokens are taken at once", 3, b.routing.waitingInceptions());
         b.routing.tick();
         Assert.assertEquals("no tokens until the clock moves", 3, b.routing.waitingInceptions());
         net.clock.addAndGet(RateLimits.DAY / 2);
