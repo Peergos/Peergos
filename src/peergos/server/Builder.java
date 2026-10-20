@@ -231,10 +231,11 @@ public class Builder {
     private static final String CBOR_MIRROR_BACKFILL = "cbor.s3.backfill";
 
     /** An optional second S3 bucket, configured with cbor.s3.* args, that holds a copy of every cbor block. */
-    public static Optional<S3CborMirror> buildCborMirror(Args a, Hasher hasher) {
+    public static Optional<S3CborMirror> buildCborMirror(Args a, UsageStore usage, Hasher hasher) {
         if (! S3Config.useS3(a, CBOR_MIRROR_PREFIX))
             return Optional.empty();
-        return Optional.of(new S3CborMirror(S3Config.build(a, Optional.of(CBOR_MIRROR_PREFIX)), hasher));
+        FileBlockBuffer retryBuffer = new FileBlockBuffer(a.fromPeergosDir("cbor-mirror-buffer-dir", "cbor-mirror-buffer"), usage);
+        return Optional.of(new S3CborMirror(S3Config.build(a, Optional.of(CBOR_MIRROR_PREFIX)), retryBuffer, hasher));
     }
 
     public static String linkHost(Args a, int boundPort) {
@@ -299,7 +300,7 @@ public class Builder {
                         a.getPeergosDir(),
                         partitionStatus,
                         hasher, p2pBlockRetriever, p2pGets,
-                        buildCborMirror(a, hasher), a.getBoolean(CBOR_MIRROR_BACKFILL, false));
+                        buildCborMirror(a, usage, hasher), a.getBoolean(CBOR_MIRROR_BACKFILL, false));
                 return new LocalIpnsStorage(s3, ids);
             }
             Multihash peerId = Multihash.decode(ourIds.get(ourIds.size() - 1).getBytes());
@@ -338,7 +339,7 @@ public class Builder {
                         partitionStatus,
                         hasher, p2pBlockRetriever,
                         new ContentAddressedStorageProxy.HTTP(p2pHttpProxy),
-                        buildCborMirror(a, hasher), a.getBoolean(CBOR_MIRROR_BACKFILL, false));
+                        buildCborMirror(a, usage, hasher), a.getBoolean(CBOR_MIRROR_BACKFILL, false));
                 return new LocalIpnsStorage(s3, ids);
             } else {
                 // only used for testing

@@ -153,7 +153,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final DeletableContentAddressedStorage ipnsHandler;
     private final ContentAddressedStorageProxy p2pHttpFallback;
     private final Optional<S3CborMirror> cborMirror;
-    private final Semaphore cborMirrorRepairs = new Semaphore(32);
 
     private final LinkedBlockingQueue<Pair<PublicKeyHash, Cid>> blocksToFlush = new LinkedBlockingQueue<>();
     private final ConcurrentHashMap<PublicKeyHash, SlidingWindowCounter> userReadReqRateLimits = new ConcurrentHashMap();
@@ -261,6 +260,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.partitionStatus = partitioned;
         this.partitionComplete = partitionStatus.isDone();
         this.cborMirror = cborMirror;
+        cborMirror.ifPresent(m -> m.startRetries(this::hashToKey));
         if (backfillCborMirror) {
             if (cborMirror.isEmpty())
                 throw new IllegalStateException("Cannot backfill a cbor mirror that isn't configured!");
@@ -477,7 +477,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         }
     }
 
-    private static boolean isCausedBy(Throwable t, Class<?>... types) {
+    static boolean isCausedBy(Throwable t, Class<?>... types) {
         Set<Throwable> visited = Collections.newSetFromMap(new IdentityHashMap<>());
         Deque<Throwable> queue = new ArrayDeque<>();
         queue.add(t);
@@ -937,20 +937,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 });
     }
 
-    private void repairCborMirror(String key, Cid hash, byte[] block) {
-        if (! cborMirrorRepairs.tryAcquire())
-            return;
-        Thread.ofVirtual().start(() -> {
-            try {
-                getWithBackoff(() -> {cborMirror.get().put(key, hash, block); return true;});
-            } catch (Exception e) {
-                LOG.log(Level.WARNING, "Couldn't repair S3 cbor mirror for " + key, e);
-            } finally {
-                cborMirrorRepairs.release();
-            }
-        });
-    }
-
     /** Copy every cbor block that the mirror doesn't already have into it. Blocks written during the
      *  backfill are already written to both stores.
      */
@@ -969,9 +955,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     inFlight.acquireUninterruptibly();
                     pool.submit(() -> {
                         try {
-                            if (! getWithBackoff(() -> mirror.has(key))) {
-                                byte[] block = getWithBackoff(() -> getObject(key));
-                                getWithBackoff(() -> {mirror.put(key, v.cid, block); return true;});
+                            if (! S3CborMirror.withBackoff(() -> mirror.has(key))) {
+                                byte[] block = S3CborMirror.withBackoff(() -> getObject(key));
+                                S3CborMirror.withBackoff(() -> {mirror.put(key, v.cid, block); return true;});
                                 copied.incrementAndGet();
                             }
                         } catch (Exception e) {
@@ -998,8 +984,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, storageClass, accessKeyId, secretKey, useHttps, hasher).join();
         try {
             return HttpUtil.getWithVersion(getUrl).left;
-        } catch (IOException e) {
-            if (isRateLimitedException(e))
+        } catch (Exception e) {
+            if (S3CborMirror.isRateLimited(e))
                 throw new RateLimitException();
             throw new RuntimeException(e);
         }
@@ -1062,7 +1048,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             if (range.isEmpty())
                 blockMetadata.put(owner, hash, blockAndVersion.right, blockAndVersion.left);
             if (useCborMirror && range.isEmpty())
-                repairCborMirror(key, hash, blockAndVersion.left);
+                cborMirror.get().repair(owner, hash, key, blockAndVersion.left);
             return Futures.of(Optional.of(blockAndVersion));
         } catch (Exception e) {
             String msg = e.getMessage();
@@ -1674,7 +1660,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, extraHeaders, region, accessKeyId, secretKey, useHttps, hasher).join();
             String version = HttpUtil.putWithVersion(putUrl, data).right;
             if (cborMirror.isPresent() && ! cid.isRaw())
-                cborMirror.get().put(key, cid, data);
+                cborMirror.get().putBestEffort(owner, cid, key, data);
             BlockMetadata meta = blockMetadata.put(owner, cid, version, data);
             blockPuts.inc();
             blockPutBytes.labels("size").observe(data.length);
@@ -2251,7 +2237,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"), usage),
                 Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE,
                 versioned, a.getPeergosDir(), partitioned, hasher,
-                new RAMStorage(hasher), p2pHttpFallback, Builder.buildCborMirror(a, hasher), false);
+                new RAMStorage(hasher), p2pHttpFallback, Builder.buildCborMirror(a, usage, hasher), false);
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
 
         MutablePointers localPointers = UserRepository.build(s3, rawPointers, hasher);

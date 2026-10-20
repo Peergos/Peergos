@@ -24,6 +24,16 @@ public class LocalS3Server {
         handler.refuseRequestsFor(keyFragment);
     }
 
+    /** Simulate s3 throttling requests for one key. */
+    public void throttleRequestsFor(String keyFragment) {
+        handler.throttleRequestsFor(keyFragment);
+    }
+
+    /** Undo refuseRequestsFor and throttleRequestsFor. */
+    public void serveRequestsFor(String keyFragment) {
+        handler.serveRequestsFor(keyFragment);
+    }
+
     public void start() {
         server.start();
     }

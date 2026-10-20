@@ -33,6 +33,7 @@ public class S3CborMirrorTests {
     private LocalS3Server server, mirrorServer;
     private S3Config config;
     private S3CborMirror mirror;
+    private FileBlockBuffer retryBuffer;
     private JdbcUsageStore usage;
     private Cid ourId;
     private Path dir;
@@ -54,7 +55,6 @@ public class S3CborMirrorTests {
         mirrorServer.start();
 
         config = LocalS3Server.getConfig(BUCKET, ACCESS_KEY, SECRET_KEY, port);
-        mirror = new S3CborMirror(LocalS3Server.getConfig(MIRROR_BUCKET, ACCESS_KEY, SECRET_KEY, mirrorPort), hasher);
         ourId = Cid.buildCidV1(Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, new byte[32]);
         usage = new JdbcUsageStore(db(), new SqliteCommands());
         SigningKeyPair signer = SigningKeyPair.random(crypto.random, crypto.signer);
@@ -62,6 +62,8 @@ public class S3CborMirrorTests {
         usage.addUserIfAbsent("user");
         usage.addWriter("user", owner);
         usage.confirmUsage("user", owner, 10*1024*1024, false);
+        retryBuffer = new FileBlockBuffer(dir.resolve("mirror-retries"), usage);
+        mirror = new S3CborMirror(LocalS3Server.getConfig(MIRROR_BUCKET, ACCESS_KEY, SECRET_KEY, mirrorPort), retryBuffer, hasher);
     }
 
     @After
@@ -155,6 +157,69 @@ public class S3CborMirrorTests {
             Assert.assertTrue("backfill missed " + c, mirror.has(key(c)));
         Assert.assertTrue(mirror.has(key(alreadyMirrored)));
         Assert.assertFalse(mirror.has(key(raw)));
+    }
+
+    private void awaitInMirror(Cid block) throws Exception {
+        long deadline = System.currentTimeMillis() + 15_000;
+        while (! mirror.has(key(block)) && System.currentTimeMillis() < deadline)
+            Thread.sleep(50);
+        Assert.assertTrue("a queued write should reach the mirror once it recovers", mirror.has(key(block)));
+        deadline = System.currentTimeMillis() + 5_000;
+        while (retryBuffer.hasBlock(owner, block) && System.currentTimeMillis() < deadline)
+            Thread.sleep(50);
+        Assert.assertFalse("a written block should leave the retry buffer", retryBuffer.hasBlock(owner, block));
+    }
+
+    @Test
+    public void aRefusingMirrorDoesNotFailWrites() throws Exception {
+        S3BlockStorage s3 = build(Optional.of(mirror));
+        byte[] data = cbor("written while the mirror refuses");
+        Cid cid = hasher.hash(data, false).join();
+        mirrorServer.refuseRequestsFor(DirectS3BlockStore.hashToKey(cid));
+
+        Assert.assertEquals(cid, put(s3, data, false));
+        Assert.assertTrue(s3.contains(owner, cid));
+        Assert.assertTrue("a failed mirror write should wait on disk", retryBuffer.hasBlock(owner, cid));
+
+        mirrorServer.serveRequestsFor(DirectS3BlockStore.hashToKey(cid));
+        awaitInMirror(cid);
+    }
+
+    @Test
+    public void bufferedWritesAreRetriedAfterARestart() throws Exception {
+        byte[] data = cbor("buffered before a restart");
+        Cid cid = put(build(Optional.empty()), data, false);
+        retryBuffer.put(owner, cid, data).join();
+
+        build(Optional.of(mirror));
+        awaitInMirror(cid);
+    }
+
+    @Test
+    public void aThrottlingMirrorDoesNotFailWrites() throws Exception {
+        S3BlockStorage s3 = build(Optional.of(mirror));
+        byte[] data = cbor("written while the mirror throttles");
+        Cid cid = hasher.hash(data, false).join();
+        mirrorServer.throttleRequestsFor(DirectS3BlockStore.hashToKey(cid));
+
+        Assert.assertEquals(cid, put(s3, data, false));
+        Assert.assertTrue(s3.contains(owner, cid));
+        Assert.assertTrue("a throttled write should back the mirror off", mirror.isThrottled());
+
+        mirrorServer.serveRequestsFor(DirectS3BlockStore.hashToKey(cid));
+        awaitInMirror(cid);
+    }
+
+    @Test
+    public void aBulkDeleteToleratesAbsentKeys() throws Exception {
+        S3BlockStorage s3 = build(Optional.of(mirror));
+        Cid present = put(s3, cbor("present"), false);
+        Cid absent = hasher.hash(cbor("never written"), false).join();
+
+        s3.bulkDelete(owner, List.of(new BlockVersion(absent, null, true), new BlockVersion(present, null, true)));
+
+        Assert.assertFalse(s3.contains(owner, present));
+        Assert.assertFalse(mirror.has(key(present)));
     }
 
     @Test

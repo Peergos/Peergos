@@ -32,6 +32,8 @@ class LocalS3Handler implements HttpHandler {
     /** Keys whose requests are refused, so a test can tell a read failure from a 404. AccessDenied is
      *  used deliberately: the retryable codes are retried with a long backoff rather than surfacing. */
     private final Set<String> failing = ConcurrentHashMap.newKeySet();
+    /** Keys whose requests are answered with a 503 SlowDown, as s3 does when it is throttling. */
+    private final Set<String> throttled = ConcurrentHashMap.newKeySet();
     private static final DateTimeFormatter S3_DATE = DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss'Z'");
 
     LocalS3Handler(Path storageRoot, String bucket, String accessKey, String secretKey) {
@@ -45,6 +47,15 @@ class LocalS3Handler implements HttpHandler {
         failing.add(keyFragment);
     }
 
+    void throttleRequestsFor(String keyFragment) {
+        throttled.add(keyFragment);
+    }
+
+    void serveRequestsFor(String keyFragment) {
+        failing.remove(keyFragment);
+        throttled.remove(keyFragment);
+    }
+
     @Override
     public void handle(HttpExchange exchange) throws IOException {
         try {
@@ -53,6 +64,10 @@ class LocalS3Handler implements HttpHandler {
             String rawPath = exchange.getRequestURI().getRawPath();
             if (failing.stream().anyMatch(rawPath::contains)) {
                 sendXmlError(exchange, 403, "AccessDenied", "injected failure");
+                return;
+            }
+            if (throttled.stream().anyMatch(rawPath::contains)) {
+                sendXmlError(exchange, 503, "SlowDown", "injected throttling");
                 return;
             }
             Map<String, String> qp = parseQueryParams(exchange.getRequestURI().getRawQuery());
