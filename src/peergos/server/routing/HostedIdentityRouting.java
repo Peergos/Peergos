@@ -26,6 +26,9 @@ public class HostedIdentityRouting implements IdentityRouting {
     private static final Logger LOG = Logging.LOG();
     public static final int MAX_COPIES_PER_DAY = 20, MAX_COPIES = 1_000;
     private static final long OFFER_TIMEOUT_SECONDS = 10;
+    /** Lookups on other servers, which anyone can ask for, so they aren't a way to make this server call others. */
+    public static final RateLimits.Rate REMOTE_LOOKUPS = new RateLimits.Rate(120, 500);
+    private final RateLimits.TokenBuckets<String> remoteLookups = new RateLimits.TokenBuckets<>(REMOTE_LOOKUPS, System::currentTimeMillis);
 
     private final CoreNode core;
     private final QuotaAdmin quotas;
@@ -255,6 +258,8 @@ public class HostedIdentityRouting implements IdentityRouting {
     public CompletableFuture<Optional<PublicKeyHash>> lookup(String username, Multihash server) {
         if (ourIds.stream().anyMatch(id -> id.bareMultihash().equals(server.bareMultihash())))
             return core.getPublicKeyHash(username);
+        if (! remoteLookups.tryTake(""))
+            return Futures.errored(new IllegalStateException("Too many lookups on other servers, try again shortly"));
         return Futures.asyncExceptionally(() -> remoteCore.apply(server).getPublicKeyHash(username),
                 t -> core.getNextServerId(server).thenCompose(next -> next.isPresent() ?
                         remoteCore.apply(new Cid(1, Cid.Codec.LibP2pKey, next.get().type, next.get().getHash())).getPublicKeyHash(username) :

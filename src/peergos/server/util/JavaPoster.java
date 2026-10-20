@@ -71,7 +71,16 @@ public class JavaPoster implements HttpPoster {
         return post(url, payload, unzip, Collections.emptyMap(), timeoutMillis);
     }
 
+    @Override
+    public CompletableFuture<byte[]> postBounded(String url, byte[] payload, int timeoutMillis, int maxBytes) {
+        return post(url, payload, false, Collections.emptyMap(), timeoutMillis, maxBytes);
+    }
+
     private CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip, Map<String, String> headers, int timeoutMillis) {
+        return post(url, payload, unzip, headers, timeoutMillis, -1);
+    }
+
+    private CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip, Map<String, String> headers, int timeoutMillis, int maxBytes) {
         CompletableFuture<byte[]> res = new CompletableFuture<>();
         CompletableFuture.runAsync(() -> {
             HttpResponse<InputStream> response = null;
@@ -104,7 +113,7 @@ public class JavaPoster implements HttpPoster {
                 Optional<String> contentEncodingOpt = responseHeaders.firstValue("content-encoding");
                 boolean isGzipped = contentEncodingOpt.isPresent() && "gzip".equals(contentEncodingOpt.get());
                 DataInputStream din = new DataInputStream(isGzipped && unzip ? new GZIPInputStream(response.body()) : response.body());
-                byte[] resp = Serialize.readFully(din);
+                byte[] resp = maxBytes < 0 ? Serialize.readFully(din) : Serialize.readFully(din, maxBytes);
                 din.close();
                 int statusCode = response.statusCode();
                 if (statusCode == 429) {
