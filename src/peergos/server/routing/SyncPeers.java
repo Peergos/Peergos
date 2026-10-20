@@ -11,7 +11,8 @@ import java.util.logging.*;
 /** Chooses the full nodes this server reconciles with, or a light server samples (remove-pki §4.3, §4.7), so that
  *  sybils don't help: those its operator configured, and full nodes drawn one per address bucket, each placed in its
  *  bucket by dialling it. A million sybils on a few address ranges get a few slots, not a million. One drawn peer is
- *  replaced each round, so they rotate.
+ *  replaced each round, so they rotate, and any the node has seen withholding, or that stopped answering, are
+ *  dropped at once and not drawn again for a while.
  *
  *  A light server holds few server records, so before choosing it pulls a page of them from a configured node,
  *  starting at a random point.
@@ -52,7 +53,11 @@ public class SyncPeers {
             discover();
         Map<AddressBucket, List<Multihash>> byBucket = new HashMap<>();
         List<Multihash> unverified = new ArrayList<>();
+        Set<Multihash> suspects = node.suspects();
+        suspects.addAll(node.unreachable());
         for (Multihash id : fullNodes()) {
+            if (suspects.contains(id) || suspects.contains(endpoint(id)))
+                continue;
             Optional<AddressBucket> b = buckets.verified(id);
             if (b.isPresent())
                 byBucket.computeIfAbsent(b.get(), x -> new ArrayList<>()).add(id);
@@ -64,6 +69,7 @@ public class SyncPeers {
             buckets.verify(id).ifPresent(b -> byBucket.computeIfAbsent(b, x -> new ArrayList<>()).add(id));
 
         synchronized (this) {
+            drawn.entrySet().removeIf(e -> suspects.contains(e.getValue().id().bareMultihash()));
             drawn.keySet().removeIf(id -> buckets.verified(id).map(b -> ! byBucket.getOrDefault(b, List.of()).contains(id)).orElse(true));
             if (drawn.size() >= Math.min(DRAWN, byBucket.size()) && ! drawn.isEmpty()) {
                 List<Multihash> ids = new ArrayList<>(drawn.keySet());
