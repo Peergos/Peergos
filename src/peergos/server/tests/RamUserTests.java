@@ -1183,14 +1183,18 @@ public class RamUserTests extends UserTests {
         try {
             UserContext.fromSecretLinkV2(link.toLink(), () -> Futures.of(newPass), network, crypto).join();
             throw new RuntimeException("Shouldn't get here");
-        } catch (IllegalStateException expected) {}
+        } catch (CompletionException expected) {
+            Assert.assertTrue(expected.getCause() instanceof IllegalStateException);
+        }
 
         user.deleteSecretLink(link.label, filePath, writable).join();
 
         try {
             network.getSecretLink(link).join();
             throw new RuntimeException("Shouldn't get here");
-        } catch (IllegalStateException expected) {}
+        } catch (CompletionException expected) {
+            Assert.assertTrue(expected.getCause() instanceof IllegalStateException);
+        }
 
         // now a writable secret link
         String wpass = "modifyme";
