@@ -9,6 +9,7 @@ import peergos.server.corenode.CorenodeEventPropagator;
 import peergos.server.corenode.MirrorCoreNode;
 import peergos.server.corenode.JdbcIpnsAndSocial;
 import peergos.server.corenode.SignUpFilter;
+import peergos.server.routing.RoutedCoreNode;
 import com.webauthn4j.data.client.Origin;
 import peergos.server.login.JdbcAccount;
 import peergos.server.sql.SqliteCommands;
@@ -310,6 +311,8 @@ public class MultiNodeNetworkTests {
         for (ServerProcesses service : services) {
             CoreNode core = service.localApi.coreNode;
             CoreNode target = ((SignUpFilter) ((CorenodeEventPropagator) core).target).target;
+            if (target instanceof RoutedCoreNode)
+                target = ((RoutedCoreNode) target).pki;
             if (target instanceof MirrorCoreNode)
                 ((MirrorCoreNode)target).forceUpdate();
         }
