@@ -4685,14 +4685,18 @@ public class UserContext {
         entrie = TrieNodeImpl.empty();
     }
 
-    /** Whether this identity still has to commit to the next key its recovery key derives (remove-pki §3.2). */
+    /** Whether this identity has committed to the next key a recovery key derives (remove-pki §3.2).
+     *
+     * @return "set", "unset", "upgrade" for a legacy account, which must change its password first, or "unavailable"
+     * when its server doesn't run the routing log
+     */
     @JsMethod
-    public CompletableFuture<Boolean> needsRecoveryKey() {
-        if (signer == null || entryPoints.isEmpty())
-            return Futures.of(false);
+    public CompletableFuture<String> recoveryKeyStatus() {
+        if (entryPoints.isEmpty())
+            return Futures.of("upgrade");
         return network.identityRouting.status(signer.publicKeyHash)
-                .thenApply(s -> s.running && ! s.committed)
-                .exceptionally(t -> false);
+                .thenApply(s -> ! s.running || s.server.isEmpty() ? "unavailable" : s.committed ? "set" : "unset")
+                .exceptionally(t -> "unavailable");
     }
 
     /** Names this server in the routing log if it hosts the user but the log doesn't, as after a move that didn't
