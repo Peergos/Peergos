@@ -75,4 +75,10 @@ public class HttpRoutingPeer implements RoutingPeer {
                 .collect(Collectors.toList()))))
                 .thenApply(res -> Outcome.valueOf(((CborObject.CborString) res).value));
     }
+
+    @Override
+    public CompletableFuture<Boolean> vouches(Multihash server) {
+        return call("vouches", Map.of("s", Subject.server(server.bareMultihash())))
+                .thenApply(res -> ((CborObject.CborBoolean) res).value);
+    }
 }
