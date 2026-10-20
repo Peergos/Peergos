@@ -13,6 +13,15 @@ public interface HttpPoster {
 
     CompletableFuture<byte[]> postUnzip(String url, byte[] payload, int timeoutMillis);
 
+    /** Neither decompresses the response nor reads more than maxBytes of it, for a server that might send anything. */
+    default CompletableFuture<byte[]> postBounded(String url, byte[] payload, int timeoutMillis, int maxBytes) {
+        return post(url, payload, false, timeoutMillis).thenApply(res -> {
+            if (res.length > maxBytes)
+                throw new IllegalStateException("Response exceeds " + maxBytes + " bytes");
+            return res;
+        });
+    }
+
     int DEFAULT_TIMEOUT_MILLIS = 15_000;
 
     default CompletableFuture<byte[]> postUnzip(String url, byte[] payload) {

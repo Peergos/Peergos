@@ -73,7 +73,7 @@ public enum RecordType {
     }
 
     private static Map<String, Cborable> fields(SignedRecord r) {
-        CborObject.CborMap m = (CborObject.CborMap) r.toCbor();
+        CborObject.CborMap m = (CborObject.CborMap) CborObject.fromByteArray(r.serialize()); // nested values parsed, not the objects
         Map<String, Cborable> res = new TreeMap<>();
         for (String k : m.keySet())
             res.put(k, m.get(k));

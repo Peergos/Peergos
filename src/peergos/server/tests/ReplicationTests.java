@@ -527,4 +527,16 @@ public class ReplicationTests {
         Assert.assertTrue(b.replica.log(x.subject).exists());
         Assert.assertEquals(Optional.of(x.peerId.bareMultihash()), b.replica.serverForPeer(endpointPeer).map(l -> l.peerId.bareMultihash()));
     }
+
+    @Test
+    public void aServerRecordWithAddressesSurvivesBeingStrippedAndRestored() {
+        Server x = new Server();
+        ServerAddresses addrs = ServerAddresses.build(x.key, x.key.publicSigningKey, Optional.empty(),
+                ServerAddressPublisher.directAddresses(List.of("/ip4/198.51.100.1/tcp/4001")), List.of(x.peerId),
+                ServerAddresses.Mode.Compact, true, 3).join();
+        SignedRecord stripped = RecordType.stripped(addrs);
+        Assert.assertTrue(stripped.isStripped());
+        Assert.assertEquals(addrs.addrs, ((ServerAddresses) stripped).addrs);
+        Assert.assertEquals(addrs, RecordType.withSignature(stripped, addrs.signature));
+    }
 }

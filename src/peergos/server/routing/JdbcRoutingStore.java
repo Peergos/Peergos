@@ -79,6 +79,16 @@ public class JdbcRoutingStore {
             this.subject = subject;
             this.hash = hash;
         }
+
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof State && subject.equals(((State) o).subject) && Arrays.equals(hash, ((State) o).hash);
+        }
+
+        @Override
+        public int hashCode() {
+            return subject.hashCode() * 31 + Arrays.hashCode(hash);
+        }
     }
 
     private final Supplier<Connection> conn;
