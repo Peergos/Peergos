@@ -1110,6 +1110,7 @@ public class Main extends Builder {
             Optional<UserService.LocalAppProperties> noConfigApi = Optional.empty();
             HostedIdentityRouting identityRouting = new HostedIdentityRouting(core, userQuotas, rawAccount, localStorage,
                     nodeIds, target -> new HTTPCoreNode(p2pHttpProxy, target));
+            core.resolveNamed(identityRouting::lookup);
             UserService localAPI = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount,
                     p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, identityRouting, gc, Optional.of(sync), noConfigApi,
                     Optional.of(new MountConfigHandler(mountPropsDaemon)));

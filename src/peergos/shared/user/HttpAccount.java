@@ -55,20 +55,26 @@ public class HttpAccount implements AccountProxy {
 
     @Override
     public CompletableFuture<Boolean> setLoginData(LoginData login, byte[] auth, boolean forceLocal) {
-        return setLoginData(directUrlPrefix, direct, login, auth, forceLocal);
+        return setLoginData(login.username, login, auth, forceLocal);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> setLoginData(String username, LoginData login, byte[] auth, boolean forceLocal) {
+        return setLoginData(directUrlPrefix, direct, username, login, auth, forceLocal);
     }
 
     @Override
     public CompletableFuture<Boolean> setLoginData(Multihash targetServerId, LoginData login, byte[] auth) {
-        return setLoginData(getProxyUrlPrefix(targetServerId), p2p, login, auth, false);
+        return setLoginData(getProxyUrlPrefix(targetServerId), p2p, login.username, login, auth, false);
     }
 
     private CompletableFuture<Boolean> setLoginData(String urlPrefix,
                                                     HttpPoster poster,
+                                                    String username,
                                                     LoginData login,
                                                     byte[] auth,
                                                     boolean forceLocal) {
-        return poster.postUnzip(urlPrefix + Constants.LOGIN_URL + "setLogin?username=" + login.username
+        return poster.postUnzip(urlPrefix + Constants.LOGIN_URL + "setLogin?username=" + username
                 + "&auth=" + ArrayOps.bytesToHex(auth)
                 + "&local=" + forceLocal, login.serialize()).thenApply(res -> {
             DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));

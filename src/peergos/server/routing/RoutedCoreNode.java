@@ -15,6 +15,7 @@ import java.io.*;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 import java.util.stream.*;
 
 /** Where an identity is stored, and a server's current peerid, from the routing log (remove-pki §5), falling back
@@ -22,10 +23,18 @@ import java.util.stream.*;
  */
 public class RoutedCoreNode implements CoreNode {
     public final CoreNode pki;
+    private static final long NAMED_TTL_MILLIS = 10 * 60_000;
     private volatile Optional<RoutingLookup> lookup = Optional.empty();
+    private volatile Optional<BiFunction<String, Multihash, CompletableFuture<Optional<PublicKeyHash>>>> named = Optional.empty();
+    private final Map<String, Pair<Long, PublicKeyHash>> namedCache = Collections.synchronizedMap(new LRUCache<>(10_000));
 
     public RoutedCoreNode(CoreNode pki) {
         this.pki = pki;
+    }
+
+    /** How to ask a server for the identity it gives a username. */
+    public void resolveNamed(BiFunction<String, Multihash, CompletableFuture<Optional<PublicKeyHash>>> lookup) {
+        this.named = Optional.of(lookup);
     }
 
     public void start(RoutingLookup lookup) {
@@ -154,9 +163,22 @@ public class RoutedCoreNode implements CoreNode {
         return pki.updateUser(username);
     }
 
+    /** A username@peerid, as a session logged in by that name goes on calling itself, is the identity the named
+     *  server gives the username (remove-pki §12.1). It is cached, as every call of the session needs it.
+     */
     @Override
     public CompletableFuture<Optional<PublicKeyHash>> getPublicKeyHash(String username) {
-        return pki.getPublicKeyHash(username);
+        if (username.indexOf('@') < 0 || named.isEmpty())
+            return pki.getPublicKeyHash(username);
+        LoginName name = LoginName.parse(username);
+        Pair<Long, PublicKeyHash> cached = namedCache.get(name.toString());
+        long now = System.currentTimeMillis();
+        if (cached != null && cached.left > now - NAMED_TTL_MILLIS)
+            return Futures.of(Optional.of(cached.right));
+        return named.get().apply(name.username, name.server.get()).thenApply(owner -> {
+            owner.ifPresent(o -> namedCache.put(name.toString(), new Pair<>(now, o)));
+            return owner;
+        });
     }
 
     @Override
