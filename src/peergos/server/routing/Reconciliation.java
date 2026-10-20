@@ -25,6 +25,10 @@ public class Reconciliation {
             this.upTo = upTo;
         }
 
+        public boolean contains(byte[] id) {
+            return RoutingNode.order(id, after) > 0 && upTo.map(u -> RoutingNode.order(id, u) <= 0).orElse(true);
+        }
+
         @Override
         public CborObject toCbor() {
             Map<String, Cborable> m = new TreeMap<>();

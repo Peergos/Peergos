@@ -164,6 +164,10 @@ public class RoutingReplica {
         }
     }
 
+    public boolean holdsAll(Subject s, List<? extends SignedRecord> records) {
+        return records.stream().allMatch(r -> isHeld(s, r));
+    }
+
     /** Already held with the same proofs, so a record sent again costs a hash, not a signature check. */
     private boolean isHeld(Subject s, SignedRecord record) {
         byte[] hash = hash(record);
@@ -215,9 +219,14 @@ public class RoutingReplica {
     /** What reconciliation compares, and a compact replica can compute without signatures: the hash of each record
      *  held, with its proofs, in canonical order.
      */
+    /** Of the records as a set: two nodes that saw an identity's two inceptions in opposite orders keep different
+     *  ones first, but hold the same records, and must not refetch them from each other every round.
+     */
     private byte[] digest(List<Verified<? extends SignedRecord>> held) {
         List<Cborable> entries = new ArrayList<>();
-        for (Verified<? extends SignedRecord> v : held)
+        List<Verified<? extends SignedRecord>> sorted = new ArrayList<>(held);
+        sorted.sort((a, b) -> ArrayOps.compare(a.hash, b.hash));
+        for (Verified<? extends SignedRecord> v : sorted)
             entries.add(new CborObject.CborList(Arrays.asList(new CborObject.CborByteArray(v.hash), RecordType.extras(v.record))));
         return validator.hasher().sha256(new CborObject.CborList(entries).toByteArray()).join();
     }

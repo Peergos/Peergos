@@ -99,9 +99,18 @@ public class RoutingSimulation {
 
     enum Behaviour {
         HONEST,
-        /** Serves only its own records and takes in nothing from others. */
+        /** Serves only what it held when it started withholding, and takes in nothing from others. */
         WITHHOLD,
-        OFFLINE
+        OFFLINE,
+        /** Syncs like an honest node, but answers for its frozen subjects as if it had never seen anything newer:
+         *  consistently, so it looks like a node that is behind on them. */
+        CENSOR,
+        /** Like a censor, but claims a made-up state for its frozen subjects, and serves the old one. */
+        LIAR;
+
+        boolean syncs() {
+            return this == HONEST || this == CENSOR || this == LIAR;
+        }
     }
 
     static class Net {
@@ -111,6 +120,10 @@ public class RoutingSimulation {
         final Random random;
         final int inceptionsPerDay;
         int addressCounter = 1;
+        /** Announcements lost, so only reconciliation carries records. */
+        boolean dropAnnouncements;
+        /** Nodes on different sides can't reach each other. */
+        final Map<Multihash, Integer> side = new HashMap<>();
 
         Net(long seed, int inceptionsPerDay) {
             this.random = new Random(seed);
@@ -138,7 +151,7 @@ public class RoutingSimulation {
         void step(long millis) {
             clock.addAndGet(millis);
             for (SimNode n : full()) {
-                if (n.behaviour != Behaviour.HONEST)
+                if (! n.behaviour.syncs())
                     continue;
                 n.routing.tick();
                 work.drain();
@@ -151,7 +164,7 @@ public class RoutingSimulation {
         void tick(long millis) {
             clock.addAndGet(millis);
             for (SimNode n : full())
-                if (n.behaviour == Behaviour.HONEST) {
+                if (n.behaviour.syncs()) {
                     n.routing.tick();
                     work.drain();
                 }
@@ -159,7 +172,7 @@ public class RoutingSimulation {
 
         void choosePeers() {
             for (SimNode n : nodes.values())
-                if (n.behaviour == Behaviour.HONEST)
+                if (n.behaviour.syncs() && n.peers != null)
                     n.peers.refresh();
             work.drain();
         }
@@ -181,6 +194,9 @@ public class RoutingSimulation {
         SyncPeers peers;
         LightLookup light;
         final AtomicLong recordRequests = new AtomicLong(), recordBytes = new AtomicLong();
+        /** What a censor or liar answers for a subject: the records it had when it froze it, and the state it claims. */
+        final Map<Subject, List<SignedRecord>> frozen = new HashMap<>();
+        final Map<Subject, byte[]> claimed = new HashMap<>();
 
         SimNode(Net net, Optional<String> addr, ServerAddresses.Mode mode, Behaviour behaviour) {
             this.net = net;
@@ -233,6 +249,38 @@ public class RoutingSimulation {
         boolean holds(Subject s) {
             return replica.log(s).inception().isPresent();
         }
+
+        /** From now on answers for this subject with what it holds now. */
+        void freeze(Subject s) {
+            frozen.put(s, routing.records(s));
+            byte[] claim = replica.stateHash(frozen.get(s));
+            if (behaviour == Behaviour.LIAR) {
+                claim = new byte[claim.length];
+                net.random.nextBytes(claim);
+            }
+            claimed.put(s, claim);
+        }
+
+        JdbcRoutingStore.State answer(JdbcRoutingStore.State st) {
+            byte[] claim = claimed.get(st.subject);
+            return claim == null ? st : new JdbcRoutingStore.State(st.subject, claim);
+        }
+
+        boolean frozenIn(int kind, Reconciliation.Range r) {
+            return frozen.keySet().stream().anyMatch(s -> s.kind == kind && r.contains(s.idBytes()));
+        }
+
+        Reconciliation.Summary summary(int kind, Reconciliation.Range r) {
+            Reconciliation.Accumulator acc = new Reconciliation.Accumulator(crypto.hasher);
+            byte[] after = r.after;
+            while (true) {
+                List<JdbcRoutingStore.State> page = replica.store().states(kind, after, r.upTo, 1000);
+                page.forEach(st -> acc.add(answer(st)));
+                if (page.size() < 1000)
+                    return acc.summary();
+                after = page.get(page.size() - 1).subject.idBytes();
+            }
+        }
     }
 
     /** One node calling another, as the authenticated transport would, or failing if the target is offline. */
@@ -250,6 +298,9 @@ public class RoutingSimulation {
             SimNode n = net.nodes.get(target);
             if (n == null || n.behaviour == Behaviour.OFFLINE)
                 throw new IllegalStateException("Connection refused");
+            Integer from = net.side.get(caller), to = net.side.get(target);
+            if (from != null && to != null && ! from.equals(to))
+                throw new IllegalStateException("No route to host");
             return n;
         }
 
@@ -268,8 +319,13 @@ public class RoutingSimulation {
         public CompletableFuture<Boolean> announce(List<JdbcRoutingStore.State> changed) {
             return call(() -> {
                 SimNode n = node();
-                if (n.behaviour == Behaviour.HONEST)
-                    n.routing.announced(caller, changed.stream().limit(RoutingHandler.MAX_ITEMS).collect(Collectors.toList()));
+                SimNode from = net.nodes.get(caller);
+                List<JdbcRoutingStore.State> sent = changed.stream()
+                        .filter(st -> from == null || ! from.frozen.containsKey(st.subject))
+                        .limit(RoutingHandler.MAX_ITEMS)
+                        .collect(Collectors.toList());
+                if (n.behaviour.syncs() && ! sent.isEmpty() && ! net.dropAnnouncements)
+                    n.routing.announced(caller, sent);
                 return true;
             });
         }
@@ -277,7 +333,7 @@ public class RoutingSimulation {
         public CompletableFuture<List<SignedRecord>> records(Subject s) {
             return call(() -> {
                 SimNode n = node();
-                List<SignedRecord> res = n.routing.records(s);
+                List<SignedRecord> res = n.frozen.containsKey(s) ? n.frozen.get(s) : n.routing.records(s);
                 n.recordRequests.incrementAndGet();
                 n.recordBytes.addAndGet(res.stream().mapToLong(r -> r.serialize().length).sum());
                 return res;
@@ -285,17 +341,27 @@ public class RoutingSimulation {
         }
 
         public CompletableFuture<List<Reconciliation.Summary>> summaries(int kind, List<Reconciliation.Range> ranges) {
-            return call(() -> node().routing.summaries(kind, ranges));
+            return call(() -> {
+                SimNode n = node();
+                if (n.frozen.isEmpty())
+                    return n.routing.summaries(kind, ranges);
+                return ranges.stream()
+                        .map(r -> n.frozenIn(kind, r) ? n.summary(kind, r) : n.routing.summaries(kind, List.of(r)).get(0))
+                        .collect(Collectors.toList());
+            });
         }
 
         public CompletableFuture<List<JdbcRoutingStore.State>> states(int kind, Reconciliation.Range range, int limit) {
-            return call(() -> node().routing.states(kind, range, limit));
+            return call(() -> {
+                SimNode n = node();
+                return n.routing.states(kind, range, limit).stream().map(n::answer).collect(Collectors.toList());
+            });
         }
 
         public CompletableFuture<Outcome> offer(Subject s, List<SignedRecord> records) {
             return call(() -> {
                 SimNode n = node();
-                return n.behaviour == Behaviour.HONEST ? n.routing.offered(caller, s, records) : Outcome.Ignored;
+                return n.behaviour.syncs() ? n.routing.offered(caller, s, records) : Outcome.Ignored;
             });
         }
     }
