@@ -135,11 +135,28 @@ public class RateLimits {
         private final TokenBuckets<AddressBucket> rate;
         private final Map<AddressBucket, LinkedHashMap<Multihash, ArrayDeque<O>>> offers = new HashMap<>();
         private final int maxOffersPerServer;
+        private final LongSupplier clock;
+        private final Map<AddressBucket, Long> busyUntil = new HashMap<>();
         private int waiting;
 
         public Inceptions(int perDay, int maxOffersPerServer, LongSupplier clock) {
             this.rate = new TokenBuckets<>(new Rate(perDay, DAY / perDay), clock);
             this.maxOffersPerServer = maxOffersPerServer;
+            this.clock = clock;
+        }
+
+        /** Whether this bucket has had inceptions waiting for its rate within the last day, so that honest nodes
+         *  may hold different ones of them for a while.
+         */
+        public synchronized boolean congested(AddressBucket bucket) {
+            Long until = busyUntil.get(bucket);
+            if (until == null)
+                return false;
+            if (until < clock.getAsLong()) {
+                busyUntil.remove(bucket);
+                return false;
+            }
+            return true;
         }
 
         /** Queues an offer; false if the admitting server already has as many waiting as are kept. */
@@ -176,6 +193,8 @@ public class RateLimits {
                 }
                 if (servers.isEmpty())
                     it.remove();
+                else
+                    busyUntil.put(e.getKey(), clock.getAsLong() + DAY);
             }
             return res;
         }

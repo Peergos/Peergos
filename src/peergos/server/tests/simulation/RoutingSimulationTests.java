@@ -27,7 +27,7 @@ public class RoutingSimulationTests {
         Assume.assumeTrue(only.isEmpty() || only.get().equals(name.getMethodName()));
     }
 
-    private static void log(String s) {
+    static void log(String s) {
         System.out.println("[sim] " + s);
     }
 
@@ -46,7 +46,7 @@ public class RoutingSimulationTests {
         return res;
     }
 
-    private static int converge(Net net, Collection<SimNode> nodes, Collection<Subject> subjects, int maxRounds) {
+    static int converge(Net net, Collection<SimNode> nodes, Collection<Subject> subjects, int maxRounds) {
         for (int round = 1; round <= maxRounds; round++) {
             net.step(10 * MINUTE);
             if (round % 3 == 0)
@@ -57,7 +57,7 @@ public class RoutingSimulationTests {
         return -1;
     }
 
-    private static List<Subject> servers(Collection<SimNode> nodes) {
+    static List<Subject> servers(Collection<SimNode> nodes) {
         return nodes.stream().map(n -> n.subject).collect(Collectors.toList());
     }
 
@@ -96,7 +96,7 @@ public class RoutingSimulationTests {
     }
 
     /** Honest full nodes, one per /16, all configured with the first, with peers drawn and their records spread. */
-    private static List<SimNode> honest(Net net, int count, int firstBucket) {
+    static List<SimNode> honest(Net net, int count, int firstBucket) {
         List<SimNode> res = new ArrayList<>();
         for (int i = 0; i < count; i++)
             res.add(net.node(Optional.of(firstBucket + i), ServerAddresses.Mode.Archival, Behaviour.HONEST));
@@ -107,13 +107,13 @@ public class RoutingSimulationTests {
         return res;
     }
 
-    private static void settle(Net net, List<SimNode> nodes) {
+    static void settle(Net net, List<SimNode> nodes) {
         Assert.assertTrue(converge(net, nodes, servers(nodes), 20) > 0);
         net.choosePeers();
         net.step(10 * MINUTE);
     }
 
-    private static long held(SimNode n, Collection<Subject> subjects) {
+    static long held(SimNode n, Collection<Subject> subjects) {
         return subjects.stream().filter(n::holds).count();
     }
 
@@ -171,6 +171,9 @@ public class RoutingSimulationTests {
         log("Honest users elsewhere reached every node in " + honestHours + " hours; an honest server's users in the "
                 + "attacker's /16 in " + neighbourHours);
         Assert.assertEquals(1, honestHours);
+        long wronged = nodes.stream().mapToLong(n -> n.routing.suspects().stream().filter(id -> nodes.stream().anyMatch(m -> m.id.equals(id))).count()).sum();
+        log("Honest nodes suspected by each other while taking the flood at their own pace: " + wronged);
+        Assert.assertEquals(0, wronged);
         Assert.assertTrue("round-robin by admitting server gives the neighbour turns", neighbourHours > 0 && neighbourHours <= 6);
     }
 
@@ -215,12 +218,12 @@ public class RoutingSimulationTests {
         Assert.assertTrue("round-robin by admitting server still gives it turns", hours > 0);
     }
 
-    private static boolean reachedAll(List<SimNode> nodes, List<Subject> users) {
+    static boolean reachedAll(List<SimNode> nodes, List<Subject> users) {
         return nodes.stream().allMatch(v -> held(v, users) == users.size());
     }
 
     /** A server's records known to these nodes, as if it had registered long ago. */
-    private static void known(SimNode server, Collection<SimNode> to) {
+    static void known(SimNode server, Collection<SimNode> to) {
         for (SimNode n : to)
             for (peergos.shared.routing.SignedRecord r : server.routing.records(server.subject))
                 n.replica.add(server.subject, r);
