@@ -72,6 +72,43 @@ public class RelayTests {
     }
 
     @Test
+    public void aRelayVouchesOnlyForItsOwnServersAndThoseWhoseUsersItMirrors() throws Exception {
+        RoutingReplica replica = replica();
+        SigningKeyPair self = server(replica, true, "/ip4/192.0.2.6/tcp/4001", true, List.of());
+        Multihash own = peer(server(replica, true, null, false, List.of(peer(self))));
+        Multihash mirrored = peer(server(replica, true, null, false, List.of(peer(self))));
+        Multihash later = peer(server(replica, true, null, false, List.of(peer(self))));
+        Multihash stranger = peer(server(replica, true, null, false, List.of(peer(self))));
+        Subject before = user(replica, List.of(mirrored, peer(self)));
+        user(replica, List.of(stranger));
+        user(replica, List.of(peer(self), stranger));
+        Relays relays = new Relays(List.of(), List.of(own), true, Relays.TOTAL_BYTES_PER_SECOND, System::currentTimeMillis, new Random(1));
+        relays.start(RoutingLookup.full(replica), peer(self));
+        Assert.assertTrue(relays.vouchesFor(own));
+        SigningKeyPair starting = key();
+        Relays withStarting = new Relays(List.of(), List.of(peer(starting)), true, Relays.TOTAL_BYTES_PER_SECOND,
+                System::currentTimeMillis, new Random(1));
+        withStarting.start(RoutingLookup.full(replica), peer(self));
+        Assert.assertTrue("a first-tier server gets a slot before its proof of work is done", withStarting.mayReserve(libp2p(starting)));
+        Assert.assertEquals(Optional.of(Relays.RESERVATION), withStarting.reserve(libp2p(starting), Multiaddr.fromString("/ip4/198.51.100.9/tcp/4001")));
+        for (int i = 0; i < 100 && ! relays.vouchesFor(mirrored); i++)
+            Thread.sleep(50);
+        Assert.assertTrue("a server whose user lists us as a mirror, found in the replica", relays.vouchesFor(mirrored));
+        Assert.assertFalse("listing us as a relay vouches for nothing", relays.vouchesFor(stranger));
+        Assert.assertFalse(relays.vouchesFor(later));
+        user(replica, List.of(later, peer(self)));
+        Assert.assertTrue("as a user's providers change", relays.vouchesFor(later));
+        Assert.assertTrue(relays.vouchesFor(mirrored));
+    }
+
+    private static Subject user(RoutingReplica replica, List<Multihash> providers) {
+        IdentityInception inception = IdentityInception.build(key(), providers, key().publicSigningKey, crypto.hasher).join();
+        Subject s = Subject.identity(inception.identityHash());
+        Assert.assertEquals(Outcome.Added, replica.add(s, inception));
+        return s;
+    }
+
+    @Test
     public void aRelayTakesOnlyProvenServersAndLimitsDials() {
         RoutingReplica replica = replica();
         SigningKeyPair proven = server(replica, true, null, false, List.of());

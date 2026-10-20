@@ -117,6 +117,39 @@ public class RoutingSimulationTests {
         return subjects.stream().filter(n::holds).count();
     }
 
+    /** How fast one honest server's signups reach every node: a few dozen at once by announcement, the rest a
+     *  reconciliation round's worth at a time, up to its bucket's rate. Honest nodes take different ones of a burst
+     *  first, so once most hold a signup the rest take it as catch-up: a burst under twice the rate gets through.
+     */
+    @Test
+    public void oneServerSigningUpABurstOfUsers() {
+        int perDay = 2_000, burst = perDay + perDay / 5;
+        Net net = new Net(20, perDay);
+        List<SimNode> nodes = honest(net, 8, 0);
+        settle(net, nodes);
+        SimNode home = nodes.get(3);
+        List<SimNode> others = nodes.stream().filter(n -> n != home).collect(Collectors.toList());
+        List<Subject> users = new ArrayList<>();
+        for (int i = 0; i < burst; i++)
+            users.add(home.admit(key()));
+        net.work.drain();
+        long atOnce = others.stream().mapToLong(n -> held(n, users)).min().getAsLong();
+        int bucketMinutes = atOnce >= perDay ? 0 : -1, allMinutes = atOnce == burst ? 0 : -1;
+        for (int step = 1; step <= 6 * 6 && allMinutes < 0; step++) {
+            net.step(10 * MINUTE);
+            long least = others.stream().mapToLong(n -> held(n, users)).min().getAsLong();
+            if (bucketMinutes < 0 && least >= perDay)
+                bucketMinutes = step * 10;
+            if (least == burst)
+                allMinutes = step * 10;
+        }
+        log("One server signing up " + burst + " users at once, at " + perDay + " a day per bucket: " + atOnce
+                + " reached every node by announcement alone; " + perDay + " within " + bucketMinutes + " minutes; all within "
+                + allMinutes + " minutes (-1: not in 6 hours)");
+        Assert.assertTrue("as many as a peer's fetches in flight at once", atOnce >= RoutingNode.MAX_FETCHING_PER_PEER);
+        Assert.assertTrue("a day's rate within an hour", bucketMinutes >= 0 && bucketMinutes <= 60);
+    }
+
     @Test
     public void anInceptionFloodFromOneRangeOnlyDelaysTheAttackersOwnIdentities() {
         int perDay = 50;
@@ -424,7 +457,7 @@ public class RoutingSimulationTests {
         List<SimNode> nodes = honest(net, 3, 0);
         settle(net, nodes);
         long[] now = {0};
-        RoutingHandler handler = new RoutingHandler(nodes.get(0).routing, () -> now[0]);
+        RoutingHandler handler = new RoutingHandler(nodes.get(0).routing, s -> false, () -> now[0]);
         int proven = 0;
         while (handler.allow("summaries", nodes.get(1).id))
             proven++;

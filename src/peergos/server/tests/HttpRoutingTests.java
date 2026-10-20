@@ -78,6 +78,7 @@ public class HttpRoutingTests {
         final RoutingReplica replica;
         final RoutingNode routing;
         final HttpServer server;
+        final Set<Multihash> vouchFor = ConcurrentHashMap.newKeySet();
 
         Node() throws IOException {
             JdbcRoutingStore store = new JdbcRoutingStore(Builder.buildEphemeralSqlite(), new SqliteCommands());
@@ -85,7 +86,7 @@ public class HttpRoutingTests {
             routing = new RoutingNode(replica, crypto.hasher, System::currentTimeMillis, 100,
                     s -> AddressBucket.UNVERIFIED, peer -> new HttpRoutingPeer(peer, proxy), work);
             server = HttpServer.create(new InetSocketAddress("localhost", 0), 10);
-            server.createContext("/" + Constants.ROUTING_URL, new RoutingHandler(routing));
+            server.createContext("/" + Constants.ROUTING_URL, new RoutingHandler(routing, vouchFor::contains));
             server.setExecutor(Executors.newFixedThreadPool(4));
             server.start();
             ports.put(id, server.getAddress().getPort());
@@ -133,6 +134,15 @@ public class HttpRoutingTests {
 
         Assert.assertEquals(Outcome.Duplicate, a.peer(b).offer(xs, List.of(x)).join());
         Assert.assertEquals(1, a.peer(b).records(Subject.identity(late.identityHash())).join().size());
+    }
+
+    @Test
+    public void aRelayAnswersWhetherItVouchesForAServer() throws Exception {
+        Node relay = new Node(), asker = new Node();
+        Multihash own = ServerKeys.peerId(key().publicSigningKey), stranger = ServerKeys.peerId(key().publicSigningKey);
+        relay.vouchFor.add(own);
+        Assert.assertTrue(asker.peer(relay).vouches(own).join());
+        Assert.assertFalse(asker.peer(relay).vouches(stranger).join());
     }
 
     @Test

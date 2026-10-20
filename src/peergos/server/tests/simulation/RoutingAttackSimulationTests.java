@@ -1,6 +1,7 @@
 package peergos.server.tests.simulation;
 
 import org.junit.*;
+import peergos.server.routing.*;
 import peergos.shared.crypto.*;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.routing.*;
@@ -255,6 +256,66 @@ public class RoutingAttackSimulationTests {
                 + (usable ? "was" : "was not") + " usable at once by a node it contacted");
         Assert.assertTrue("a contact's records are used at once, whatever is queued", usable);
         Assert.assertTrue("the shared bucket's rate, not the flood's size", hours > 0 && hours <= 6);
+    }
+
+    /** Minutes until a new relayed server and its user reach every honest node, behind a thousand new servers
+     *  listing the same relay, which vouches only for the honest one, if at all.
+     */
+    private static int relayedBehindAFlood(boolean vouched, long[] sybilsHeld, boolean[] placed) {
+        Net net = new Net(18, 50);
+        List<SimNode> good = honest(net, 8, 0);
+        SimNode relay = good.get(1);
+        relay.publishAddresses(List.of(), true);
+        settle(net, good);
+        SimNode attacker = net.node(Optional.of(900), ServerAddresses.Mode.Archival, Behaviour.WITHHOLD);
+        known(attacker, good);
+        List<Subject> sybils = new ArrayList<>();
+        for (int i = 0; i < 1000; i++) {
+            SigningKeyPair k = key();
+            ServerInception si = ServerInception.build(k, key().publicSigningKey, crypto.hasher).join().withProof(GOOD_PROOF);
+            Subject sybil = Subject.server(si.peerId().bareMultihash());
+            attacker.replica.add(sybil, si);
+            attacker.replica.add(sybil, ServerAddresses.build(k, k.publicSigningKey, Optional.empty(), List.of(),
+                    List.of(relay.id), ServerAddresses.Mode.Archival, false, 1).join());
+            sybils.add(sybil);
+        }
+        for (SimNode n : good)
+            n.routing.addSyncPeer(new SimPeer(n.id, attacker.id, net));
+        net.step(10 * MINUTE);
+        SimNode relayed = net.node(Optional.empty(), ServerAddresses.Mode.Archival, Behaviour.HONEST)
+                .configure(good.get(0))
+                .relayedBy(relay, vouched);
+        Subject user = relayed.admit(key());
+        net.tick(MINUTE);
+        int minutes = good.stream().allMatch(n -> n.holds(relayed.subject) && n.holds(user)) ? 1 : -1;
+        for (int step = 1; step <= 36 && minutes < 0; step++) {
+            net.step(10 * MINUTE);
+            if (good.stream().allMatch(n -> n.holds(relayed.subject) && n.holds(user)))
+                minutes = 1 + step * 10;
+        }
+        sybilsHeld[0] = good.stream().mapToLong(n -> held(n, sybils)).max().getAsLong();
+        SimNode far = good.get(5);
+        placed[0] = far.buckets.bucket(relayed.id).equals(far.buckets.bucket(relay.id))
+                && ! far.buckets.bucket(relay.id).equals(AddressBucket.UNVERIFIED);
+        placed[1] = sybils.stream().allMatch(sy -> far.buckets.bucket(sy.id).equals(AddressBucket.UNVERIFIED));
+        return minutes;
+    }
+
+    @Test
+    public void aRelayVouchingForItsServerPassesItAheadOfAFloodListingTheSameRelay() {
+        long[] sybilsVouched = new long[1], sybilsNot = new long[1];
+        boolean[] placedVouched = new boolean[2], placedNot = new boolean[2];
+        int vouched = relayedBehindAFlood(true, sybilsVouched, placedVouched);
+        int not = relayedBehindAFlood(false, sybilsNot, placedNot);
+        log("1000 new servers listing an honest relay, then an honest server behind it: with the relay vouching for it, it"
+                + " and its user reached every node in " + vouched + " minutes, in the relay's bucket: " + placedVouched[0]
+                + "; without, " + not + " minutes (-1: not in 6 hours); sybils all in the shared bucket: " + placedVouched[1]
+                + ", up to " + sybilsVouched[0] + " held by a node");
+        Assert.assertTrue("placed in the relay's bucket", placedVouched[0]);
+        Assert.assertTrue("listing a relay that doesn't vouch for them gets them nothing", placedVouched[1] && placedNot[1]);
+        Assert.assertFalse(placedNot[0]);
+        Assert.assertTrue("a vouched server isn't held up by the shared bucket", vouched > 0 && vouched <= 11);
+        Assert.assertTrue(not < 0 || not > vouched);
     }
 
     @Test

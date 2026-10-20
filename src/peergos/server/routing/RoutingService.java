@@ -50,6 +50,8 @@ public class RoutingService {
                     "in full, or light, asking the routing-peers as its full nodes", false, "compact");
     public static final Command.Arg ARG_ROUTING_RELAYS = new Command.Arg("routing-relays",
             "Comma separated peerids of relays to prefer when this server has no direct address", false);
+    public static final Command.Arg ARG_ROUTING_RELAY_CLIENTS = new Command.Arg("routing-relay-clients",
+            "Comma separated peerids of this operator's own servers, and others it relays for first and vouches for", false);
     public static final Command.Arg ARG_ROUTING_RELAY = new Command.Arg("routing-relay",
             "Relay for other servers once this server has a stable public address", false, "true");
     public static final Command.Arg ARG_ROUTING_RELAY_BANDWIDTH = new Command.Arg("routing-relay-bandwidth",
@@ -62,7 +64,16 @@ public class RoutingService {
 
     public static final List<Command.Arg> ARGS = List.of(ARG_ROUTING_LOG, ARG_ROUTING_SQL_FILE, ARG_ROUTING_PEERS,
             ARG_ROUTING_POW_THREADS, ARG_ROUTING_INCEPTIONS_PER_DAY, ARG_ROUTING_LEGACY_STATE, ARG_ROUTING_LEGACY_STATE_HASH,
-            ARG_ROUTING_MODE, ARG_ROUTING_RELAYS, ARG_ROUTING_RELAY, ARG_ROUTING_RELAY_BANDWIDTH, ARG_ROUTING_WORK_BITS, ARG_ROUTING_EXPORT_LEGACY_STATE);
+            ARG_ROUTING_MODE, ARG_ROUTING_RELAYS, ARG_ROUTING_RELAY_CLIENTS, ARG_ROUTING_RELAY, ARG_ROUTING_RELAY_BANDWIDTH, ARG_ROUTING_WORK_BITS, ARG_ROUTING_EXPORT_LEGACY_STATE);
+
+    public static List<Multihash> peerIds(Args a, Command.Arg arg) {
+        return a.getOptionalArg(arg.name)
+                .map(s -> Arrays.stream(s.split(","))
+                        .filter(p -> ! p.isBlank())
+                        .map(p -> (Multihash) Cid.decodePeerId(p.trim()))
+                        .collect(Collectors.toList()))
+                .orElse(Collections.emptyList());
+    }
 
     private static final long TICK_MILLIS = 60_000, SYNC_MILLIS = 10 * 60_000, ADDRESS_MILLIS = 10 * 60_000,
             PEERS_MILLIS = 60 * 60_000;
@@ -132,7 +143,8 @@ public class RoutingService {
                         .orElse(Collections.emptyList()),
                 mode, heldRelays, a.getBoolean(ARG_ROUTING_RELAY.name, true), System::currentTimeMillis);
         ExecutorService work = Executors.newFixedThreadPool(4, daemon("Routing replication"));
-        BucketVerifier buckets = new BucketVerifier(RoutingLookup.full(server.replica), dialler, System::currentTimeMillis,
+        BucketVerifier buckets = new BucketVerifier(RoutingLookup.full(server.replica), dialler,
+                (relay, target) -> new HttpRoutingPeer(relay, p2p).vouches(target), System::currentTimeMillis,
                 Executors.newFixedThreadPool(2, daemon("Routing bucket checks")));
         RoutingNode node = new RoutingNode(server.replica, crypto.hasher, System::currentTimeMillis,
                 a.getInt(ARG_ROUTING_INCEPTIONS_PER_DAY.name, RateLimits.DEFAULT_INCEPTIONS_PER_DAY),
@@ -142,6 +154,7 @@ public class RoutingService {
             if (! peer.isBlank())
                 peers.add(new HttpRoutingPeer(Cid.decodePeerId(peer.trim()).bareMultihash(), p2p));
         node.setSelf(Subject.server(server.peerId));
+        node.setPlacer(buckets::place);
         SyncPeers syncPeers = new SyncPeers(node, buckets, peers, server.peerId, light, new Random());
         RoutingLookup lookup;
         if (light) {
