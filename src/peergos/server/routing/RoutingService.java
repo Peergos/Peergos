@@ -141,6 +141,7 @@ public class RoutingService {
         for (String peer : a.getOptionalArg(ARG_ROUTING_PEERS.name).map(s -> s.split(",")).orElse(new String[0]))
             if (! peer.isBlank())
                 peers.add(new HttpRoutingPeer(Cid.decodePeerId(peer.trim()).bareMultihash(), p2p));
+        node.setSelf(Subject.server(server.peerId));
         SyncPeers syncPeers = new SyncPeers(node, buckets, peers, server.peerId, light, new Random());
         RoutingLookup lookup;
         if (light) {
