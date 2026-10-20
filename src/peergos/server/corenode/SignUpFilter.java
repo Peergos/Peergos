@@ -361,6 +361,11 @@ public class SignUpFilter implements CoreNode {
     }
 
     @Override
+    public CompletableFuture<Optional<PublicKeyHash>> getPublicKeyHash(String username) {
+        return target.getPublicKeyHash(username);
+    }
+
+    @Override
     public void close() throws IOException {
         completionScheduler.shutdownNow();
         completionFinisher.shutdownNow();

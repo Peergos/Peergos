@@ -2,6 +2,7 @@ package peergos.shared.corenode;
 
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.*;
+import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -19,6 +20,30 @@ public class Proxy {
         return homeServer(core, ownerKey).thenCompose(target -> isUs(serverIds, target) ?
                 direct.get() :
                 proxyTo(core, target, proxied));
+    }
+
+    /** A username@peerid is asked of the server it names, by the bare username that is its label there
+     *  (remove-pki §12.1), following the server's rotations; a bare username of its owner's home server.
+     */
+    public static <V> CompletableFuture<V> redirectByName(CoreNode core,
+                                                          List<Cid> serverIds,
+                                                          String username,
+                                                          Function<String, CompletableFuture<V>> direct,
+                                                          BiFunction<Multihash, String, CompletableFuture<V>> proxied) {
+        LoginName name = LoginName.parse(username);
+        if (name.server.isPresent())
+            return toNamedServer(core, serverIds, name.server.get(),
+                    () -> direct.apply(name.username), target -> proxied.apply(target, name.username));
+        return core.getPublicKeyHash(username).thenCompose(owner -> redirectCall(core, serverIds, owner.get(),
+                () -> direct.apply(username), target -> proxied.apply(target, username)));
+    }
+
+    public static <V> CompletableFuture<V> toNamedServer(CoreNode core,
+                                                         List<Cid> serverIds,
+                                                         Multihash server,
+                                                         Supplier<CompletableFuture<V>> direct,
+                                                         Function<Multihash, CompletableFuture<V>> proxied) {
+        return isUs(serverIds, server) ? direct.get() : proxyTo(core, server, proxied);
     }
 
     /** A read for a user we hold a mirror of, which is served from our own copy before their home server.

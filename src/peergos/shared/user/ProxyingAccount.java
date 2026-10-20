@@ -34,13 +34,16 @@ public class ProxyingAccount implements Account {
 
     @Override
     public CompletableFuture<Boolean> setLoginData(LoginData login, byte[] auth, boolean forceLocal) {
-        return core.getPublicKeyHash(login.username).thenCompose(idOpt -> forceLocal ?
-                local.setLoginData(login, auth, true) :
-                Proxy.redirectCall(core,
-                        serverIds,
-                        idOpt.get(),
-                        () -> local.setLoginData(login, auth, false),
-                        target -> p2p.setLoginData(target, login, auth)));
+        return setLoginData(login.username, login, auth, forceLocal);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> setLoginData(String username, LoginData login, byte[] auth, boolean forceLocal) {
+        if (forceLocal)
+            return local.setLoginData(login, auth, true);
+        return Proxy.redirectByName(core, serverIds, username,
+                user -> local.setLoginData(login, auth, false),
+                (target, user) -> p2p.setLoginData(target, login, auth));
     }
 
     @Override
@@ -54,7 +57,7 @@ public class ProxyingAccount implements Account {
                                                          boolean forceNoCache) {
         LoginName name = LoginName.parse(username);
         if (name.server.isPresent())
-            return toNamedServer(name,
+            return Proxy.toNamedServer(core, serverIds, name.server.get(),
                     () -> local.getLoginData(name.username, authorisedReader, auth, mfa, deviceToken, false, forceProxy, forceNoCache),
                     target -> p2p.getLoginData(target, name.username, authorisedReader, auth, mfa, deviceToken));
         // a mirror of the login data is only used when the home server can't be reached, and only holds
@@ -70,101 +73,68 @@ public class ProxyingAccount implements Account {
                 weMirror));
     }
 
-    /** A username@peerid names the server the username belongs to, so it is asked directly, following the server's
-     *  rotations, rather than found through the PKI (remove-pki §12.1).
-     */
-    private <V> CompletableFuture<V> toNamedServer(LoginName name,
-                                                   Supplier<CompletableFuture<V>> direct,
-                                                   Function<Multihash, CompletableFuture<V>> proxied) {
-        Multihash target = name.server.get();
-        if (serverIds.stream().anyMatch(id -> id.bareMultihash().equals(target.bareMultihash())))
-            return direct.get();
-        return Futures.asyncExceptionally(() -> proxied.apply(target),
-                t -> core.getNextServerId(target).thenCompose(next -> next.isPresent() ?
-                        proxied.apply(new Cid(1, Cid.Codec.LibP2pKey, next.get().type, next.get().getHash())) :
-                        Futures.errored(t)));
-    }
-
     @Override
     public CompletableFuture<TotpKey> addTotpFactor(String username, byte[] auth) {
-        return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
-                serverIds,
-                idOpt.get(),
-                () -> local.addTotpFactor(username, auth),
-                target -> p2p.addTotpFactor(target, username, auth)));
+        return Proxy.redirectByName(core, serverIds, username,
+                user -> local.addTotpFactor(user, auth),
+                (target, user) -> p2p.addTotpFactor(target, user, auth));
     }
 
     @Override
     public CompletableFuture<TotpKey> addMountFactor(String username, String name, byte[] auth) {
-        return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
-                serverIds,
-                idOpt.get(),
-                () -> local.addMountFactor(username, name, auth),
-                target -> p2p.addMountFactor(target, username, name, auth)));
+        return Proxy.redirectByName(core, serverIds, username,
+                user -> local.addMountFactor(user, name, auth),
+                (target, user) -> p2p.addMountFactor(target, user, name, auth));
     }
 
     @Override
     public CompletableFuture<Boolean> enableMountFactor(String username, byte[] credentialId, String code, byte[] auth) {
-        return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
-                serverIds,
-                idOpt.get(),
-                () -> local.enableMountFactor(username, credentialId, code, auth),
-                target -> p2p.enableMountFactor(target, username, credentialId, code, auth)));
+        return Proxy.redirectByName(core, serverIds, username,
+                user -> local.enableMountFactor(user, credentialId, code, auth),
+                (target, user) -> p2p.enableMountFactor(target, user, credentialId, code, auth));
     }
 
     @Override
     public CompletableFuture<BackupCodes> generateBackupCodes(String username, byte[] auth) {
-        return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
-                serverIds,
-                idOpt.get(),
-                () -> local.generateBackupCodes(username, auth),
-                target -> p2p.generateBackupCodes(target, username, auth)));
+        return Proxy.redirectByName(core, serverIds, username,
+                user -> local.generateBackupCodes(user, auth),
+                (target, user) -> p2p.generateBackupCodes(target, user, auth));
     }
 
     @Override
     public CompletableFuture<byte[]> registerSecurityKeyStart(String username, byte[] auth) {
-        return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
-                serverIds,
-                idOpt.get(),
-                () -> local.registerSecurityKeyStart(username, auth),
-                target -> p2p.registerSecurityKeyStart(target, username, auth)));
+        return Proxy.redirectByName(core, serverIds, username,
+                user -> local.registerSecurityKeyStart(user, auth),
+                (target, user) -> p2p.registerSecurityKeyStart(target, user, auth));
     }
 
 
 
     @Override
     public CompletableFuture<Boolean> registerSecurityKeyComplete(String username, String keyName, MultiFactorAuthResponse resp, byte[] auth) {
-        return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
-                serverIds,
-                idOpt.get(),
-                () -> local.registerSecurityKeyComplete(username, keyName, resp, auth),
-                target -> p2p.registerSecurityKeyComplete(target, username, keyName, resp, auth)));
+        return Proxy.redirectByName(core, serverIds, username,
+                user -> local.registerSecurityKeyComplete(user, keyName, resp, auth),
+                (target, user) -> p2p.registerSecurityKeyComplete(target, user, keyName, resp, auth));
     }
 
     @Override
     public CompletableFuture<List<MultiFactorAuthMethod>> getSecondAuthMethods(String username, byte[] auth) {
-        return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
-                serverIds,
-                idOpt.get(),
-                () -> local.getSecondAuthMethods(username, auth),
-                target -> p2p.getSecondAuthMethods(target, username, auth)));
+        return Proxy.redirectByName(core, serverIds, username,
+                user -> local.getSecondAuthMethods(user, auth),
+                (target, user) -> p2p.getSecondAuthMethods(target, user, auth));
     }
 
     @Override
     public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code, byte[] auth) {
-        return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
-                serverIds,
-                idOpt.get(),
-                () -> local.enableTotpFactor(username, credentialId, code, auth),
-                target -> p2p.enableTotpFactor(target, username, credentialId, code, auth)));
+        return Proxy.redirectByName(core, serverIds, username,
+                user -> local.enableTotpFactor(user, credentialId, code, auth),
+                (target, user) -> p2p.enableTotpFactor(target, user, credentialId, code, auth));
     }
 
     @Override
     public CompletableFuture<Boolean> deleteSecondFactor(String username, byte[] credentialId, byte[] auth) {
-        return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
-                serverIds,
-                idOpt.get(),
-                () -> local.deleteSecondFactor(username, credentialId, auth),
-                target -> p2p.deleteSecondFactor(username, credentialId, auth)));
+        return Proxy.redirectByName(core, serverIds, username,
+                user -> local.deleteSecondFactor(user, credentialId, auth),
+                (target, user) -> p2p.deleteSecondFactor(target, user, credentialId, auth));
     }
 }

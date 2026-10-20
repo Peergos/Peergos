@@ -153,6 +153,8 @@ public class RoutingDaemonTests {
                     Builder.buildLocalJavaNetworkAccess(nodeArgs.getInt("port")).join(), crypto).join();
             Assert.assertEquals("alice" + suffix, aliceViaNode.username);
             Assert.assertEquals(aliceId, aliceViaNode.signer.publicKeyHash);
+            Assert.assertEquals(LoginName.parse("alice" + suffix + "@" + pkiNodeId).toString(), aliceViaNode.loginName);
+            Assert.assertTrue(aliceViaNode.network.account.getSecondAuthMethods(aliceViaNode.username, aliceViaNode.signer).join().isEmpty());
 
             try {
                 new ServerHint(pkiNodeId, List.of("/dns4/peergos.net/tcp/4001"));
