@@ -13,7 +13,7 @@ public class JavaCrypto {
     public static Crypto init() {
         SafeRandomJava random = new SafeRandomJava();
         Salsa20Poly1305Java symmetricProvider = new Salsa20Poly1305Java();
-        Ed25519Java signer = new Ed25519Java();
+        Ed25519 signer = new JdkEd25519();
         Curve25519 boxer = new Curve25519Java();
         JavaMlkem javaMlkem = new JavaMlkem();
         return Crypto.init(() -> new Crypto(random, new ScryptJava(), symmetricProvider, signer, boxer, javaMlkem));
