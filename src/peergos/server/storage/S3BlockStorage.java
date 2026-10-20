@@ -152,6 +152,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final Hasher hasher;
     private final DeletableContentAddressedStorage ipnsHandler;
     private final ContentAddressedStorageProxy p2pHttpFallback;
+    private final Optional<S3CborMirror> cborMirror;
 
     private final LinkedBlockingQueue<Pair<PublicKeyHash, Cid>> blocksToFlush = new LinkedBlockingQueue<>();
     private final ConcurrentHashMap<PublicKeyHash, SlidingWindowCounter> userReadReqRateLimits = new ConcurrentHashMap();
@@ -190,6 +191,38 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                           Hasher hasher,
                           DeletableContentAddressedStorage ipnsHandler,
                           ContentAddressedStorageProxy p2pHttpFallback) {
+        this(config, ids, props, linkHost, transactions, authoriser, bats, blockMetadata, usage, cborCache, blockBuffer,
+                maxReadBandwidthPerSecond, maxReadReqsPerSecond, maxUserBandwidthPerSecond, maxUserReadRequestsPerSecond,
+                isVersioned, peergosDir, partitioned, hasher, ipnsHandler, p2pHttpFallback, Optional.empty(), false);
+    }
+
+    /**
+     * @param cborMirror A second bucket that every cbor block is also written to, and read from first
+     * @param backfillCborMirror Copy every existing cbor block into the mirror, in the background
+     */
+    public S3BlockStorage(S3Config config,
+                          List<Cid> ids,
+                          BlockStoreProperties props,
+                          String linkHost,
+                          TransactionStore transactions,
+                          BlockRequestAuthoriser authoriser,
+                          JdbcBatCave bats,
+                          BlockMetadataStore blockMetadata,
+                          UsageStore usage,
+                          BlockCache cborCache,
+                          BlockBuffer blockBuffer,
+                          long maxReadBandwidthPerSecond,
+                          long maxReadReqsPerSecond,
+                          long maxUserBandwidthPerSecond,
+                          long maxUserReadRequestsPerSecond,
+                          boolean isVersioned,
+                          Path peergosDir,
+                          PartitionStatus partitioned,
+                          Hasher hasher,
+                          DeletableContentAddressedStorage ipnsHandler,
+                          ContentAddressedStorageProxy p2pHttpFallback,
+                          Optional<S3CborMirror> cborMirror,
+                          boolean backfillCborMirror) {
         this.ids = ids;
         this.peerIds = ids.stream()
                 .map(Cid::bareMultihash)
@@ -226,6 +259,21 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.peergosDir = peergosDir;
         this.partitionStatus = partitioned;
         this.partitionComplete = partitionStatus.isDone();
+        this.cborMirror = cborMirror;
+        cborMirror.ifPresent(m -> m.startRetries(this::hashToKey));
+        if (backfillCborMirror) {
+            if (cborMirror.isEmpty())
+                throw new IllegalStateException("Cannot backfill a cbor mirror that isn't configured!");
+            Thread backfill = new Thread(() -> {
+                try {
+                    backfillCborMirror();
+                } catch (Exception e) {
+                    LOG.log(Level.SEVERE, "S3 cbor mirror backfill failed: " + e.getMessage(), e);
+                }
+            }, "S3-cbor-mirror-backfill");
+            backfill.setDaemon(true);
+            backfill.start();
+        }
         startFlusherThread();
         new Thread(() -> blockBuffer.applyToAll((o, c) -> blocksToFlush.add(new Pair<>(o, c)))).start();
     }
@@ -429,7 +477,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         }
     }
 
-    private static boolean isCausedBy(Throwable t, Class<?>... types) {
+    static boolean isCausedBy(Throwable t, Class<?>... types) {
         Set<Throwable> visited = Collections.newSetFromMap(new IdentityHashMap<>());
         Deque<Throwable> queue = new ArrayDeque<>();
         queue.add(t);
@@ -889,6 +937,60 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 });
     }
 
+    /** Copy every cbor block that the mirror doesn't already have into it. Blocks written during the
+     *  backfill are already written to both stores.
+     */
+    public void backfillCborMirror() {
+        S3CborMirror mirror = cborMirror.get();
+        LOG.info("Backfilling " + mirror + " from " + this);
+        long t0 = System.currentTimeMillis();
+        AtomicLong checked = new AtomicLong(0), copied = new AtomicLong(0), failed = new AtomicLong(0);
+        Semaphore inFlight = new Semaphore(MIRROR_PARALLELISM);
+        try (ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor()) {
+            applyToAllVersionsParallel("", Optional.empty(), versions -> {
+                for (UserBlockVersion v : versions) {
+                    if (! v.isLatest || v.cid.isRaw())
+                        continue;
+                    String key = (v.username == null ? "" : v.username + "/") + DirectS3BlockStore.hashToKey(v.cid);
+                    inFlight.acquireUninterruptibly();
+                    pool.submit(() -> {
+                        try {
+                            if (! S3CborMirror.withBackoff(() -> mirror.has(key))) {
+                                byte[] block = S3CborMirror.withBackoff(() -> getObject(key));
+                                S3CborMirror.withBackoff(() -> {mirror.put(key, v.cid, block); return true;});
+                                copied.incrementAndGet();
+                            }
+                        } catch (Exception e) {
+                            failed.incrementAndGet();
+                            LOG.log(Level.WARNING, "Couldn't backfill S3 cbor mirror with " + key, e);
+                        } finally {
+                            inFlight.release();
+                            long done = checked.incrementAndGet();
+                            if (done % 10_000 == 0)
+                                LOG.info("S3 cbor mirror backfill: checked " + String.format("%,d", done)
+                                        + " cbor blocks, copied " + String.format("%,d", copied.get()));
+                        }
+                    });
+                }
+            }, x -> {});
+        }
+        LOG.info("S3 cbor mirror backfill finished in " + (System.currentTimeMillis() - t0) / 1000 + "s: checked "
+                + String.format("%,d", checked.get()) + " cbor blocks, copied " + String.format("%,d", copied.get())
+                + (failed.get() > 0 ? ", " + String.format("%,d", failed.get()) + " FAILED, re-run the backfill" : ""));
+    }
+
+    private byte[] getObject(String key) {
+        PresignedUrl getUrl = S3Request.preSignGet(folder + key, Optional.of(600), Optional.empty(),
+                S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, storageClass, accessKeyId, secretKey, useHttps, hasher).join();
+        try {
+            return HttpUtil.getWithVersion(getUrl).left;
+        } catch (Exception e) {
+            if (S3CborMirror.isRateLimited(e))
+                throw new RateLimitException();
+            throw new RuntimeException(e);
+        }
+    }
+
     public static Throwable getRootCause(Throwable t) {
         Throwable cause = t.getCause();
         if (t instanceof CompletionException)
@@ -911,7 +1013,25 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         enforceGlobalRequestRateLimit();
         enforceUserRequestRateLimits(owner, 1);
 
-        String path = folder + (useLegacyPath ? legacyHashToKey(hash) : hashToKey(owner, hash));
+        String key = useLegacyPath ? legacyHashToKey(hash) : hashToKey(owner, hash);
+        // The mirror can't give us the main store's version, so a versioned store only uses it once the version is recorded
+        boolean useCborMirror = cborMirror.isPresent() && ! hash.isRaw() && ! useLegacyPath
+                && (! isVersioned || blockMetadata.get(hash).isPresent());
+        if (useCborMirror) {
+            Optional<byte[]> mirrored = cborMirror.get().get(key, range);
+            if (mirrored.isPresent()) {
+                byte[] block = mirrored.get();
+                enforceUserBandwidthRateLimits(owner, block.length);
+                enforceGlobalBandwidthLimit(block.length);
+                if (enforceAuth && ! authoriser.allowRead(hash, block, id, generateAuth(hash, bat, id, hasher)).join())
+                    throw new IllegalStateException("Unauthorised!");
+                if (range.isEmpty() && ! isVersioned)
+                    blockMetadata.put(owner, hash, null, block);
+                return Futures.of(Optional.of(new Pair<>(block, null)));
+            }
+        }
+
+        String path = folder + key;
         PresignedUrl getUrl = S3Request.preSignGet(path, Optional.of(600), range,
                 S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, storageClass, accessKeyId, secretKey, useHttps, hasher).join();
         Histogram.Timer readTimer = hash.isRaw() ?
@@ -927,6 +1047,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 throw new IllegalStateException("Unauthorised!");
             if (range.isEmpty())
                 blockMetadata.put(owner, hash, blockAndVersion.right, blockAndVersion.left);
+            if (useCborMirror && range.isEmpty())
+                cborMirror.get().repair(owner, hash, key, blockAndVersion.left);
             return Futures.of(Optional.of(blockAndVersion));
         } catch (Exception e) {
             String msg = e.getMessage();
@@ -1537,6 +1659,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             PresignedUrl putUrl = S3Request.preSignPut(s3Key, data.length, contentHash, storageClass, false,
                     S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, extraHeaders, region, accessKeyId, secretKey, useHttps, hasher).join();
             String version = HttpUtil.putWithVersion(putUrl, data).right;
+            if (cborMirror.isPresent() && ! cid.isRaw())
+                cborMirror.get().putBestEffort(owner, cid, key, data);
             BlockMetadata meta = blockMetadata.put(owner, cid, version, data);
             blockPuts.inc();
             blockPutBytes.labels("size").observe(data.length);
@@ -2013,6 +2137,19 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+        if (! version.cid.isRaw())
+            deleteFromCborMirror(List.of(hashToKey(owner, version.cid)));
+    }
+
+    /** A block left behind in the mirror is never wrong, as it is content addressed, so failures are only logged. */
+    private void deleteFromCborMirror(List<String> keys) {
+        if (cborMirror.isEmpty() || keys.isEmpty())
+            return;
+        try {
+            cborMirror.get().bulkDelete(keys);
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Couldn't delete " + keys.size() + " blocks from S3 cbor mirror", e);
+        }
     }
 
     private static AtomicBoolean hasBulkDeleteError = new AtomicBoolean(false);
@@ -2047,7 +2184,13 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             for (BlockVersion version : versions) {
                 new Thread(() -> delete(owner, version)).start();
             }
+            return;
         }
+        deleteFromCborMirror(versions.stream()
+                .filter(v -> ! v.cid.isRaw())
+                .map(v -> hashToKey(owner, v.cid))
+                .distinct()
+                .toList());
     }
 
     @Override
@@ -2094,7 +2237,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"), usage),
                 Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE,
                 versioned, a.getPeergosDir(), partitioned, hasher,
-                new RAMStorage(hasher), p2pHttpFallback);
+                new RAMStorage(hasher), p2pHttpFallback, Builder.buildCborMirror(a, usage, hasher), false);
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
 
         MutablePointers localPointers = UserRepository.build(s3, rawPointers, hasher);
