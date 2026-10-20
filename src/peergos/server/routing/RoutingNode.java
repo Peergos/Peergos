@@ -48,6 +48,7 @@ public class RoutingNode {
     private final RateLimits.TokenBuckets<Multihash> charged;
     private final RateLimits.TokenBuckets<Multihash> rejections;
     private final ExecutorService work;
+    private final AtomicBoolean taking = new AtomicBoolean();
     private volatile Set<Multihash> configured = Set.of();
     private volatile boolean synced;
 
@@ -328,7 +329,8 @@ public class RoutingNode {
                 return Outcome.Ignored;
             }
             if (! catchUp && ! fromQueue) {
-                inceptions.offer(buckets.apply(chargedTo), chargedTo, new Offer(from, s));
+                if (inceptions.offer(buckets.apply(chargedTo), chargedTo, new Offer(from, s)))
+                    takeSoon();
                 return Outcome.Limited;
             }
         }
@@ -400,13 +402,7 @@ public class RoutingNode {
 
     /** Takes the inceptions whose turn has come and the held updates whose token is due. Run periodically. */
     public void tick() {
-        for (Offer o : inceptions.take()) {
-            try {
-                fetch(o.from, o.subject, true);
-            } catch (Throwable t) {
-                LOG.log(Level.FINE, "Fetching " + o.subject + " failed: " + t.getMessage());
-            }
-        }
+        takeInceptions();
         long now = clock.getAsLong();
         for (Map.Entry<Subject, Held> e : new ArrayList<>(held.entrySet())) {
             RecordType type = RecordType.of(e.getValue().record);
@@ -416,6 +412,27 @@ public class RoutingNode {
             accept(e.getValue().from, e.getKey(), List.of(e.getValue().record), false);
         }
         updates.prune();
+    }
+
+    /** A bucket with a token to spare passes a new identity on at once rather than at the next tick, so honest
+     *  signups cross the network in network time.
+     */
+    private void takeSoon() {
+        if (taking.compareAndSet(false, true))
+            work.submit(() -> {
+                taking.set(false);
+                takeInceptions();
+            });
+    }
+
+    private void takeInceptions() {
+        for (Offer o : inceptions.take()) {
+            try {
+                fetch(o.from, o.subject, true);
+            } catch (Throwable t) {
+                LOG.log(Level.FINE, "Fetching " + o.subject + " failed: " + t.getMessage());
+            }
+        }
     }
 
     public int waitingInceptions() {
