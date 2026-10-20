@@ -70,7 +70,7 @@ public class S3WriterOwnershipTests {
         // every owner's blocks are on this node
         peergos.shared.corenode.CoreNode core = proxy(peergos.shared.corenode.CoreNode.class, (name, args) -> {
             if (name.equals("getStorageProviders"))
-                return List.of(ourId.bareMultihash());
+                return Futures.of(List.of(ourId.bareMultihash()));
             if (name.equals("getUsername"))
                 return Futures.of(usernames.get((PublicKeyHash) args[0]));
             throw new UnsupportedOperationException(name);
