@@ -157,7 +157,7 @@ public class SyncPeers {
                         .get(15, java.util.concurrent.TimeUnit.SECONDS));
                 page = wrapped;
             }
-            for (JdbcRoutingStore.State st : page)
+            for (JdbcRoutingStore.State st : page.subList(0, Math.min(DISCOVER, page.size())))
                 if (! node.replica().log(st.subject).exists())
                     node.fetch(from, st.subject, true);
         } catch (Exception e) {

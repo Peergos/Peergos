@@ -35,6 +35,8 @@ public class Relays {
     public static final int LEASES = 64, LEASES_PER_BUCKET = 2;
     public static final java.time.Duration LEASE = java.time.Duration.ofMinutes(15), RESERVATION = java.time.Duration.ofHours(1);
     private static final long PROVEN_CACHE_MILLIS = 10 * 60_000, UNPROVEN_CACHE_MILLIS = 60_000;
+    /** Background lookups of unknown peers outstanding at once, since any key can ask. */
+    private static final int MAX_LOOKUPS = 64;
     /** The two named and a spare, so one that is briefly unreachable is reserved on again when it returns, as nabu
      *  dials candidates in order only while it holds fewer than this, and a replacement is already held for a while.
      */
@@ -250,7 +252,7 @@ public class Relays {
         synchronized (proven) {
             proven.put(id, new long[]{now, res ? 1 : 0});
         }
-        if (! res && fetching.add(id))
+        if (! res && fetching.size() < MAX_LOOKUPS && fetching.add(id))
             background.submit(() -> {
                 try {
                     if (lookup.get().server(id).isPresent() || lookup.get().replica().serverForPeer(id).isPresent())

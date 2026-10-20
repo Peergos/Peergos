@@ -21,6 +21,10 @@ public class LightLookup implements RoutingLookup {
     public static final int SAMPLE = 10;
     public static final double SAMPLE_FRACTION = 0.05;
     public static final long FRESH_MILLIS = 10 * 60_000, MISSING_MILLIS = 60_000;
+    /** Lookups that go to full nodes, each asking up to 1 + {@link #SAMPLE} of them, across every caller: anyone can
+     *  ask this server about an identity, so otherwise it would multiply their requests onto the full nodes.
+     */
+    public static final RateLimits.Rate PULLS = new RateLimits.Rate(200, 100);
     private static final long PULL_TIMEOUT_SECONDS = 15;
 
     private final RoutingReplica replica;
@@ -32,6 +36,7 @@ public class LightLookup implements RoutingLookup {
     private final Random random;
     private final ExecutorService background;
     private final LRUCache<Subject, Long> fetched = new LRUCache<>(10_000), missing = new LRUCache<>(10_000);
+    private final RateLimits.TokenBuckets<String> pulls;
 
     public LightLookup(RoutingNode node, Multihash self, List<RoutingPeer> fullNodes, LongSupplier clock, Random random, ExecutorService background) {
         if (fullNodes.isEmpty())
@@ -43,6 +48,7 @@ public class LightLookup implements RoutingLookup {
         this.clock = clock;
         this.random = random;
         this.background = background;
+        this.pulls = new RateLimits.TokenBuckets<>(PULLS, clock);
     }
 
     /** Full nodes drawn by the sync-peer rules, sampled alongside the configured ones. */
@@ -87,6 +93,8 @@ public class LightLookup implements RoutingLookup {
         }
         if (! held.exists() && isMissing(s, now))
             return Optional.empty();
+        if (! pulls.tryTake(""))
+            return held.exists() ? Optional.of(held) : Optional.empty();
         pull(fullNodes.get(0), s);
         if (! replica.log(s).exists())
             for (RoutingPeer peer : sample())
@@ -114,7 +122,7 @@ public class LightLookup implements RoutingLookup {
 
     private void pull(RoutingPeer from, Subject s) {
         try {
-            CompletableFuture.runAsync(() -> node.fetch(from, s, true), background)
+            CompletableFuture.runAsync(() -> node.pullForLookup(from, s), background)
                     .orTimeout(PULL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                     .join();
         } catch (Exception e) {

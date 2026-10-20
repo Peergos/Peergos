@@ -33,6 +33,9 @@ public class RoutingReplica {
     private final Object[] locks = new Object[LOCKS];
     private final List<BiConsumer<Subject, SubjectLog>> listeners = new CopyOnWriteArrayList<>();
     private volatile Optional<Multihash> compactFor = Optional.empty();
+    private final Map<ByteArrayWrapper, Integer> ranks = Collections.synchronizedMap(new LRUCache<>(100_000));
+    /** Full records fetched for a state, so serving it again doesn't ask its provider again. */
+    private final Map<ByteArrayWrapper, List<SignedRecord>> filled = Collections.synchronizedMap(new LRUCache<>(1_000));
 
     public RoutingReplica(JdbcRoutingStore store, RecordValidator validator, Work identityWork, Work serverWork) {
         this.store = store;
@@ -134,6 +137,8 @@ public class RoutingReplica {
         Subject s = canonical(requested);
         if (! s.accepts(RecordType.of(record)))
             return Outcome.Rejected;
+        if (isHeld(s, record))
+            return Outcome.Duplicate;
         Verified<? extends SignedRecord> v;
         try {
             v = validator.verify(record).join();
@@ -157,6 +162,14 @@ public class RoutingReplica {
                 save(s, updated);
             return outcome;
         }
+    }
+
+    /** Already held with the same proofs, so a record sent again costs a hash, not a signature check. */
+    private boolean isHeld(Subject s, SignedRecord record) {
+        byte[] hash = hash(record);
+        byte[] extras = RecordType.extras(record).serialize();
+        return log(s).held().stream()
+                .anyMatch(v -> Arrays.equals(v.hash, hash) && Arrays.equals(RecordType.extras(v.record).serialize(), extras));
     }
 
     /** The subject's log as it would be with these records, without storing them. */
@@ -236,7 +249,11 @@ public class RoutingReplica {
         for (Verified<? extends SignedRecord> v : held)
             if (v.record.isStripped())
                 signatures.put(new ByteArrayWrapper(v.hash), null);
+        ByteArrayWrapper state = new ByteArrayWrapper(digest(held));
         if (! signatures.isEmpty()) {
+            List<SignedRecord> cached = filled.get(state);
+            if (cached != null)
+                return cached;
             for (Multihash source : sources(log)) {
                 if (compactFor.map(self -> self.equals(source.bareMultihash())).orElse(false))
                     continue;
@@ -260,8 +277,11 @@ public class RoutingReplica {
             res.add(v.record.isStripped() ?
                     RecordType.withSignature(v.record, signatures.get(new ByteArrayWrapper(v.hash))) :
                     v.record);
-        if (! signatures.isEmpty() && compactFor.map(self -> keepsFull(self, log)).orElse(false))
-            restore(s, held, res);
+        if (! signatures.isEmpty()) {
+            filled.put(state, res);
+            if (compactFor.map(self -> keepsFull(self, log)).orElse(false))
+                restore(s, held, res);
+        }
         return res;
     }
 
@@ -326,9 +346,38 @@ public class RoutingReplica {
     private int proofRank(Subject s, SignedRecord inception) {
         if (inception instanceof ServerInception) {
             ServerInception si = (ServerInception) inception;
-            return si.proof.isPresent() && serverWork.verify(si.server.serialize(), si.proof.get()).join() ? 0 : -1;
+            return ranked(inception.serialize(), () -> si.proof.isPresent() && serverWork.verify(si.server.serialize(), si.proof.get()).join() ? 0 : -1);
         }
-        return admittingKeyIndex(s, (IdentityInception) inception);
+        IdentityInception ii = (IdentityInception) inception;
+        byte[] admitter = server(Subject.server(ii.admittingServer()))
+                .map(log -> new CborObject.CborList(log.records.chain.keys).serialize())
+                .orElse(new byte[0]);
+        return ranked(ArrayOps.concat(ArrayOps.concat(s.idBytes(), inception.serialize()), admitter), () -> admittingKeyIndex(s, ii));
+    }
+
+    /** Checking an admission is a signature check, and it is asked for on every change and every relay decision, so
+     *  the answer is kept for as long as the inception, its proofs and the admitting server's chain are unchanged.
+     */
+    private int ranked(byte[] inputs, java.util.function.IntSupplier rank) {
+        ByteArrayWrapper key = new ByteArrayWrapper(validator.hasher().sha256(inputs).join());
+        Integer cached = ranks.get(key);
+        if (cached != null)
+            return cached;
+        int res = rank.getAsInt();
+        ranks.put(key, res);
+        return res;
+    }
+
+    /** Whether an inception's proof of work checks, which costs far less than its signatures, so an inception with
+     *  none is turned away before they are checked.
+     */
+    public boolean isWorkDone(Subject s, SignedRecord inception) {
+        if (inception instanceof ServerInception) {
+            ServerInception si = (ServerInception) inception;
+            return si.proof.isPresent() && serverWork.verify(si.server.serialize(), si.proof.get()).join();
+        }
+        IdentityInception ii = (IdentityInception) inception;
+        return ii.admission.isPresent() && admissionWork(canonical(s)).verify(ii.identity.serialize(), ii.admission.get().proof).join();
     }
 
     /** A legacy identity is already in the pinned state, so its admission needs no proof of work (remove-pki §4.1). */
