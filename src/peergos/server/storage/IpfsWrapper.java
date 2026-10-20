@@ -472,12 +472,8 @@ public class IpfsWrapper implements AutoCloseable {
                 System::currentTimeMillis);
         if (args.getBoolean(peergos.server.routing.RoutingService.ARG_ROUTING_LOG.name, false))
             ipfsWrapper.relays = Optional.of(new peergos.server.routing.Relays(
-                    args.getOptionalArg(peergos.server.routing.RoutingService.ARG_ROUTING_RELAYS.name)
-                            .map(s -> Arrays.stream(s.split(","))
-                                    .filter(p -> ! p.isBlank())
-                                    .map(p -> (peergos.shared.io.ipfs.Multihash) peergos.shared.io.ipfs.Cid.decodePeerId(p.trim()))
-                                    .collect(Collectors.toList()))
-                            .orElse(Collections.emptyList()),
+                    peergos.server.routing.RoutingService.peerIds(args, peergos.server.routing.RoutingService.ARG_ROUTING_RELAYS),
+                    peergos.server.routing.RoutingService.peerIds(args, peergos.server.routing.RoutingService.ARG_ROUTING_RELAY_CLIENTS),
                     peergos.server.routing.ServerAddressPublisher.directAddresses(args.getOptionalArg("ipfs-announce-addresses")
                             .map(addrs -> Arrays.asList(addrs.split(",")))
                             .orElse(Collections.emptyList())).isEmpty(),

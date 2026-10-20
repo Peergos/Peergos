@@ -9,6 +9,7 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
+import java.util.function.*;
 import java.util.logging.*;
 import java.util.stream.*;
 
@@ -30,14 +31,21 @@ public class RoutingHandler implements HttpHandler {
     private static final Multihash POOL = new Multihash(Multihash.Type.id, new byte[0]);
 
     private final RoutingNode node;
+    private final Predicate<Multihash> vouches;
     private final RateLimits.TokenBuckets<Multihash> scans, records, offers, unprovenScans, unprovenRecords, unprovenOffers;
 
     public RoutingHandler(RoutingNode node) {
-        this(node, System::currentTimeMillis);
+        this(node, server -> false);
     }
 
-    public RoutingHandler(RoutingNode node, java.util.function.LongSupplier clock) {
+    /** @param vouches whether this server, as a relay, vouches for a server it relays for */
+    public RoutingHandler(RoutingNode node, Predicate<Multihash> vouches) {
+        this(node, vouches, System::currentTimeMillis);
+    }
+
+    public RoutingHandler(RoutingNode node, Predicate<Multihash> vouches, LongSupplier clock) {
         this.node = node;
+        this.vouches = vouches;
         scans = new RateLimits.TokenBuckets<>(SCANS, clock);
         records = new RateLimits.TokenBuckets<>(RECORDS, clock);
         offers = new RateLimits.TokenBuckets<>(OFFERS, clock);
@@ -122,6 +130,8 @@ public class RoutingHandler implements HttpHandler {
                     throw new IllegalStateException("Too many records");
                 return new CborObject.CborString(node.offered(caller, Subject.fromCbor(m.get("s")), records).name());
             }
+            case "vouches":
+                return new CborObject.CborBoolean(vouches.test(Subject.fromCbor(m.get("s")).id));
             default:
                 throw new IllegalStateException("Unknown routing method " + method);
         }

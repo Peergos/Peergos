@@ -1145,7 +1145,10 @@ public class Main extends Builder {
                         (peer, addrs) -> ipfsWrapper == null ? Futures.of(Optional.empty()) : ipfsWrapper.reach(peer, addrs), ids, crypto, sqlCommands, getDBConnector(a, RoutingService.ARG_ROUTING_SQL_FILE.name, dbConnectionPool),
                         localStorageForLinks, p2pHttpProxy)
                         .ifPresent(routing -> {
-                            p2pAPI.startRoutingApi(new RoutingHandler(routing.node));
+                            p2pAPI.startRoutingApi(new RoutingHandler(routing.node, server -> Optional.ofNullable(ipfsWrapper)
+                                    .flatMap(IpfsWrapper::relays)
+                                    .map(r -> r.vouchesFor(server))
+                                    .orElse(false)));
                             localStorage.setIdentityKeys(HostedIdentityRouting.keys(routing.lookup));
                             Optional<Hints> hints = Optional.ofNullable(ipfsWrapper).flatMap(IpfsWrapper::addressBook)
                                     .map(book -> new Hints(book, routing.node, routing.server.peerId, ipfsWrapper.swarmAddresses(), Hints::interfaceAddresses));
