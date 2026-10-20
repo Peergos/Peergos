@@ -15,6 +15,24 @@ import java.util.concurrent.*;
 public class JdkEd25519 implements Ed25519 {
     private static final byte[] X509_PREFIX = ArrayOps.hexToBytes("302a300506032b6570032100");
 
+    /** This, if the JDK has Ed25519 and it agrees with the fallback, else the fallback. Android only has it from
+     *  API 33, and older ones lack the classes altogether.
+     */
+    public static Ed25519 orElse(Ed25519 fallback) {
+        try {
+            JdkEd25519 jdk = new JdkEd25519();
+            byte[] pk = new byte[32], sk = new byte[64];
+            Arrays.fill(sk, 0, 32, (byte) 7);
+            fallback.crypto_sign_keypair(pk, sk);
+            byte[] message = "peergos".getBytes();
+            byte[] signed = jdk.crypto_sign(message, sk).join();
+            if (Arrays.equals(signed, fallback.crypto_sign(message, sk).join())
+                    && Arrays.equals(message, jdk.crypto_sign_open(signed, pk).join()))
+                return jdk;
+        } catch (Throwable t) {}
+        return fallback;
+    }
+
     @Override
     public CompletableFuture<byte[]> crypto_sign_open(byte[] signed, byte[] publicSigningKey) {
         if (signed.length < TweetNaCl.SIGNATURE_SIZE_BYTES || publicSigningKey.length != 32)

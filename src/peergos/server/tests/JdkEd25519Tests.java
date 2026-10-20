@@ -33,6 +33,11 @@ public class JdkEd25519Tests {
     }
 
     @Test
+    public void usedWhereAvailable() {
+        Assert.assertTrue(JdkEd25519.orElse(tweetNacl) instanceof JdkEd25519);
+    }
+
+    @Test
     public void rejectsBadSignatures() {
         byte[][] keys = keypair();
         byte[] signed = jdk.crypto_sign("hello".getBytes(), keys[1]).join();

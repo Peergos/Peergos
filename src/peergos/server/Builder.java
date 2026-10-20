@@ -71,7 +71,7 @@ public class Builder {
         try {
             JniTweetNacl nativeNacl = JniTweetNacl.build(libPath);
             Salsa20Poly1305 symmetricProvider = new JniTweetNacl.Symmetric(nativeNacl);
-            Ed25519 signer = new JdkEd25519();
+            Ed25519 signer = JdkEd25519.orElse(new JniTweetNacl.Signer(nativeNacl));
             Curve25519 boxer = new Curve25519Java();
             JavaMlkem mlkem = new JavaMlkem();
             return initNativeCrypto(symmetricProvider, signer, boxer, mlkem, h);
