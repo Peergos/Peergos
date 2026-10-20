@@ -13,6 +13,8 @@ import java.util.stream.*;
 /** Another server's routing API, over libp2p HTTP through the local proxy. */
 public class HttpRoutingPeer implements RoutingPeer {
     private static final int TIMEOUT_MILLIS = 30_000;
+    /** A peer can send anything, so no more than a full page of records or states is read. */
+    public static final int MAX_RESPONSE = 16 * 1024 * 1024;
 
     private final Multihash target;
     private final HttpPoster p2p;
@@ -30,7 +32,7 @@ public class HttpRoutingPeer implements RoutingPeer {
     }
 
     private CompletableFuture<CborObject> call(String method, Map<String, Cborable> args) {
-        return p2p.postUnzip(prefix + method, CborObject.CborMap.build(args).serialize(), TIMEOUT_MILLIS)
+        return p2p.postBounded(prefix + method, CborObject.CborMap.build(args).serialize(), TIMEOUT_MILLIS, MAX_RESPONSE)
                 .thenApply(CborObject::fromByteArray);
     }
 

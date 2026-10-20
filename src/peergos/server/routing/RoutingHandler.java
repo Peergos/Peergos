@@ -14,16 +14,52 @@ import java.util.stream.*;
 
 /** The routing log's API for other servers. It is mounted only on the p2p api, where the Source header is the
  *  remote peer the transport authenticated, so announcements and offers are charged to the right server.
+ *
+ *  Each call is limited per caller, as a range scan or a signature check is far cheaper to ask for than to answer.
+ *  A key costs nothing to make, so a caller that isn't a server in the log with its proof of work done shares one
+ *  pool with every other such caller: a new server still computing its proof syncs from it, slowly.
  */
 public class RoutingHandler implements HttpHandler {
     private static final Logger LOG = Logging.LOG();
     public static final int MAX_BODY = 1024 * 1024;
     public static final int MAX_ITEMS = 1024;
+    public static final RateLimits.Rate SCANS = new RateLimits.Rate(200, 3_000), RECORDS = new RateLimits.Rate(10_000, 10),
+            OFFERS = new RateLimits.Rate(1_000, 100);
+    public static final RateLimits.Rate UNPROVEN_SCANS = new RateLimits.Rate(100, 1_000),
+            UNPROVEN_RECORDS = new RateLimits.Rate(1_000, 50), UNPROVEN_OFFERS = new RateLimits.Rate(100, 1_000);
+    private static final Multihash POOL = new Multihash(Multihash.Type.id, new byte[0]);
 
     private final RoutingNode node;
+    private final RateLimits.TokenBuckets<Multihash> scans, records, offers, unprovenScans, unprovenRecords, unprovenOffers;
 
     public RoutingHandler(RoutingNode node) {
+        this(node, System::currentTimeMillis);
+    }
+
+    public RoutingHandler(RoutingNode node, java.util.function.LongSupplier clock) {
         this.node = node;
+        scans = new RateLimits.TokenBuckets<>(SCANS, clock);
+        records = new RateLimits.TokenBuckets<>(RECORDS, clock);
+        offers = new RateLimits.TokenBuckets<>(OFFERS, clock);
+        unprovenScans = new RateLimits.TokenBuckets<>(UNPROVEN_SCANS, clock);
+        unprovenRecords = new RateLimits.TokenBuckets<>(UNPROVEN_RECORDS, clock);
+        unprovenOffers = new RateLimits.TokenBuckets<>(UNPROVEN_OFFERS, clock);
+    }
+
+    /** Whether the caller may make this call now. */
+    public boolean allow(String method, Multihash caller) {
+        RoutingReplica replica = node.replica();
+        boolean proven = replica.serverForPeer(caller).filter(log -> replica.isProven(log.subject(), false)).isPresent();
+        Multihash key = proven ? caller : POOL;
+        switch (method) {
+            case "summaries":
+            case "states":
+                return (proven ? scans : unprovenScans).tryTake(key);
+            case "records":
+                return (proven ? records : unprovenRecords).tryTake(key);
+            default:
+                return (proven ? offers : unprovenOffers).tryTake(key);
+        }
     }
 
     @Override
@@ -38,6 +74,10 @@ public class RoutingHandler implements HttpHandler {
                     .map(Multihash::bareMultihash);
             if (caller.isEmpty()) {
                 HttpUtil.replyErrorWithCode(exchange, 403, "Routing is only served to authenticated peers");
+                return;
+            }
+            if (! allow(method, caller.get())) {
+                HttpUtil.replyErrorWithCode(exchange, 429, "Too many routing requests");
                 return;
             }
             Cborable body = CborObject.fromByteArray(Serialize.readFully(exchange.getRequestBody(), MAX_BODY));

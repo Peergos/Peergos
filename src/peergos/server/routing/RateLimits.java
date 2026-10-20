@@ -49,13 +49,21 @@ public class RateLimits {
 
         /** Takes a token if one is available. */
         public synchronized boolean tryTake(K key) {
+            return tryTake(key, 1);
+        }
+
+        public synchronized boolean tryTake(K key, long tokens) {
             long now = clock.getAsLong();
             long[] b = current(key, now);
-            if (b[0] == 0)
+            if (b[0] < tokens)
                 return false;
-            b[0]--;
+            b[0] -= tokens;
             buckets.put(key, b);
             return true;
+        }
+
+        public synchronized boolean has(K key) {
+            return current(key, clock.getAsLong())[0] > 0;
         }
 
         /** When the next token is due, or now if one is available. */
@@ -127,6 +135,7 @@ public class RateLimits {
         private final TokenBuckets<AddressBucket> rate;
         private final Map<AddressBucket, LinkedHashMap<Multihash, ArrayDeque<O>>> offers = new HashMap<>();
         private final int maxOffersPerServer;
+        private int waiting;
 
         public Inceptions(int perDay, int maxOffersPerServer, LongSupplier clock) {
             this.rate = new TokenBuckets<>(new Rate(perDay, DAY / perDay), clock);
@@ -135,13 +144,21 @@ public class RateLimits {
 
         /** Queues an offer; false if the admitting server already has as many waiting as are kept. */
         public synchronized boolean offer(AddressBucket bucket, Multihash admittingServer, O offer) {
+            if (waiting() >= MAX_WAITING)
+                return false;
             ArrayDeque<O> queue = offers.computeIfAbsent(bucket, b -> new LinkedHashMap<>())
                     .computeIfAbsent(admittingServer.bareMultihash(), s -> new ArrayDeque<>());
             if (queue.size() >= maxOffersPerServer || queue.contains(offer))
                 return false;
             queue.add(offer);
+            waiting++;
             return true;
         }
+
+        /** Across every bucket: an inception naming an admitting server no one holds yet waits under that name, and
+         *  names cost nothing, so the total is bounded too. Nothing is lost: the sender keeps it and offers it again.
+         */
+        public static final int MAX_WAITING = 100_000;
 
         /** The offers that may be taken now, each charged to its bucket. */
         public synchronized List<O> take() {
@@ -153,6 +170,7 @@ public class RateLimits {
                     Multihash next = servers.keySet().iterator().next();
                     ArrayDeque<O> queue = servers.remove(next);
                     res.add(queue.poll());
+                    waiting--;
                     if (! queue.isEmpty())
                         servers.put(next, queue);
                 }
@@ -163,10 +181,7 @@ public class RateLimits {
         }
 
         public synchronized int waiting() {
-            return offers.values().stream()
-                    .flatMap(m -> m.values().stream())
-                    .mapToInt(ArrayDeque::size)
-                    .sum();
+            return waiting;
         }
     }
 }
