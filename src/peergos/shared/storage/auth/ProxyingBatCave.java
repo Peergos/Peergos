@@ -22,22 +22,16 @@ public class ProxyingBatCave implements BatCave {
 
     @Override
     public CompletableFuture<List<BatWithId>> getUserBats(String username, byte[] auth) {
-        return core.getPublicKeyHash(username)
-                .thenCompose(owner -> Proxy.redirectCall(core,
-                        serverIds,
-                        owner.get(),
-                        () -> local.getUserBats(username, auth),
-                        target -> p2p.getUserBats(target, username, auth)));
+        return Proxy.redirectByName(core, serverIds, username,
+                user -> local.getUserBats(user, auth),
+                (target, user) -> p2p.getUserBats(target, user, auth));
     }
 
     @Override
     public CompletableFuture<Boolean> addBat(String username, BatId id, Bat bat, byte[] auth) {
-        return core.getPublicKeyHash(username)
-                .thenCompose(owner -> Proxy.redirectCall(core,
-                        serverIds,
-                        owner.get(),
-                        () -> local.addBat(username, id, bat, auth),
-                        target -> p2p.addBat(target, username, id, bat, auth)));
+        return Proxy.redirectByName(core, serverIds, username,
+                user -> local.addBat(user, id, bat, auth),
+                (target, user) -> p2p.addBat(target, user, id, bat, auth));
     }
 
     @Override

@@ -87,7 +87,9 @@ public class AccountHandler implements HttpHandler {
                     AggregatedMetrics.LOGIN_SET.inc();
                     byte[] payload = Serialize.readFully(din, 16384);
                     boolean forceLocal = params.containsKey("local") ? Boolean.parseBoolean(params.get("local").get(0)) : false;
-                    boolean isAdded = account.setLoginData(LoginData.fromCbor(CborObject.fromByteArray(payload)), auth, forceLocal).join();
+                    LoginData newLogin = LoginData.fromCbor(CborObject.fromByteArray(payload));
+                    username = params.containsKey("username") ? params.get("username").get(0) : newLogin.username;
+                    boolean isAdded = account.setLoginData(username, newLogin, auth, forceLocal).join();
                     dout.writeBoolean(isAdded);
                     break;
                 case "getLogin": {

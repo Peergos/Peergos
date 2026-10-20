@@ -50,6 +50,11 @@ public class LocalOnlyAccount implements Account {
         return target.setLoginData(login, auth, forceLocal);
     }
 
+    @Override
+    public CompletableFuture<Boolean> setLoginData(String username, LoginData login, byte[] auth, boolean forceLocal) {
+        return target.setLoginData(username, login, auth, forceLocal);
+    }
+
     private boolean hasQuota(String username) {
         try {
             return quotas.getQuota(username) > 0 || quotas.hadQuota(username, LocalDateTime.now().minusMonths(1));
