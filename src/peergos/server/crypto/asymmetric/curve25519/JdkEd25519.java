@@ -15,8 +15,8 @@ import java.util.concurrent.*;
 public class JdkEd25519 implements Ed25519 {
     private static final byte[] X509_PREFIX = ArrayOps.hexToBytes("302a300506032b6570032100");
 
-    /** This, if the JDK has Ed25519 and it agrees with the fallback, else the fallback. Android only has it from
-     *  API 33, and older ones lack the classes altogether.
+    /** This, if the JDK has Ed25519 and it agrees with the fallback, else the fallback. Android's providers have no
+     *  Ed25519, at least up to API 35.
      */
     public static Ed25519 orElse(Ed25519 fallback) {
         try {
