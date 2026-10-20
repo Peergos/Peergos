@@ -147,6 +147,16 @@ public class RoutingSimulation {
             }
         }
 
+        /** Time passing between reconciliation rounds: queued inceptions and held updates are taken, nothing else. */
+        void tick(long millis) {
+            clock.addAndGet(millis);
+            for (SimNode n : full())
+                if (n.behaviour == Behaviour.HONEST) {
+                    n.routing.tick();
+                    work.drain();
+                }
+        }
+
         void choosePeers() {
             for (SimNode n : nodes.values())
                 if (n.behaviour == Behaviour.HONEST)
