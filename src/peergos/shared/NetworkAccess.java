@@ -142,6 +142,14 @@ public class NetworkAccess {
                 spaceUsage, serverMessager, identityRouting, hasher, usernames, cache, isJavascript);
     }
 
+    /** For a session logged in as username@peerid, which goes on calling itself that (remove-pki §12.1). */
+    public NetworkAccess withLoginName(LoginName name, PublicKeyHash owner) {
+        NamedLogin named = new NamedLogin(name);
+        return new NetworkAccess(new NamedLogin.Core(coreNode, named, owner), new NamedLogin.Accounts(account, named), social,
+                dhtClient, new NamedLogin.Bats(batCave, named), batCache, mutable, tree, synchronizer, instanceAdmin, spaceUsage,
+                new NamedLogin.Messages(serverMessager, named), identityRouting, hasher, usernames, cache, isJavascript);
+    }
+
     public NetworkAccess withCorenode(CoreNode newCore) {
         return new NetworkAccess(newCore, account, social, dhtClient, batCave, batCache, mutable, tree, synchronizer, instanceAdmin,
                 spaceUsage, serverMessager, identityRouting, hasher, usernames, cache, isJavascript);

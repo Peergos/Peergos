@@ -70,6 +70,9 @@ public class UserContext {
 
     @JsProperty
     public final String username;
+    /** What the session calls itself to the server: username@peerid if logged in by that name, else username. */
+    @JsProperty
+    public final String loginName;
     public final SigningPrivateKeyAndPublicHash signer;
     private final BoxingKeyPair boxer;
     @JsProperty
@@ -119,7 +122,26 @@ public class UserContext {
                        IncomingCapCache capCache,
                        SharedWithCache sharedWithCache,
                        Optional<BatWithId> mirrorBat) {
+        this(username, username, signer, boxer, rootKey, entryPoints, network, crypto, userData, entrie, transactions,
+                capCache, sharedWithCache, mirrorBat);
+    }
+
+    public UserContext(String username,
+                       String loginName,
+                       SigningPrivateKeyAndPublicHash signer,
+                       BoxingKeyPair boxer,
+                       SymmetricKey rootKey,
+                       Optional<UserStaticData.EntryPoints> entryPoints,
+                       NetworkAccess network,
+                       Crypto crypto,
+                       CommittedWriterData userData,
+                       TrieNode entrie,
+                       TransactionService transactions,
+                       IncomingCapCache capCache,
+                       SharedWithCache sharedWithCache,
+                       Optional<BatWithId> mirrorBat) {
         this.username = username;
+        this.loginName = loginName;
         this.signer = signer;
         this.boxer = boxer;
         this.rootKey = rootKey;
@@ -227,7 +249,7 @@ public class UserContext {
                                                                 Crypto crypto,
                                                                 Consumer<String> progressCallback) {
         progressCallback.accept("Logging in");
-        return getWriterDataCbor(network, username)
+        return getWriterDataCbor(network, LoginName.parse(username))
                 .thenCompose(pair -> {
                     WriterData userData = WriterData.fromCbor(pair.right);
                     boolean legacyAccount = userData.staticData.isPresent();
@@ -313,24 +335,27 @@ public class UserContext {
                         new SigningPrivateKeyAndPublicHash(userData.controller,
                                 legacyAccount ? loginSecret : staticData.identity.get().secretSigningKey);
                 BoxingKeyPair boxer = staticData.boxer.orElse(generatedCredentials.getBoxingPair());
-                return login(name.username, userData, staticData, signer, boxer, loginRoot, pair, network, crypto, progressCallback);
+                return login(name.toString(), userData, staticData, signer, boxer, loginRoot, pair, network, crypto, progressCallback);
             });
         } catch (Throwable t) {
             throw new IllegalStateException("Incorrect password");
         }
     }
 
-    private static CompletableFuture<UserContext> login(String username,
+    private static CompletableFuture<UserContext> login(String loginName,
                                                         WriterData userData,
                                                         UserStaticData.EntryPoints staticData,
                                                         SigningPrivateKeyAndPublicHash signer,
                                                         BoxingKeyPair boxer,
                                                         SymmetricKey login,
                                                         Pair<PointerUpdate, CborObject> pair,
-                                                        NetworkAccess network,
+                                                        NetworkAccess anyName,
                                                         Crypto crypto,
                                                         Consumer<String> progressCallback) {
         try {
+            LoginName name = LoginName.parse(loginName);
+            String username = name.username;
+            NetworkAccess network = name.server.isPresent() ? anyName.withLoginName(name, signer.publicKeyHash) : anyName;
             return createOurFileTreeOnly(username, staticData, userData, network)
                     .thenCompose(root -> TofuCoreNode.load(username, root, network, crypto)
                             .thenCompose(tofuCorenode -> {
@@ -340,11 +365,14 @@ public class UserContext {
                                                         .thenCompose(capCache -> SharedWithCache.initOrBuild(root, username, network, crypto)
                                                                 .thenCompose(sharedWith -> {
                                                                     UserContext result = new UserContext(username,
+                                                                            name.toString(),
                                                                             signer,
                                                                             boxer,
                                                                             login,
                                                                             userData.staticData.isPresent() ? Optional.empty() : Optional.of(staticData),
-                                                                            network.withCorenode(tofuCorenode),
+                                                                            network.withCorenode(name.server.isPresent() ?
+                                                                                    new NamedLogin.Core(tofuCorenode, new NamedLogin(name), signer.publicKeyHash) :
+                                                                                    tofuCorenode),
                                                                             crypto,
                                                                             new CommittedWriterData(pair.left.updated, userData, pair.left.sequence),
                                                                             root,
