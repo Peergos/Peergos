@@ -23,9 +23,14 @@ public class OfflineAccountStore implements Account {
 
     @Override
     public CompletableFuture<Boolean> setLoginData(LoginData login, byte[] auth, boolean forceLocal) {
-        return target.setLoginData(login, auth, forceLocal).thenCompose(r -> {
-            if (r)
-                return local.setLoginData(login);
+        return setLoginData(login.username, login, auth, forceLocal);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> setLoginData(String username, LoginData login, byte[] auth, boolean forceLocal) {
+        return target.setLoginData(username, login, auth, forceLocal).thenCompose(r -> {
+            if (r) // under the name logins look it up by
+                return local.setLoginData(new LoginData(username, login.entryPoints, login.authorisedReader, Optional.empty()));
             return Futures.of(r);
         });
     }

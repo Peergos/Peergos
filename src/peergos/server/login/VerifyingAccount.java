@@ -27,10 +27,17 @@ public class VerifyingAccount implements Account {
 
     @Override
     public CompletableFuture<Boolean> setLoginData(LoginData login, byte[] auth, boolean forceLocal) {
-        PublicKeyHash identityHash = core.getPublicKeyHash(login.username).join().get();
+        return setLoginData(login.username, login, auth, forceLocal);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> setLoginData(String username, LoginData login, byte[] auth, boolean forceLocal) {
+        if (! LoginName.parse(username).username.equals(login.username))
+            throw new IllegalStateException("Login data for " + login.username + " sent as " + username);
+        PublicKeyHash identityHash = core.getPublicKeyHash(username).join().get();
         PublicSigningKey identity = storage.getSigningKey(identityHash, identityHash).join().get();
         identity.unsignMessage(ArrayOps.concat(auth, login.serialize())).join(); // throws if auth isn't a valid signature
-        return target.setLoginData(login, auth, forceLocal);
+        return target.setLoginData(username, login, auth, forceLocal);
     }
 
     @Override

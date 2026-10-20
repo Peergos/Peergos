@@ -19,6 +19,11 @@ public interface Account {
      */
     CompletableFuture<Boolean> setLoginData(LoginData login, byte[] auth, boolean forceLocal);
 
+    /** Routed by username, which in a session logged in as username@peerid is that rather than login.username. */
+    default CompletableFuture<Boolean> setLoginData(String username, LoginData login, byte[] auth, boolean forceLocal) {
+        return setLoginData(login, auth, forceLocal);
+    }
+
     default CompletableFuture<Boolean> setLoginData(LoginData login,
                                                     SigningPrivateKeyAndPublicHash identity,
                                                     boolean forceLocal) {
