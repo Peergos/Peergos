@@ -109,6 +109,8 @@ public abstract class StaticHandler implements HttpHandler
             }
             if (path.startsWith("secret/")) // secret links of form /secret/$owner/$label all get same page
                 path = "secret.html";
+            if (path.equals("recovery"))
+                path = "index.html";
 
             String reqHost = httpExchange.getRequestHeaders().get("Host").stream().findFirst().orElse("");
             boolean isSubdomain = host.validSubdomain(reqHost);

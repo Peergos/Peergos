@@ -112,9 +112,9 @@ public class IdentityRecoveryTests {
         user.getUserRoot().join().uploadOrReplaceFile("secret.txt", AsyncReader.build(data), data.length,
                 user.network, crypto, () -> false, l -> {}).join();
 
-        Assert.assertTrue(user.needsRecoveryKey().join());
+        Assert.assertEquals("unset", user.recoveryKeyStatus().join());
         Assert.assertTrue(user.commitRecoveryKey(recoveryKey).join());
-        Assert.assertFalse(user.needsRecoveryKey().join());
+        Assert.assertEquals("set", user.recoveryKeyStatus().join());
 
         UserContext thief = UserContext.signIn(username, password, UserTests::noMfa,
                 Builder.buildLocalJavaNetworkAccess(port).join(), crypto).join();
@@ -128,7 +128,7 @@ public class IdentityRecoveryTests {
         Assert.assertNotEquals(thief.signer.secret, recovered.signer.secret);
         Assert.assertEquals(thief.signer.publicKeyHash, recovered.signer.publicKeyHash);
         UserTests.checkFileContents(data, recovered.getByPath(PathUtil.get(username, "secret.txt")).join().get(), recovered);
-        Assert.assertFalse(recovered.needsRecoveryKey().join());
+        Assert.assertEquals("set", recovered.recoveryKeyStatus().join());
 
         Assert.assertTrue("the thief's password no longer logs in", failed(() -> UserContext.signIn(username, "thiefs-password",
                 UserTests::noMfa, Builder.buildLocalJavaNetworkAccess(port).join(), crypto).join()));
