@@ -33,6 +33,12 @@ public class RoutingNode {
     private final RateLimits.Updates updates;
     private final RateLimits.Inceptions<Offer> inceptions;
     private final Function<Multihash, AddressBucket> buckets;
+    private volatile BiFunction<Multihash, SubjectLog, AddressBucket> placer;
+    /** New servers being placed in buckets, by who handed them over, so one sender's can't fill the work queue. */
+    private final Map<Subject, Multihash> placing = new ConcurrentHashMap<>();
+    /** Identities admitted by a server being placed, queued in its bucket once it is. */
+    private final Map<Multihash, Map<Subject, Offer>> awaitingPlacement = Collections.synchronizedMap(new LRUCache<>(1_000));
+    public static final int MAX_PLACING_PER_SENDER = 4;
     private final Function<Multihash, RoutingPeer> dial;
     private final Map<Multihash, RoutingPeer> syncPeers = new ConcurrentHashMap<>();
     private final Map<Subject, Map<ByteArrayWrapper, Set<Multihash>>> seen = Collections.synchronizedMap(new LRUCache<>(100_000));
@@ -133,6 +139,7 @@ public class RoutingNode {
         this.updates = new RateLimits.Updates(clock);
         this.inceptions = new RateLimits.Inceptions<>(inceptionsPerDay, MAX_OFFERS_PER_SERVER, clock);
         this.buckets = buckets;
+        this.placer = (server, claimed) -> buckets.apply(server);
         this.dial = dial;
         this.work = work;
         this.charged = new RateLimits.TokenBuckets<>(new RateLimits.Rate((int) (MAX_BYTES_PER_PEER / 1024),
@@ -153,6 +160,11 @@ public class RoutingNode {
             if (replica.isProven(s, true))
                 announce(new JdbcRoutingStore.State(s, hash));
         });
+    }
+
+    /** How a new server is put in a bucket, from the records it came with; this may dial it or ask its relay. */
+    public void setPlacer(BiFunction<Multihash, SubjectLog, AddressBucket> placer) {
+        this.placer = placer;
     }
 
     public RoutingReplica replica() {
@@ -358,8 +370,8 @@ public class RoutingNode {
         if (! rejections.has(sender))
             return Outcome.Rejected;
         Subject s = ownSubject(replica.canonical(requested), records);
-        boolean catchUp = isCatchUp(s, replica.stateHash(records));
         SubjectLog log = replica.log(s);
+        boolean catchUp = isCatchUp(s, replica.stateHash(records));
         if (log.inception().isEmpty()) {
             Optional<SignedRecord> inception = records.stream().filter(RoutingReplica::isInception).findFirst();
             if (inception.isEmpty())
@@ -377,7 +389,7 @@ public class RoutingNode {
                 fetch(from, Subject.server(admitter.get()), fromQueue);
                 if (replica.log(Subject.server(admitter.get())).inception().isEmpty()) {
                     unproven.put(s, replica.preview(s, records));
-                    if (! catchUp)
+                    if (! catchUp && ! awaitPlacement(admitter.get(), new Offer(from, s)))
                         inceptions.offer(buckets.apply(chargedTo), turn, new Offer(from, s));
                     return Outcome.Limited;
                 }
@@ -389,7 +401,9 @@ public class RoutingNode {
             if (! catchUp && ! fromQueue) {
                 if (pulled)
                     unproven.put(s, replica.preview(s, records));
-                if (inceptions.offer(buckets.apply(chargedTo), turn, new Offer(from, s)))
+                if (admitter.isEmpty())
+                    place(from, s, turn, records);
+                else if (inceptions.offer(buckets.apply(chargedTo), turn, new Offer(from, s)))
                     takeSoon();
                 return Outcome.Limited;
             }
@@ -483,6 +497,55 @@ public class RoutingNode {
                 taking.set(false);
                 takeInceptions();
             });
+    }
+
+    /** Queues a new server's inception once it is placed in a bucket, which may take a dial. Past a few placements
+     *  at once from one sender, the rest wait in the shared bucket.
+     */
+    private void place(RoutingPeer from, Subject s, Multihash turn, List<SignedRecord> records) {
+        if (placing.containsKey(s))
+            return;
+        if (placing.values().stream().filter(turn::equals).count() >= MAX_PLACING_PER_SENDER) {
+            if (inceptions.offer(buckets.apply(s.id), turn, new Offer(from, s)))
+                takeSoon();
+            return;
+        }
+        if (placing.putIfAbsent(s, turn) != null)
+            return;
+        SubjectLog claimed = replica.preview(s, records);
+        work.submit(() -> {
+            AddressBucket bucket = AddressBucket.UNVERIFIED;
+            try {
+                bucket = placer.apply(s.id, claimed);
+                if (inceptions.offer(bucket, turn, new Offer(from, s)))
+                    takeSoon();
+            } catch (Throwable t) {
+                LOG.log(Level.FINE, "Placing " + s + " failed: " + t.getMessage());
+            } finally {
+                placing.remove(s);
+                Map<Subject, Offer> waiting = awaitingPlacement.remove(s.id.bareMultihash());
+                if (waiting != null) {
+                    for (Offer o : waiting.values())
+                        inceptions.offer(bucket, s.id, o);
+                    takeSoon();
+                }
+            }
+        });
+    }
+
+    /** An identity whose admitting server is being placed waits for it, rather than in the shared bucket. */
+    private boolean awaitPlacement(Multihash admitter, Offer o) {
+        if (! placing.containsKey(Subject.server(admitter.bareMultihash())))
+            return false;
+        synchronized (awaitingPlacement) {
+            Map<Subject, Offer> waiting = awaitingPlacement.computeIfAbsent(admitter.bareMultihash(), a -> new LinkedHashMap<>());
+            if (waiting.size() < MAX_OFFERS_PER_SERVER)
+                waiting.putIfAbsent(o.subject, o);
+        }
+        if (placing.containsKey(Subject.server(admitter.bareMultihash())))
+            return true;
+        awaitingPlacement.remove(admitter.bareMultihash()); // placed meanwhile
+        return false;
     }
 
     private void takeInceptions() {
@@ -665,6 +728,7 @@ public class RoutingNode {
             return false;
         return inceptions.congested(buckets.apply(admitter(inception.get()).orElse(s.id)));
     }
+
 
     /** Compares a peer's complete list of states in a range with ours, for {@link Tally}. */
     private void tally(RoutingPeer peer, int kind, Reconciliation.Range range, Map<ByteArrayWrapper, byte[]> theirs) {

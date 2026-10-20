@@ -197,6 +197,9 @@ public class RoutingSimulation {
         /** What a censor or liar answers for a subject: the records it had when it froze it, and the state it claims. */
         final Map<Subject, List<SignedRecord>> frozen = new HashMap<>();
         final Map<Subject, byte[]> claimed = new HashMap<>();
+        /** The servers this one, as a relay, vouches for. */
+        final Set<Multihash> vouchFor = new HashSet<>();
+        long addressCounter = 1;
 
         SimNode(Net net, Optional<String> addr, ServerAddresses.Mode mode, Behaviour behaviour) {
             this.net = net;
@@ -212,9 +215,10 @@ public class RoutingSimulation {
                 if (target == null || target.behaviour == Behaviour.OFFLINE || target.addr.isEmpty())
                     return Futures.of(Optional.empty());
                 return Futures.of(BucketVerifier.ip(target.addr.get()));
-            }, net.clock::get, DIRECT);
+            }, (relay, server) -> new SimPeer(id, relay, net).vouches(server), net.clock::get, DIRECT);
             routing = new RoutingNode(replica, crypto.hasher, net.clock::get, net.inceptionsPerDay, buckets::bucket,
                     target -> new SimPeer(id, target, net), net.work);
+            routing.setPlacer(buckets::place);
             replica.add(subject, inception);
             replica.add(subject, ServerAddresses.build(key, key.publicSigningKey, Optional.empty(),
                     addr.map(a -> ServerAddressPublisher.directAddresses(List.of(a))).orElse(List.of()),
@@ -235,6 +239,20 @@ public class RoutingSimulation {
                 routing.setConfigured(configured.stream().map(RoutingPeer::id).collect(Collectors.toList()));
             }
             return this;
+        }
+
+        /** Lists a relay, which vouches for this if asked to. */
+        SimNode relayedBy(SimNode relay, boolean vouched) {
+            publishAddresses(List.of(relay.id), false);
+            if (vouched)
+                relay.vouchFor.add(id);
+            return this;
+        }
+
+        void publishAddresses(List<Multihash> relays, boolean relaying) {
+            replica.add(subject, ServerAddresses.build(key, key.publicSigningKey, Optional.empty(),
+                    addr.map(a -> ServerAddressPublisher.directAddresses(List.of(a))).orElse(List.of()),
+                    relays, mode, relaying, ++addressCounter).join());
         }
 
         /** An identity whose home server this is, admitted by it. */
@@ -363,6 +381,10 @@ public class RoutingSimulation {
                 SimNode n = node();
                 return n.behaviour.syncs() ? n.routing.offered(caller, s, records) : Outcome.Ignored;
             });
+        }
+
+        public CompletableFuture<Boolean> vouches(Multihash server) {
+            return call(() -> node().vouchFor.contains(server.bareMultihash()));
         }
     }
 }

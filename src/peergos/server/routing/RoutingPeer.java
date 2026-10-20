@@ -2,6 +2,7 @@ package peergos.server.routing;
 
 import peergos.shared.io.ipfs.*;
 import peergos.shared.routing.*;
+import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -25,4 +26,11 @@ public interface RoutingPeer {
 
     /** Records handed in by a light server, or the caller's own, charged to the caller's budget. */
     CompletableFuture<Outcome> offer(Subject s, List<SignedRecord> records);
+
+    /** Asked of a relay a server lists first: whether that server is one it relays for and stands behind, so that
+     *  the server may be put in the relay's address bucket (remove-pki §4.5).
+     */
+    default CompletableFuture<Boolean> vouches(Multihash server) {
+        return Futures.of(false);
+    }
 }

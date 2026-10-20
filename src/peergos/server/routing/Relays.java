@@ -47,6 +47,9 @@ public class Relays {
     private static final int MAX_SCANNED = 10_000;
 
     private final List<Multihash> configured;
+    private final Set<Multihash> firstTier;
+    /** Each identity listing this server as a mirror, and its home server, as its providers already make public. */
+    private final Map<Multihash, Multihash> mirroredHomes = new ConcurrentHashMap<>();
     private final boolean holdWhilePublic;
     private final long totalBytesPerSecond;
     private final LongSupplier clock;
@@ -83,7 +86,14 @@ public class Relays {
      *                        address, which can be relied on, the address AutoNAT confirmed may change
      */
     public Relays(List<Multihash> configured, boolean holdWhilePublic, long totalBytesPerSecond, LongSupplier clock, Random random) {
+        this(configured, List.of(), holdWhilePublic, totalBytesPerSecond, clock, random);
+    }
+
+    /** @param firstTier the operator's own servers and others it configured, which this relays for first and vouches for */
+    public Relays(List<Multihash> configured, List<Multihash> firstTier, boolean holdWhilePublic, long totalBytesPerSecond,
+                  LongSupplier clock, Random random) {
         this.configured = configured.stream().map(Multihash::bareMultihash).collect(Collectors.toList());
+        this.firstTier = firstTier.stream().map(Multihash::bareMultihash).collect(Collectors.toSet());
         this.holdWhilePublic = holdWhilePublic;
         this.totalBytesPerSecond = totalBytesPerSecond;
         this.clock = clock;
@@ -94,6 +104,40 @@ public class Relays {
     public void start(RoutingLookup lookup, Multihash self) {
         this.self = self.bareMultihash();
         this.lookup = Optional.of(lookup);
+        RoutingReplica replica = lookup.replica();
+        replica.onChange((subject, log) -> {
+            if (log instanceof IdentityLog)
+                mirrored(subject, (IdentityLog) log);
+        });
+        background.submit(() -> {
+            byte[] after = new byte[0];
+            while (true) {
+                List<JdbcRoutingStore.State> page = replica.store().states(Subject.IDENTITY, after, 1_000);
+                if (page.isEmpty())
+                    return;
+                for (JdbcRoutingStore.State st : page)
+                    replica.identity(st.subject).ifPresent(l -> mirrored(st.subject, l));
+                after = page.get(page.size() - 1).subject.idBytes();
+            }
+        });
+    }
+
+    private void mirrored(Subject identity, IdentityLog log) {
+        List<Multihash> providers = log.providers().stream().map(Multihash::bareMultihash).collect(Collectors.toList());
+        if (providers.size() > 1 && providers.subList(1, providers.size()).contains(self))
+            mirroredHomes.put(identity.id.bareMultihash(), providers.get(0));
+        else
+            mirroredHomes.remove(identity.id.bareMultihash());
+    }
+
+    /** Asked by a full node placing a server in a bucket (remove-pki §4.5): only for this relay's first tier, its
+     *  operator's own and configured servers and those whose users it mirrors, which are public already. Vouching
+     *  for anyone else would charge strangers' floods to this relay's bucket, and vouching for its users' friends'
+     *  servers would tell whose friends they are. It says nothing of where the server is.
+     */
+    public boolean vouchesFor(Multihash server) {
+        Multihash id = server.bareMultihash();
+        return firstTier.contains(id) || mirroredHomes.containsValue(id);
     }
 
     public RelayPolicy policy() {
@@ -192,14 +236,23 @@ public class Relays {
 
     /** Only a server whose proof of work is done gets a slot, so filling a relay costs a CPU-hour per slot. */
     public boolean mayReserve(PeerId requestor) {
-        return isProven(requestor);
+        return isProven(requestor) || isFirstTier(requestor);
+    }
+
+    /** One of the operator's own or configured servers, which gets a full slot while its proof of work runs. */
+    private boolean isFirstTier(PeerId peer) {
+        try {
+            return firstTier.contains(Multihash.decode(peer.getBytes()).bareMultihash());
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     /** A full reservation for a server whose proof of work is done, otherwise a short lease if the pool has room. */
     public Optional<java.time.Duration> reserve(PeerId requestor, Multiaddr observed) {
         if (lookup.isEmpty())
             return Optional.empty();
-        if (isProven(requestor)) {
+        if (isProven(requestor) || isFirstTier(requestor)) {
             synchronized (leases) {
                 leases.remove(requestor);
             }
