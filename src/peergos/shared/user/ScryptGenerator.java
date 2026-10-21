@@ -9,6 +9,7 @@ public class ScryptGenerator implements SecretGenerationAlgorithm {
 
     public static final int MIN_MEMORY_COST = 15; // 15 is only used for secret links, 17 is used for login
     public static final int LOGIN_MEMORY_COST = 17;
+    public static final int LOGIN_CPU_COST = 8;
 
     @JsProperty
     public final int memoryCost, cpuCost, parallelism, outputBytes;
@@ -23,6 +24,14 @@ public class ScryptGenerator implements SecretGenerationAlgorithm {
         this.parallelism = parallelism;
         this.outputBytes = outputBytes;
         this.extraSalt = extraSalt;
+    }
+
+    /** The parameters come from the user's WriterData, which whoever answers the username lookup can substitute */
+    public static boolean isStrongEnoughForLogin(SecretGenerationAlgorithm algorithm) {
+        if (! (algorithm instanceof ScryptGenerator))
+            return false;
+        ScryptGenerator scrypt = (ScryptGenerator) algorithm;
+        return scrypt.memoryCost >= LOGIN_MEMORY_COST && scrypt.cpuCost >= LOGIN_CPU_COST && scrypt.parallelism >= 1;
     }
 
     @Override

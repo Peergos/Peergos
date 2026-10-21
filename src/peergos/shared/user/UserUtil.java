@@ -20,6 +20,9 @@ public class UserUtil {
                                                                SecretGenerationAlgorithm algorithm) {
         if (password.equals(username))
             return Futures.errored(new IllegalStateException("Your password cannot be the same as your username!"));
+        if (! ScryptGenerator.isStrongEnoughForLogin(algorithm))
+            return Futures.errored(new IllegalStateException("Refusing to log in with weaker key derivation than scrypt N=2^"
+                    + ScryptGenerator.LOGIN_MEMORY_COST + ", r=" + ScryptGenerator.LOGIN_CPU_COST + ": " + algorithm.toCbor()));
         CompletableFuture<byte[]> fut = crypto.hasher.hashToKeyBytes(username + algorithm.getExtraSalt(), password, algorithm);
         return fut.thenCompose(keyBytes -> {
             byte[] signBytesSeed = Arrays.copyOfRange(keyBytes, 0, 32);
