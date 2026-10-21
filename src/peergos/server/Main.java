@@ -99,6 +99,7 @@ public class Main extends Builder {
     public static final Command.Arg ARG_PREVIOUS_IDENTITY_SWARM_PORT = new Command.Arg("ipfs-previous-identity-swarm-port",
             "Also run the identity this server rotated away from, on this port, for servers that still dial it. " +
             "Give it the port the old identity used, and ipfs-swarm-port a new one.", false);
+    public static final String PEERGOS_IDENTITY_HASH = "z59vuwzfFDp3ZA8ZpnnmHEuMtyA1q34m3Th49DYXQVJntWpxdGrRqXi";
     public static final Command.Arg ARG_HTTP_PROXY = new Command.Arg("http_proxy", "Use a http proxy for all requests, format host:port", false);
     public static final Command.Arg ARG_SERVER_URL = new Command.Arg("server-url", "Address of the remote Peergos or self-hosted server to use in app/proxy mode", false);
     public static final Command.Arg ARG_NATIVE_TWEETNACL_PATH = new Command.Arg("native-tweetnacl-path",
@@ -142,7 +143,7 @@ public class Main extends Builder {
             Main::startPeergos,
             Stream.of(
                     new Command.Arg("port", "service port", false, "8000"),
-                    new Command.Arg("peergos.identity.hash", "The hash of peergos user's public key, this is used to bootstrap the pki", true, "z59vuwzfFDp3ZA8ZpnnmHEuMtyA1q34m3Th49DYXQVJntWpxdGrRqXi"),
+                    new Command.Arg("peergos.identity.hash", "The hash of peergos user's public key, this is used to bootstrap the pki", true, PEERGOS_IDENTITY_HASH),
                     new Command.Arg("pki-node-id", "Ipfs node id of the pki node", true, "QmVdFZgHnEgcedCS2G2ZNiEN59LuVrnRm7z3yXtEBv2XiF"),
                     new Command.Arg("pki.node.ipaddress", "IP address of the pki node", true, "172.104.157.121"),
                     ARG_IPFS_API_ADDRESS,
