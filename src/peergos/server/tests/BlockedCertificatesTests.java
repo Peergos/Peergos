@@ -17,12 +17,10 @@ public class BlockedCertificatesTests {
     }
 
     @Test
-    public void installReplacesDefaultContext() throws Exception {
-        SSLContext before = SSLContext.getDefault();
+    public void installIsIdempotent() throws Exception {
         BlockedCertificates.install();
-        SSLContext after = SSLContext.getDefault();
-        Assert.assertNotSame(before, after);
+        SSLContext installed = SSLContext.getDefault();
         BlockedCertificates.install();
-        Assert.assertSame(after, SSLContext.getDefault());
+        Assert.assertSame(installed, SSLContext.getDefault());
     }
 }

@@ -1312,21 +1312,25 @@ public class UserContext {
         return network.coreNode.getPublicKeyHash(ownerName).thenCompose(ownerOpt -> {
             if (!ownerOpt.isPresent())
                 throw new IllegalStateException("Owner doesn't exist for path " + originalPath);
-            PublicKeyHash owner = ownerOpt.get();
-            return WriterData.getWriterData(owner, owner, network.mutable, network.dhtClient).thenCompose(userData -> {
-                Optional<Multihash> publicData = userData.props.get().publicData;
-                if (! publicData.isPresent())
-                    throw new IllegalStateException("User " + ownerName + " has not made any files public.");
+            return getPublished(ownerOpt.get(), originalPath, network);
+        });
+    }
 
-                return network.dhtClient.get(owner, (Cid)publicData.get(), Optional.empty())
-                        .thenCompose(rootCbor -> InodeFileSystem.build(owner, rootCbor.get(), network.hasher, network.dhtClient))
-                        .thenCompose(publicCaps -> publicCaps.getByPath(originalPath.toString()))
-                        .thenApply(resOpt -> {
-                            if (resOpt.isEmpty() || resOpt.get().left.cap.isEmpty())
-                                throw new IllegalStateException("User " + ownerName + " has not published a file at " + originalPath);
-                            return new Pair<>(owner, resOpt.get().left);
-                        });
-            });
+    private static CompletableFuture<Pair<PublicKeyHash, InodeCap>> getPublished(PublicKeyHash owner, Path originalPath, NetworkAccess network) {
+        String ownerName = originalPath.getName(0).toString();
+        return WriterData.getWriterData(owner, owner, network.mutable, network.dhtClient).thenCompose(userData -> {
+            Optional<Multihash> publicData = userData.props.get().publicData;
+            if (! publicData.isPresent())
+                throw new IllegalStateException("User " + ownerName + " has not made any files public.");
+
+            return network.dhtClient.get(owner, (Cid)publicData.get(), Optional.empty())
+                    .thenCompose(rootCbor -> InodeFileSystem.build(owner, rootCbor.get(), network.hasher, network.dhtClient))
+                    .thenCompose(publicCaps -> publicCaps.getByPath(originalPath.toString()))
+                    .thenApply(resOpt -> {
+                        if (resOpt.isEmpty() || resOpt.get().left.cap.isEmpty())
+                            throw new IllegalStateException("User " + ownerName + " has not published a file at " + originalPath);
+                        return new Pair<>(owner, resOpt.get().left);
+                    });
         });
     }
 
@@ -1342,6 +1346,17 @@ public class UserContext {
         FileProperties.ensureValidParsedPath(file);
         return getPublicCapability(file, network)
                 .thenCompose(cap -> buildTrieFromCap(cap, TrieNodeImpl.empty(), network, crypto)
+                        .thenCompose(t -> t.getByPath(file.toString(), crypto.hasher, network)));
+    }
+
+    /** The file this owner published at this path, with the owner given rather than looked up by name. */
+    public static CompletableFuture<Optional<FileWrapper>> getPublicFile(PublicKeyHash owner,
+                                                                         Path file,
+                                                                         NetworkAccess network,
+                                                                         Crypto crypto) {
+        FileProperties.ensureValidParsedPath(file);
+        return getPublished(owner, file, network)
+                .thenCompose(p -> buildTrieFromCap(p.right.cap.get(), TrieNodeImpl.empty(), network, crypto)
                         .thenCompose(t -> t.getByPath(file.toString(), crypto.hasher, network)));
     }
 

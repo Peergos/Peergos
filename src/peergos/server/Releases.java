@@ -3,6 +3,7 @@ package peergos.server;
 import peergos.server.net.*;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -34,13 +35,14 @@ public class Releases {
             a -> {
                 Crypto crypto = Main.initCrypto();
                 NetworkAccess network = buildNetwork(a);
-                FileWrapper releases = getReleasesDir(network, crypto);
+                FileWrapper releases = getReleasesDir(a, network, crypto);
                 Version latest = latestVersion(releases, network, crypto);
                 System.out.println(latest);
                 return latest;
             },
             Arrays.asList(
                     new Command.Arg("peergos-url", "Address of the Peergos server to download from", false, "https://peergos.net"),
+                    new Command.Arg("peergos.identity.hash", "The identity of the peergos user who publishes releases", false, Main.PEERGOS_IDENTITY_HASH),
                     Main.ARG_HTTP_PROXY
             )
     );
@@ -55,7 +57,7 @@ public class Releases {
                     throw new IllegalStateException("Unknown release type: " + type + ", must be one of " + TYPES.keySet());
 
                 NetworkAccess network = buildNetwork(a);
-                FileWrapper releases = getReleasesDir(network, crypto);
+                FileWrapper releases = getReleasesDir(a, network, crypto);
                 Version version = a.getOptionalArg("version")
                         .map(Releases::parseVersion)
                         .orElseGet(() -> latestVersion(releases, network, crypto));
@@ -86,6 +88,7 @@ public class Releases {
                     new Command.Arg("dir", "The local directory to download into", false, "."),
                     new Command.Arg("overwrite", "Whether to overwrite an existing file", false, "false"),
                     new Command.Arg("peergos-url", "Address of the Peergos server to download from", false, "https://peergos.net"),
+                    new Command.Arg("peergos.identity.hash", "The identity of the peergos user who publishes releases", false, Main.PEERGOS_IDENTITY_HASH),
                     Main.ARG_HTTP_PROXY
             )
     );
@@ -115,8 +118,10 @@ public class Releases {
         }
     }
 
-    private static FileWrapper getReleasesDir(NetworkAccess network, Crypto crypto) {
-        return UserContext.getPublicFile(PathUtil.get(RELEASES_PATH), network, crypto).join()
+    /** The releases are found through a pinned identity, not by asking the server who peergos is */
+    private static FileWrapper getReleasesDir(Args a, NetworkAccess network, Crypto crypto) {
+        PublicKeyHash peergos = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
+        return UserContext.getPublicFile(peergos, PathUtil.get(RELEASES_PATH), network, crypto).join()
                 .orElseThrow(() -> new IllegalStateException("Couldn't retrieve /" + RELEASES_PATH));
     }
 
