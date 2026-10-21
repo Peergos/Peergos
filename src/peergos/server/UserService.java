@@ -204,7 +204,7 @@ public class UserService {
 //            tmf.init(SSL.getTrustedKeyStore());
 
                 // setup the HTTPS context and parameters
-                sslContext.init(kmf.getKeyManagers(), null, null);
+                sslContext.init(kmf.getKeyManagers(), BlockedCertificates.trustManagers(), null);
                 sslContext.getSupportedSSLParameters().setUseCipherSuitesOrder(true);
                 // set up perfect forward secrecy
                 sslContext.getSupportedSSLParameters().setCipherSuites(new String[]{
