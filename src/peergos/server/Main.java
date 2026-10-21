@@ -1480,6 +1480,7 @@ public class Main extends Builder {
         }
         // Netty uses thread count twice the number of CPUs, this undoes that
         System.getProperties().setProperty("io.netty.eventLoopThreads", "2");
+        BlockedCertificates.install();
         try {
             Args a = Args.parse(args);
             Builder.setClientConfig(a.getConfigFile());

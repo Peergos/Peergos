@@ -68,6 +68,8 @@ public class Builder {
     }
 
     public static Crypto initCrypto(Hasher h, Optional<Path> libPath) {
+        // every entry point, Android included, comes through here before making a connection
+        BlockedCertificates.install();
         try {
             JniTweetNacl nativeNacl = JniTweetNacl.build(libPath);
             Salsa20Poly1305 symmetricProvider = new JniTweetNacl.Symmetric(nativeNacl);

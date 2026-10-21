@@ -53,7 +53,7 @@ public final class NettyPinnedHttps {
 
         CompletableFuture<Pair<byte[], String>> result = new CompletableFuture<>();
 
-        SslContext sslCtx = SslContextBuilder.forClient().build();
+        SslContext sslCtx = SslContextBuilder.forClient().trustManager(BlockedCertificates.trustManager()).build();
 
         Bootstrap bootstrap = new Bootstrap()
                 .group(GROUP)
@@ -154,7 +154,7 @@ public final class NettyPinnedHttps {
 
         CompletableFuture<Map<String, List<String>>> result = new CompletableFuture<>();
 
-        SslContext sslCtx = SslContextBuilder.forClient().build();
+        SslContext sslCtx = SslContextBuilder.forClient().trustManager(BlockedCertificates.trustManager()).build();
 
         Bootstrap bootstrap = new Bootstrap()
                 .group(GROUP)
@@ -252,7 +252,7 @@ public final class NettyPinnedHttps {
 
         CompletableFuture<Pair<byte[], String>> result = new CompletableFuture<>();
 
-        SslContext sslCtx = SslContextBuilder.forClient().build();
+        SslContext sslCtx = SslContextBuilder.forClient().trustManager(BlockedCertificates.trustManager()).build();
 
         Bootstrap bootstrap = new Bootstrap()
                 .group(GROUP)
