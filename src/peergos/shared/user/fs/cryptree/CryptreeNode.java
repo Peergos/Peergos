@@ -571,8 +571,11 @@ public class CryptreeNode implements Cborable {
     }
 
     public CryptreeNode withParentLink(SymmetricKey parentKey, RelativeCapability newParentLink) {
-        FromParent parentBlock = getParentBlock(parentKey);
-        FromParent newParentBlock = new FromParent(Optional.of(newParentLink), parentBlock.properties);
+        return withParentLinkAndProperties(parentKey, newParentLink, getParentBlock(parentKey).properties);
+    }
+
+    public CryptreeNode withParentLinkAndProperties(SymmetricKey parentKey, RelativeCapability newParentLink, FileProperties newProps) {
+        FromParent newParentBlock = new FromParent(Optional.of(newParentLink), newProps);
         return new CryptreeNode(lastCommittedHash, isDirectory, bats, fromBaseKey, childrenOrData,
                 PaddedCipherText.build(parentKey, newParentBlock, META_DATA_PADDING_BLOCKSIZE));
     }

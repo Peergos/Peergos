@@ -313,6 +313,11 @@ public class FileProperties implements Cborable {
         return new FileProperties(name, isDirectory, isLink, mimeType, newSize, modified, created, isHidden, thumbnail, streamSecret, Optional.empty(), chunkSize);
     }
 
+    @JsIgnore
+    public FileProperties withName(String name) {
+        return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, created, isHidden, thumbnail, streamSecret, treeHash, chunkSize);
+    }
+
     public FileProperties withHash(Optional<HashBranch> treeHash) {
         return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, created, isHidden, thumbnail, streamSecret, treeHash, chunkSize);
     }
