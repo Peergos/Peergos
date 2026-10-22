@@ -951,6 +951,78 @@ public class SyncTests {
         Assert.assertEquals("A cancelled copy must remain in the retry journal", 1, syncDb.getInProgressCopies().size());
     }
 
+    /** Syncs a file, changes it on the second side, and interrupts the download of the change after a number of
+     *  writes, leaving the copy to be resumed by the next sync.
+     */
+    private static void interruptDownload(Path base1, Path base2, SyncState state, byte[] original, byte[] changed, int writes) throws Exception {
+        Files.write(base1.resolve("f.bin"), original);
+        syncBoth(base1, base2, state);
+        Files.write(base2.resolve("f.bin"), changed);
+        Files.setLastModifiedTime(base2.resolve("f.bin"), java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() / 1000 * 1000 + 5_000));
+        LocalFileSystem localFs = new LocalFileSystem(base1, crypto.hasher), remoteFs = new LocalFileSystem(base2, crypto.hasher);
+        FileState synced = state.byPath("f.bin");
+        HashTree hash = remoteFs.hashFile(Paths.get("f.bin"), Optional.empty(), "f.bin", state, changed.length, synced.chunkSize);
+        FileState remote = new FileState("f.bin", remoteFs.getLastModified(Paths.get("f.bin")), changed.length, hash, synced.chunkSize);
+        List<CopyOp> ops = remote.diffRanges(synced).stream()
+                .map(d -> new CopyOp(true, remoteFs.resolve("f.bin"), localFs.resolve("f.bin"), remote, synced, d.left, d.right,
+                        ResumeUploadProps.random(crypto)))
+                .collect(Collectors.toList());
+        AtomicInteger checks = new AtomicInteger();
+        try {
+            DirectorySync.copyFileDiffAndTruncate(remoteFs, localFs, ops, state, () -> checks.incrementAndGet() > writes, DirectorySync::log);
+            Assert.fail("The download was not interrupted");
+        } catch (RuntimeException expected) {}
+        Assert.assertEquals(ops.size(), state.getInProgressCopies().size());
+    }
+
+    private static byte[] randomText(int size, int seed) {
+        Random r = new Random(seed);
+        byte[] data = new byte[size];
+        for (int i = 0; i < size; i++)
+            data[i] = (byte) ('a' + r.nextInt(26));
+        return data;
+    }
+
+    @Test
+    public void editAfterAnInterruptedDownloadIsKept() throws Exception {
+        // resuming the download wrote over the edit, as a half written file and an edited one looked the same
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        byte[] changed = randomText(64 * 1024, 2);
+        interruptDownload(base1, base2, state, randomText(64 * 1024, 1), changed, 5);
+
+        Files.write(base1.resolve("f.bin"), "an edit".getBytes());
+        syncBoth(base1, base2, state);
+
+        Map<String, String> expected = Map.of("f.bin", new String(changed), "f[conflict-0].bin", "an edit");
+        Assert.assertEquals(expected, tree(base1));
+        Assert.assertEquals(expected, tree(base2));
+    }
+
+    @Test
+    public void interruptedDownloadResumes() throws Exception {
+        // the copy stopped part way through a chunk, and past the end of the old version
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        byte[] changed = randomText(96 * 1024, 2);
+        interruptDownload(base1, base2, state, randomText(64 * 1024, 1), changed, 20);
+        Assert.assertTrue(Files.size(base1.resolve("f.bin")) > 64 * 1024);
+
+        syncBoth(base1, base2, state);
+        Map<String, String> expected = Map.of("f.bin", new String(changed));
+        Assert.assertEquals(expected, tree(base1));
+        Assert.assertEquals(expected, tree(base2));
+
+        // and part way through a chunk within the old version
+        Path base3 = Files.createTempDirectory("peergos-sync"), base4 = Files.createTempDirectory("peergos-sync");
+        SyncState state2 = new JdbcTreeState(":memory:");
+        byte[] sameSize = randomText(64 * 1024, 3);
+        interruptDownload(base3, base4, state2, randomText(64 * 1024, 1), sameSize, 5);
+        syncBoth(base3, base4, state2);
+        Assert.assertEquals(Map.of("f.bin", new String(sameSize)), tree(base3));
+        Assert.assertEquals(Map.of("f.bin", new String(sameSize)), tree(base4));
+    }
+
 
     @Test
     public void shrinkFile() throws Exception {
