@@ -149,6 +149,186 @@ public class SyncTests {
             Assert.assertNotNull(relPath, syncedState.byPath(relPath));
     }
 
+    private static void syncBoth(Path base1, Path base2, SyncState state) throws Exception {
+        DirectorySync.syncDir(new LocalFileSystem(base1, crypto.hasher), new LocalFileSystem(base2, crypto.hasher), true, true,
+                null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+    }
+
+    private static Map<String, String> tree(Path base) throws IOException {
+        Map<String, String> res = new TreeMap<>();
+        try (Stream<Path> all = Files.walk(base)) {
+            for (Path p : all.filter(p -> ! p.equals(base)).collect(Collectors.toList()))
+                res.put(base.relativize(p).toString(), Files.isDirectory(p) ? "dir" : new String(Files.readAllBytes(p)));
+        }
+        return res;
+    }
+
+    private static void write(Path base, String relPath, String contents) throws IOException {
+        Path p = base.resolve(relPath);
+        Files.createDirectories(p.getParent());
+        Files.write(p, contents.getBytes());
+    }
+
+    private static void deleteTree(Path p) throws IOException {
+        try (Stream<Path> all = Files.walk(p)) {
+            for (Path f : all.sorted(Comparator.reverseOrder()).collect(Collectors.toList()))
+                Files.delete(f);
+        }
+    }
+
+    /** The folders the other side's new files sit in were deleted from the side that deleted the folder too */
+    @Test
+    public void folderDeletedWhileOtherSideAddsToASubfolder() throws Exception {
+        for (boolean deleteLocally : List.of(true, false)) {
+            Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+            SyncState state = new JdbcTreeState(":memory:");
+            write(base1, "x/a", "a");
+            syncBoth(base1, base2, state);
+            deleteTree((deleteLocally ? base1 : base2).resolve("x"));
+            write(deleteLocally ? base2 : base1, "x/y/z", "z");
+            syncBoth(base1, base2, state);
+            Assert.assertEquals(Map.of("x", "dir", "x/y", "dir", "x/y/z", "z"), tree(base1));
+            Assert.assertEquals(tree(base1), tree(base2));
+        }
+    }
+
+    /** As above, with a new empty folder, whose parents the other side gets back from making it */
+    @Test
+    public void folderDeletedWhileOtherSideAddsAnEmptySubfolder() throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        write(base1, "a/files/x", "x");
+        write(base1, "a/files/d", "d");
+        syncBoth(base1, base2, state);
+        deleteTree(base2.resolve("a"));
+        Files.delete(base1.resolve("a/files/d"));
+        Files.createDirectories(base1.resolve("a/files/d"));
+        syncBoth(base1, base2, state);
+        Assert.assertEquals(Map.of("a", "dir", "a/files", "dir", "a/files/d", "dir"), tree(base1));
+        Assert.assertEquals(tree(base1), tree(base2));
+    }
+
+    /** An edit to a synced file must survive the other side replacing it with a folder */
+    @Test
+    public void editedFileReplacedByFolderOnOtherSide() throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        write(base1, "f", "original");
+        syncBoth(base1, base2, state);
+        write(base1, "f", "edited");
+        Files.delete(base2.resolve("f"));
+        write(base2, "f/g", "g");
+        syncBoth(base1, base2, state);
+        Assert.assertEquals(Map.of("f", "dir", "f/g", "g", "f[conflict-0]", "edited"), tree(base1));
+        Assert.assertEquals(tree(base1), tree(base2));
+    }
+
+    /** Uploads ran before deletes, so a new file in a folder that replaced a synced file found the file still there */
+    @Test
+    public void syncedFileReplacedByFolderWithAFile() throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        write(base1, "x", "x");
+        syncBoth(base1, base2, state);
+        Files.delete(base1.resolve("x"));
+        write(base1, "x/y", "y");
+        syncBoth(base1, base2, state);
+        Assert.assertEquals(Map.of("x", "dir", "x/y", "y"), tree(base2));
+        Assert.assertEquals(tree(base1), tree(base2));
+    }
+
+    /** Both sides agreeing on a file the sync state recorded an older version of, as an interrupted copy that a
+     *  later sync finished leaves them, kept the older one, so a delete of it later brought it back.
+     */
+    @Test
+    public void deleteAfterSidesAgreeOnANewerVersion() throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        write(base1, "f", "old");
+        syncBoth(base1, base2, state);
+        write(base1, "f", "new version");
+        write(base2, "f", "new version");
+        Files.setLastModifiedTime(base2.resolve("f"), Files.getLastModifiedTime(base1.resolve("f")));
+        syncBoth(base1, base2, state);
+        Files.delete(base1.resolve("f"));
+        syncBoth(base1, base2, state);
+        Assert.assertEquals(Map.of(), tree(base1));
+        Assert.assertEquals(Map.of(), tree(base2));
+    }
+
+    /** With no sync state, a remote file whose contents are at another path locally was downloaded on another thread,
+     *  where it moved the local copy, while the main thread moved the remote copy, swapping them over.
+     */
+    @Test
+    public void samePathlessContentsOnBothSidesWithNoState() throws Exception {
+        for (int i = 0; i < 20; i++) {
+            Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+            write(base1, "é.txt/main", "same");
+            write(base2, "b", "same");
+            syncBoth(base1, base2, new JdbcTreeState(":memory:"));
+            Assert.assertEquals(tree(base1), tree(base2));
+        }
+    }
+
+    /** Moving a file into a new folder that takes its name moved it beneath itself, which the file was in the way of */
+    @Test
+    public void fileMovedIntoAFolderOfItsName() throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        write(base1, "b/main", "m");
+        syncBoth(base1, base2, state);
+        Files.move(base2.resolve("b/main"), base2.resolve("b/tmp"));
+        Files.createDirectories(base2.resolve("b/main"));
+        Files.move(base2.resolve("b/tmp"), base2.resolve("b/main/b"));
+        syncBoth(base1, base2, state);
+        Assert.assertEquals(Map.of("b", "dir", "b/main", "dir", "b/main/b", "m"), tree(base1));
+        Assert.assertEquals(tree(base1), tree(base2));
+    }
+
+    /** Each side deleting a different copy of the same contents looked like each had moved it to the other's copy,
+     *  and each waited for the other to do the move, so nothing was synced.
+     */
+    @Test
+    public void differentCopiesDeletedOnEachSide() throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        write(base1, "x/a", "same");
+        write(base1, "y/b", "same");
+        syncBoth(base1, base2, state);
+        Files.delete(base1.resolve("x/a"));
+        Files.delete(base2.resolve("y/b"));
+        syncBoth(base1, base2, state);
+        Assert.assertEquals(Map.of("x", "dir", "y", "dir"), tree(base1));
+        Assert.assertEquals(tree(base1), tree(base2));
+    }
+
+    /** A conflict name was only checked on the side being renamed, so it could take the name of a file on the other */
+    @Test
+    public void conflictNameIsFreeOnBothSides() throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        write(base1, "a.txt", "mine");
+        write(base2, "a[conflict-0].txt", "theirs");
+        LocalFileSystem fs1 = new LocalFileSystem(base1, crypto.hasher), fs2 = new LocalFileSystem(base2, crypto.hasher);
+        FileState state = new FileState("a.txt", 0, 4, null, Chunk.LEGACY_SIZE);
+        FileState renamed = DirectorySync.renameOnConflict(fs1, fs2, fs1.resolve("a.txt"), state);
+        Assert.assertEquals("a[conflict-1].txt", renamed.relPath);
+    }
+
+    /** The first sync uploads large files on their own, and one in a folder where the other side has a file failed */
+    @Test
+    public void firstSyncOfALargeFileWhereTheOtherSideHasAFileForItsFolder() throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        byte[] large = new byte[2 * 1024 * 1024];
+        new Random(1).nextBytes(large);
+        Files.createDirectories(base1.resolve("d"));
+        Files.write(base1.resolve("d/b"), large);
+        write(base2, "d", "a file");
+        syncBoth(base1, base2, new JdbcTreeState(":memory:"));
+        Assert.assertEquals(tree(base1), tree(base2));
+        Assert.assertArrayEquals(large, Files.readAllBytes(base2.resolve("d/b")));
+        Assert.assertTrue(tree(base1).containsValue("a file"));
+    }
+
     /** A file on one side where the other has a folder can be neither copied over nor left, or every sync fails on it */
     @Test
     public void fileWhereOtherSideHasFolder() throws Exception {
