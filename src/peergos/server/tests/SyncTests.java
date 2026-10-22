@@ -149,6 +149,43 @@ public class SyncTests {
             Assert.assertNotNull(relPath, syncedState.byPath(relPath));
     }
 
+    /** A file on one side where the other has a folder can be neither copied over nor left, or every sync fails on it */
+    @Test
+    public void fileWhereOtherSideHasFolder() throws Exception {
+        for (boolean fileIsLocal : List.of(true, false)) {
+            for (boolean deletes : List.of(true, false)) {
+                Path base1 = Files.createTempDirectory("peergos-sync");
+                Path base2 = Files.createTempDirectory("peergos-sync");
+                Path fileSide = fileIsLocal ? base1 : base2, folderSide = fileIsLocal ? base2 : base1;
+                byte[] data = new byte[1024];
+                new Random(42).nextBytes(data);
+                // one clash with an empty folder, and one with a folder holding a file
+                Files.createDirectories(fileSide.resolve("dir"));
+                Files.write(fileSide.resolve("dir/empty"), data);
+                Files.createDirectories(folderSide.resolve("dir/empty"));
+                Files.write(fileSide.resolve("dir/full"), data);
+                Files.createDirectories(folderSide.resolve("dir/full"));
+                Files.write(folderSide.resolve("dir/full/inner.txt"), "inner".getBytes());
+
+                LocalFileSystem localFs = new LocalFileSystem(base1, crypto.hasher);
+                LocalFileSystem remoteFs = new LocalFileSystem(base2, crypto.hasher);
+                SyncState syncedState = new JdbcTreeState(":memory:");
+                for (int i = 0; i < 2; i++)
+                    DirectorySync.syncDir(localFs, remoteFs, deletes, deletes, null, null, syncedState, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+
+                String clashName = "empty" + (deletes ? "" : "[conflict-0]");
+                for (Path base : List.of(base1, base2)) {
+                    Assert.assertArrayEquals(Files.readAllBytes(base.resolve("dir/full[conflict-0]")), data);
+                    Assert.assertArrayEquals(Files.readAllBytes(base.resolve("dir/full/inner.txt")), "inner".getBytes());
+                    Assert.assertArrayEquals(Files.readAllBytes(base.resolve("dir").resolve(clashName)), data);
+                    Assert.assertEquals(! deletes, Files.isDirectory(base.resolve("dir/empty")));
+                }
+                Assert.assertNotNull(syncedState.byPath("dir/" + clashName));
+                Assert.assertNotNull(syncedState.byPath("dir/full[conflict-0]"));
+            }
+        }
+    }
+
     @Test
     public void renamesWithDuplicates() throws Exception {
         for (int copies=2; copies < 15; copies++)

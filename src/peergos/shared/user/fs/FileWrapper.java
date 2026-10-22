@@ -1396,6 +1396,8 @@ public class FileWrapper {
                             // Fast path: compare hash against the pre-loaded remote state before
                             // doing any per-file network work.
                             FileProperties existingProps = existingByName.get(f.filename);
+                            if (existingProps != null && existingProps.isDirectory)
+                                return Futures.errored(new IllegalStateException("Cannot replace folder " + toParent + "/" + f.filename + " with a file"));
                             if (existingProps != null) {
                                 Optional<HashBranch> remoteHash = existingProps.treeHash;
                                 if (f.hash.isPresent() && remoteHash.isPresent()
@@ -1857,6 +1859,8 @@ public class FileWrapper {
                                                 if (skipExisting)
                                                     return Futures.of(new Pair<>(current, Optional.empty()));
                                                 FileWrapper child = childOpt.get();
+                                                if (child.isDirectory())
+                                                    throw new IllegalStateException("Cannot replace folder " + filename + " with a file");
                                                 FileProperties childProps = child.getFileProperties();
                                                 Optional<HashBranch> existingHash = childProps.treeHash;
                                                 if (existingHash.isPresent() &&

@@ -502,7 +502,9 @@ public class DirectorySync {
                     }
                     FileState remote = initialRemote.byPath(file.relPath);
                     if (remote == null) {
-                        if (file.size <= 1024*1024) { // avoid doing many small files in non bulk uploads
+                        // avoid doing many small files in non bulk uploads, and leave a file where the other side
+                        // has a folder to the full sync, which resolves the clash
+                        if (file.size <= 1024*1024 || initialRemote.hasDir(file.relPath)) {
                             progress.doneFile();
                             return;
                         }
@@ -588,6 +590,9 @@ public class DirectorySync {
             }
             long t4 = System.currentTimeMillis();
             LOG.accept("Found " + remoteState.filesCount() + " remote files in " + (t4-t3)/1_000 + "s");
+
+            resolveFileFolderClashes(localFS, localState, remoteFS, remoteState, syncedVersions, syncLocalDeletes, LOG);
+            resolveFileFolderClashes(remoteFS, remoteState, localFS, localState, syncedVersions, syncRemoteDeletes, LOG);
 
             TreeSet<String> allPaths = new TreeSet<>(localState.allFilePaths());
             allPaths.addAll(remoteState.allFilePaths());
@@ -1252,6 +1257,45 @@ public class DirectorySync {
                     syncedVersions.add(renamed.withModtime(actualModTime2));
                     progress.doneFile();
                 }
+            }
+        }
+    }
+
+    /** A file on one side where the other side has a folder can't be copied over, and nothing else would resolve
+     *  it, so every sync would fail on it. An empty folder holds nothing, so remove it when deletes are synced in
+     *  that direction, otherwise move the file aside the way a conflicting edit is.
+     */
+    private static void resolveFileFolderClashes(SyncFilesystem fileFS,
+                                                 SyncState fileState,
+                                                 SyncFilesystem folderFS,
+                                                 SyncState folderState,
+                                                 SyncState syncedVersions,
+                                                 boolean deleteEmptyFolder,
+                                                 Consumer<String> LOG) {
+        List<String> clashes = fileState.allFilePaths().stream()
+                .filter(folderState::hasDir)
+                .filter(p -> syncedVersions.byPath(p) == null)
+                .sorted()
+                .collect(Collectors.toList());
+        if (clashes.isEmpty())
+            return;
+        Set<String> folderFiles = folderState.allFilePaths();
+        Set<String> folderDirs = folderState.getDirs();
+        for (String path : clashes) {
+            String prefix = path + "/";
+            boolean emptyFolder = folderFiles.stream().noneMatch(f -> f.startsWith(prefix)) &&
+                    folderDirs.stream().noneMatch(d -> d.startsWith(prefix));
+            if (emptyFolder && deleteEmptyFolder) {
+                LOG.accept("Sync: deleting empty folder " + path + " where the other side has a file");
+                folderFS.delete(folderFS.resolve(path));
+                folderState.removeDir(path);
+                syncedVersions.removeDir(path);
+            } else {
+                FileState file = fileState.byPath(path);
+                FileState renamed = renameOnConflict(fileFS, fileFS.resolve(path), file);
+                LOG.accept("Sync: renamed file " + path + " to " + renamed.relPath + " as the other side has a folder there");
+                fileState.remove(path);
+                fileState.add(renamed);
             }
         }
     }
