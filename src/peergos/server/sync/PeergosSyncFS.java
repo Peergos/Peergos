@@ -132,7 +132,7 @@ public class PeergosSyncFS implements SyncFilesystem {
             if (parentOpt.isEmpty())
                 throw new IllegalStateException("Couldn't retrieve " + root.resolve(src).getParent());
             FileWrapper parent = parentOpt.get();
-            from.moveTo(newParent.get(), parent, root.resolve(src), context, () -> Futures.of(true)).join();
+            from.moveTo(newParent.get(), parent, root.resolve(src), target.getFileName().toString(), context, () -> Futures.of(true)).join();
         }
     }
 

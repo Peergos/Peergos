@@ -2426,7 +2426,7 @@ public class CloudFilesProvider {
             } else {
                 LOG.info("[CF] NOTIFY_RENAME_COMPLETION: moveTo " + targetParent);
                 fwOpt.get().moveTo(targetParentOpt.get(), sourceParentOpt.get(),
-                        PathUtil.get(peergosSource), context, () -> peergos.shared.util.Futures.of(true)).join();
+                        PathUtil.get(peergosSource), targetName, context, () -> peergos.shared.util.Futures.of(true)).join();
             }
             // Update identity map
             identityToPath.replaceAll((k, v) -> {

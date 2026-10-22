@@ -2548,16 +2548,28 @@ public class FileWrapper {
 
     @JsMethod
     public CompletableFuture<Boolean> moveTo(FileWrapper target, FileWrapper parent, Path ourPath, UserContext context, Supplier<CompletableFuture<Boolean>> preserveAccess) {
+        return moveTo(target, parent, ourPath, getName(), context, preserveAccess);
+    }
+
+    /** Move into target and take newName there, in a single commit */
+    public CompletableFuture<Boolean> moveTo(FileWrapper target,
+                                             FileWrapper parent,
+                                             Path ourPath,
+                                             String newName,
+                                             UserContext context,
+                                             Supplier<CompletableFuture<Boolean>> preserveAccess) {
         ensureUnmodified();
 
+        if (! isLegalName(newName))
+            return Futures.errored(new IllegalStateException("Illegal file name: " + newName));
         if (! parent.isWritable())
             return Futures.errored(new IllegalStateException("Cannot move file without write access to parent"));
         if (! target.isDirectory()) {
             return Futures.errored(new IllegalStateException("CopyTo target " + target + " must be a directory"));
         }
-        return target.hasChild(getName(), context.crypto.hasher, context.network).thenApply(nameClash -> {
+        return target.hasChild(newName, context.crypto.hasher, context.network).thenApply(nameClash -> {
             if (nameClash)
-                throw new IllegalStateException("Child already exists with name " + getName() + " in destination folder.");
+                throw new IllegalStateException("Child already exists with name " + newName + " in destination folder.");
             return true;
         }).thenCompose(x -> {
             // ensure we aren't trying to move a folder to a descendant folder, which will result in data loss!
@@ -2581,11 +2593,16 @@ public class FileWrapper {
                             // the folders and we may all have changed since we were retrieved, so move what is there now
                             (v, c) -> parent.getUpdated(v, net)
                                     .thenCompose(freshParent -> target.getUpdated(v, net)
-                                            .thenCompose(freshTarget -> freshParent.getChild(freshParent.version.mergeAndOverwriteWith(v), name, net)
+                                            .thenCompose(freshTarget -> freshTarget.hasChildWithName(freshTarget.version.mergeAndOverwriteWith(v), newName, context.crypto.hasher, net)
+                                            .thenCompose(nameClash -> {
+                                                if (nameClash)
+                                                    throw new IllegalStateException("Child already exists with name " + newName + " in destination folder.");
+                                                return freshParent.getChild(freshParent.version.mergeAndOverwriteWith(v), name, net);
+                                            })
                                                     .thenCompose(freshUs -> {
                                                         if (freshUs.isEmpty())
                                                             throw new IllegalStateException("Cannot move " + name + ", it is no longer in its folder");
-                                                        return freshUs.get().moveIn(v, c, freshTarget, freshParent, ourPath, isPublic,
+                                                        return freshUs.get().moveIn(v, c, freshTarget, freshParent, ourPath, newName, isPublic,
                                                                 targetMirrorBatId, context, preserveAccess);
                                                     }))))).thenApply(s -> true);
         });
@@ -2596,6 +2613,7 @@ public class FileWrapper {
                                                FileWrapper target,
                                                FileWrapper parent,
                                                Path ourPath,
+                                               String newName,
                                                boolean isPublic,
                                                Optional<BatId> targetMirrorBatId,
                                                UserContext context,
@@ -2619,13 +2637,16 @@ public class FileWrapper {
                                             Optional.of(target.writer()) :
                                             Optional.empty(),
                                             target.getLocation().getMapKey(), target.writableFilePointer().bat, target.getParentKey(), Optional.empty());
-                                    CryptreeNode newMetadata = pointer.fileAccess.withParentLink(getParentKey(), newParentLink);
+                                    boolean renamed = ! newName.equals(getName());
+                                    CryptreeNode newMetadata = renamed ?
+                                            pointer.fileAccess.withParentLinkAndProperties(getParentKey(), newParentLink, pointer.getProperties().withName(newName)) :
+                                            pointer.fileAccess.withParentLink(getParentKey(), newParentLink);
                                     RelativeCapability ourNewcap = target.writableFilePointer().relativise(pointer.capability);
                                     return IpfsTransaction.call(owner(),
                                             tid -> target.getPath(net).thenCompose(newPath -> v.withWriter(owner(), target.writer(), net)
                                                     .thenCompose(w -> net.uploadChunk(w, c, newMetadata, owner(), pointer.capability.getMapKey(), signingPair(), tid))
                                                     .thenCompose(v2 -> target.pointer.fileAccess.addChildrenAndCommit(v2, c,
-                                                            Arrays.asList(new NamedRelativeCapability(getName(), ourNewcap, Optional.of(isDirectory()), Optional.of(getFileProperties().mimeType), Optional.of(getFileProperties().created))),
+                                                            Arrays.asList(new NamedRelativeCapability(newName, ourNewcap, Optional.of(isDirectory()), Optional.of(getFileProperties().mimeType), Optional.of(getFileProperties().created))),
                                                             target.writableFilePointer(), target.signingPair(), targetMirrorBatId, net, context.crypto))
                                                     // adding to the target changed the listing if it is also the parent's
                                                     .thenCompose(v3 -> parent.getUpdated(v3, net)
@@ -2634,12 +2655,18 @@ public class FileWrapper {
                                                                             freshParent.entryWriter, net, context.crypto.random, hasher)))
                                                     .thenCompose(v4 -> !ourFile || shared.isEmpty() ? Futures.of(v4) : context.sharedWithCache.clearSharedWith(ourPath, v4, c, net))
                                                     .thenCompose(v5 -> !ourFile || shared.isEmpty() ? Futures.of(v5) : context.sharedWithCache.addAllSharedWith(shared.entrySet().stream()
-                                                            .collect(Collectors.toMap(e -> PathUtil.getUntrimmed(newPath).resolve(e.getKey().relativize(ourPath)), e -> e.getValue())), v5, c, net))),
+                                                            .collect(Collectors.toMap(e -> PathUtil.getUntrimmed(newPath).resolve(e.getKey().relativize(ourPath)), e -> e.getValue())), v5, c, net))
+                                                    .thenCompose(v6 -> !ourFile || shared.isEmpty() || ! renamed ? Futures.of(v6) :
+                                                            context.sharedWithCache.rename(PathUtil.getUntrimmed(newPath).resolve(getName()),
+                                                                    PathUtil.getUntrimmed(newPath).resolve(newName), v6, c, net))),
                                             net.dhtClient);
 
                                 }
                                 return v.withWriter(owner(), target.writer(), net)
-                                        .thenCompose(both -> copyTo(target, this.props.thumbnail, targetMirrorBatId, net, context.crypto, both, c))
+                                        .thenCompose(both -> target.getUpdated(both, net)
+                                                .thenCompose(freshTarget -> copyToUnlinked(freshTarget, newName, this.props.thumbnail,
+                                                        targetMirrorBatId, net, context.crypto, both, c)
+                                                        .thenCompose(p -> addCopiedChild(p, freshTarget, c, net, context.crypto))))
                                         .thenCompose(v2 -> v2.withWriter(owner(), parent.writer(), net)
                                                 .thenCompose(v3 -> parent.getUpdated(v3, net)
                                                         .thenCompose(freshParent -> freshParent.pointer.fileAccess
@@ -2717,11 +2744,19 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                 .thenCompose(freshTarget -> pickUniqueCopyName(freshTarget, version, crypto.hasher, network)
                         .thenCompose(uniqueName -> copyToUnlinked(freshTarget, uniqueName, existingThumbnail,
                                 targetMirrorBat, network, crypto, version, committer)
-                                .thenCompose(p -> p.right.isEmpty() ?
-                                        Futures.of(p.left) :
-                                        freshTarget.getUpdated(p.left, network)
-                                                .thenCompose(latest -> latest.addChildPointers(p.left, committer,
-                                                        Arrays.asList(p.right.get()), network, crypto)))));
+                                .thenCompose(p -> addCopiedChild(p, freshTarget, committer, network, crypto))));
+    }
+
+    private static CompletableFuture<Snapshot> addCopiedChild(Pair<Snapshot, Optional<NamedRelativeCapability>> copied,
+                                                              FileWrapper target,
+                                                              Committer committer,
+                                                              NetworkAccess network,
+                                                              Crypto crypto) {
+        return copied.right.isEmpty() ?
+                Futures.of(copied.left) :
+                target.getUpdated(copied.left, network)
+                        .thenCompose(latest -> latest.addChildPointers(copied.left, committer,
+                                Arrays.asList(copied.right.get()), network, crypto));
     }
 
     /** Copy this file or dir into target under a name that is known not to already be present there.
