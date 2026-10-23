@@ -22,7 +22,8 @@ import java.util.function.*;
 import java.util.stream.*;
 
 /** Random edits on both sides of a sync pair, with syncs in between, some of them interrupted, checked against what
- *  the edits imply. Edits on the Peergos side go through the same calls the web UI makes, not through sync's own.
+ *  the edits imply. An interrupted sync is either cancelled, or crashes as the process dying would, with no chance to
+ *  clean up. Edits on the Peergos side go through the same calls the web UI makes, not through sync's own.
  *
  *  Outside tests/ proper so that CI doesn't run it. Run with
  *    FUZZ_SEED=123 FUZZ_STEPS=100 ant execute.test -Dtest.source.absolute=$(realpath src/peergos/server/tests/fuzz/SyncFuzz.java)
@@ -46,6 +47,7 @@ import java.util.stream.*;
  *      that is unambiguous: a path changed on only one side takes that side's version
  *    - often, a further sync finds nothing to do
  *    - no file is corrupt
+ *    - nothing is left of a partial copy
  *  Contents carry a unique header, so they can be followed through moves, and the fuzzer knows the digest of each.
  */
 public class SyncFuzz {
@@ -122,6 +124,11 @@ public class SyncFuzz {
         void move(String from, String to);
 
         void mkdirs(String path);
+
+        /** Whether anything a copy wrote part of is still waiting to be put in place */
+        default boolean hasPartialCopies() {
+            return false;
+        }
     }
 
     private class LocalSide implements Side {
@@ -144,7 +151,7 @@ public class SyncFuzz {
         public TreeMap<String, String> tree() {
             TreeMap<String, String> res = new TreeMap<>();
             try (Stream<Path> all = Files.walk(base)) {
-                for (Path p : all.filter(p -> ! p.equals(base)).collect(Collectors.toList())) {
+                for (Path p : all.filter(p -> ! p.equals(base) && ! isPartialCopy(p)).collect(Collectors.toList())) {
                     String rel = StreamSupport.stream(base.relativize(p).spliterator(), false)
                             .map(Path::toString)
                             .collect(Collectors.joining("/"));
@@ -154,6 +161,15 @@ public class SyncFuzz {
                 throw new UncheckedIOException(e);
             }
             return res;
+        }
+
+        private boolean isPartialCopy(Path p) {
+            return base.relativize(p).getName(0).toString().equals(LocalFileSystem.PARTIAL_COPIES_DIR);
+        }
+
+        @Override
+        public boolean hasPartialCopies() {
+            return Files.exists(base.resolve(LocalFileSystem.PARTIAL_COPIES_DIR));
         }
 
         public void write(String path, byte[] data) {
@@ -698,6 +714,8 @@ public class SyncFuzz {
                 .ifPresent(e -> {
                     throw new AssertionError(e.getKey() + " is corrupt after a sync: " + e.getValue());
                 });
+        if (local.hasPartialCopies() || remote.hasPartialCopies())
+            throw new AssertionError("A partial copy was left after a sync");
 
         Set<String> contents = new HashSet<>(localAfter.values());
         contents.addAll(remoteAfter.values());
