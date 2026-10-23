@@ -1120,7 +1120,10 @@ public class DirectorySync {
                             ! syncedBefore.contains(extraRemote.get(index).relPath)) {// rename
                         // we will do the local rename when we process the new remote entry
                     } else {
-                        if (syncRemoteDeletes) {
+                        if (syncRemoteDeletes && ! asScanned(localFs, localFs.resolve(local.relPath), local, syncedVersions)) {
+                            // an edit since the scan is a change against a delete, which the next sync keeps
+                            LOG.accept("Sync Local: not deleting " + local.relPath + ", as it has changed since " + progress);
+                        } else if (syncRemoteDeletes) {
                             LOG.accept("Sync Local: delete " + local.relPath + " " + progress);
                             localFs.delete(localFs.resolve(local.relPath));
                             syncedVersions.remove(local.relPath);
@@ -1194,7 +1197,10 @@ public class DirectorySync {
                             ! syncedBefore.contains(extraLocal.get(index).relPath)) {// rename
                         // we will do the remote rename when we process the new local entry
                     } else {
-                        if (syncLocalDeletes) {
+                        if (syncLocalDeletes && ! asScanned(remoteFs, remoteFs.resolve(remote.relPath), remote, syncedVersions)) {
+                            // an edit since the scan is a change against a delete, which the next sync keeps
+                            LOG.accept("Sync Remote: not deleting " + remote.relPath + ", as it has changed since " + progress);
+                        } else if (syncLocalDeletes) {
                             LOG.accept("Sync Remote: delete " + remote.relPath + " " + progress);
                             remoteFs.delete(remoteFs.resolve(remote.relPath));
                             syncedVersions.remove(remote.relPath);
@@ -1476,15 +1482,19 @@ public class DirectorySync {
 
     /** Whether the target of a copy is still as the sync saw it when it decided on the copy */
     private static boolean targetAsScanned(SyncFilesystem targetFs, CopyOp op, SyncState syncDb) {
-        FileState scanned = op.targetState;
-        if (! targetFs.exists(op.target))
-            return scanned == null && targetFs.canCreate(op.target);
-        if (scanned == null || targetFs.size(op.target) != scanned.size)
+        return asScanned(targetFs, op.target, op.targetState, syncDb);
+    }
+
+    /** Whether a file is still as the scan found it, or still absent, and could be put there, if scanned is null */
+    private static boolean asScanned(SyncFilesystem fs, Path p, FileState scanned, SyncState syncDb) {
+        if (! fs.exists(p))
+            return scanned == null && fs.canCreate(p);
+        if (scanned == null || fs.size(p) != scanned.size)
             return false;
-        if (targetFs.getLastModified(op.target) == scanned.modificationTime)
+        if (fs.getLastModified(p) == scanned.modificationTime)
             return true;
         // a scan keeps the synced version of a file whose contents haven't changed, whatever its modification time
-        return targetFs.hashFile(op.target, Optional.empty(), scanned.relPath, syncDb, scanned.size, scanned.chunkSize)
+        return fs.hashFile(p, Optional.empty(), scanned.relPath, syncDb, scanned.size, scanned.chunkSize)
                 .rootHash.equals(scanned.hashTree.rootHash);
     }
 

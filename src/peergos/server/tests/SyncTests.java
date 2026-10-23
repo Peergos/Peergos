@@ -1143,6 +1143,31 @@ public class SyncTests {
     }
 
     @Test
+    public void editAfterTheScanOfAFileDeletedOnTheOtherSide() throws Exception {
+        // the delete was synced over the edit
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        write(base1, "f", "original");
+        syncBoth(base1, base2, state);
+
+        Files.delete(base2.resolve("f"));
+        DirectorySync.syncDir(new LocalFileSystem(base1, crypto.hasher), new LocalFileSystem(base2, crypto.hasher), true, true,
+                null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, m -> {
+                    if (m.contains("remote files in")) {
+                        try {
+                            write(base1, "f", "edited after the scan");
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
+                });
+        syncBoth(base1, base2, state);
+        Map<String, String> expected = Map.of("f", "edited after the scan");
+        Assert.assertEquals(expected, tree(base1));
+        Assert.assertEquals(expected, tree(base2));
+    }
+
+    @Test
     public void newFolderWhereAFileWasRenamedFrom() throws Exception {
         // the new folder's small files were bulk uploaded before the rename, into the file still at that path
         Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
