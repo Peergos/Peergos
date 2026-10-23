@@ -1460,7 +1460,7 @@ public class DirectorySync {
     private static boolean targetAsScanned(SyncFilesystem targetFs, CopyOp op, SyncState syncDb) {
         FileState scanned = op.targetState;
         if (! targetFs.exists(op.target))
-            return scanned == null;
+            return scanned == null && targetFs.canCreate(op.target);
         if (scanned == null || targetFs.size(op.target) != scanned.size)
             return false;
         if (targetFs.getLastModified(op.target) == scanned.modificationTime)

@@ -1135,6 +1135,24 @@ public class SyncTests {
     }
 
     @Test
+    public void fileWhereAnInterruptedDownloadsFolderWas() throws Exception {
+        // resuming tried to create the folder again on every sync, and failed it
+        for (boolean crash : List.of(false, true)) {
+            Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+            SyncState state = new JdbcTreeState(":memory:");
+            byte[] data = randomText(64 * 1024, 2);
+            interruptDownload(base1, base2, state, "b/x.txt/doc.pdf", null, data, 5, crash);
+
+            write(base1, "b", "file");
+            syncBoth(base1, base2, state);
+            Map<String, String> synced = tree(base1);
+            Assert.assertEquals("crash " + crash, synced, tree(base2));
+            Assert.assertTrue("crash " + crash + " " + synced.keySet(),
+                    synced.containsValue(new String(data)) && synced.containsValue("file"));
+        }
+    }
+
+    @Test
     public void syncStateResetAfterAnInterruptedDownload() throws Exception {
         // with no record of the copy, the part written was kept as a conflict copy
         for (boolean crash : List.of(false, true)) {

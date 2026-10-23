@@ -93,6 +93,14 @@ public class LocalFileSystem implements SyncFilesystem {
     }
 
     @Override
+    public boolean canCreate(Path p) {
+        for (Path dir = root.resolve(p).getParent(); dir != null && ! dir.equals(root); dir = dir.getParent())
+            if (Files.exists(dir, LinkOption.NOFOLLOW_LINKS))
+                return Files.isDirectory(dir, LinkOption.NOFOLLOW_LINKS);
+        return true;
+    }
+
+    @Override
     public void delete(Path p) {
         p = root.resolve(p);
         try {

@@ -43,6 +43,11 @@ public interface SyncFilesystem {
 
     void mkdirs(Path p);
 
+    /** Whether a file can be put at p, which a file at any of its ancestors prevents */
+    default boolean canCreate(Path p) {
+        return true;
+    }
+
     void delete(Path p);
 
     void bulkDelete(Path dir, Set<String> children);

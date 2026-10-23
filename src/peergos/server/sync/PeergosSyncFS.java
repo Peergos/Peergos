@@ -73,6 +73,16 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     @Override
+    public boolean canCreate(Path p) {
+        for (Path dir = p.getParent(); dir != null; dir = dir.getParent()) {
+            Optional<FileWrapper> f = context.getByPath(root.resolve(dir)).join();
+            if (f.isPresent())
+                return f.get().isDirectory();
+        }
+        return true;
+    }
+
+    @Override
     public void mkdirs(Path p) {
         if (p == null) // base dir
             return;
