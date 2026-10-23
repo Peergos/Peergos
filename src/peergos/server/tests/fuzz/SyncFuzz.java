@@ -34,6 +34,10 @@ import java.util.stream.*;
  *    FUZZ_NATURAL_MTIMES=1  leave local modification times to the clock, so several edits of a file within a second
  *                           can share one; otherwise each edit moves it on, as a person editing would
  *    FUZZ_VERBOSE=1         print every edit and the sync log as they happen
+ *    FUZZ_CONCURRENT=1      sometimes edit during a sync, at a random one of its checks for cancellation, then sync
+ *                           again with no edits, which must converge without losing anything
+ *    FUZZ_DELETES=1         do not sync deletes from one side, or from either, chosen by the seed. Sides may then
+ *                           differ where a delete was not synced, and a delete there must not lose the other copy
  *
  *  After every sync that runs to completion:
  *    - both sides hold the same tree, files and folders alike
@@ -41,7 +45,8 @@ import java.util.stream.*;
  *    - each path holds what a three way merge of the last synced tree and the two sides says it should, wherever
  *      that is unambiguous: a path changed on only one side takes that side's version
  *    - often, a further sync finds nothing to do
- *  Deletes are synced in both directions. Contents carry a unique header, so they can be followed through moves.
+ *    - no file is corrupt
+ *  Contents carry a unique header, so they can be followed through moves, and the fuzzer knows the digest of each.
  */
 public class SyncFuzz {
     private static final Args args = UserTests.useMemoryDbs(UserTests.buildArgs()).with("enable-gc", "false");
@@ -60,6 +65,20 @@ public class SyncFuzz {
     private final boolean large = System.getenv("FUZZ_LARGE") != null;
     private final boolean naturalModtimes = System.getenv("FUZZ_NATURAL_MTIMES") != null;
     private final boolean verbose = System.getenv("FUZZ_VERBOSE") != null;
+    private final boolean concurrent = System.getenv("FUZZ_CONCURRENT") != null;
+    private final boolean oneWayDeletes = System.getenv("FUZZ_DELETES") != null;
+    private final boolean syncLocalDeletes, syncRemoteDeletes;
+    private final Map<String, String> digests = new HashMap<>();
+    private Side local, remote;
+    // per side, paths deleted there since the last checked sync whose contents the other side keeps
+    private final Map<Side, Map<String, String>> unsyncedDeletes = new HashMap<>();
+    // side:path of copies a crash interrupted, and edits made to them since, which resuming may not be able to tell
+    // from the part the copy wrote, as nothing recorded where it stopped
+    private final Set<String> crashedCopies = new HashSet<>();
+    private final Set<String> mayLose = new HashSet<>();
+
+    /** The process dying part way through a sync */
+    private static class Crash extends Error {}
     private final List<String> log = new ArrayList<>();
     private List<String> syncLog = new ArrayList<>();
     private final Map<String, Integer> outcomes = new TreeMap<>();
@@ -72,6 +91,9 @@ public class SyncFuzz {
         this.seed = seedEnv != null ? Long.parseLong(seedEnv) : new Random().nextLong();
         this.steps = stepsEnv != null ? Integer.parseInt(stepsEnv) : 60;
         this.rnd = new Random(seed);
+        int deletes = oneWayDeletes ? rnd.nextInt(3) : 3;
+        this.syncLocalDeletes = deletes != 0 && deletes != 2;
+        this.syncRemoteDeletes = deletes != 1 && deletes != 2;
     }
 
     @BeforeClass
@@ -273,13 +295,19 @@ public class SyncFuzz {
         }
     }
 
-    private static String contentId(byte[] data) {
+    private static String digest(byte[] data) {
+        return ArrayOps.bytesToHex(Hash.sha256(data));
+    }
+
+    /** The id in the content's header, if the rest of it is what was written with that id */
+    private String contentId(byte[] data) {
         if (data.length == 0)
             return EMPTY;
         String start = new String(data, 0, Math.min(data.length, 64), StandardCharsets.ISO_8859_1);
         if (! start.startsWith(HEADER) || ! start.contains("\n"))
             return "<foreign:" + data.length + ">";
-        return start.substring(HEADER.length(), start.indexOf("\n"));
+        String id = start.substring(HEADER.length(), start.indexOf("\n"));
+        return digest(data).equals(digests.get(id)) ? id : "<corrupt:" + id + ":" + data.length + ">";
     }
 
     private byte[] newContent(int size) {
@@ -288,6 +316,7 @@ public class SyncFuzz {
         byte[] res = new byte[Math.max(size, header.length)];
         rnd.nextBytes(res);
         System.arraycopy(header, 0, res, 0, header.length);
+        digests.put(id, digest(res));
         return res;
     }
 
@@ -354,6 +383,7 @@ public class SyncFuzz {
                 return;
             byte[] data = randomContent();
             record(s + ": write " + path + " " + contentId(data) + " (" + data.length + " bytes)");
+            placing(side, path, killed);
             side.write(path, data);
             count("write");
         } else if (op < 40 && ! files.isEmpty()) {
@@ -362,22 +392,22 @@ public class SyncFuzz {
                     newContent(sizeOf(side, path)) :
                     randomContent();
             record(s + ": overwrite " + path + " " + tree.get(path) + " -> " + contentId(data) + " (" + data.length + " bytes)");
+            if (crashedCopies.contains(s + ":" + path))
+                mayLose.add(contentId(data));
             killed.add(tree.get(path));
+            placing(side, path, killed);
             side.write(path, data);
             count("overwrite");
         } else if (op < 50 && ! files.isEmpty()) {
             String path = pick(files);
             record(s + ": delete " + path + " " + tree.get(path));
-            killed.add(tree.get(path));
+            deleted(side, Map.of(path, tree.get(path)), killed);
             side.delete(path);
             count("delete");
         } else if (op < 55 && ! dirs.isEmpty()) {
             String dir = pick(dirs);
             record(s + ": delete folder " + dir);
-            tree.forEach((p, c) -> {
-                if (isUnder(p, dir) && ! c.equals(DIR))
-                    killed.add(c);
-            });
+            deleted(side, filesUnder(tree, dir), killed);
             side.delete(dir);
             count("delete folder");
         } else if (op < 65) {
@@ -386,6 +416,7 @@ public class SyncFuzz {
             if (blocked(tree, to))
                 return;
             record(s + ": rename " + from + " -> " + to);
+            placing(side, to, killed);
             side.move(from, to);
             count("rename");
         } else if (op < 77) {
@@ -397,6 +428,7 @@ public class SyncFuzz {
             if (isUnder(to, from) || parentOf(to).equals(parentOf(from)) || blocked(tree, to))
                 return;
             record(s + ": move " + from + " -> " + to);
+            placing(side, to, killed);
             side.move(from, to);
             count("move");
         } else if (op < 82 && ! files.isEmpty()) {
@@ -405,6 +437,7 @@ public class SyncFuzz {
             if (blocked(tree, to))
                 return;
             record(s + ": copy " + from + " -> " + to + " " + tree.get(from));
+            placing(side, to, killed);
             side.write(to, read(side, from));
             count("copy");
         } else if (op < 87) {
@@ -417,29 +450,53 @@ public class SyncFuzz {
         } else if (op < 94 && ! files.isEmpty()) {
             String path = pick(files);
             record(s + ": replace file " + path + " " + tree.get(path) + " with a folder");
-            killed.add(tree.get(path));
+            deleted(side, Map.of(path, tree.get(path)), killed);
             side.delete(path);
             side.mkdirs(path);
             if (rnd.nextBoolean()) {
                 byte[] data = randomContent();
                 String child = join(path, pick(NAMES));
                 record(s + ": write " + child + " " + contentId(data));
+                placing(side, child, killed);
                 side.write(child, data);
             }
             count("file to folder");
         } else if (! dirs.isEmpty()) {
             String dir = pick(dirs);
             record(s + ": replace folder " + dir + " with a file");
-            tree.forEach((p, c) -> {
-                if (isUnder(p, dir) && ! c.equals(DIR))
-                    killed.add(c);
-            });
+            deleted(side, filesUnder(tree, dir), killed);
             side.delete(dir);
             byte[] data = randomContent();
             record(s + ": write " + dir + " " + contentId(data));
+            placing(side, dir, killed);
             side.write(dir, data);
             count("folder to file");
         }
+    }
+
+    private static Map<String, String> filesUnder(Map<String, String> tree, String dir) {
+        return tree.entrySet().stream()
+                .filter(e -> isUnder(e.getKey(), dir) && ! e.getValue().equals(DIR))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+    }
+
+    /** Contents deleted from side are gone, unless deletes from that side aren't synced and the other side has them */
+    private void deleted(Side side, Map<String, String> files, Set<String> killed) {
+        boolean synced = side == local ? syncLocalDeletes : syncRemoteDeletes;
+        Collection<String> elsewhere = synced ? Set.of() : (side == local ? remote : local).tree().values();
+        files.forEach((path, c) -> {
+            if (elsewhere.contains(c))
+                unsyncedDeletes.computeIfAbsent(side, x -> new HashMap<>()).put(path, c);
+            else
+                killed.add(c);
+        });
+    }
+
+    /** A file put where a delete hasn't been synced yet is, to sync, an edit of what was deleted there */
+    private void placing(Side side, String path, Set<String> killed) {
+        String deleted = unsyncedDeletes.getOrDefault(side, Map.of()).get(path);
+        if (deleted != null)
+            killed.add(deleted);
     }
 
     /** Whether path or one of its ancestors is taken, by anything, or by a file */
@@ -474,18 +531,22 @@ public class SyncFuzz {
 
     private static boolean isAction(String line) {
         String l = line.toLowerCase();
+        // a delete that isn't synced is noted again on every pass, and changes nothing
+        if (l.contains("ignore"))
+            return false;
         return Stream.of("upload", "copying", "moving", "delete", "mkdir", "renam", "set mod time", "conflict")
                 .anyMatch(l::contains);
     }
 
     @Test
     public void fuzz() throws Exception {
-        System.out.println("SyncFuzz seed=" + seed + " steps=" + steps + " remote=" + (peergosRemote ? "peergos" : "local"));
+        System.out.println("SyncFuzz seed=" + seed + " steps=" + steps + " remote=" + (peergosRemote ? "peergos" : "local") +
+                (oneWayDeletes ? " syncLocalDeletes=" + syncLocalDeletes + " syncRemoteDeletes=" + syncRemoteDeletes : "") +
+                (concurrent ? " concurrent" : ""));
         Path localBase = Files.createTempDirectory("sync-fuzz-local");
         Path peergosDir = Files.createTempDirectory("sync-fuzz-state");
-        LocalSide local = new LocalSide("local", localBase);
+        local = new LocalSide("local", localBase);
         LocalFileSystem localFs = new LocalFileSystem(localBase, crypto.hasher);
-        Side remote;
         Supplier<SyncFilesystem> remoteFs;
         PublicKeyHash owner;
         NetworkAccess syncNetwork;
@@ -512,7 +573,7 @@ public class SyncFuzz {
         SyncRun sync = isCancelled -> {
             syncLog = new ArrayList<>();
             List<String> lines = syncLog;
-            DirectorySync.syncDir(localFs, remoteFs.get(), true, true, owner, syncNetwork, state.get(), 32, 5,
+            DirectorySync.syncDir(localFs, remoteFs.get(), syncLocalDeletes, syncRemoteDeletes, owner, syncNetwork, state.get(), 32, 5,
                     peergosDir, crypto, isCancelled, line -> {
                         lines.add(line);
                         if (verbose)
@@ -543,24 +604,69 @@ public class SyncFuzz {
                     count("reset state");
                 } else if (r < 15) {
                     int limit = 1 + rnd.nextInt(300);
+                    boolean crash = rnd.nextBoolean();
                     AtomicInteger checks = new AtomicInteger();
-                    record("sync, cancelled after " + limit + " checks");
+                    record("sync, " + (crash ? "crashing" : "cancelled") + " after " + limit + " checks");
                     try {
-                        sync.run(() -> checks.incrementAndGet() > limit);
+                        sync.run(() -> {
+                            if (checks.incrementAndGet() <= limit)
+                                return false;
+                            if (crash)
+                                throw new Crash();
+                            return true;
+                        });
                         count("sync not reaching its cancel");
-                    } catch (Exception e) {
-                        count("sync cancelled");
+                    } catch (Exception | Crash e) {
+                        count(crash ? "sync crashed" : "sync cancelled");
+                        if (crash)
+                            for (CopyOp op : state.get().getInProgressCopies())
+                                crashedCopies.add((op.isLocalTarget ? local : remote).name() + ":" + op.sourceState.relPath);
                     }
                     base = Optional.empty();
                     continue;
+                } else if (concurrent && r < 40) {
+                    int at = 1 + rnd.nextInt(200), editsDuring = 1 + rnd.nextInt(3);
+                    AtomicInteger checks = new AtomicInteger(), made = new AtomicInteger();
+                    record("sync, editing from check " + at);
+                    try {
+                        sync.run(() -> {
+                            synchronized (this) {
+                                if (checks.incrementAndGet() >= at && made.get() < editsDuring) {
+                                    made.incrementAndGet();
+                                    try {
+                                        edit(rnd.nextBoolean() ? local : remote, killed);
+                                    } catch (RuntimeException e) {
+                                        throw new AssertionError("Edit failed during a sync", e);
+                                    }
+                                    present.addAll(local.tree().values());
+                                    present.addAll(remote.tree().values());
+                                }
+                            }
+                            return false;
+                        });
+                        count("sync with edits during it");
+                    } catch (Exception e) {
+                        record("which failed: " + e.getMessage());
+                        count("sync with edits during it failed");
+                    }
+                    // only a sync after the edits has to reconcile them
+                    localBefore = local.tree();
+                    remoteBefore = remote.tree();
+                    present.addAll(localBefore.values());
+                    present.addAll(remoteBefore.values());
+                    base = Optional.empty();
                 }
                 record("sync");
                 sync.run(() -> false);
                 count("sync");
                 TreeMap<String, String> after = check(local, remote, sync, base, localBefore, remoteBefore, present, killed);
-                base = Optional.of(after);
+                // where deletes aren't synced, the sides needn't agree on what was last synced
+                base = oneWayDeletes ? Optional.empty() : Optional.of(after);
                 present.clear();
                 killed.clear();
+                unsyncedDeletes.clear();
+                crashedCopies.clear();
+                mayLose.clear();
             }
         } catch (Throwable t) {
             int from = Math.max(0, log.size() - 60);
@@ -582,13 +688,21 @@ public class SyncFuzz {
                                           Set<String> present,
                                           Set<String> killed) throws IOException {
         TreeMap<String, String> localAfter = local.tree(), remoteAfter = remote.tree();
-        if (! localAfter.equals(remoteAfter))
-            throw new AssertionError("Sides differ after a sync:\n" + diff(localAfter, remoteAfter) +
+        List<String> unexplained = differences(localAfter, remoteAfter);
+        if (! unexplained.isEmpty())
+            throw new AssertionError("Sides differ after a sync:\n" + String.join("\n", unexplained) +
                     "\nbefore the sync:\n" + diff(localBefore, remoteBefore));
+        Stream.of(localAfter, remoteAfter).flatMap(t -> t.entrySet().stream())
+                .filter(e -> e.getValue().startsWith("<corrupt"))
+                .findFirst()
+                .ifPresent(e -> {
+                    throw new AssertionError(e.getKey() + " is corrupt after a sync: " + e.getValue());
+                });
 
         Set<String> contents = new HashSet<>(localAfter.values());
+        contents.addAll(remoteAfter.values());
         for (String content : present) {
-            if (content.equals(DIR) || content.equals(EMPTY) || killed.contains(content))
+            if (content.equals(DIR) || content.equals(EMPTY) || content.startsWith("<") || killed.contains(content) || mayLose.contains(content))
                 continue;
             if (! contents.contains(content))
                 throw new AssertionError("Lost content " + content + ", which was at " + where(content, localBefore) +
@@ -630,12 +744,29 @@ public class SyncFuzz {
             List<String> actions = syncLog.stream().filter(SyncFuzz::isAction).collect(Collectors.toList());
             if (! actions.isEmpty())
                 throw new AssertionError("A sync straight after a sync did:\n" + String.join("\n", actions));
-            TreeMap<String, String> again = local.tree();
-            if (! again.equals(localAfter) || ! remote.tree().equals(localAfter))
-                throw new AssertionError("A sync straight after a sync changed the trees:\n" + diff(localAfter, again));
+            TreeMap<String, String> again = local.tree(), againRemote = remote.tree();
+            if (! again.equals(localAfter) || ! againRemote.equals(remoteAfter))
+                throw new AssertionError("A sync straight after a sync changed the trees:\n" + diff(localAfter, again) +
+                        "\n" + diff(remoteAfter, againRemote));
             count("stable");
         }
         return localAfter;
+    }
+
+    /** Differences between the sides that a delete that isn't synced doesn't explain */
+    private List<String> differences(Map<String, String> local, Map<String, String> remote) {
+        Set<String> paths = new TreeSet<>(local.keySet());
+        paths.addAll(remote.keySet());
+        List<String> res = new ArrayList<>();
+        for (String p : paths) {
+            String l = local.get(p), r = remote.get(p);
+            if (Objects.equals(l, r))
+                continue;
+            if (l == null && ! syncLocalDeletes || r == null && ! syncRemoteDeletes)
+                continue;
+            res.add("  " + p + ": local " + l + ", remote " + r);
+        }
+        return res;
     }
 
     private static boolean elsewhere(String content, String path, Map<String, String> tree) {
