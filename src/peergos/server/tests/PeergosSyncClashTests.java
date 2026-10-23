@@ -132,7 +132,8 @@ public class PeergosSyncClashTests {
                 service.controller, service.usage, service.serverMessages, crypto.hasher, Arrays.asList("peergos"), false);
         Path base = Files.createTempDirectory("peergos-sync");
         LocalFileSystem local = new LocalFileSystem(base, crypto.hasher);
-        SyncState state = new JdbcTreeState(":memory:");
+        // kept in a file, as the app keeps it, which a pass with nothing changed in Peergos copies
+        SyncState state = new JdbcTreeState(Files.createTempFile("peergos-sync", ".sqlite").toString());
         Files.write(base.resolve("f"), "kept here".getBytes());
         // a version is only recorded for a folder with files in it
         Files.write(base.resolve("g"), "stays".getBytes());
@@ -180,7 +181,8 @@ public class PeergosSyncClashTests {
                 service.controller, service.usage, service.serverMessages, crypto.hasher, Arrays.asList("peergos"), false);
         Path base = Files.createTempDirectory("peergos-sync");
         LocalFileSystem local = new LocalFileSystem(base, crypto.hasher);
-        SyncState state = new JdbcTreeState(":memory:");
+        // kept in a file, as the app keeps it, which a pass with nothing changed in Peergos copies
+        SyncState state = new JdbcTreeState(Files.createTempFile("peergos-sync", ".sqlite").toString());
         Files.write(base.resolve("f"), "original".getBytes());
         Files.write(base.resolve("g"), "stays".getBytes());
         Runnable sync = () -> {

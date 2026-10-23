@@ -616,14 +616,20 @@ public class DirectorySync {
             remoteStatePath = File.createTempFile("peergos-sync", ".sqlite", peergosDir.toFile()).toString();
             // with nothing changed there since, Drive holds what was synced, except for any deletes we haven't synced
             Set<String> remoteDeletes = remoteChange ? Collections.emptySet() : syncedVersions.getRemoteDeletes();
+            if (! remoteChange && ! remoteDeletes.isEmpty())
+                syncedVersions.copyTo(remoteStatePath);
             SyncState remoteState = remoteChange || ! remoteDeletes.isEmpty() ? new JdbcTreeState(remoteStatePath) : syncedVersions;
             long t3 = System.currentTimeMillis();
             if (! remoteChange && ! remoteDeletes.isEmpty()) {
-                for (String path : syncedVersions.allFilePaths())
-                    if (! remoteDeletes.contains(path))
+                if (remoteState.filesCount() == 0) {
+                    // a state kept in memory has no file to copy
+                    for (String path : syncedVersions.allFilePaths())
                         remoteState.add(syncedVersions.byPath(path));
-                for (String dir : syncedVersions.getDirs())
-                    remoteState.addDir(dir);
+                    for (String dir : syncedVersions.getDirs())
+                        remoteState.addDir(dir);
+                }
+                for (String path : remoteDeletes)
+                    remoteState.remove(path);
             }
             if (remoteChange) {
                 // this rehashes anything it cannot match from cache, which for a file of
