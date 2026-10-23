@@ -470,7 +470,7 @@ public class DirectorySync {
                 if (targetFs.showsPartialCopies() || sourceUnchanged && targetAsScanned(targetFs, first, syncedVersions)) {
                     for (CopyOp op : sameTarget)
                         applyCopyOp(srcFs, targetFs, op, isCancelled, LOG);
-                    completeCopy(targetFs, sameTarget, syncedVersions);
+                    completeCopy(srcFs, targetFs, sameTarget, syncedVersions);
                     continue;
                 }
                 LOG.accept("Sync: abandoning an interrupted " + (first.isLocalTarget ? "download" : "upload") + " of " +
@@ -1471,14 +1471,15 @@ public class DirectorySync {
             Optional<LocalDateTime> mod = applyCopyOp(srcFs, targetFs, op, isCancelled, progress);
             res = res.isEmpty() ? mod : mod.isEmpty() ? res : res.map(t -> mod.get().isAfter(t) ? mod.get() : t);
         }
-        completeCopy(targetFs, ops, syncDb);
+        completeCopy(srcFs, targetFs, ops, syncDb);
         return res;
     }
 
     /** Puts a copy in place once all of it has been written, unless the target has been changed while it was being
-     *  written, which the next sync sees as a change on both sides
+     *  written, which the next sync sees as a change on both sides, or the source has, which would leave part of each
+     *  version under the hash of the old one
      */
-    private static void completeCopy(SyncFilesystem targetFs, List<CopyOp> ops, SyncState syncDb) throws IOException {
+    private static void completeCopy(SyncFilesystem srcFs, SyncFilesystem targetFs, List<CopyOp> ops, SyncState syncDb) throws IOException {
         CopyOp op = ops.get(0);
         // a copy written to the target itself changed it
         boolean staged = ! targetFs.partialCopy(op.target).equals(op.target);
@@ -1486,6 +1487,11 @@ public class DirectorySync {
             targetFs.discardCopy(op.target);
             syncDb.finishCopies(ops);
             throw new IllegalStateException(op.target + " changed while it was being synced");
+        }
+        if (staged && ! asScanned(srcFs, op.source, op.sourceState, syncDb)) {
+            targetFs.discardCopy(op.target);
+            syncDb.finishCopies(ops);
+            throw new IllegalStateException(op.source + " changed while it was being copied");
         }
         targetFs.completeCopy(op.target);
         syncDb.finishCopies(ops);

@@ -1286,6 +1286,35 @@ public class SyncTests {
     }
 
     @Test
+    public void sourceRewrittenDuringADownload() throws Exception {
+        // the download took part of each version, under the hash of the first, which the next sync kept as a conflict
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        syncBoth(base1, base2, state);
+        byte[] rewritten = randomText(64 * 1024, 3);
+        AtomicInteger checks = new AtomicInteger();
+        try {
+            download(base1, base2, state, "f.bin", null, randomText(64 * 1024, 2), () -> {
+                if (checks.incrementAndGet() == 5) {
+                    try {
+                        Files.write(base2.resolve("f.bin"), rewritten);
+                        Files.setLastModifiedTime(base2.resolve("f.bin"), java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 60_000));
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+                return false;
+            });
+            Assert.fail("A download of a source that changed completed");
+        } catch (IllegalStateException expected) {}
+
+        syncBoth(base1, base2, state);
+        Map<String, String> expected = Map.of("f.bin", new String(rewritten));
+        Assert.assertEquals(expected, tree(base1));
+        Assert.assertEquals(expected, tree(base2));
+    }
+
+    @Test
     public void newFolderWhereAFileWasRenamedFrom() throws Exception {
         // the new folder's small files were bulk uploaded before the rename, into the file still at that path
         Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
