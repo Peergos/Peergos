@@ -32,6 +32,8 @@ import java.util.stream.*;
  *    FUZZ_REMOTE=local      sync against a second local folder rather than Peergos, which is much faster, for the
  *                           sync logic alone
  *    FUZZ_LARGE=1           sometimes write files of more than one 5 MiB chunk
+ *    FUZZ_DIFF_STAGED=1     stage a download over a local file of more than 1 MiB as only the parts it changes, as
+ *                           one over a file of more than 100 MiB is
  *    FUZZ_NATURAL_MTIMES=1  leave local modification times to the clock, so several edits of a file within a second
  *                           can share one; otherwise each edit moves it on, as a person editing would
  *    FUZZ_VERBOSE=1         print every edit and the sync log as they happen
@@ -587,7 +589,8 @@ public class SyncFuzz {
         Path localBase = Files.createTempDirectory("sync-fuzz-local");
         Path peergosDir = Files.createTempDirectory("sync-fuzz-state");
         local = new LocalSide("local", localBase);
-        LocalFileSystem localFs = new LocalFileSystem(localBase, crypto.hasher);
+        long minDiffStaged = System.getenv("FUZZ_DIFF_STAGED") != null ? 1024 * 1024 : LocalFileSystem.MIN_DIFF_STAGED_SIZE;
+        LocalFileSystem localFs = new LocalFileSystem(localBase, crypto.hasher, minDiffStaged);
         Supplier<SyncFilesystem> remoteFs;
         PublicKeyHash owner;
         NetworkAccess syncNetwork;
@@ -605,7 +608,7 @@ public class SyncFuzz {
         } else {
             Path remoteBase = Files.createTempDirectory("sync-fuzz-remote");
             remote = new LocalSide("remote", remoteBase);
-            LocalFileSystem fs = new LocalFileSystem(remoteBase, crypto.hasher);
+            LocalFileSystem fs = new LocalFileSystem(remoteBase, crypto.hasher, minDiffStaged);
             remoteFs = () -> fs;
             owner = null;
             syncNetwork = null;
