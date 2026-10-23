@@ -149,6 +149,18 @@ public class SyncFuzz {
         }
 
         public TreeMap<String, String> tree() {
+            // an edit during a sync lists the tree while the sync changes it
+            for (int attempt = 0; ; attempt++) {
+                try {
+                    return listTree();
+                } catch (UncheckedIOException e) {
+                    if (attempt >= 20)
+                        throw e;
+                }
+            }
+        }
+
+        private TreeMap<String, String> listTree() {
             TreeMap<String, String> res = new TreeMap<>();
             try (Stream<Path> all = Files.walk(base)) {
                 for (Path p : all.filter(p -> ! p.equals(base) && ! isPartialCopy(p)).collect(Collectors.toList())) {
