@@ -142,11 +142,6 @@ public class LocalFileSystem extends StagedFileSystem {
     }
 
     @Override
-    public void bulkDelete(Path dir, Set<String> children) {
-        children.forEach(kid -> delete(dir.resolve(kid)));
-    }
-
-    @Override
     public Set<String> bulkDeleteFiles(Path dir, java.util.Map<String, FileState> scanned) {
         Set<String> deleted = new java.util.HashSet<>();
         for (java.util.Map.Entry<String, FileState> e : scanned.entrySet()) {

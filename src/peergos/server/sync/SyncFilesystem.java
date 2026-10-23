@@ -52,14 +52,22 @@ public interface SyncFilesystem {
 
     void delete(Path p);
 
-    void bulkDelete(Path dir, Set<String> children);
-
     /** Deletes the files in dir that are still as scanned, and returns the names of those that are now gone. Anything
      *  else there has been changed since, or replaced by a folder.
      */
     default Set<String> bulkDeleteFiles(Path dir, java.util.Map<String, FileState> scanned) {
-        bulkDelete(dir, scanned.keySet());
-        return scanned.keySet();
+        Set<String> gone = new java.util.HashSet<>();
+        for (java.util.Map.Entry<String, FileState> e : scanned.entrySet()) {
+            Path p = dir.resolve(e.getKey());
+            if (! exists(p))
+                gone.add(e.getKey());
+            // only a folder can have something put in it
+            else if (! canCreate(p.resolve("f")) && asScanned(this, p, e.getValue(), null)) {
+                delete(p);
+                gone.add(e.getKey());
+            }
+        }
+        return gone;
     }
 
     void moveTo(Path src, Path target);

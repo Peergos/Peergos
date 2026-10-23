@@ -111,16 +111,6 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     @Override
-    public void bulkDelete(Path dir, Set<String> children) {
-        Optional<FileWrapper> parentOpt = context.getByPath(root.resolve(dir)).join();
-        if (parentOpt.isEmpty())
-            return;
-        FileWrapper parent = parentOpt.get();
-        Set<FileWrapper> kids = parent.getChildren(children, context.crypto.hasher, context.network, false).join();
-        FileWrapper.deleteChildren(parent, kids, dir, context).join();
-    }
-
-    @Override
     public Set<String> bulkDeleteFiles(Path dir, Map<String, FileState> scanned) {
         Optional<FileWrapper> parentOpt = context.getByPath(root.resolve(dir)).join();
         if (parentOpt.isEmpty())
