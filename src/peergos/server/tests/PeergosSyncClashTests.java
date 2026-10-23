@@ -215,6 +215,56 @@ public class PeergosSyncClashTests {
         Assert.assertTrue(context.getByPath(remoteRoot.resolve("f")).join().isEmpty());
     }
 
+    /** A delete in Peergos that isn't synced was remembered after the file was deleted here too, and then after a new
+     *  file there was copied here, so a pass with nothing changed in Peergos took the new file for gone there, and never
+     *  synced its delete here
+     */
+    @Test
+    public void localDeleteOfANewFileWhereAnUnsyncedDeleteWas() throws Exception {
+        UserContext context = signIn("sn" + Math.abs(random.nextInt() % 1_000_000));
+        Path remoteRoot = PathUtil.get(context.username, "sync");
+        context.getUserRoot().join().mkdir("sync", context.network, false, context.mirrorBatId(), crypto).join();
+        String link = context.createSecretLink(remoteRoot.toString(), true, Optional.empty(), Optional.<Integer>empty(), "", false)
+                .join().toLinkString(context.signer.publicKeyHash);
+        NetworkAccess syncNetwork = NetworkAccess.buildBuffered(new CachingStorage(service.storage, 1_000, 50 * 1024),
+                service.bats, service.coreNode, service.account, service.mutable, 0, service.social,
+                service.controller, service.usage, service.serverMessages, crypto.hasher, Arrays.asList("peergos"), false);
+        Path base = Files.createTempDirectory("peergos-sync");
+        LocalFileSystem local = new LocalFileSystem(base, crypto.hasher);
+        SyncState state = new JdbcTreeState(Files.createTempFile("peergos-sync", ".sqlite").toString());
+        Files.write(base.resolve("f"), "original".getBytes());
+        Files.write(base.resolve("g"), "stays".getBytes());
+        Runnable sync = () -> {
+            try {
+                PeergosSyncFS remote = DirectorySync.buildRemote(link, syncNetwork, crypto);
+                DirectorySync.syncDir(local, remote, true, false, context.signer.publicKeyHash, syncNetwork, state, 32, 5,
+                        Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        };
+        sync.run();
+        FileWrapper synced = context.getByPath(remoteRoot.resolve("f")).join().get();
+        synced.remove(context.getByPath(remoteRoot).join().get(), remoteRoot.resolve("f"), context).join();
+        sync.run();
+        Files.delete(base.resolve("f"));
+        sync.run();
+
+        byte[] other = "a new file".getBytes();
+        context.getByPath(remoteRoot).join().get().uploadOrReplaceFile("f", AsyncReader.build(other), 0, other.length,
+                context.network, crypto, x -> {}).join();
+        // a pass that changes Drive itself saves the version it leaves, which the next pass finds unchanged
+        Files.createDirectories(base.resolve("d"));
+        sync.run();
+        Assert.assertArrayEquals(other, Files.readAllBytes(base.resolve("f")));
+        sync.run();
+
+        Files.delete(base.resolve("f"));
+        sync.run();
+        sync.run();
+        Assert.assertTrue(context.getByPath(remoteRoot.resolve("f")).join().isEmpty());
+    }
+
     /** An upload to Peergos is written to the file itself, so finishing it was taken for a change made meanwhile */
     @Test
     public void largeFileUploads() throws Exception {

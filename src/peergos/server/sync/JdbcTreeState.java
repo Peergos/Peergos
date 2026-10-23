@@ -396,6 +396,11 @@ public class JdbcTreeState implements SyncState {
             } catch (SQLException sqe) {
                 throw new IllegalStateException(sqe);
             }
+        // both sides hold it now, so a delete of it that hasn't been synced is over
+        if (hasLocalDelete(fs.relPath))
+            removeLocalDelete(fs.relPath);
+        if (hasRemoteDelete(fs.relPath))
+            removeRemoteDelete(fs.relPath);
     }
 
     @Override

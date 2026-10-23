@@ -17,6 +17,7 @@ public interface SyncState extends Closeable {
 
     Set<String> allFilePaths();
 
+    /** Records a file both sides now hold, which ends any delete of it from either that hasn't been synced */
     void add(FileState fs);
 
     /** Copy this state to a new db at the given path, overwriting anything already there.
