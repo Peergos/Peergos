@@ -194,6 +194,18 @@ public class PeergosSyncClashTests {
      */
     @Test
     public void uploadOverALongerFileStoppedBeforeTheTruncate() throws Exception {
+        uploadOverALongerFileStoppedBeforeTheTruncate(false);
+    }
+
+    /** Nor can it be left to the sync once the file it was copying from has been changed again, as its target is a
+     *  mix of the two that neither side wrote
+     */
+    @Test
+    public void fileEditedAfterAnUploadOverItStoppedBeforeTheTruncate() throws Exception {
+        uploadOverALongerFileStoppedBeforeTheTruncate(true);
+    }
+
+    private void uploadOverALongerFileStoppedBeforeTheTruncate(boolean editedSince) throws Exception {
         UserContext context = signIn("su" + Math.abs(random.nextInt() % 1_000_000));
         Path remoteRoot = PathUtil.get(context.username, "sync");
         PeergosSyncFS remote = syncedFolder(context, remoteRoot);
@@ -227,6 +239,12 @@ public class PeergosSyncClashTests {
                 remote.setBytes(op.target, op.diffStart, in, op.diffEnd - op.diffStart, Optional.of(hash), Optional.of(modified),
                         Optional.empty(), op.props, () -> false, x -> {});
             }
+        if (editedSince) {
+            shorter = new byte[300];
+            random.nextBytes(shorter);
+            Files.write(base.resolve("f"), shorter);
+            Files.setLastModifiedTime(base.resolve("f"), java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() / 1000 * 1000 + 10_000));
+        }
         DirectorySync.syncDir(local, remote, true, true, null, null, state, 32, 5,
                 Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
 

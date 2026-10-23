@@ -474,6 +474,22 @@ public class DirectorySync {
                     completeCopy(srcFs, targetFs, sameTarget, syncedVersions);
                     continue;
                 }
+                if (srcFs.exists(first.source) && targetFs.exists(first.target) && writtenInPlace(targetFs, first)) {
+                    // what has been written is a mix of two versions that neither side made, so put all of the source
+                    // as it is now in its place
+                    LOG.accept("Sync: redoing an interrupted " + (first.isLocalTarget ? "download" : "upload") + " of " +
+                            first.sourceState.relPath + ", as it has changed since");
+                    long size = srcFs.size(first.source);
+                    int chunkSize = first.sourceState.chunkSize;
+                    HashTree hash = srcFs.hashFile(first.source, Optional.empty(), first.sourceState.relPath, syncedVersions, size, chunkSize);
+                    FileState now = new FileState(first.sourceState.relPath, srcFs.getLastModified(first.source), size, hash, chunkSize);
+                    FileState written = new FileState(first.targetState.relPath, targetFs.getLastModified(first.target),
+                            targetFs.size(first.target), first.targetState.hashTree, first.targetState.chunkSize);
+                    syncedVersions.finishCopies(sameTarget);
+                    copyFileDiffAndTruncate(srcFs, targetFs, List.of(new CopyOp(first.isLocalTarget, first.source, first.target,
+                            now, written, 0, size, ResumeUploadProps.random(crypto))), syncedVersions, isCancelled, LOG);
+                    continue;
+                }
                 LOG.accept("Sync: abandoning an interrupted " + (first.isLocalTarget ? "download" : "upload") + " of " +
                         first.sourceState.relPath + ", as it has changed since");
             } catch (Exception e) {
