@@ -333,6 +333,59 @@ public class PeergosSyncClashTests {
         Assert.assertArrayEquals(shorter, uploaded);
     }
 
+    /** An upload of a new file to Peergos that completed before the sync stopped, and was moved there before the next
+     *  sync, was resumed with the same properties, which found all of it uploaded and linked the moved file into the
+     *  folder it was uploaded to as well, under a name that couldn't be read
+     */
+    @Test
+    public void completedUploadMovedInPeergosBeforeItsCopyFinished() throws Exception {
+        for (String movedTo : List.of("d/moved", "renamed")) {
+            UserContext context = signIn("sm" + Math.abs(random.nextInt() % 1_000_000));
+            Path remoteRoot = PathUtil.get(context.username, "sync");
+            PeergosSyncFS remote = syncedFolder(context, remoteRoot);
+            Path base = Files.createTempDirectory("peergos-sync");
+            LocalFileSystem local = new LocalFileSystem(base, crypto.hasher);
+            SyncState state = new JdbcTreeState(":memory:");
+            Files.createDirectories(base.resolve("d"));
+            Files.write(base.resolve("d/keep"), "keep".getBytes());
+            DirectorySync.syncDir(local, remote, true, true, null, null, state, 32, 5,
+                    Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+
+            byte[] data = new byte[3000];
+            random.nextBytes(data);
+            Files.write(base.resolve("f"), data);
+            Path rel = Paths.get("f");
+            HashTree hash = local.hashFile(rel, Optional.empty(), "f", state, data.length, Chunk.DEFAULT_SIZE);
+            FileState source = new FileState("f", local.getLastModified(rel), data.length, hash, Chunk.DEFAULT_SIZE);
+            List<CopyOp> ops = source.diffRanges(null).stream()
+                    .map(d -> new CopyOp(false, local.resolve("f"), remote.resolve("f"), source, null, d.left, d.right,
+                            ResumeUploadProps.random(crypto)))
+                    .collect(java.util.stream.Collectors.toList());
+            state.startCopies(ops);
+            java.time.LocalDateTime modified = java.time.LocalDateTime.ofInstant(
+                    java.time.Instant.ofEpochSecond(source.modificationTime / 1000), java.time.ZoneOffset.UTC);
+            // the upload completes, and the sync stops before it records that
+            for (CopyOp op : ops)
+                try (AsyncReader in = local.getBytes(op.source, op.diffStart)) {
+                    remote.setBytes(op.target, op.diffStart, in, op.diffEnd - op.diffStart, Optional.of(hash), Optional.of(modified),
+                            Optional.empty(), op.props, () -> false, x -> {});
+                }
+            remote.moveTo(Paths.get("f"), Paths.get(movedTo));
+            DirectorySync.syncDir(local, remote, true, true, null, null, state, 32, 5,
+                    Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+
+            Set<String> expected = new TreeSet<>(Set.of("d", "d/keep", "f", movedTo));
+            for (Path dir : List.of(remoteRoot, remoteRoot.resolve("d")))
+                for (FileWrapper child : context.getByPath(dir).join().get().getChildren(crypto.hasher, context.network).join()) {
+                    String name = remoteRoot.relativize(dir.resolve(child.getName())).toString();
+                    Assert.assertTrue(movedTo + ": " + name, expected.remove(name));
+                    Assert.assertTrue(movedTo + ": " + name, context.getByPath(dir.resolve(child.getName())).join().isPresent());
+                }
+            Assert.assertEquals(movedTo, Set.of(), expected);
+            Assert.assertArrayEquals(data, Files.readAllBytes(base.resolve(movedTo)));
+        }
+    }
+
     /** The remote scan took a file with the size and modification time it was synced with as unchanged, but Peergos
      *  keeps modification times to the second, so an edit within one second of the last was missed and overwritten.
      */

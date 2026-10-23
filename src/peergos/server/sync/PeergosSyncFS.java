@@ -256,6 +256,8 @@ public class PeergosSyncFS implements SyncFilesystem {
                 parentOpt = context.getByPath(root.resolve(p).getParent()).join();
             }
             FileWrapper parent = parentOpt.get();
+            if (uploadedAndMoved(parent, props))
+                throw new java.io.FileNotFoundException("An upload of " + relPath + " has completed, and the file been moved since");
             parent.uploadFileWithHash(filename, data, size, hash, modificationTime, thumbnail,
                     Optional.of(props),
                     context.network, context.crypto, isCancelled,
@@ -280,6 +282,22 @@ public class PeergosSyncFS implements SyncFilesystem {
             }).join();
         }
         return modificationTime;
+    }
+
+    /** Whether an upload with props has completed, and the file it made has been moved or renamed since, which a
+     *  resumed upload, finding all of it there, would link into the folder again
+     */
+    private boolean uploadedAndMoved(FileWrapper parent, ResumeUploadProps props) {
+        WritableAbsoluteCapability cap = new WritableAbsoluteCapability(parent.owner(), parent.writer(), props.firstChunkMapKey,
+                Optional.of(props.firstChunkBat), props.baseKey, props.writeKey);
+        Optional<FileWrapper> uploaded = context.network.getFile(cap.readOnly(), context.username).join();
+        if (uploaded.isEmpty())
+            return false;
+        Location uploadedTo = uploaded.get().getPointer().getParentCap().getLocation(parent.owner(), parent.writer());
+        if (! Arrays.equals(uploadedTo.getMapKey(), parent.writableFilePointer().getMapKey()))
+            return true;
+        return parent.getChildrenCapabilities(context.crypto.hasher, context.network).join().stream()
+                .anyMatch(c -> Arrays.equals(c.cap.getMapKey(), props.firstChunkMapKey));
     }
 
     @Override
