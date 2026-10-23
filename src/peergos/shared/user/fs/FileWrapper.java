@@ -2660,8 +2660,10 @@ public class FileWrapper {
                                                                     .removeChildren(v3, c, Arrays.asList(isLink() ? linkPointer.get().capability : getPointer().capability), freshParent.writableFilePointer(),
                                                                             freshParent.entryWriter, net, context.crypto.random, hasher)))
                                                     .thenCompose(v4 -> !ourFile || shared.isEmpty() ? Futures.of(v4) : context.sharedWithCache.clearSharedWith(ourPath, v4, c, net))
+                                                    // each key is a folder of shares, and is given here as a path in that folder
                                                     .thenCompose(v5 -> !ourFile || shared.isEmpty() ? Futures.of(v5) : context.sharedWithCache.addAllSharedWith(shared.entrySet().stream()
-                                                            .collect(Collectors.toMap(e -> PathUtil.getUntrimmed(newPath).resolve(e.getKey().relativize(ourPath)), e -> e.getValue())), v5, c, net))
+                                                            .collect(Collectors.toMap(e -> PathUtil.getUntrimmed(newPath).resolve(ourPath.getParent().relativize(e.getKey())).resolve(getName()),
+                                                                    e -> e.getValue())), v5, c, net))
                                                     .thenCompose(v6 -> !ourFile || shared.isEmpty() || ! renamed ? Futures.of(v6) :
                                                             context.sharedWithCache.rename(PathUtil.getUntrimmed(newPath).resolve(getName()),
                                                                     PathUtil.getUntrimmed(newPath).resolve(newName), v6, c, net))),
