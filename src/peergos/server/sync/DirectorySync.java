@@ -1560,7 +1560,7 @@ public class DirectorySync {
 
     /** Whether a copy over an existing file writes into the file itself, so has changed it if it was interrupted */
     private static boolean writtenInPlace(SyncFilesystem targetFs, CopyOp op) throws IOException {
-        return op.targetState != null && targetFs.exists(op.target) && targetFs.partialCopy(op.target).equals(op.target);
+        return op.targetState != null && isFile(targetFs, op.target) && targetFs.partialCopy(op.target).equals(op.target);
     }
 
     /** Whether the target of a copy is still as the sync saw it when it decided on the copy */

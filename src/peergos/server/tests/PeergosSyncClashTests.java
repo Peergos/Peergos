@@ -242,7 +242,7 @@ public class PeergosSyncClashTests {
      */
     @Test
     public void uploadOverALongerFileStoppedBeforeTheTruncate() throws Exception {
-        uploadOverALongerFileStoppedBeforeTheTruncate(false, false);
+        uploadOverALongerFileStoppedBeforeTheTruncate(false, false, false);
     }
 
     /** Nor can it be left to the sync once the file it was copying from has been changed again, as its target is a
@@ -250,16 +250,22 @@ public class PeergosSyncClashTests {
      */
     @Test
     public void fileEditedAfterAnUploadOverItStoppedBeforeTheTruncate() throws Exception {
-        uploadOverALongerFileStoppedBeforeTheTruncate(true, false);
+        uploadOverALongerFileStoppedBeforeTheTruncate(true, false, false);
     }
 
     /** Nor can it be finished once its folder in Peergos has been replaced by a file, which failed every sync after */
     @Test
     public void folderReplacedByAFileAfterAnUploadInItStoppedBeforeTheTruncate() throws Exception {
-        uploadOverALongerFileStoppedBeforeTheTruncate(false, true);
+        uploadOverALongerFileStoppedBeforeTheTruncate(false, true, false);
     }
 
-    private void uploadOverALongerFileStoppedBeforeTheTruncate(boolean editedSince, boolean folderReplaced) throws Exception {
+    /** Or once the file itself has been replaced by a folder */
+    @Test
+    public void fileReplacedByAFolderAfterAnUploadOverItStoppedBeforeTheTruncate() throws Exception {
+        uploadOverALongerFileStoppedBeforeTheTruncate(false, false, true);
+    }
+
+    private void uploadOverALongerFileStoppedBeforeTheTruncate(boolean editedSince, boolean folderReplaced, boolean replacedByAFolder) throws Exception {
         UserContext context = signIn("su" + Math.abs(random.nextInt() % 1_000_000));
         Path remoteRoot = PathUtil.get(context.username, "sync");
         PeergosSyncFS remote = syncedFolder(context, remoteRoot);
@@ -308,9 +314,17 @@ public class PeergosSyncClashTests {
             context.getByPath(remoteRoot).join().get().uploadOrReplaceFile("d", AsyncReader.build(file), 0, file.length,
                     context.network, crypto, x -> {}).join();
         }
+        if (replacedByAFolder) {
+            Path file = remoteRoot.resolve(rel);
+            context.getByPath(file).join().get().remove(context.getByPath(remoteRoot).join().get(), file, context).join();
+            context.getByPath(remoteRoot).join().get().mkdir(relPath, context.network, false, context.mirrorBatId(), crypto).join();
+            byte[] inFolder = "a file".getBytes();
+            context.getByPath(file).join().get().uploadOrReplaceFile("g", AsyncReader.build(inFolder), 0, inFolder.length,
+                    context.network, crypto, x -> {}).join();
+        }
         DirectorySync.syncDir(local, remote, true, true, null, null, state, 32, 5,
                 Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
-        if (folderReplaced) {
+        if (folderReplaced || replacedByAFolder) {
             Set<String> contents = new HashSet<>();
             try (java.util.stream.Stream<Path> files = Files.walk(base)) {
                 for (Path p : files.filter(Files::isRegularFile).collect(java.util.stream.Collectors.toList()))
