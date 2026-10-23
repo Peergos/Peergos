@@ -467,7 +467,8 @@ public class DirectorySync {
                 // since is someone else's edit, so leave both to the sync below
                 boolean sourceUnchanged = srcFs.exists(first.source) && srcFs.size(first.source) == first.sourceState.size &&
                         srcFs.getLastModified(first.source) == first.sourceState.modificationTime;
-                if (targetFs.showsPartialCopies() || sourceUnchanged && targetAsScanned(targetFs, first, syncedVersions)) {
+                if (targetFs.showsPartialCopies() || sourceUnchanged && (targetAsScanned(targetFs, first, syncedVersions) ||
+                        writtenInPlace(targetFs, first))) {
                     for (CopyOp op : sameTarget)
                         applyCopyOp(srcFs, targetFs, op, isCancelled, LOG);
                     completeCopy(srcFs, targetFs, sameTarget, syncedVersions);
@@ -1330,7 +1331,7 @@ public class DirectorySync {
                 if ((freeSpace - remote.size) * 100 / totalSpace < minPercentFree && (freeSpace - remote.size < 5L * 1024*1024*1024))
                     throw new IllegalStateException("Not enough local free space to sync and keep " + minPercentFree + "% free or 5 GiB free");
                 // if local and remote are the same, update sync and return
-                if (local.equals(remote)) {
+                if (local.size == remote.size && local.hashTree.rootHash.equals(remote.hashTree.rootHash)) {
                     syncedVersions.add(local);
                 } else if (synced.hashTree.rootHash.equals(remote.hashTree.rootHash)) {
                     // synced content is same as remote, so just a local change
@@ -1527,6 +1528,11 @@ public class DirectorySync {
         }
         targetFs.completeCopy(op.target);
         syncDb.finishCopies(ops);
+    }
+
+    /** Whether a copy over an existing file writes into the file itself, so has changed it if it was interrupted */
+    private static boolean writtenInPlace(SyncFilesystem targetFs, CopyOp op) throws IOException {
+        return op.targetState != null && targetFs.partialCopy(op.target).equals(op.target);
     }
 
     /** Whether the target of a copy is still as the sync saw it when it decided on the copy */
