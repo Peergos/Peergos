@@ -599,7 +599,8 @@ public class SyncFuzz {
         }
         AtomicReference<SyncState> state = new AtomicReference<>(new JdbcTreeState(":memory:"));
         SyncRun sync = isCancelled -> {
-            syncLog = new ArrayList<>();
+            // downloads run in parallel, and log as they go
+            syncLog = Collections.synchronizedList(new ArrayList<>());
             List<String> lines = syncLog;
             DirectorySync.syncDir(localFs, remoteFs.get(), syncLocalDeletes, syncRemoteDeletes, owner, syncNetwork, state.get(), 32, 5,
                     peergosDir, crypto, isCancelled, line -> {
