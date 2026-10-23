@@ -884,7 +884,7 @@ public class DirectorySync {
                     if (hasSynced) { // delete
                         if (syncRemoteDeletes) {
                             LOG.accept("Sync local: delete dir " + dirPath + " " + progress);
-                            localFS.delete(localFS.resolve(dirPath));
+                            deleteDir(localFS, localFS.resolve(dirPath), LOG);
                             syncedVersions.removeDir(dirPath);
                         }
                     } else {
@@ -897,7 +897,7 @@ public class DirectorySync {
                     if (hasSynced) { // delete
                         if (syncLocalDeletes) {
                             LOG.accept("Sync Remote: delete dir " + dirPath + " " + progress);
-                            remoteFS.delete(remoteFS.resolve(dirPath));
+                            deleteDir(remoteFS, remoteFS.resolve(dirPath), LOG);
                             syncedVersions.removeDir(dirPath);
                         }
                     } else {
@@ -1328,6 +1328,20 @@ public class DirectorySync {
         fs.moveTo(aside, to);
     }
 
+    /** Deletes a folder the scan found, unless it has since been replaced by a file, which the next sync will see */
+    private static void deleteDir(SyncFilesystem fs, Path dir, Consumer<String> LOG) {
+        if (isFile(fs, dir)) {
+            LOG.accept("Sync: not deleting " + dir + ", as it has been replaced by a file since");
+            return;
+        }
+        fs.delete(dir);
+    }
+
+    private static boolean isFile(SyncFilesystem fs, Path p) {
+        // only a folder can have something put in it
+        return fs.exists(p) && ! fs.canCreate(p.resolve("f"));
+    }
+
     private static List<String> ancestors(String path) {
         List<String> res = new ArrayList<>();
         for (int slash = path.lastIndexOf("/"); slash > 0; slash = path.lastIndexOf("/", slash - 1))
@@ -1368,7 +1382,7 @@ public class DirectorySync {
                     folderDirs.stream().noneMatch(d -> d.startsWith(prefix));
             if (emptyFolder && deleteEmptyFolder) {
                 LOG.accept("Sync: deleting empty folder " + path + " where the other side has a file");
-                folderFS.delete(folderFS.resolve(path));
+                deleteDir(folderFS, folderFS.resolve(path), LOG);
                 folderState.removeDir(path);
                 syncedVersions.removeDir(path);
             } else {

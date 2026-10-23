@@ -1100,6 +1100,32 @@ public class SyncTests {
     }
 
     @Test
+    public void folderReplacedByAFileWhileItsDeleteSyncs() throws Exception {
+        // the folder's delete deleted the file instead
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        Files.createDirectories(base1.resolve("d"));
+        syncBoth(base1, base2, state);
+
+        Files.delete(base1.resolve("d"));
+        DirectorySync.syncDir(new LocalFileSystem(base1, crypto.hasher), new LocalFileSystem(base2, crypto.hasher), true, true,
+                null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, m -> {
+                    if (m.contains("delete dir d")) {
+                        try {
+                            Files.delete(base2.resolve("d"));
+                            Files.write(base2.resolve("d"), "a new file".getBytes());
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
+                });
+        syncBoth(base1, base2, state);
+        Map<String, String> expected = Map.of("d", "a new file");
+        Assert.assertEquals(expected, tree(base1));
+        Assert.assertEquals(expected, tree(base2));
+    }
+
+    @Test
     public void newFolderWhereAFileWasRenamedFrom() throws Exception {
         // the new folder's small files were bulk uploaded before the rename, into the file still at that path
         Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
