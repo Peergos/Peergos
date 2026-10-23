@@ -400,6 +400,36 @@ public class PeergosSyncClashTests {
         }
     }
 
+    /** An edit in Peergos removes the file's hash, which the scan took for not knowing it, so an edit at the same size
+     *  within the second the file was synced in was taken for no change, and never copied
+     */
+    @Test
+    public void editInPeergosThatRemovesTheHashWithinTheSecondOfTheSync() throws Exception {
+        UserContext context = signIn("sc" + Math.abs(random.nextInt() % 1_000_000));
+        Path remoteRoot = PathUtil.get(context.username, "sync");
+        PeergosSyncFS remote = syncedFolder(context, remoteRoot);
+        Path base = Files.createTempDirectory("peergos-sync");
+        LocalFileSystem local = new LocalFileSystem(base, crypto.hasher);
+        SyncState state = new JdbcTreeState(":memory:");
+        byte[] data = new byte[Chunk.DEFAULT_SIZE + 1024 * 1024];
+        random.nextBytes(data);
+        Files.write(base.resolve("big"), data);
+        DirectorySync.syncDir(local, remote, true, true, null, null, state, 32, 5,
+                Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+
+        byte[] edit = new byte[100];
+        random.nextBytes(edit);
+        int at = Chunk.DEFAULT_SIZE + 1000;
+        FileWrapper synced = context.getByPath(remoteRoot.resolve("big")).join().get();
+        // within the second it was synced in, the worst case
+        synced.overwriteSectionJS(AsyncReader.build(edit), 0, at, 0, at + edit.length, Optional.of(synced.getFileProperties().modified),
+                context.network, crypto, x -> {}).join();
+        System.arraycopy(edit, 0, data, at, edit.length);
+        DirectorySync.syncDir(local, remote, true, true, null, null, state, 32, 5,
+                Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+        Assert.assertArrayEquals(data, Files.readAllBytes(base.resolve("big")));
+    }
+
     /** The remote scan took a file with the size and modification time it was synced with as unchanged, but Peergos
      *  keeps modification times to the second, so an edit within one second of the last was missed and overwritten.
      */

@@ -1727,10 +1727,12 @@ public class DirectorySync {
             String relPath = props.relPath;
             presentFiles.add(relPath);
             FileState atSync = synced.byPath(relPath);
-            // a Peergos file carries its hash, which catches an edit within the same second at the same size
+            // a Peergos file carries its hash, which catches an edit within the same second at the same size, and
+            // loses it when it is written
             boolean sameHashIfKnown = atSync == null || props.meta
-                    .flatMap(m -> m.getFileProperties().treeHash)
-                    .map(h -> h.rootHash.equals(atSync.hashTree.rootHash))
+                    .map(m -> m.getFileProperties().treeHash
+                            .map(h -> h.rootHash.equals(atSync.hashTree.rootHash))
+                            .orElse(false))
                     .orElse(true);
             if (atSync != null && atSync.modificationTime == props.modifiedTime && atSync.size == props.size && sameHashIfKnown) {
                 res.add(atSync);
