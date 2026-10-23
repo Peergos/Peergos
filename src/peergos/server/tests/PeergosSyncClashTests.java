@@ -242,7 +242,7 @@ public class PeergosSyncClashTests {
      */
     @Test
     public void uploadOverALongerFileStoppedBeforeTheTruncate() throws Exception {
-        uploadOverALongerFileStoppedBeforeTheTruncate(false);
+        uploadOverALongerFileStoppedBeforeTheTruncate(false, false);
     }
 
     /** Nor can it be left to the sync once the file it was copying from has been changed again, as its target is a
@@ -250,32 +250,40 @@ public class PeergosSyncClashTests {
      */
     @Test
     public void fileEditedAfterAnUploadOverItStoppedBeforeTheTruncate() throws Exception {
-        uploadOverALongerFileStoppedBeforeTheTruncate(true);
+        uploadOverALongerFileStoppedBeforeTheTruncate(true, false);
     }
 
-    private void uploadOverALongerFileStoppedBeforeTheTruncate(boolean editedSince) throws Exception {
+    /** Nor can it be finished once its folder in Peergos has been replaced by a file, which failed every sync after */
+    @Test
+    public void folderReplacedByAFileAfterAnUploadInItStoppedBeforeTheTruncate() throws Exception {
+        uploadOverALongerFileStoppedBeforeTheTruncate(false, true);
+    }
+
+    private void uploadOverALongerFileStoppedBeforeTheTruncate(boolean editedSince, boolean folderReplaced) throws Exception {
         UserContext context = signIn("su" + Math.abs(random.nextInt() % 1_000_000));
         Path remoteRoot = PathUtil.get(context.username, "sync");
         PeergosSyncFS remote = syncedFolder(context, remoteRoot);
         Path base = Files.createTempDirectory("peergos-sync");
         LocalFileSystem local = new LocalFileSystem(base, crypto.hasher);
         SyncState state = new JdbcTreeState(":memory:");
+        String relPath = folderReplaced ? "d/f" : "f";
+        Path rel = Paths.get(relPath);
         byte[] original = new byte[1552];
         random.nextBytes(original);
-        Files.write(base.resolve("f"), original);
+        Files.createDirectories(base.resolve(rel).getParent());
+        Files.write(base.resolve(rel), original);
         DirectorySync.syncDir(local, remote, true, true, null, null, state, 32, 5,
                 Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
 
         byte[] shorter = new byte[202];
         random.nextBytes(shorter);
-        Files.write(base.resolve("f"), shorter);
-        Files.setLastModifiedTime(base.resolve("f"), java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() / 1000 * 1000 + 5_000));
-        Path rel = Paths.get("f");
-        FileState synced = state.byPath("f");
-        HashTree hash = local.hashFile(rel, Optional.empty(), "f", state, shorter.length, synced.chunkSize);
-        FileState source = new FileState("f", local.getLastModified(rel), shorter.length, hash, synced.chunkSize);
+        Files.write(base.resolve(rel), shorter);
+        Files.setLastModifiedTime(base.resolve(rel), java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() / 1000 * 1000 + 5_000));
+        FileState synced = state.byPath(relPath);
+        HashTree hash = local.hashFile(rel, Optional.empty(), relPath, state, shorter.length, synced.chunkSize);
+        FileState source = new FileState(relPath, local.getLastModified(rel), shorter.length, hash, synced.chunkSize);
         List<CopyOp> ops = source.diffRanges(synced).stream()
-                .map(d -> new CopyOp(false, local.resolve("f"), remote.resolve("f"), source, synced, d.left, d.right,
+                .map(d -> new CopyOp(false, local.resolve(relPath), remote.resolve(relPath), source, synced, d.left, d.right,
                         ResumeUploadProps.random(crypto)))
                 .collect(java.util.stream.Collectors.toList());
         state.startCopies(ops);
@@ -290,18 +298,34 @@ public class PeergosSyncClashTests {
         if (editedSince) {
             shorter = new byte[300];
             random.nextBytes(shorter);
-            Files.write(base.resolve("f"), shorter);
-            Files.setLastModifiedTime(base.resolve("f"), java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() / 1000 * 1000 + 10_000));
+            Files.write(base.resolve(rel), shorter);
+            Files.setLastModifiedTime(base.resolve(rel), java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() / 1000 * 1000 + 10_000));
+        }
+        if (folderReplaced) {
+            Path folder = remoteRoot.resolve("d");
+            context.getByPath(folder).join().get().remove(context.getByPath(remoteRoot).join().get(), folder, context).join();
+            byte[] file = "a file".getBytes();
+            context.getByPath(remoteRoot).join().get().uploadOrReplaceFile("d", AsyncReader.build(file), 0, file.length,
+                    context.network, crypto, x -> {}).join();
         }
         DirectorySync.syncDir(local, remote, true, true, null, null, state, 32, 5,
                 Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+        if (folderReplaced) {
+            Set<String> contents = new HashSet<>();
+            try (java.util.stream.Stream<Path> files = Files.walk(base)) {
+                for (Path p : files.filter(Files::isRegularFile).collect(java.util.stream.Collectors.toList()))
+                    contents.add(new String(Files.readAllBytes(p)));
+            }
+            Assert.assertTrue(contents.containsAll(Set.of(new String(shorter), "a file")));
+            return;
+        }
 
         try (java.util.stream.Stream<Path> files = Files.list(base)) {
-            Assert.assertEquals(List.of(base.resolve("f")), files.collect(java.util.stream.Collectors.toList()));
+            Assert.assertEquals(List.of(base.resolve(rel)), files.collect(java.util.stream.Collectors.toList()));
         }
-        Assert.assertArrayEquals(shorter, Files.readAllBytes(base.resolve("f")));
+        Assert.assertArrayEquals(shorter, Files.readAllBytes(base.resolve(rel)));
         byte[] uploaded = new byte[shorter.length];
-        Assert.assertEquals(shorter.length, context.getByPath(remoteRoot.resolve("f")).join().get().getSize());
+        Assert.assertEquals(shorter.length, context.getByPath(remoteRoot.resolve(rel)).join().get().getSize());
         try (AsyncReader in = remote.getBytes(rel, 0)) {
             for (int done = 0; done < uploaded.length; )
                 done += in.readIntoArray(uploaded, done, uploaded.length - done).join();

@@ -474,7 +474,7 @@ public class DirectorySync {
                     completeCopy(srcFs, targetFs, sameTarget, syncedVersions);
                     continue;
                 }
-                if (srcFs.exists(first.source) && targetFs.exists(first.target) && writtenInPlace(targetFs, first)) {
+                if (srcFs.exists(first.source) && writtenInPlace(targetFs, first)) {
                     // what has been written is a mix of two versions that neither side made, so put all of the source
                     // as it is now in its place
                     LOG.accept("Sync: redoing an interrupted " + (first.isLocalTarget ? "download" : "upload") + " of " +
@@ -1560,7 +1560,7 @@ public class DirectorySync {
 
     /** Whether a copy over an existing file writes into the file itself, so has changed it if it was interrupted */
     private static boolean writtenInPlace(SyncFilesystem targetFs, CopyOp op) throws IOException {
-        return op.targetState != null && targetFs.partialCopy(op.target).equals(op.target);
+        return op.targetState != null && targetFs.exists(op.target) && targetFs.partialCopy(op.target).equals(op.target);
     }
 
     /** Whether the target of a copy is still as the sync saw it when it decided on the copy */
