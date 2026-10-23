@@ -615,6 +615,30 @@ public class PeergosSyncClashTests {
     /** An upload into a folder that had been replaced in Peergos by a file found the file at the folder's path, and
      *  added the upload to it as if it were a folder, leaving a file that could no longer be read
      */
+    @Test
+    public void uploadIntoAFolderReplacedByAFile() throws Exception {
+        UserContext context = signIn("sf" + Math.abs(random.nextInt() % 1_000_000));
+        Path remoteRoot = PathUtil.get(context.username, "sync");
+        PeergosSyncFS remote = syncedFolder(context, remoteRoot);
+        byte[] file = "a file where the folder was".getBytes();
+        context.getByPath(remoteRoot).join().get().uploadOrReplaceFile("d", AsyncReader.build(file), 0, file.length,
+                context.network, crypto, x -> {}).join();
+
+        byte[] upload = "uploaded into the folder".getBytes();
+        try {
+            remote.setBytes(Paths.get("d/f"), 0, AsyncReader.build(upload), upload.length, Optional.empty(), Optional.empty(),
+                    Optional.empty(), ResumeUploadProps.random(crypto), () -> false, x -> {});
+        } catch (Exception expected) {}
+        FileWrapper d = context.getByPath(remoteRoot.resolve("d")).join().get();
+        Assert.assertFalse(d.isDirectory());
+        byte[] read = new byte[file.length];
+        try (AsyncReader in = d.getInputStream(context.network, crypto, x -> {}).join()) {
+            for (int done = 0; done < read.length; )
+                done += in.readIntoArray(read, done, read.length - done).join();
+        }
+        Assert.assertArrayEquals(file, read);
+    }
+
     /** The remote scan took a file with the size and modification time it was synced with as unchanged, but Peergos
      *  keeps modification times to the second, so an edit within one second of the last was missed and overwritten.
      */

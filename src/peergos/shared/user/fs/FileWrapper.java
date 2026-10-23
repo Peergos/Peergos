@@ -923,6 +923,8 @@ public class FileWrapper {
                                                              ProgressConsumer<Long> monitor) {
         if (! isWritable())
             throw new IllegalStateException("Folder not writable!");
+        if (! isDirectory())
+            throw new IllegalStateException("Cannot upload a file into a file!");
 
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (current, committer) ->
                         (props.isPresent() ?
@@ -2102,6 +2104,8 @@ public class FileWrapper {
                                                         List<NamedRelativeCapability> childCaps,
                                                         NetworkAccess network,
                                                         Crypto crypto) {
+        if (! isDirectory())
+            return Futures.errored(new IllegalStateException("Cannot add a child to a file!"));
         return pointer.fileAccess.addChildrenAndCommit(current, committer,
                 childCaps, writableFilePointer(), signingPair(), mirrorBatId(), network, crypto)
                 .thenApply(newBase -> {
