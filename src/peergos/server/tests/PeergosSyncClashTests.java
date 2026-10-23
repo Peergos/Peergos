@@ -639,6 +639,49 @@ public class PeergosSyncClashTests {
         Assert.assertArrayEquals(file, read);
     }
 
+    /** The bulk upload of new small files replaced a file put at the same path in Peergos after the scan, as if
+     *  it were an older version of the upload, so the file added there was lost
+     */
+    @Test
+    public void fileAddedInPeergosWhileANewFileThereUploads() throws Exception {
+        UserContext context = signIn("sn" + Math.abs(random.nextInt() % 1_000_000));
+        Path remoteRoot = PathUtil.get(context.username, "sync");
+        context.getUserRoot().join().mkdir("sync", context.network, false, context.mirrorBatId(), crypto).join();
+        String link = context.createSecretLink(remoteRoot.toString(), true, Optional.empty(), Optional.<Integer>empty(), "", false)
+                .join().toLinkString(context.signer.publicKeyHash);
+        NetworkAccess syncNetwork = NetworkAccess.buildBuffered(new CachingStorage(service.storage, 1_000, 50 * 1024),
+                service.bats, service.coreNode, service.account, service.mutable, 0, service.social,
+                service.controller, service.usage, service.serverMessages, crypto.hasher, Arrays.asList("peergos"), false);
+        Path base = Files.createTempDirectory("peergos-sync");
+        LocalFileSystem local = new LocalFileSystem(base, crypto.hasher);
+        SyncState state = new JdbcTreeState(":memory:");
+        Files.write(base.resolve("keep"), "keep".getBytes());
+        DirectorySync.syncDir(local, DirectorySync.buildRemote(link, syncNetwork, crypto), true, true, null, null, state, 32, 5,
+                Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+
+        Files.write(base.resolve("f"), "new here".getBytes());
+        byte[] theirs = "new in Peergos".getBytes();
+        try {
+            DirectorySync.syncDir(local, DirectorySync.buildRemote(link, syncNetwork, crypto), true, true, null, null, state, 32, 5,
+                    Files.createTempDirectory("peergos-sync"), crypto, () -> false, m -> {
+                        if (m.contains("remote files in"))
+                            context.getByPath(remoteRoot).join().get().uploadOrReplaceFile("f", AsyncReader.build(theirs), 0,
+                                    theirs.length, context.network, crypto, x -> {}).join();
+                    });
+        } catch (Exception e) {
+            // a sync that finds a file where it was about to put one leaves both to the next
+        }
+        DirectorySync.syncDir(local, DirectorySync.buildRemote(link, syncNetwork, crypto), true, true, null, null, state, 32, 5,
+                Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+
+        Set<String> here = new HashSet<>();
+        try (java.util.stream.Stream<Path> files = Files.list(base)) {
+            for (Path p : files.filter(Files::isRegularFile).collect(java.util.stream.Collectors.toList()))
+                here.add(new String(Files.readAllBytes(p)));
+        }
+        Assert.assertEquals(Set.of("keep", "new here", "new in Peergos"), here);
+    }
+
     /** The remote scan took a file with the size and modification time it was synced with as unchanged, but Peergos
      *  keeps modification times to the second, so an edit within one second of the last was missed and overwritten.
      */

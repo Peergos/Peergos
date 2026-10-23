@@ -381,7 +381,10 @@ public class LocalFileSystem extends StagedFileSystem {
                             throw new IOException("The source of " + file.filename + " has grown since it was scanned");
                         fout.flush();
                     }
-                    Files.move(partial, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                    if (file.overwriteExisting)
+                        Files.move(partial, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                    else // an atomic move would replace a file there
+                        Files.move(partial, target);
                 } catch (IOException e) {
                     try {
                         Files.deleteIfExists(partial);

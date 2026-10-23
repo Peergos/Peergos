@@ -788,7 +788,8 @@ public class DirectorySync {
                                         throw new RuntimeException(e);
                                     }
                                 },
-                                (int) (local.size >> 32), (int) local.size, Optional.of(modificationTime), Optional.of(local.hashTree), false, true,
+                                // a new file, so one there now was put there since the scan, by someone else
+                                (int) (local.size >> 32), (int) local.size, Optional.of(modificationTime), Optional.of(local.hashTree), false, false,
                                 x -> {
                                     // the batch is one call, and the check after it only runs once
                                     // the whole batch is done: without this a stopped sync keeps

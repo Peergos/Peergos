@@ -1169,6 +1169,34 @@ public class SyncTests {
     }
 
     @Test
+    public void fileAddedOnTheOtherSideWhileANewFileThereUploads() throws Exception {
+        // the bulk upload of new small files replaced the file put at the same path after the scan
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        write(base1, "keep", "keep");
+        syncBoth(base1, base2, state);
+
+        write(base1, "f", "new here");
+        try {
+            DirectorySync.syncDir(new LocalFileSystem(base1, crypto.hasher), new LocalFileSystem(base2, crypto.hasher), true, true,
+                    null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, m -> {
+                        if (m.contains("remote files in")) {
+                            try {
+                                write(base2, "f", "new there");
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        }
+                    });
+        } catch (Exception e) {
+            // a sync that finds a file where it was about to put one leaves both to the next
+        }
+        syncBoth(base1, base2, state);
+        Assert.assertEquals(tree(base1), tree(base2));
+        Assert.assertTrue(tree(base1).toString(), tree(base1).values().containsAll(List.of("keep", "new here", "new there")));
+    }
+
+    @Test
     public void editAfterTheScanOfAFileDeletedOnTheOtherSide() throws Exception {
         // the delete was synced over the edit
         Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
