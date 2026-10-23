@@ -242,14 +242,12 @@ public class LocalFileSystem implements SyncFilesystem {
         Path target = root.resolve(p);
         Files.createDirectories(target.getParent());
         Files.move(root.resolve(partialCopyPath(p)), target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        removeEmptyPartialCopiesDir();
     }
 
     @Override
     public void discardCopy(Path p) {
         try {
             Files.deleteIfExists(root.resolve(partialCopyPath(p)));
-            removeEmptyPartialCopiesDir();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -266,16 +264,6 @@ public class LocalFileSystem implements SyncFilesystem {
             Files.delete(dir);
         } catch (IOException e) {
             throw new RuntimeException(e);
-        }
-    }
-
-    private void removeEmptyPartialCopiesDir() {
-        Path dir = root.resolve(PARTIAL_COPIES_DIR);
-        try (Stream<Path> files = Files.list(dir)) {
-            if (files.findAny().isEmpty())
-                Files.delete(dir);
-        } catch (IOException e) {
-            // another copy has just started, or finished and removed it
         }
     }
 

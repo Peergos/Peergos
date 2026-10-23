@@ -847,6 +847,9 @@ public class DirectorySync {
             for (ForkJoinTask<?> download : downloads) {
                 download.join();
             }
+            // every copy is complete, and none is under way to need the folder they were written in
+            localFS.discardCopies();
+            remoteFS.discardCopies();
 
             // all files are in sync, now sync dirs
             Comparator<String> longestFirst = (a, b) -> -a.compareTo(b);
