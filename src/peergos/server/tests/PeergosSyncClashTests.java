@@ -13,6 +13,7 @@ import peergos.shared.util.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
 
 /** A small local file where Peergos has a folder went into a bulk upload, which tried to overwrite the folder,
  *  failed the whole batch with "Cannot get input stream for a directory!", and did so again on every sync.
@@ -428,6 +429,75 @@ public class PeergosSyncClashTests {
         DirectorySync.syncDir(local, remote, true, true, null, null, state, 32, 5,
                 Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
         Assert.assertArrayEquals(data, Files.readAllBytes(base.resolve("big")));
+    }
+
+    /** An upload over a file in Peergos wrote into it whatever had happened to it since the scan, so an edit made there
+     *  after the scan, or while the upload was being written, was lost or left mixed with the upload
+     */
+    @Test
+    public void editInPeergosWhileAnUploadOverItSyncs() throws Exception {
+        for (boolean duringTheWrite : List.of(false, true)) {
+            UserContext context = signIn("sw" + Math.abs(random.nextInt() % 1_000_000));
+            Path remoteRoot = PathUtil.get(context.username, "sync");
+            context.getUserRoot().join().mkdir("sync", context.network, false, context.mirrorBatId(), crypto).join();
+            String link = context.createSecretLink(remoteRoot.toString(), true, Optional.empty(), Optional.<Integer>empty(), "", false)
+                    .join().toLinkString(context.signer.publicKeyHash);
+            // the sync client has a network of its own, so the edit in Peergos is another writer's
+            NetworkAccess syncNetwork = NetworkAccess.buildBuffered(new CachingStorage(service.storage, 1_000, 50 * 1024),
+                    service.bats, service.coreNode, service.account, service.mutable, 0, service.social,
+                    service.controller, service.usage, service.serverMessages, crypto.hasher, Arrays.asList("peergos"), false);
+            Path base = Files.createTempDirectory("peergos-sync");
+            LocalFileSystem local = new LocalFileSystem(base, crypto.hasher);
+            SyncState state = new JdbcTreeState(":memory:");
+            Files.write(base.resolve("f"), "original contents".getBytes());
+            DirectorySync.syncDir(local, DirectorySync.buildRemote(link, syncNetwork, crypto), true, true, null, null, state, 32, 5,
+                    Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+
+            Files.write(base.resolve("f"), "edited here".getBytes());
+            Files.setLastModifiedTime(base.resolve("f"), java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 5_000));
+            byte[] theirs = "edited in Peergos".getBytes();
+            AtomicBoolean writing = new AtomicBoolean(), edited = new AtomicBoolean();
+            Runnable edit = () -> {
+                if (! edited.getAndSet(true))
+                    context.getByPath(remoteRoot).join().get().uploadOrReplaceFile("f", AsyncReader.build(theirs), 0, theirs.length,
+                            context.network, crypto, x -> {}).join();
+            };
+            try {
+                DirectorySync.syncDir(local, DirectorySync.buildRemote(link, syncNetwork, crypto), true, true, null, null, state, 32, 5,
+                        Files.createTempDirectory("peergos-sync"), crypto, () -> {
+                            if (duringTheWrite && writing.get())
+                                edit.run();
+                            return false;
+                        }, m -> {
+                            if (! duringTheWrite && m.contains("remote files in"))
+                                edit.run();
+                            if (m.contains("Copying changes to f"))
+                                writing.set(true);
+                        });
+            } catch (Exception e) {
+                // a sync that finds the file changed while it was being synced leaves it to the next
+            }
+            Assert.assertTrue("during the write " + duringTheWrite, edited.get());
+            DirectorySync.syncDir(local, DirectorySync.buildRemote(link, syncNetwork, crypto), true, true, null, null, state, 32, 5,
+                    Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+
+            Set<String> here = new HashSet<>(), there = new HashSet<>();
+            try (java.util.stream.Stream<Path> files = Files.list(base)) {
+                for (Path p : files.filter(Files::isRegularFile).collect(java.util.stream.Collectors.toList()))
+                    here.add(new String(Files.readAllBytes(p)));
+            }
+            for (FileWrapper child : context.getByPath(remoteRoot).join().get().getChildren(crypto.hasher, context.network).join()) {
+                byte[] data = new byte[(int) child.getSize()];
+                try (AsyncReader in = child.getInputStream(context.network, crypto, x -> {}).join()) {
+                    for (int done = 0; done < data.length; )
+                        done += in.readIntoArray(data, done, data.length - done).join();
+                }
+                there.add(new String(data));
+            }
+            Set<String> expected = Set.of("edited here", "edited in Peergos");
+            Assert.assertEquals("during the write " + duringTheWrite, expected, here);
+            Assert.assertEquals("during the write " + duringTheWrite, expected, there);
+        }
     }
 
     /** The remote scan took a file with the size and modification time it was synced with as unchanged, but Peergos

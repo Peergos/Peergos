@@ -9,6 +9,8 @@ import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.ProgressConsumer;
 import peergos.shared.user.fs.cryptree.CryptreeNode;
+import peergos.shared.storage.PointerCasException;
+import peergos.shared.util.Exceptions;
 import peergos.shared.util.Futures;
 import peergos.shared.util.Pair;
 import peergos.shared.util.PathUtil;
@@ -23,6 +25,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
@@ -282,6 +285,94 @@ public class PeergosSyncFS implements SyncFilesystem {
             }).join();
         }
         return modificationTime;
+    }
+
+    @Override
+    public boolean overwritesInPlace() {
+        return true;
+    }
+
+    @Override
+    public Optional<LocalDateTime> overwrite(SyncFilesystem srcFs,
+                                             List<CopyOp> ops,
+                                             boolean checkTarget,
+                                             Supplier<Boolean> isCancelled,
+                                             Consumer<String> progress) throws IOException {
+        CopyOp first = ops.get(0);
+        Path p = first.target;
+        FileState source = first.sourceState;
+        Optional<FileWrapper> existing = context.getByPath(root.resolve(p)).join();
+        if (existing.isEmpty() || existing.get().isDirectory())
+            throw new ConcurrentChangeException(p + " is no longer a file");
+        FileWrapper f = existing.get();
+        if (f.isDirty()) {
+            FileWrapper ff = f;
+            context.network.synchronizer.applyComplexUpdate(f.owner(), f.signingPair(), (v, c) -> ff.clean(v, c, context.network, context.crypto)
+                    .thenApply(r -> r.right)).join();
+            f = context.getByPath(root.resolve(p)).join().get();
+        }
+        FileWrapper start = f;
+        LocalDateTime modified = LocalDateTime.ofInstant(Instant.ofEpochSecond(source.modificationTime / 1000, 0), ZoneOffset.UTC);
+        ProgressConsumer<Long> reporter = SyncFilesystem.perMiB("Uploaded",
+                ops.stream().mapToLong(op -> op.diffEnd - op.diffStart).sum(), p.toString(), progress);
+        ProgressConsumer<Long> monitor = x -> {
+            if (isCancelled.get())
+                throw new IllegalStateException("Upload cancelled!");
+            reporter.accept(x);
+        };
+        try {
+            context.network.synchronizer.applyComplexUpdate(f.owner(), f.signingPair(), (current, committer) ->
+                    start.getUpdated(current, context.network).thenCompose(now -> {
+                        if (checkTarget && ! hasState(now, first.targetState))
+                            return Futures.errored(new ConcurrentChangeException(p + " has changed since it was scanned"));
+                        return Futures.reduceAll(ops, current, (v, op) -> start.getUpdated(v, context.network)
+                                        .thenCompose(us -> {
+                                            AsyncReader in;
+                                            try {
+                                                in = srcFs.getBytes(op.source, op.diffStart);
+                                            } catch (IOException e) {
+                                                return Futures.errored(e);
+                                            }
+                                            return us.overwriteSection(v, committer, in, op.diffStart, op.diffEnd, Optional.of(modified),
+                                                    context.network, context.crypto, monitor)
+                                                    .whenComplete((r, t) -> in.close());
+                                        }), (a, b) -> b)
+                                .thenCompose(written -> start.getUpdated(written, context.network)
+                                        .thenCompose(us -> us.getSize() > source.size ?
+                                                us.truncate(written, committer, source.size, context.network, context.crypto) :
+                                                Futures.of(written)))
+                                .thenCompose(cut -> start.getUpdated(cut, context.network)
+                                        .thenCompose(us -> us.getHashUpdates(source.hashTree, context.network, context.crypto.hasher)
+                                                .thenCompose(updates -> FileWrapper.bulkSetSameNameProperties(cut, committer, us.owner(),
+                                                        withModified(updates, modified), context.network))));
+                    })).join();
+        } catch (CompletionException e) {
+            Throwable cause = Exceptions.getRootCause(e);
+            if (cause instanceof ConcurrentChangeException)
+                throw (ConcurrentChangeException) cause;
+            // a commit that changes what another has since is refused, and the file's own properties are in every one
+            if (cause instanceof PointerCasException ||
+                    (cause.getMessage() != null && cause.getMessage().toLowerCase().contains("concurrent modification")))
+                throw new ConcurrentChangeException(p + " was changed while it was being synced");
+            throw e;
+        }
+        return Optional.of(modified);
+    }
+
+    /** Whether a file is still as a scan found it, which an edit since, that drops its hash, or replaces it, isn't */
+    private static boolean hasState(FileWrapper f, FileState scanned) {
+        FileProperties props = f.getFileProperties();
+        return props.size == scanned.size && props.treeHash.map(h -> h.rootHash.equals(scanned.hashTree.rootHash)).orElse(false);
+    }
+
+    /** The file's own properties are in the first update, of its first chunk */
+    private static List<FileWrapper.PropsUpdate> withModified(List<FileWrapper.PropsUpdate> updates, LocalDateTime modified) {
+        if (updates.isEmpty())
+            return updates;
+        List<FileWrapper.PropsUpdate> res = new ArrayList<>(updates);
+        FileWrapper.PropsUpdate first = res.get(0);
+        res.set(0, new FileWrapper.PropsUpdate(first.cap, first.meta, first.entryWriter, first.newProps.withModified(modified)));
+        return res;
     }
 
     /** Whether an upload with props has completed, and the file it made has been moved or renamed since, which a

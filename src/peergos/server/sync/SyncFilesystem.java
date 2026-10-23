@@ -123,6 +123,27 @@ public interface SyncFilesystem {
     /** Throws away what any copy has written so far */
     default void discardCopies() {}
 
+    /** Whether a copy over a file that is there writes into the file itself, so is seen part written, which overwrite
+     *  then does instead of setBytes
+     */
+    default boolean overwritesInPlace() {
+        return false;
+    }
+
+    /** Writes ops, which are all over the one file at their target, from srcFs, cuts the file to the source's size and
+     *  gives it the source's hash, as one change. That fails with a ConcurrentChangeException, and writes nothing more,
+     *  if anyone else changes the file while it is written, or, if checkTarget, if it isn't still the ops' target state.
+     *
+     * @return The actual modification time the filesystem returns after write
+     */
+    default Optional<LocalDateTime> overwrite(SyncFilesystem srcFs,
+                                              List<CopyOp> ops,
+                                              boolean checkTarget,
+                                              Supplier<Boolean> isCancelled,
+                                              Consumer<String> progress) throws IOException {
+        throw new UnsupportedOperationException();
+    }
+
     void uploadSubtree(Stream<FileWrapper.FolderUploadProperties> directories);
 
     Optional<Thumbnail> getThumbnail(Path p);
