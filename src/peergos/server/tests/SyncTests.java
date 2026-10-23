@@ -1100,6 +1100,22 @@ public class SyncTests {
     }
 
     @Test
+    public void newFolderWhereAFileWasRenamedFrom() throws Exception {
+        // the new folder's small files were bulk uploaded before the rename, into the file still at that path
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        write(base1, "x.txt", "file");
+        syncBoth(base1, base2, state);
+
+        Files.move(base1.resolve("x.txt"), base1.resolve("y.txt"));
+        write(base1, "x.txt/doc.pdf", "doc");
+        syncBoth(base1, base2, state);
+        Map<String, String> expected = Map.of("x.txt", "dir", "x.txt/doc.pdf", "doc", "y.txt", "file");
+        Assert.assertEquals(expected, tree(base1));
+        Assert.assertEquals(expected, tree(base2));
+    }
+
+    @Test
     public void folderMovedAfterAnInterruptedDownload() throws Exception {
         // the part written moved with its folder, out of reach of the resume, and was synced as a file of its own
         for (boolean crash : List.of(false, true)) {

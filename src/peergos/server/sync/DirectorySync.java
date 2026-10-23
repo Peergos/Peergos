@@ -663,7 +663,9 @@ public class DirectorySync {
                 FileState synced = syncedVersions.byPath(relativePath);
                 FileState local = localState.byPath(relativePath);
                 FileState remote = remoteState.byPath(relativePath);
-                boolean isSmallRemoteCopy = synced == null && remote == null && local.size < FileProperties.chunkSizeForNewFiles();
+                // a file under a path the other side still has a file at waits for that to be moved or deleted
+                boolean isSmallRemoteCopy = synced == null && remote == null && local.size < FileProperties.chunkSizeForNewFiles() &&
+                        ancestors(relativePath).stream().noneMatch(a -> remoteState.byPath(a) != null);
                 if (isSmallRemoteCopy) {
                     List<FileState> remoteByHash = remoteState.byHash(local.hashTree.rootHash);
                     List<FileState> localByHash = localState.byHash(local.hashTree.rootHash);
@@ -811,7 +813,14 @@ public class DirectorySync {
             List<ForkJoinTask<?>> downloads = new ArrayList<>();
             AtomicInteger maxDownloadConcurrency = new AtomicInteger(maxParallelism);
 
-            for (String relativePath : allChangedPaths) {
+            // a file under a path either side has a file at waits for that file to be moved or deleted, which can be
+            // done from a path that sorts after it
+            List<String> ordered = new ArrayList<>(), blocked = new ArrayList<>();
+            for (String path : allChangedPaths)
+                (ancestors(path).stream().anyMatch(a -> localState.byPath(a) != null || remoteState.byPath(a) != null) ?
+                        blocked : ordered).add(path);
+            ordered.addAll(blocked);
+            for (String relativePath : ordered) {
                 if (doneFiles.contains(relativePath))
                     continue;
                 if (isCancelled.get())
