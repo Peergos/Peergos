@@ -32,6 +32,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -1342,6 +1343,40 @@ public class SyncTests {
         Map<String, String> expected = Map.of("f", new String(grown));
         Assert.assertEquals(expected, tree(base1));
         Assert.assertEquals(expected, tree(base2));
+    }
+
+    @Test
+    public void failedDownloadStopsTheOthersBeforeTheSyncReturns() throws Exception {
+        // the sync failed with the first, and left the others running into the next sync
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        syncBoth(base1, base2, state);
+        for (int i = 0; i < 6; i++)
+            Files.write(base2.resolve("f" + i), randomText(3 * 1024 * 1024, i));
+        AtomicBoolean returned = new AtomicBoolean(false);
+        AtomicInteger lateLines = new AtomicInteger();
+        try {
+            DirectorySync.syncDir(new LocalFileSystem(base1, crypto.hasher), new LocalFileSystem(base2, crypto.hasher), true, true,
+                    null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, m -> {
+                        if (returned.get())
+                            lateLines.incrementAndGet();
+                        if (m.contains("Copying f0"))
+                            throw new IllegalStateException("a failed download");
+                        // the others are still going when the first fails
+                        if (m.contains("Copying f")) {
+                            try {
+                                Thread.sleep(1_000);
+                            } catch (InterruptedException e) {}
+                        }
+                    });
+            Assert.fail("The sync didn't fail");
+        } catch (IllegalStateException expected) {}
+        returned.set(true);
+        Thread.sleep(2_000);
+        Assert.assertEquals(0, lateLines.get());
+
+        syncBoth(base1, base2, state);
+        Assert.assertEquals(tree(base2), tree(base1));
     }
 
     @Test

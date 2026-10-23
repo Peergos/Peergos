@@ -823,42 +823,70 @@ public class DirectorySync {
                 (ancestors(path).stream().anyMatch(a -> localState.byPath(a) != null || remoteState.byPath(a) != null) ?
                         blocked : ordered).add(path);
             ordered.addAll(blocked);
-            for (String relativePath : ordered) {
-                if (doneFiles.contains(relativePath))
-                    continue;
-                if (isCancelled.get())
-                    return;
-                FileState synced = syncedVersions.byPath(relativePath);
-                FileState local = localState.byPath(relativePath);
-                FileState remote = remoteState.byPath(relativePath);
-                // one that the same contents here could make a move must not race the files it moves
-                boolean isLocalCopy = synced == null && local == null && localState.byHash(remote.hashTree.rootHash).isEmpty();
-                if (isLocalCopy) {
-                    while (maxDownloadConcurrency.get() == 0) {
-                        try {
-                            Thread.sleep(100);
-                        } catch (InterruptedException e) {
+            // a download left running when this returns would race the next sync, so every one is waited for, and
+            // the rest stop at the first failure
+            AtomicBoolean failed = new AtomicBoolean(false);
+            Supplier<Boolean> stopDownload = () -> failed.get() || isCancelled.get();
+            Throwable failure = null;
+            try {
+                for (String relativePath : ordered) {
+                    if (doneFiles.contains(relativePath))
+                        continue;
+                    if (isCancelled.get())
+                        break;
+                    FileState synced = syncedVersions.byPath(relativePath);
+                    FileState local = localState.byPath(relativePath);
+                    FileState remote = remoteState.byPath(relativePath);
+                    // one that the same contents here could make a move must not race the files it moves
+                    boolean isLocalCopy = synced == null && local == null && localState.byHash(remote.hashTree.rootHash).isEmpty();
+                    if (isLocalCopy) {
+                        while (maxDownloadConcurrency.get() == 0) {
+                            try {
+                                Thread.sleep(100);
+                            } catch (InterruptedException e) {
+                            }
                         }
-                    }
-                    maxDownloadConcurrency.decrementAndGet();
-                    downloads.add(ForkJoinPool.commonPool().submit(() -> {
-                        try {
-                            syncFile(synced, local, remote, localFS, remoteFS, syncedVersions, syncedBefore,
-                                    localState, remoteState, syncLocalDeletes, syncRemoteDeletes, doneFiles, minPercentFreeSpace, crypto, isCancelled, LOG, progress);
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
-                        } finally {
-                            maxDownloadConcurrency.incrementAndGet();
-                        }
-                    }));
-                } else
-                    syncFile(synced, local, remote, localFS, remoteFS, syncedVersions, syncedBefore, localState,
-                            remoteState, syncLocalDeletes, syncRemoteDeletes, doneFiles, minPercentFreeSpace, crypto, isCancelled, LOG, progress);
+                        maxDownloadConcurrency.decrementAndGet();
+                        downloads.add(ForkJoinPool.commonPool().submit(() -> {
+                            try {
+                                syncFile(synced, local, remote, localFS, remoteFS, syncedVersions, syncedBefore,
+                                        localState, remoteState, syncLocalDeletes, syncRemoteDeletes, doneFiles, minPercentFreeSpace, crypto, stopDownload, LOG, progress);
+                            } catch (IOException e) {
+                                failed.set(true);
+                                throw new RuntimeException(e);
+                            } catch (RuntimeException | Error e) {
+                                failed.set(true);
+                                throw e;
+                            } finally {
+                                maxDownloadConcurrency.incrementAndGet();
+                            }
+                        }));
+                    } else
+                        syncFile(synced, local, remote, localFS, remoteFS, syncedVersions, syncedBefore, localState,
+                                remoteState, syncLocalDeletes, syncRemoteDeletes, doneFiles, minPercentFreeSpace, crypto, isCancelled, LOG, progress);
+                    if (failed.get())
+                        break;
+                }
+            } catch (IOException | RuntimeException | Error e) {
+                failure = e;
+                failed.set(true);
             }
-
             for (ForkJoinTask<?> download : downloads) {
-                download.join();
+                try {
+                    download.join();
+                } catch (RuntimeException | Error e) {
+                    if (failure == null)
+                        failure = e;
+                }
             }
+            if (failure instanceof IOException)
+                throw (IOException) failure;
+            if (failure instanceof RuntimeException)
+                throw (RuntimeException) failure;
+            if (failure instanceof Error)
+                throw (Error) failure;
+            if (isCancelled.get())
+                return;
             // every copy is complete, and none is under way to need the folder they were written in
             localFS.discardCopies();
             remoteFS.discardCopies();
