@@ -74,6 +74,8 @@ public class SyncFuzz {
     private Side local, remote;
     // per side, paths deleted there since the last checked sync whose contents the other side keeps
     private final Map<Side, Map<String, String>> unsyncedDeletes = new HashMap<>();
+    // per side, where contents moved there since the last checked sync were before, which is still where sync has them
+    private final Map<Side, Map<String, String>> movedFrom = new HashMap<>();
     // side:path of copies a crash interrupted, and edits made to them since, which resuming may not be able to tell
     // from the part the copy wrote, as nothing recorded where it stopped
     private final Set<String> crashedCopies = new HashSet<>();
@@ -445,6 +447,7 @@ public class SyncFuzz {
                 return;
             record(s + ": rename " + from + " -> " + to);
             placing(side, to, killed);
+            moving(side, tree, from);
             side.move(from, to);
             count("rename");
         } else if (op < 77) {
@@ -457,6 +460,7 @@ public class SyncFuzz {
                 return;
             record(s + ": move " + from + " -> " + to);
             placing(side, to, killed);
+            moving(side, tree, from);
             side.move(from, to);
             count("move");
         } else if (op < 82 && ! files.isEmpty()) {
@@ -513,11 +517,20 @@ public class SyncFuzz {
         boolean synced = side == local ? syncLocalDeletes : syncRemoteDeletes;
         Collection<String> elsewhere = synced ? Set.of() : (side == local ? remote : local).tree().values();
         files.forEach((path, c) -> {
-            if (elsewhere.contains(c))
-                unsyncedDeletes.computeIfAbsent(side, x -> new HashMap<>()).put(path, c);
-            else
+            if (elsewhere.contains(c)) {
+                Map<String, String> deletes = unsyncedDeletes.computeIfAbsent(side, x -> new HashMap<>());
+                deletes.put(path, c);
+                String before = movedFrom.getOrDefault(side, Map.of()).get(c);
+                if (before != null)
+                    deletes.put(before, c);
+            } else
                 killed.add(c);
         });
+    }
+
+    private void moving(Side side, Map<String, String> tree, String from) {
+        Map<String, String> files = tree.get(from).equals(DIR) ? filesUnder(tree, from) : Map.of(from, tree.get(from));
+        files.forEach((path, c) -> movedFrom.computeIfAbsent(side, x -> new HashMap<>()).putIfAbsent(c, path));
     }
 
     /** A file put where a delete hasn't been synced yet is, to sync, an edit of what was deleted there */
@@ -694,6 +707,7 @@ public class SyncFuzz {
                 present.clear();
                 killed.clear();
                 unsyncedDeletes.clear();
+                movedFrom.clear();
                 crashedCopies.clear();
                 mayLose.clear();
             }
