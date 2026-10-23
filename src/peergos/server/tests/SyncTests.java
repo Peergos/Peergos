@@ -155,6 +155,11 @@ public class SyncTests {
                 null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
     }
 
+    private static void syncKeepingDeletes(Path base1, Path base2, SyncState state) throws Exception {
+        DirectorySync.syncDir(new LocalFileSystem(base1, crypto.hasher), new LocalFileSystem(base2, crypto.hasher), false, false,
+                null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+    }
+
     private static Map<String, String> tree(Path base) throws IOException {
         Map<String, String> res = new TreeMap<>();
         try (Stream<Path> all = Files.walk(base)) {
@@ -1141,6 +1146,26 @@ public class SyncTests {
         Map<String, String> expected = Map.of("d", "a new file");
         Assert.assertEquals(expected, tree(base1));
         Assert.assertEquals(expected, tree(base2));
+    }
+
+    @Test
+    public void folderMovedOverOneDeletedOnTheOtherSideWhenDeletesAreNotSynced() throws Exception {
+        // the file moved over the one kept here was taken for an edit of it, so the one kept was overwritten
+        for (boolean inDrive : List.of(true, false)) {
+            Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+            SyncState state = new JdbcTreeState(":memory:");
+            write(base1, "a/f", "kept");
+            write(base1, "b/f", "moved");
+            syncKeepingDeletes(base1, base2, state);
+
+            Path moved = inDrive ? base2 : base1;
+            deleteTree(moved.resolve("a"));
+            Files.move(moved.resolve("b"), moved.resolve("a"));
+            syncKeepingDeletes(base1, base2, state);
+            syncKeepingDeletes(base1, base2, state);
+            for (Path base : List.of(base1, base2))
+                Assert.assertTrue("in Drive " + inDrive, tree(base).values().containsAll(List.of("kept", "moved")));
+        }
     }
 
     @Test

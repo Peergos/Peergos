@@ -1195,7 +1195,8 @@ public class DirectorySync {
                         syncedVersions.removeRemoteDelete(remote.relPath);
                     progress.doneFile();
                 } else {
-                    if (syncedVersions.hasRemoteDelete(remote.relPath)) {
+                    if (syncedVersions.hasRemoteDelete(remote.relPath) ||
+                            ! syncRemoteDeletes && movedOver(remote, syncedVersions, remoteTree)) {
                         // remote file was deleted, then a different file with same path was added. Rename local and copy remote
                         LOG.accept("Sync Remote: Concurrent change: " + local.relPath + " renaming local version" + " " + progress);
                         FileState renamed = renameOnConflict(localFs, remoteFs, localFs.resolve(local.relPath), local);
@@ -1276,7 +1277,8 @@ public class DirectorySync {
                         syncedVersions.removeRemoteDelete(remote.relPath);
                     progress.doneFile();
                 } else {
-                    if (syncedVersions.hasLocalDelete(local.relPath)) {
+                    if (syncedVersions.hasLocalDelete(local.relPath) ||
+                            ! syncLocalDeletes && movedOver(local, syncedVersions, localTree)) {
                         // local file was deleted, then a different file with same path was added. Keep remote, rename local.
                         LOG.accept("Sync Remote: Concurrent change: " + local.relPath + " renaming different local version after local delete" + " " + progress);
                         FileState renamed = renameOnConflict(localFs, remoteFs, localFs.resolve(local.relPath), local);
@@ -1544,6 +1546,14 @@ public class DirectorySync {
         }
         targetFs.completeCopy(op.target);
         syncDb.finishCopies(ops);
+    }
+
+    /** Whether a file changed on one side is one moved there from a path where that side no longer has it, which
+     *  deleted the file that was there
+     */
+    private static boolean movedOver(FileState changed, SyncState syncedVersions, SyncState tree) {
+        return syncedVersions.byHash(changed.hashTree.rootHash).stream()
+                .anyMatch(f -> ! f.relPath.equals(changed.relPath) && tree.byPath(f.relPath) == null);
     }
 
     /** Whether a copy over an existing file writes into the file itself, so has changed it if it was interrupted */
