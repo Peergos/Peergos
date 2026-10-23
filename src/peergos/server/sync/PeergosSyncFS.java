@@ -117,6 +117,28 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     @Override
+    public Set<String> bulkDeleteFiles(Path dir, Map<String, FileState> scanned) {
+        Optional<FileWrapper> parentOpt = context.getByPath(root.resolve(dir)).join();
+        if (parentOpt.isEmpty())
+            return Collections.emptySet();
+        FileWrapper parent = parentOpt.get();
+        Set<FileWrapper> kids = parent.getChildren(scanned.keySet(), context.crypto.hasher, context.network, false).join().stream()
+                .filter(f -> asScanned(f, scanned.get(f.getName())))
+                .collect(Collectors.toSet());
+        FileWrapper.deleteChildren(parent, kids, dir, context).join();
+        return kids.stream().map(FileWrapper::getName).collect(Collectors.toSet());
+    }
+
+    private static boolean asScanned(FileWrapper f, FileState scanned) {
+        if (f.isDirectory() || f.getSize() != scanned.size)
+            return false;
+        Optional<HashBranch> hash = f.getFileProperties().treeHash;
+        if (hash.isPresent())
+            return hash.get().rootHash.equals(scanned.hashTree.rootHash);
+        return f.getFileProperties().modified.toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000 == scanned.modificationTime;
+    }
+
+    @Override
     public void moveTo(Path src, Path target) {
         if (Objects.equals(target.getParent(), src.getParent())) { // rename
             Optional<FileWrapper> parentOpt = context.getByPath(root.resolve(src).getParent()).join();

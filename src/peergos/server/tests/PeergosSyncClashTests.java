@@ -87,6 +87,34 @@ public class PeergosSyncClashTests {
         Assert.assertTrue(context.getByPath(remoteRoot.resolve("backups/files")).join().get().isDirectory());
     }
 
+    /** A file deleted here was deleted in Peergos in bulk, as the sync saw it, even after it had been replaced by a folder */
+    @Test
+    public void folderReplacesAFileWhoseDeleteSyncs() throws Exception {
+        UserContext context = signIn("sb" + Math.abs(random.nextInt() % 1_000_000));
+        Path remoteRoot = PathUtil.get(context.username, "sync");
+        PeergosSyncFS remote = syncedFolder(context, remoteRoot);
+        Path base = Files.createTempDirectory("peergos-sync");
+        LocalFileSystem local = new LocalFileSystem(base, crypto.hasher);
+        SyncState state = new JdbcTreeState(":memory:");
+        Files.write(base.resolve("f"), "original".getBytes());
+        DirectorySync.syncDir(local, remote, true, true, null, null, state, 32, 5,
+                Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+
+        Files.delete(base.resolve("f"));
+        byte[] inFolder = "in the folder".getBytes();
+        DirectorySync.syncDir(local, remote, true, true, null, null, state, 32, 5,
+                Files.createTempDirectory("peergos-sync"), crypto, () -> false, m -> {
+                    if (m.contains("remote files in")) {
+                        FileWrapper dir = context.getByPath(remoteRoot).join().get();
+                        context.getByPath(remoteRoot.resolve("f")).join().get().remove(dir, remoteRoot.resolve("f"), context).join();
+                        context.getByPath(remoteRoot).join().get().mkdir("f", context.network, false, context.mirrorBatId(), crypto).join();
+                        context.getByPath(remoteRoot.resolve("f")).join().get().uploadOrReplaceFile("g", AsyncReader.build(inFolder), 0,
+                                inFolder.length, context.network, crypto, x -> {}).join();
+                    }
+                });
+        Assert.assertEquals(inFolder.length, context.getByPath(remoteRoot.resolve("f/g")).join().get().getSize());
+    }
+
     /** With nothing changed in Peergos, a sync took what it had synced for what is there, including a file whose delete
      *  it doesn't sync, so it forgot the delete, and a new file there later replaced the one kept here
      */

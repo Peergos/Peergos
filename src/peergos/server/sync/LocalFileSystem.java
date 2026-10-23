@@ -134,6 +134,23 @@ public class LocalFileSystem implements SyncFilesystem {
     }
 
     @Override
+    public Set<String> bulkDeleteFiles(Path dir, java.util.Map<String, FileState> scanned) {
+        Set<String> deleted = new java.util.HashSet<>();
+        for (java.util.Map.Entry<String, FileState> e : scanned.entrySet()) {
+            Path p = dir.resolve(e.getKey());
+            Path full = root.resolve(p);
+            FileState s = e.getValue();
+            // a scan keeps the synced version of a file whose contents haven't changed, whatever its modification time
+            if (Files.isRegularFile(full, LinkOption.NOFOLLOW_LINKS) && size(p) == s.size && (getLastModified(p) == s.modificationTime ||
+                    hashFile(p, Optional.empty(), s.relPath, null, s.size, s.chunkSize).rootHash.equals(s.hashTree.rootHash))) {
+                delete(p);
+                deleted.add(e.getKey());
+            }
+        }
+        return deleted;
+    }
+
+    @Override
     public void moveTo(Path src, Path target) {
         try {
             Files.createDirectories(root.resolve(target).getParent());

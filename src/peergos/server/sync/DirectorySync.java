@@ -729,7 +729,7 @@ public class DirectorySync {
 
             // do deletes in bulk, before uploads, which may need a deleted file's path for a folder
             if (! localDeletes.isEmpty()) {
-                Map<String, Set<String>> byFolder = new HashMap<>();
+                Map<String, Map<String, FileState>> byFolder = new HashMap<>();
                 for (String relPath : localDeletes) {
                     doneFiles.add(relPath);
                     if (! syncLocalDeletes) {
@@ -737,25 +737,24 @@ public class DirectorySync {
                         syncedVersions.addLocalDelete(relPath);
                     } else {
                         String folderPath = relPath.contains("/") ? relPath.substring(0, relPath.lastIndexOf("/")) : "";
-                        Set<String> folder = byFolder.get(folderPath);
-                        if (folder == null) {
-                            folder = new HashSet<>();
-                            byFolder.put(folderPath, folder);
-                        }
                         String filename = relPath.substring(relPath.lastIndexOf("/") + 1);
-                        folder.add(filename);
+                        byFolder.computeIfAbsent(folderPath, f -> new HashMap<>()).put(filename, remoteState.byPath(relPath));
                     }
                 }
                 byFolder.forEach((dir, files) -> {
                     if (isCancelled.get())
                         throw new RuntimeException("Sync cancelled before deleting from " + dir);
                     LOG.accept("REMOTE: bulk deleting " + files.size() + " from " + remoteFS.resolve(dir) + " " + progress);
-                    remoteFS.bulkDelete(remoteFS.resolve(dir), files);
-                    for (String file : files) {
+                    Set<String> deleted = remoteFS.bulkDeleteFiles(remoteFS.resolve(dir), files);
+                    for (String file : files.keySet()) {
                         String path = dir + (dir.isEmpty() ? "" : "/") + file;
                         progress.doneFile();
-                        LOG.accept("REMOTE: deleted " + path + " " + progress);
-                        syncedVersions.remove(path);
+                        if (deleted.contains(file)) {
+                            LOG.accept("REMOTE: deleted " + path + " " + progress);
+                            syncedVersions.remove(path);
+                        } else
+                            // a change since the scan is a change against a delete, which the next sync keeps
+                            LOG.accept("REMOTE: not deleting " + path + ", as it has changed since " + progress);
                     }
                 });
             }
