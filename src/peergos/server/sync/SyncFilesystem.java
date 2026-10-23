@@ -2,6 +2,7 @@ package peergos.server.sync;
 
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.user.fs.*;
+import peergos.shared.util.Pair;
 import peergos.shared.util.ProgressConsumer;
 import peergos.shared.util.Triple;
 
@@ -116,6 +117,16 @@ public interface SyncFilesystem {
 
     /** Puts a copy to p that is complete in place of p */
     default void completeCopy(Path p) throws IOException {}
+
+    /** Puts a copy to p that is complete, which wrote ranges, and leaves p size long, in place of p */
+    default void completeCopy(Path p, List<Pair<Long, Long>> ranges, long size) throws IOException {
+        completeCopy(p);
+    }
+
+    /** Whether a copy to p stopped while it was being put in place, which only finishing it can make p whole again */
+    default boolean completingCopy(Path p) {
+        return false;
+    }
 
     /** Throws away what a copy to p has written so far */
     default void discardCopy(Path p) {}

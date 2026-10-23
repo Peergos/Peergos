@@ -8,6 +8,7 @@ import peergos.shared.crypto.hash.Hasher;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.ProgressConsumer;
+import peergos.shared.util.Pair;
 import peergos.shared.util.PathUtil;
 import peergos.shared.util.Triple;
 
@@ -15,7 +16,9 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.channels.FileChannel;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -38,13 +41,23 @@ public class LocalFileSystem implements SyncFilesystem {
      *  file of its own
      */
     public static final String PARTIAL_COPIES_DIR = ".peergos-partial-downloads";
+    /** A copy over a file larger than this writes only the parts it changes aside, and copies them into the file once
+     *  they are all here, instead of a copy of all of the file
+     */
+    public static final long MIN_DIFF_STAGED_SIZE = 100 * 1024 * 1024;
     private final Hasher hasher;
+    private final long minDiffStagedSize;
     private final Path root;
     private final boolean hasBackSlashes;
 
     public LocalFileSystem(Path root, Hasher hasher) {
+        this(root, hasher, MIN_DIFF_STAGED_SIZE);
+    }
+
+    public LocalFileSystem(Path root, Hasher hasher, long minDiffStagedSize) {
         this.root = root;
         this.hasher = hasher;
+        this.minDiffStagedSize = minDiffStagedSize;
         if (! root.toFile().exists())
             throw new IllegalStateException("Dir does not exist: " + root);
         this.hasBackSlashes = ! root.getFileSystem().getSeparator().equals("/");
@@ -252,13 +265,26 @@ public class LocalFileSystem implements SyncFilesystem {
         return false;
     }
 
+    private Path withSuffix(Path partial, String suffix) {
+        return partial.resolveSibling(partial.getFileName() + suffix);
+    }
+
     @Override
     public Path partialCopy(Path p) throws IOException {
         Path partial = partialCopyPath(p);
         Path full = root.resolve(partial);
         if (Files.exists(full))
             return partial;
+        Path diff = withSuffix(partial, ".diff");
+        if (Files.exists(root.resolve(diff)))
+            return diff;
         Files.createDirectories(full.getParent());
+        if (Files.isRegularFile(root.resolve(p)) && Files.size(root.resolve(p)) > minDiffStagedSize) {
+            // the parts the copy changes are written here at their own offsets, leaving the rest unwritten
+            Files.newByteChannel(root.resolve(diff), Set.of(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE,
+                    StandardOpenOption.SPARSE)).close();
+            return diff;
+        }
         Path tmp = full.resolveSibling(full.getFileName() + ".tmp");
         if (Files.isRegularFile(root.resolve(p)))
             Files.copy(root.resolve(p), tmp, StandardCopyOption.REPLACE_EXISTING);
@@ -276,8 +302,48 @@ public class LocalFileSystem implements SyncFilesystem {
     }
 
     @Override
+    public void completeCopy(Path p, List<Pair<Long, Long>> ranges, long size) throws IOException {
+        Path partial = partialCopyPath(p);
+        Path diff = root.resolve(withSuffix(partial, ".diff"));
+        if (! Files.exists(diff)) {
+            completeCopy(p);
+            return;
+        }
+        // from here the file is part written, so a stop has to be finished from the parts here, with no network needed
+        Path applying = root.resolve(withSuffix(partial, ".applying"));
+        if (! Files.exists(applying))
+            Files.createFile(applying);
+        Path target = root.resolve(p);
+        try (FileChannel from = FileChannel.open(diff, StandardOpenOption.READ);
+             FileChannel to = FileChannel.open(target, StandardOpenOption.WRITE)) {
+            for (Pair<Long, Long> range : ranges) {
+                for (long at = range.left; at < range.right; ) {
+                    to.position(at);
+                    long copied = from.transferTo(at, range.right - at, to);
+                    if (copied <= 0)
+                        throw new EOFException("The changes to " + p + " end before " + range.right);
+                    at += copied;
+                }
+            }
+            if (to.size() > size)
+                to.truncate(size);
+            to.force(true);
+        }
+        target.toFile().setLastModified(Files.getLastModifiedTime(diff).toMillis());
+        Files.delete(diff);
+        Files.delete(applying);
+    }
+
+    @Override
+    public boolean completingCopy(Path p) {
+        return Files.exists(root.resolve(withSuffix(partialCopyPath(p), ".applying")));
+    }
+
+    @Override
     public void discardCopy(Path p) {
         try {
+            Files.deleteIfExists(root.resolve(withSuffix(partialCopyPath(p), ".diff")));
+            Files.deleteIfExists(root.resolve(withSuffix(partialCopyPath(p), ".applying")));
             Files.deleteIfExists(root.resolve(partialCopyPath(p)));
         } catch (IOException e) {
             throw new RuntimeException(e);

@@ -1423,6 +1423,93 @@ public class SyncTests {
         Assert.assertEquals(expected, tree(base2));
     }
 
+    /** Downloads a change in the middle of a file large enough to have its diff staged into base1, with fs1 */
+    private static byte[] downloadLargeFileChange(Path base1, Path base2, SyncState state, LocalFileSystem fs1,
+                                                  java.util.function.Supplier<Boolean> isCancelled) throws Exception {
+        byte[] original = randomText(12 * 1024 * 1024, 1);
+        Files.write(base1.resolve("big.bin"), original);
+        syncBoth(base1, base2, state);
+        byte[] changed = original.clone();
+        System.arraycopy(randomText(1000, 2), 0, changed, 6 * 1024 * 1024, 1000);
+        Files.write(base2.resolve("big.bin"), changed);
+        Files.setLastModifiedTime(base2.resolve("big.bin"), java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() / 1000 * 1000 + 5_000));
+        LocalFileSystem fs2 = new LocalFileSystem(base2, crypto.hasher);
+        FileState synced = state.byPath("big.bin");
+        Path rel = Paths.get("big.bin");
+        HashTree hash = fs2.hashFile(rel, Optional.empty(), "big.bin", state, changed.length, synced.chunkSize);
+        FileState remote = new FileState("big.bin", fs2.getLastModified(rel), changed.length, hash, synced.chunkSize);
+        List<CopyOp> ops = remote.diffRanges(synced).stream()
+                .map(d -> new CopyOp(true, fs2.resolve("big.bin"), fs1.resolve("big.bin"), remote, synced, d.left, d.right,
+                        ResumeUploadProps.random(crypto)))
+                .collect(Collectors.toList());
+        Assert.assertTrue("only part of it changes", ops.stream().mapToLong(op -> op.diffEnd - op.diffStart).sum() < changed.length);
+        try {
+            DirectorySync.copyFileDiffAndTruncate(fs2, fs1, ops, state, isCancelled, DirectorySync::log);
+            Assert.fail("The download was not interrupted");
+        } catch (RuntimeException | Crash expected) {}
+        Assert.assertFalse(state.getInProgressCopies().isEmpty());
+        Assert.assertArrayEquals("the file is as it was until all of the change is here", original, Files.readAllBytes(base1.resolve("big.bin")));
+        return changed;
+    }
+
+    private static List<Path> staged(Path base) throws IOException {
+        try (Stream<Path> files = Files.list(base.resolve(LocalFileSystem.PARTIAL_COPIES_DIR))) {
+            return files.collect(Collectors.toList());
+        }
+    }
+
+    @Test
+    public void largeFileChangeIsStagedAsItsDiff() throws Exception {
+        // the whole file was copied aside to write the change into, which for a large file is a lot of disk for a small change
+        for (boolean crash : List.of(false, true)) {
+            Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+            SyncState state = new JdbcTreeState(":memory:");
+            AtomicInteger checks = new AtomicInteger();
+            byte[] changed = downloadLargeFileChange(base1, base2, state, new LocalFileSystem(base1, crypto.hasher, 1024 * 1024), () -> {
+                if (checks.incrementAndGet() <= 5)
+                    return false;
+                if (crash)
+                    throw new Crash();
+                return true;
+            });
+            List<Path> staged = staged(base1);
+            Assert.assertEquals(1, staged.size());
+            Assert.assertTrue(staged.get(0).getFileName().toString().endsWith(".diff"));
+
+            DirectorySync.syncDir(new LocalFileSystem(base1, crypto.hasher, 1024 * 1024), new LocalFileSystem(base2, crypto.hasher), true, true,
+                    null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+            Assert.assertArrayEquals("crash " + crash, changed, Files.readAllBytes(base1.resolve("big.bin")));
+            Assert.assertFalse(Files.exists(base1.resolve(LocalFileSystem.PARTIAL_COPIES_DIR)));
+        }
+    }
+
+    @Test
+    public void stopWhileAStagedDiffIsPutInPlace() throws Exception {
+        // the file is part written once its change starts going in, which the next sync took for an edit made meanwhile
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        LocalFileSystem stopsBeforePuttingInPlace = new LocalFileSystem(base1, crypto.hasher, 1024 * 1024) {
+            @Override
+            public void completeCopy(Path p, List<Pair<Long, Long>> ranges, long size) {
+                throw new Crash();
+            }
+        };
+        byte[] changed = downloadLargeFileChange(base1, base2, state, stopsBeforePuttingInPlace, () -> false);
+        // as if it stopped part way through putting the change in
+        Path diff = staged(base1).get(0);
+        Files.createFile(diff.resolveSibling(diff.getFileName().toString().replace(".diff", ".applying")));
+        try (java.nio.channels.FileChannel f = java.nio.channels.FileChannel.open(base1.resolve("big.bin"), java.nio.file.StandardOpenOption.WRITE)) {
+            f.write(java.nio.ByteBuffer.wrap(Arrays.copyOfRange(changed, 6 * 1024 * 1024, 6 * 1024 * 1024 + 500)), 6 * 1024 * 1024);
+        }
+
+        DirectorySync.syncDir(new LocalFileSystem(base1, crypto.hasher, 1024 * 1024), new LocalFileSystem(base2, crypto.hasher), true, true,
+                null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+        Assert.assertArrayEquals(changed, Files.readAllBytes(base1.resolve("big.bin")));
+        try (Stream<Path> files = Files.list(base1)) {
+            Assert.assertEquals(List.of(base1.resolve("big.bin")), files.collect(Collectors.toList()));
+        }
+    }
+
     @Test
     public void folderMovedAfterAnInterruptedDownload() throws Exception {
         // the part written moved with its folder, out of reach of the resume, and was synced as a file of its own

@@ -463,6 +463,12 @@ public class DirectorySync {
             SyncFilesystem srcFs = first.isLocalTarget ? remoteFS : localFS;
             SyncFilesystem targetFs = first.isLocalTarget ? localFS : remoteFS;
             try {
+                if (targetFs.completingCopy(first.target)) {
+                    // all of the copy is here, and part of it already in the target, which only finishing makes whole
+                    targetFs.completeCopy(first.target, ranges(sameTarget), first.sourceState.size);
+                    syncedVersions.finishCopies(sameTarget);
+                    continue;
+                }
                 // a source changed since would be copied with the range and hash of what it was, and a target changed
                 // since is someone else's edit, so leave both to the sync below
                 boolean sourceUnchanged = srcFs.exists(first.source) && srcFs.size(first.source) == first.sourceState.size &&
@@ -1574,8 +1580,12 @@ public class DirectorySync {
             syncDb.finishCopies(ops);
             throw new IllegalStateException(op.source + " changed while it was being copied");
         }
-        targetFs.completeCopy(op.target);
+        targetFs.completeCopy(op.target, ranges(ops), op.sourceState.size);
         syncDb.finishCopies(ops);
+    }
+
+    private static List<Pair<Long, Long>> ranges(List<CopyOp> ops) {
+        return ops.stream().map(op -> new Pair<>(op.diffStart, op.diffEnd)).collect(Collectors.toList());
     }
 
     /** Whether a file changed on one side is one moved there from a path where that side no longer has it, which
