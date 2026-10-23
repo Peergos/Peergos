@@ -164,7 +164,7 @@ public class SyncTests {
         Map<String, String> res = new TreeMap<>();
         try (Stream<Path> all = Files.walk(base)) {
             for (Path p : all.filter(p -> ! p.equals(base)).collect(Collectors.toList()))
-                res.put(base.relativize(p).toString(), Files.isDirectory(p) ? "dir" : new String(Files.readAllBytes(p)));
+                res.put(base.relativize(p).toString().replace(base.getFileSystem().getSeparator(), "/"), Files.isDirectory(p) ? "dir" : new String(Files.readAllBytes(p)));
         }
         return res;
     }

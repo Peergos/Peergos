@@ -391,7 +391,7 @@ public class PeergosSyncClashTests {
             Set<String> expected = new TreeSet<>(Set.of("d", "d/keep", "f", movedTo));
             for (Path dir : List.of(remoteRoot, remoteRoot.resolve("d")))
                 for (FileWrapper child : context.getByPath(dir).join().get().getChildren(crypto.hasher, context.network).join()) {
-                    String name = remoteRoot.relativize(dir.resolve(child.getName())).toString();
+                    String name = remoteRoot.relativize(dir.resolve(child.getName())).toString().replace(dir.getFileSystem().getSeparator(), "/");
                     Assert.assertTrue(movedTo + ": " + name, expected.remove(name));
                     Assert.assertTrue(movedTo + ": " + name, context.getByPath(dir.resolve(child.getName())).join().isPresent());
                 }
