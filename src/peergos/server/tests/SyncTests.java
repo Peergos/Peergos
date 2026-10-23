@@ -1167,6 +1167,34 @@ public class SyncTests {
         Assert.assertEquals(expected, tree(base2));
     }
 
+    @Test(timeout = 60_000)
+    public void sourceShrinksDuringADownload() throws Exception {
+        // the copy kept reading nothing from the end of the source, forever
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        syncBoth(base1, base2, state);
+        byte[] shorter = randomText(1000, 3);
+        AtomicInteger checks = new AtomicInteger();
+        try {
+            download(base1, base2, state, "f.bin", null, randomText(64 * 1024, 2), () -> {
+                if (checks.incrementAndGet() == 5) {
+                    try {
+                        Files.write(base2.resolve("f.bin"), shorter);
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+                return false;
+            });
+            Assert.fail("A download of a source that shrank completed");
+        } catch (IOException | RuntimeException expected) {}
+
+        syncBoth(base1, base2, state);
+        Map<String, String> expected = Map.of("f.bin", new String(shorter));
+        Assert.assertEquals(expected, tree(base1));
+        Assert.assertEquals(expected, tree(base2));
+    }
+
     @Test
     public void newFolderWhereAFileWasRenamedFrom() throws Exception {
         // the new folder's small files were bulk uploaded before the rename, into the file still at that path

@@ -1205,7 +1205,9 @@ public class FileWrapper {
         if (remaining == 0)
             return Futures.of(null);
         return reader.readIntoArray(buf, offset, remaining)
-                .thenCompose(read -> readFully(reader, buf, offset + read, remaining - read));
+                .thenCompose(read -> read <= 0 ?
+                        Futures.errored(new IllegalStateException("The data ended " + remaining + " bytes early")) :
+                        readFully(reader, buf, offset + read, remaining - read));
     }
 
     @JsMethod

@@ -193,6 +193,8 @@ public class LocalFileSystem implements SyncFilesystem {
                 if (isCancelled.get())
                     throw new IllegalStateException("Download cancelled!");
                 int read = fin.readIntoArray(buf, 0, (int) Math.min(buf.length, size - done)).join();
+                if (read <= 0)
+                    throw new EOFException("The source of " + p + " ended " + (size - done) + " bytes early");
                 raf.write(buf, 0, read);
                 done += read;
                 reporter.accept((long) read);
@@ -287,6 +289,8 @@ public class LocalFileSystem implements SyncFilesystem {
                     try (FileOutputStream fout = new FileOutputStream(dir.resolve(file.filename).toFile())) {
                         while (written < file.length) {
                             int read = reader.readIntoArray(buf, 0, (int) Math.min(buf.length, file.length - written)).join();
+                            if (read <= 0)
+                                throw new EOFException("The source of " + file.filename + " ended " + (file.length - written) + " bytes early");
                             fout.write(buf, 0, read);
                             written += read;
                         }
