@@ -305,9 +305,14 @@ public class LocalFileSystem implements SyncFilesystem {
             Path dir = root.resolve(folder.path());
             dir.toFile().mkdirs();
             for (FileWrapper.FileUploadProperties file : folder.files) {
+                // written aside and moved into place, as an upload to Peergos is only seen once it is complete
+                Path target = dir.resolve(file.filename);
+                Path partial = root.resolve(partialCopyPath(root.relativize(target))).resolveSibling(
+                        partialCopyPath(root.relativize(target)).getFileName() + ".upload");
                 try (AsyncReader reader = file.fileData.get()) {
                     long written = 0;
-                    try (FileOutputStream fout = new FileOutputStream(dir.resolve(file.filename).toFile())) {
+                    Files.createDirectories(partial.getParent());
+                    try (FileOutputStream fout = new FileOutputStream(partial.toFile())) {
                         while (written < file.length) {
                             int read = reader.readIntoArray(buf, 0, (int) Math.min(buf.length, file.length - written)).join();
                             if (read <= 0)
@@ -315,10 +320,18 @@ public class LocalFileSystem implements SyncFilesystem {
                             fout.write(buf, 0, read);
                             written += read;
                         }
+                        // more is a change since the scan, which would be uploaded as part of the new version under
+                        // the hash of the old one
+                        if (reader.readIntoArray(buf, 0, 1).join() > 0)
+                            throw new IOException("The source of " + file.filename + " has grown since it was scanned");
                         fout.flush();
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
                     }
+                    Files.move(partial, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException e) {
+                    try {
+                        Files.deleteIfExists(partial);
+                    } catch (IOException f) {}
+                    throw new RuntimeException(e);
                 }
             }
         });

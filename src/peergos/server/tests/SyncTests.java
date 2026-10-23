@@ -1315,6 +1315,36 @@ public class SyncTests {
     }
 
     @Test
+    public void smallFileGrowsAfterTheScan() throws Exception {
+        // the bulk upload took as much of the new version as the scan had seen, under the hash of the old one
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        syncBoth(base1, base2, state);
+        write(base1, "f", "small");
+        // older than the upload, so that what was uploaded is seen as it is
+        Files.setLastModifiedTime(base1.resolve("f"), java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() - 60_000));
+        byte[] grown = randomText(64 * 1024, 4);
+        try {
+            DirectorySync.syncDir(new LocalFileSystem(base1, crypto.hasher), new LocalFileSystem(base2, crypto.hasher), true, true,
+                    null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, m -> {
+                        if (m.contains("remote files in")) {
+                            try {
+                                Files.write(base1.resolve("f"), grown);
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        }
+                    });
+        } catch (RuntimeException e) {
+            // the upload saw the change
+        }
+        syncBoth(base1, base2, state);
+        Map<String, String> expected = Map.of("f", new String(grown));
+        Assert.assertEquals(expected, tree(base1));
+        Assert.assertEquals(expected, tree(base2));
+    }
+
+    @Test
     public void newFolderWhereAFileWasRenamedFrom() throws Exception {
         // the new folder's small files were bulk uploaded before the rename, into the file still at that path
         Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
