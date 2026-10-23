@@ -752,9 +752,11 @@ public class DirectorySync {
                         if (deleted.contains(file)) {
                             LOG.accept("REMOTE: deleted " + path + " " + progress);
                             syncedVersions.remove(path);
-                        } else
-                            // a change since the scan is a change against a delete, which the next sync keeps
+                        } else {
+                            // a change since the scan is a change against a delete, which the next sync copies over as new
                             LOG.accept("REMOTE: not deleting " + path + ", as it has changed since " + progress);
+                            syncedVersions.remove(path);
+                        }
                     }
                 });
             }
@@ -1155,8 +1157,9 @@ public class DirectorySync {
                             // deleted here too since
                             syncedVersions.remove(local.relPath);
                         } else if (syncRemoteDeletes && ! asScanned(localFs, localFs.resolve(local.relPath), local, syncedVersions)) {
-                            // an edit since the scan is a change against a delete, which the next sync keeps
+                            // an edit since the scan is a change against a delete, which the next sync copies over as new
                             LOG.accept("Sync Local: not deleting " + local.relPath + ", as it has changed since " + progress);
+                            syncedVersions.remove(local.relPath);
                         } else if (syncRemoteDeletes) {
                             LOG.accept("Sync Local: delete " + local.relPath + " " + progress);
                             localFs.delete(localFs.resolve(local.relPath));
@@ -1235,8 +1238,9 @@ public class DirectorySync {
                             // deleted there too since
                             syncedVersions.remove(remote.relPath);
                         } else if (syncLocalDeletes && ! asScanned(remoteFs, remoteFs.resolve(remote.relPath), remote, syncedVersions)) {
-                            // an edit since the scan is a change against a delete, which the next sync keeps
+                            // an edit since the scan is a change against a delete, which the next sync copies over as new
                             LOG.accept("Sync Remote: not deleting " + remote.relPath + ", as it has changed since " + progress);
+                            syncedVersions.remove(remote.relPath);
                         } else if (syncLocalDeletes) {
                             LOG.accept("Sync Remote: delete " + remote.relPath + " " + progress);
                             remoteFs.delete(remoteFs.resolve(remote.relPath));

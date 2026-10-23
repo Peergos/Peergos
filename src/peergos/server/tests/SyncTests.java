@@ -1162,6 +1162,8 @@ public class SyncTests {
                         }
                     }
                 });
+        // a record of it as synced would be taken for a copy in Drive by a pass with nothing changed there
+        Assert.assertNull(state.byPath("f"));
         syncBoth(base1, base2, state);
         Map<String, String> expected = Map.of("f", "edited after the scan");
         Assert.assertEquals(expected, tree(base1));
@@ -1249,6 +1251,7 @@ public class SyncTests {
                             }
                         }
                     });
+            Assert.assertNull("folder " + toFolder, state.byPath("f"));
             syncBoth(base1, base2, state);
             Map<String, String> expected = toFolder ? Map.of("f", "dir", "f/g", "in the folder") : Map.of("f", "edited after the scan");
             Assert.assertEquals("folder " + toFolder, expected, tree(base1));
