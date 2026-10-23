@@ -460,24 +460,43 @@ public class DirectorySync {
         for (CopyOp op : ops) {
             SyncFilesystem srcFs = op.isLocalTarget ? remoteFS : localFS;
             try {
-                if (op.isLocalTarget && checkedTargets.add(op.target)) {
+                // a source changed since would be copied with the range and hash of what it was, so leave it to the
+                // sync below, which copies what it is now
+                boolean sourceUnchanged = srcFs.exists(op.source) && srcFs.size(op.source) == op.sourceState.size &&
+                        srcFs.getLastModified(op.source) == op.sourceState.modificationTime;
+                SyncFilesystem targetFs = op.isLocalTarget ? localFS : remoteFS;
+                String direction = op.isLocalTarget ? "download" : "upload";
+                if (checkedTargets.add(op.target)) {
                     List<CopyOp> sameTarget = ops.stream()
-                            .filter(o -> o.isLocalTarget && o.target.equals(op.target))
+                            .filter(o -> o.isLocalTarget == op.isLocalTarget && o.target.equals(op.target))
                             .collect(Collectors.toList());
-                    if (! localFS.exists(op.target))
+                    if (! targetFs.exists(op.target)) {
+                        // a new file may not be visible until it is complete, but an old one was deleted since
+                        if (op.targetState != null)
+                            skippedTargets.add(op.target);
+                    } else if (editedSinceInterruption(targetFs, srcFs, sameTarget, sourceUnchanged, syncedVersions)) {
+                        FileState kept = renameOnConflict(targetFs, srcFs, op.target, op.sourceState);
+                        LOG.accept("Sync: " + op.sourceState.relPath + " was edited after an interrupted " + direction + ", keeping the edit as " + kept.relPath);
                         skippedTargets.add(op.target);
-                    else if (editedSinceInterruptedCopy(localFS, srcFs, sameTarget, syncedVersions)) {
-                        FileState kept = renameOnConflict(localFS, remoteFS, op.target, op.sourceState);
-                        LOG.accept("Sync: " + op.sourceState.relPath + " was edited after an interrupted download, keeping the edit as " + kept.relPath);
+                    } else if (! sourceUnchanged) {
+                        // what the copy left is neither the old version nor the new one, so whatever the other side
+                        // has now replaces it
+                        LOG.accept("Sync: removing the part of " + op.sourceState.relPath + " an interrupted " + direction + " wrote, as its source has changed");
+                        targetFs.delete(op.target);
+                        syncedVersions.remove(op.sourceState.relPath);
                         skippedTargets.add(op.target);
                     }
                 }
-                // a source changed since would be copied with the range and hash of what it was, so leave it to the
-                // sync below, which copies what it is now
-                if (! skippedTargets.contains(op.target) &&
-                        srcFs.exists(op.source) && srcFs.size(op.source) == op.sourceState.size &&
-                        srcFs.getLastModified(op.source) == op.sourceState.modificationTime)
-                    applyCopyOp(srcFs, op.isLocalTarget ? localFS : remoteFS, op, isCancelled, LOG);
+                if (! skippedTargets.contains(op.target) && sourceUnchanged) {
+                    // a crash while resuming would leave the target past where this says it stopped
+                    syncedVersions.removeInterruptedCopy(op.target.toString());
+                    try {
+                        applyCopyOp(srcFs, targetFs, op, isCancelled, LOG);
+                    } catch (IOException | RuntimeException e) {
+                        noteInterruption(targetFs, List.of(op), syncedVersions);
+                        throw e;
+                    }
+                }
             } catch (Exception e) {
                 Throwable cause = Exceptions.getRootCause(e);
                 if (cause instanceof FileNotFoundException) {
@@ -1422,9 +1441,14 @@ public class DirectorySync {
 
         Optional<LocalDateTime> res = Optional.empty();
 
-        for (CopyOp op : ops) {
-            Optional<LocalDateTime> mod = applyCopyOp(srcFs, targetFs, op, isCancelled, progress);
-            res = res.isEmpty() ? mod : mod.isEmpty() ? res : res.map(t -> mod.get().isAfter(t) ? mod.get() : t);
+        try {
+            for (CopyOp op : ops) {
+                Optional<LocalDateTime> mod = applyCopyOp(srcFs, targetFs, op, isCancelled, progress);
+                res = res.isEmpty() ? mod : mod.isEmpty() ? res : res.map(t -> mod.get().isAfter(t) ? mod.get() : t);
+            }
+        } catch (IOException | RuntimeException e) {
+            noteInterruption(targetFs, ops, syncDb);
+            throw e;
         }
 
         // now remove the operation from the db
@@ -1432,14 +1456,42 @@ public class DirectorySync {
         return res;
     }
 
-    /** An interrupted copy leaves each chunk it was to write either as it was or as the source has it, except the one
-     *  it was writing. The copy writes its ranges in order, so the target is new chunks, then at most one partly
-     *  written chunk, then old ones. Anything else was written by someone else. A same size edit within the partly
-     *  written chunk is indistinguishable from the copy.
+    /** Records where the targets of a copy that has stopped part way were left, so that resuming it can tell whether
+     *  anyone has written to them since
+     */
+    private static void noteInterruption(SyncFilesystem targetFs, List<CopyOp> ops, SyncState syncDb) {
+        for (Path target : ops.stream().map(op -> op.target).distinct().collect(Collectors.toList())) {
+            try {
+                if (targetFs.exists(target))
+                    syncDb.setInterruptedCopy(target.toString(), targetFs.size(target), targetFs.getLastModified(target));
+            } catch (Exception e) {
+                // without a record, resuming falls back to checking the target's chunks
+            }
+        }
+    }
+
+    private static boolean editedSinceInterruption(SyncFilesystem targetFs,
+                                                   SyncFilesystem srcFs,
+                                                   List<CopyOp> ops,
+                                                   boolean sourceUnchanged,
+                                                   SyncState syncedVersions) throws IOException {
+        Path target = ops.get(0).target;
+        Optional<long[]> stop = syncedVersions.getInterruptedCopy(target.toString());
+        if (stop.isPresent())
+            return targetFs.size(target) != stop.get()[0] || targetFs.getLastModified(target) != stop.get()[1];
+        return editedSinceInterruptedCopy(targetFs, srcFs, ops, sourceUnchanged, syncedVersions);
+    }
+
+    /** Without a record of where it stopped, as after a crash, an interrupted copy leaves each chunk it was to write
+     *  either as it was or as the source has it, except the one it was writing. The copy writes its ranges in order,
+     *  so the target is new chunks, then at most one partly written chunk, then old ones. Anything else was written by
+     *  someone else. A same size edit within the partly written chunk is indistinguishable from the copy, as is any
+     *  edit within it once the source has changed.
      */
     static boolean editedSinceInterruptedCopy(SyncFilesystem targetFs,
                                               SyncFilesystem srcFs,
                                               List<CopyOp> ops,
+                                              boolean sourceUnchanged,
                                               SyncState syncedVersions) throws IOException {
         CopyOp first = ops.get(0);
         FileState source = first.sourceState, old = first.targetState;
@@ -1474,8 +1526,10 @@ public class DirectorySync {
                 frontierSeen = true;
                 if (isOld)
                     continue;
-                // a copy that has extended the file has written all of this chunk that there is
-                if (size > oldSize && (c != nChunks - 1 || ! sameBytes(targetFs, first.target, srcFs, first.source, c * chunkSize, size)))
+                // a copy that has extended the file has written all of this chunk that there is, which can only be
+                // checked against a source that is still what it copied
+                if (size > oldSize && (c != nChunks - 1 ||
+                        sourceUnchanged && ! sameBytes(targetFs, first.target, srcFs, first.source, c * chunkSize, size)))
                     return true;
                 continue;
             }

@@ -5,6 +5,7 @@ import peergos.shared.user.fs.RootHash;
 
 import java.io.Closeable;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 public interface SyncState extends Closeable {
@@ -56,6 +57,16 @@ public interface SyncState extends Closeable {
     void finishCopies(List<CopyOp> ops);
 
     List<CopyOp> getInProgressCopies();
+
+    /** Records the size and modification time of the target of a copy that stopped part way, until it is started
+     *  again or finished
+     */
+    void setInterruptedCopy(String target, long size, long modified);
+
+    /** The size and modification time of the target when its copy stopped, if it stopped cleanly */
+    Optional<long[]> getInterruptedCopy(String target);
+
+    void removeInterruptedCopy(String target);
 
     void setSnapshot(String basePath, Snapshot s);
 
