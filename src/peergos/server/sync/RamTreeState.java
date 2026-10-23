@@ -101,6 +101,11 @@ class RamTreeState implements SyncState {
     }
 
     @Override
+    public synchronized Set<String> getRemoteDeletes() {
+        return new HashSet<>(remoteDeletes);
+    }
+
+    @Override
     public synchronized void remove(String path) {
         FileState v = filesByPath.remove(path);
         if (v != null) {

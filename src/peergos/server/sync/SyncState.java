@@ -51,6 +51,8 @@ public interface SyncState extends Closeable {
 
     boolean hasRemoteDelete(String p);
 
+    Set<String> getRemoteDeletes();
+
     void startCopies(List<CopyOp> ops);
 
     void finishCopies(List<CopyOp> ops);
