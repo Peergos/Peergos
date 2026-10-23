@@ -2,13 +2,14 @@ package peergos.server.sync;
 
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.user.fs.*;
-import peergos.shared.util.Pair;
 import peergos.shared.util.ProgressConsumer;
 import peergos.shared.util.Triple;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -103,61 +104,64 @@ public interface SyncFilesystem {
 
     AsyncReader getBytes(Path p, long fileOffset) throws IOException;
 
-    /** Whether a copy to a file shows in it before the copy is complete, so it can be left part written */
-    default boolean showsPartialCopies() {
-        return true;
-    }
-
-    /** Where a copy to p writes until it is complete, starting from p as it is if it isn't already under way.
-     *  A filesystem that doesn't show a file until it is complete writes to p itself.
-     */
-    default Path partialCopy(Path p) throws IOException {
-        return p;
-    }
-
-    /** Puts a copy to p that is complete in place of p */
-    default void completeCopy(Path p) throws IOException {}
-
-    /** Puts a copy to p that is complete, which wrote ranges, and leaves p size long, in place of p */
-    default void completeCopy(Path p, List<Pair<Long, Long>> ranges, long size) throws IOException {
-        completeCopy(p);
-    }
-
-    /** Whether a copy to p stopped while it was being put in place, which only finishing it can make p whole again */
-    default boolean completingCopy(Path p) {
-        return false;
-    }
-
-    /** Throws away what a copy to p has written so far */
-    default void discardCopy(Path p) {}
-
-    /** Throws away what op has written so far, wherever it wrote it */
-    default void discardCopy(CopyOp op) {
-        discardCopy(op.target);
-    }
-
-    /** Throws away what any copy has written so far */
-    default void discardCopies() {}
-
-    /** Whether a copy over a file that is there writes into the file itself, so is seen part written, which overwrite
-     *  then does instead of setBytes
-     */
-    default boolean overwritesInPlace() {
-        return false;
-    }
-
-    /** Writes ops, which are all over the one file at their target, from srcFs, cuts the file to the source's size and
-     *  gives it the source's hash, as one change. That fails with a ConcurrentChangeException, and writes nothing more,
-     *  if anyone else changes the file while it is written, or, if checkTarget, if it isn't still the ops' target state.
+    /** Copies ops, which all write to the one file at their target, from srcFs, carrying on from what a copy of the same
+     *  ops that stopped wrote, if resuming. The file is never seen part written, unless it is written in place, as one
+     *  in Peergos is, in one change. Fails with a ConcurrentChangeException, having written nothing more, once the
+     *  source or the target is no longer as the ops expect, after which discardCopy throws away what it wrote.
      *
      * @return The actual modification time the filesystem returns after write
      */
-    default Optional<LocalDateTime> overwrite(SyncFilesystem srcFs,
-                                              List<CopyOp> ops,
-                                              boolean checkTarget,
-                                              Supplier<Boolean> isCancelled,
-                                              Consumer<String> progress) throws IOException {
-        throw new UnsupportedOperationException();
+    Optional<LocalDateTime> copy(SyncFilesystem srcFs,
+                                 List<CopyOp> ops,
+                                 boolean resuming,
+                                 SyncState synced,
+                                 Supplier<Boolean> isCancelled,
+                                 Consumer<String> progress) throws IOException;
+
+    /** Throws away what op has written so far, wherever it wrote it */
+    void discardCopy(CopyOp op);
+
+    /** Throws away what any copy has written so far */
+    void discardCopies();
+
+    /** Writes the range of op's source into to, which is where the copy writes, which may not be its target */
+    static Optional<LocalDateTime> copyRange(SyncFilesystem srcFs,
+                                             SyncFilesystem targetFs,
+                                             Path to,
+                                             CopyOp op,
+                                             Supplier<Boolean> isCancelled,
+                                             Consumer<String> progress) throws IOException {
+        if (isCancelled.get())
+            throw new RuntimeException("Sync cancelled before copying " + op.target);
+        DirectorySync.log("COPY from " + op.source + " to " + op.target + " range=[" + op.diffStart +", " + op.diffEnd+"]");
+        Optional<LocalDateTime> res;
+        try (AsyncReader fin = srcFs.getBytes(op.source, op.diffStart)) {
+            Optional<Thumbnail> thumbnail = srcFs.getThumbnail(op.source);
+            LocalDateTime modified = LocalDateTime.ofInstant(Instant.ofEpochSecond(op.sourceState.modificationTime / 1000, 0), ZoneOffset.UTC);
+            res = targetFs.setBytes(to, op.diffStart, fin, op.diffEnd - op.diffStart, Optional.of(op.sourceState.hashTree),
+                    Optional.of(modified), thumbnail, op.props, isCancelled, progress);
+        }
+        if (isCancelled.get())
+            throw new RuntimeException("Sync cancelled before copying " + op.target);
+        return res;
+    }
+
+    /** Whether a file has the size and modification time it had */
+    static boolean unchanged(SyncFilesystem fs, Path p, FileState was) {
+        return fs.exists(p) && fs.size(p) == was.size && fs.getLastModified(p) == was.modificationTime;
+    }
+
+    /** Whether a file is still as the scan found it, or still absent, and could be put there, if scanned is null */
+    static boolean asScanned(SyncFilesystem fs, Path p, FileState scanned, SyncState syncDb) {
+        if (! fs.exists(p))
+            return scanned == null && fs.canCreate(p);
+        if (scanned == null || fs.size(p) != scanned.size)
+            return false;
+        if (fs.getLastModified(p) == scanned.modificationTime)
+            return true;
+        // a scan keeps the synced version of a file whose contents haven't changed, whatever its modification time
+        return fs.hashFile(p, Optional.empty(), scanned.relPath, syncDb, scanned.size, scanned.chunkSize)
+                .rootHash.equals(scanned.hashTree.rootHash);
     }
 
     void uploadSubtree(Stream<FileWrapper.FolderUploadProperties> directories);

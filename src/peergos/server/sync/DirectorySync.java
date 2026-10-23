@@ -463,51 +463,19 @@ public class DirectorySync {
             SyncFilesystem srcFs = first.isLocalTarget ? remoteFS : localFS;
             SyncFilesystem targetFs = first.isLocalTarget ? localFS : remoteFS;
             try {
-                if (targetFs.completingCopy(first.target)) {
-                    // all of the copy is here, and part of it already in the target, which only finishing makes whole
-                    targetFs.completeCopy(first.target, ranges(sameTarget), first.sourceState.size);
-                    syncedVersions.finishCopies(sameTarget);
-                    continue;
-                }
-                // a source changed since would be copied with the range and hash of what it was, and a target changed
-                // since is someone else's edit, so leave both to the sync below
-                boolean sourceUnchanged = srcFs.exists(first.source) && srcFs.size(first.source) == first.sourceState.size &&
-                        srcFs.getLastModified(first.source) == first.sourceState.modificationTime;
-                if (targetFs.showsPartialCopies() || sourceUnchanged && (targetAsScanned(targetFs, first, syncedVersions) ||
-                        writtenInPlace(targetFs, first))) {
-                    // what has been written into the target is the start of this copy, not the state it expects
-                    copy(srcFs, targetFs, sameTarget, false, syncedVersions, isCancelled, LOG);
-                    continue;
-                }
-                if (srcFs.exists(first.source) && writtenInPlace(targetFs, first)) {
-                    // what has been written is a mix of two versions that neither side made, so put all of the source
-                    // as it is now in its place
-                    LOG.accept("Sync: redoing an interrupted " + (first.isLocalTarget ? "download" : "upload") + " of " +
-                            first.sourceState.relPath + ", as it has changed since");
-                    long size = srcFs.size(first.source);
-                    int chunkSize = first.sourceState.chunkSize;
-                    HashTree hash = srcFs.hashFile(first.source, Optional.empty(), first.sourceState.relPath, syncedVersions, size, chunkSize);
-                    FileState now = new FileState(first.sourceState.relPath, srcFs.getLastModified(first.source), size, hash, chunkSize);
-                    FileState written = new FileState(first.targetState.relPath, targetFs.getLastModified(first.target),
-                            targetFs.size(first.target), first.targetState.hashTree, first.targetState.chunkSize);
-                    syncedVersions.finishCopies(sameTarget);
-                    List<CopyOp> redo = List.of(new CopyOp(first.isLocalTarget, first.source, first.target,
-                            now, written, 0, size, ResumeUploadProps.random(crypto)));
-                    syncedVersions.startCopies(redo);
-                    copy(srcFs, targetFs, redo, false, syncedVersions, isCancelled, LOG);
-                    continue;
-                }
+                copy(srcFs, targetFs, sameTarget, true, syncedVersions, isCancelled, LOG);
+            } catch (ConcurrentChangeException e) {
                 LOG.accept("Sync: abandoning an interrupted " + (first.isLocalTarget ? "download" : "upload") + " of " +
                         first.sourceState.relPath + ", as it has changed since");
             } catch (Exception e) {
                 Throwable cause = Exceptions.getRootCause(e);
-                if (! (cause instanceof FileNotFoundException) && ! (e instanceof ConcurrentChangeException))
+                if (! (cause instanceof FileNotFoundException))
                     throw new RuntimeException(e);
                 // A local file has been added and removed concurrently with us trying to copy it, ignore the copy op now
+                for (CopyOp op : sameTarget)
+                    targetFs.discardCopy(op);
+                syncedVersions.finishCopies(sameTarget);
             }
-            for (CopyOp op : sameTarget)
-                targetFs.discardCopy(op);
-            syncedVersions.finishCopies(sameTarget);
         }
         // anything left was written by a copy that has been forgotten, such as when the sync state is reset
         localFS.discardCopies();
@@ -1187,7 +1155,7 @@ public class DirectorySync {
                         if (syncRemoteDeletes && ! localFs.exists(localFs.resolve(local.relPath))) {
                             // deleted here too since
                             syncedVersions.remove(local.relPath);
-                        } else if (syncRemoteDeletes && ! asScanned(localFs, localFs.resolve(local.relPath), local, syncedVersions)) {
+                        } else if (syncRemoteDeletes && ! SyncFilesystem.asScanned(localFs, localFs.resolve(local.relPath), local, syncedVersions)) {
                             // an edit since the scan is a change against a delete, which the next sync copies over as new
                             LOG.accept("Sync Local: not deleting " + local.relPath + ", as it has changed since " + progress);
                             syncedVersions.remove(local.relPath);
@@ -1269,7 +1237,7 @@ public class DirectorySync {
                         if (syncLocalDeletes && ! remoteFs.exists(remoteFs.resolve(remote.relPath))) {
                             // deleted there too since
                             syncedVersions.remove(remote.relPath);
-                        } else if (syncLocalDeletes && ! asScanned(remoteFs, remoteFs.resolve(remote.relPath), remote, syncedVersions)) {
+                        } else if (syncLocalDeletes && ! SyncFilesystem.asScanned(remoteFs, remoteFs.resolve(remote.relPath), remote, syncedVersions)) {
                             // an edit since the scan is a change against a delete, which the next sync copies over as new
                             LOG.accept("Sync Remote: not deleting " + remote.relPath + ", as it has changed since " + progress);
                             syncedVersions.remove(remote.relPath);
@@ -1529,64 +1497,29 @@ public class DirectorySync {
                                                                   Consumer<String> progress) throws IOException {
         // first write the operation to the db
         syncDb.startCopies(ops);
-        return copy(srcFs, targetFs, ops, true, syncDb, isCancelled, progress);
+        return copy(srcFs, targetFs, ops, false, syncDb, isCancelled, progress);
     }
 
-    /** Runs copies, which are already recorded as started, checking that a target they write into is still the one
-     *  they expect if checkTarget
+    /** Runs copies, which are already recorded as started, and records them as done, or as given up on once someone
+     *  else has changed their source or target, which the next sync sees as a change
      */
     private static Optional<LocalDateTime> copy(SyncFilesystem srcFs,
                                                 SyncFilesystem targetFs,
                                                 List<CopyOp> ops,
-                                                boolean checkTarget,
+                                                boolean resuming,
                                                 SyncState syncDb,
                                                 Supplier<Boolean> isCancelled,
                                                 Consumer<String> progress) throws IOException {
-        if (ops.get(0).targetState != null && targetFs.overwritesInPlace()) {
-            try {
-                Optional<LocalDateTime> res = targetFs.overwrite(srcFs, ops, checkTarget, isCancelled, progress);
-                syncDb.finishCopies(ops);
-                return res;
-            } catch (ConcurrentChangeException e) {
-                // what someone else has written there is theirs, which the next sync sees as a change on both sides
-                syncDb.finishCopies(ops);
-                throw e;
-            }
-        }
-        Optional<LocalDateTime> res = Optional.empty();
-
-        for (CopyOp op : ops) {
-            Optional<LocalDateTime> mod = applyCopyOp(srcFs, targetFs, op, isCancelled, progress);
-            res = res.isEmpty() ? mod : mod.isEmpty() ? res : res.map(t -> mod.get().isAfter(t) ? mod.get() : t);
-        }
-        completeCopy(srcFs, targetFs, ops, syncDb);
-        return res;
-    }
-
-    /** Puts a copy in place once all of it has been written, unless the target has been changed while it was being
-     *  written, which the next sync sees as a change on both sides, or the source has, which would leave part of each
-     *  version under the hash of the old one
-     */
-    private static void completeCopy(SyncFilesystem srcFs, SyncFilesystem targetFs, List<CopyOp> ops, SyncState syncDb) throws IOException {
-        CopyOp op = ops.get(0);
-        // a copy written to the target itself changed it
-        boolean staged = ! targetFs.partialCopy(op.target).equals(op.target);
-        if (staged && ! targetAsScanned(targetFs, op, syncDb)) {
-            targetFs.discardCopy(op);
+        try {
+            Optional<LocalDateTime> res = targetFs.copy(srcFs, ops, resuming, syncDb, isCancelled, progress);
             syncDb.finishCopies(ops);
-            throw new IllegalStateException(op.target + " changed while it was being synced");
-        }
-        if (staged && ! asScanned(srcFs, op.source, op.sourceState, syncDb)) {
-            targetFs.discardCopy(op);
+            return res;
+        } catch (ConcurrentChangeException e) {
+            for (CopyOp op : ops)
+                targetFs.discardCopy(op);
             syncDb.finishCopies(ops);
-            throw new IllegalStateException(op.source + " changed while it was being copied");
+            throw e;
         }
-        targetFs.completeCopy(op.target, ranges(ops), op.sourceState.size);
-        syncDb.finishCopies(ops);
-    }
-
-    private static List<Pair<Long, Long>> ranges(List<CopyOp> ops) {
-        return ops.stream().map(op -> new Pair<>(op.diffStart, op.diffEnd)).collect(Collectors.toList());
     }
 
     /** Whether a file changed on one side is one moved there from a path where that side no longer has it, which
@@ -1595,58 +1528,6 @@ public class DirectorySync {
     private static boolean movedOver(FileState changed, SyncState syncedVersions, SyncState tree) {
         return syncedVersions.byHash(changed.hashTree.rootHash).stream()
                 .anyMatch(f -> ! f.relPath.equals(changed.relPath) && tree.byPath(f.relPath) == null);
-    }
-
-    /** Whether a copy over an existing file writes into the file itself, so has changed it if it was interrupted */
-    private static boolean writtenInPlace(SyncFilesystem targetFs, CopyOp op) throws IOException {
-        return op.targetState != null && targetFs.overwritesInPlace() && isFile(targetFs, op.target);
-    }
-
-    /** Whether the target of a copy is still as the sync saw it when it decided on the copy */
-    private static boolean targetAsScanned(SyncFilesystem targetFs, CopyOp op, SyncState syncDb) {
-        return asScanned(targetFs, op.target, op.targetState, syncDb);
-    }
-
-    /** Whether a file is still as the scan found it, or still absent, and could be put there, if scanned is null */
-    private static boolean asScanned(SyncFilesystem fs, Path p, FileState scanned, SyncState syncDb) {
-        if (! fs.exists(p))
-            return scanned == null && fs.canCreate(p);
-        if (scanned == null || fs.size(p) != scanned.size)
-            return false;
-        if (fs.getLastModified(p) == scanned.modificationTime)
-            return true;
-        // a scan keeps the synced version of a file whose contents haven't changed, whatever its modification time
-        return fs.hashFile(p, Optional.empty(), scanned.relPath, syncDb, scanned.size, scanned.chunkSize)
-                .rootHash.equals(scanned.hashTree.rootHash);
-    }
-
-    public static Optional<LocalDateTime> applyCopyOp(SyncFilesystem srcFs, SyncFilesystem targetFs, CopyOp op, Supplier<Boolean> isCancelled, Consumer<String> progress) throws IOException {
-        if (isCancelled.get())
-            throw new RuntimeException("Sync cancelled before copying " + op.target);
-        log("COPY from " + op.source + " to " + op.target + " range=[" + op.diffStart +", " + op.diffEnd+"]");
-        Path partial = targetFs.partialCopy(op.target);
-        if (partial.equals(op.target))
-            targetFs.mkdirs(getParent(op.target));
-        long priorSize = op.targetState != null ? op.targetState.size : 0;
-        long size = op.sourceState.size;
-        long lastModified = op.sourceState.modificationTime;
-
-        long start = op.diffStart;
-        long end = op.diffEnd;
-        Optional<LocalDateTime> res;
-        try (AsyncReader fin = srcFs.getBytes(op.source, start)) {
-            Optional<Thumbnail> thumbnail = srcFs.getThumbnail(op.source);
-            LocalDateTime modified = LocalDateTime.ofInstant(Instant.ofEpochSecond(lastModified / 1000, 0), ZoneOffset.UTC);
-            res = targetFs.setBytes(partial, start, fin, end - start, Optional.of(op.sourceState.hashTree),
-                    Optional.of(modified), thumbnail, op.props, isCancelled, progress);
-        }
-        if (isCancelled.get())
-            throw new RuntimeException("Sync cancelled before copying " + op.target);
-        if (priorSize > size) {
-            log("Sync Truncating file " + op.sourceState.relPath + " from " + priorSize + " to " + size);
-            targetFs.truncate(partial, size);
-        }
-        return res;
     }
 
     /** Counts the mutable pointer commits this sync makes, per writer. A pointer's sequence

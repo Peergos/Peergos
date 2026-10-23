@@ -2715,6 +2715,13 @@ public class CloudFilesProvider {
             throw new UnsupportedOperationException();
         }
         @Override public AsyncReader getBytes(Path p, long off) { throw new UnsupportedOperationException(); }
+        @Override public Optional<LocalDateTime> copy(peergos.server.sync.SyncFilesystem src,
+                java.util.List<peergos.server.sync.CopyOp> ops, boolean resuming, peergos.server.sync.SyncState s,
+                java.util.function.Supplier<Boolean> c, java.util.function.Consumer<String> pr) {
+            throw new UnsupportedOperationException();
+        }
+        @Override public void discardCopy(peergos.server.sync.CopyOp op) { throw new UnsupportedOperationException(); }
+        @Override public void discardCopies() { throw new UnsupportedOperationException(); }
         @Override public void uploadSubtree(java.util.stream.Stream<FileWrapper.FolderUploadProperties> d) { throw new UnsupportedOperationException(); }
         @Override public Optional<peergos.shared.user.fs.Thumbnail> getThumbnail(Path p) { throw new UnsupportedOperationException(); }
         @Override public peergos.shared.user.fs.HashTree hashFile(Path p, Optional<FileWrapper> m, String r,

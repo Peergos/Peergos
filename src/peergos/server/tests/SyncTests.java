@@ -1335,7 +1335,7 @@ public class SyncTests {
                 return false;
             });
             Assert.fail("A download of a source that changed completed");
-        } catch (IllegalStateException expected) {}
+        } catch (ConcurrentChangeException expected) {}
 
         syncBoth(base1, base2, state);
         Map<String, String> expected = Map.of("f.bin", new String(rewritten));
@@ -1581,7 +1581,7 @@ public class SyncTests {
                 return false;
             });
             Assert.fail("The download replaced an edit made while it ran");
-        } catch (IllegalStateException expected) {}
+        } catch (ConcurrentChangeException expected) {}
 
         syncBoth(base1, base2, state);
         Map<String, String> expected = Map.of("f.bin", new String(changed), "f[conflict-0].bin", "an edit");

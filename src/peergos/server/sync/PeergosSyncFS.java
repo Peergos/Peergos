@@ -289,12 +289,55 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     @Override
-    public boolean overwritesInPlace() {
-        return true;
+    public Optional<LocalDateTime> copy(SyncFilesystem srcFs,
+                                        List<CopyOp> ops,
+                                        boolean resuming,
+                                        SyncState synced,
+                                        Supplier<Boolean> isCancelled,
+                                        Consumer<String> progress) throws IOException {
+        CopyOp first = ops.get(0);
+        boolean sourceUnchanged = SyncFilesystem.unchanged(srcFs, first.source, first.sourceState);
+        if (first.targetState == null) {
+            // a new file is only seen once its upload is complete, and an upload resumes from the props it started with
+            if (resuming && ! (sourceUnchanged && SyncFilesystem.asScanned(this, first.target, null, synced)))
+                throw new ConcurrentChangeException(first.sourceState.relPath + " has changed since it was uploaded in part");
+            Optional<LocalDateTime> res = Optional.empty();
+            for (CopyOp op : ops) {
+                Optional<LocalDateTime> mod = SyncFilesystem.copyRange(srcFs, this, op.target, op, isCancelled, progress);
+                res = res.isEmpty() ? mod : mod.isEmpty() ? res : res.map(t -> mod.get().isAfter(t) ? mod.get() : t);
+            }
+            return res;
+        }
+        // a copy over a file writes into it, in one change
+        if (! resuming)
+            return overwrite(srcFs, ops, true, isCancelled, progress);
+        Optional<FileWrapper> target = context.getByPath(root.resolve(first.target)).join();
+        if (target.isEmpty() || target.get().isDirectory())
+            throw new ConcurrentChangeException(first.target + " is no longer a file");
+        // what has been written into it is the start of this copy, not the state it expects
+        if (sourceUnchanged)
+            return overwrite(srcFs, ops, false, isCancelled, progress);
+        if (! srcFs.exists(first.source))
+            throw new ConcurrentChangeException(first.source + " has gone since it was uploaded in part");
+        // what has been written is a mix of two versions that neither side made, so put all of the source as it is now
+        // in its place
+        progress.accept("Sync: redoing an interrupted upload of " + first.sourceState.relPath + ", as it has changed since");
+        long size = srcFs.size(first.source);
+        int chunkSize = first.sourceState.chunkSize;
+        HashTree hash = srcFs.hashFile(first.source, Optional.empty(), first.sourceState.relPath, synced, size, chunkSize);
+        FileState now = new FileState(first.sourceState.relPath, srcFs.getLastModified(first.source), size, hash, chunkSize);
+        return overwrite(srcFs, List.of(new CopyOp(false, first.source, first.target, now, first.targetState, 0, size,
+                ResumeUploadProps.random(context.crypto))), false, isCancelled, progress);
     }
 
     @Override
-    public Optional<LocalDateTime> overwrite(SyncFilesystem srcFs,
+    public void discardCopies() {}
+
+    /** Writes ops, which are all over the one file at their target, from srcFs, cuts the file to the source's size and
+     *  gives it the source's hash, as one change. That fails with a ConcurrentChangeException, and writes nothing more,
+     *  if anyone else changes the file while it is written, or, if checkTarget, if it isn't still the ops' target state.
+     */
+    private Optional<LocalDateTime> overwrite(SyncFilesystem srcFs,
                                              List<CopyOp> ops,
                                              boolean checkTarget,
                                              Supplier<Boolean> isCancelled,
@@ -423,12 +466,6 @@ public class PeergosSyncFS implements SyncFilesystem {
         context.network.synchronizer.applyComplexUpdate(folder.owner(), folder.signingPair(),
                 (s, c) -> IpfsTransaction.call(folder.owner(), tid -> FileWrapper.deleteFileChunks(op.props.streamSecret, nChunks,
                         cap, folder.signingPair(), tid, context.crypto.hasher, context.network, s, c), context.network.dhtClient)).join();
-    }
-
-    @Override
-    public boolean showsPartialCopies() {
-        // an upload is only seen once it is complete, and resumes from the props it was started with
-        return false;
     }
 
     @Override

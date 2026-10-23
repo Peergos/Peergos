@@ -34,7 +34,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-public class LocalFileSystem implements SyncFilesystem {
+public class LocalFileSystem extends StagedFileSystem {
 
     private static final Logger LOG = LoggerFactory.getLogger(LocalFileSystem.class);
     /** Holds files being downloaded until they are complete, so a part written is never synced, moved or edited as a
@@ -260,17 +260,12 @@ public class LocalFileSystem implements SyncFilesystem {
         }
     }
 
-    @Override
-    public boolean showsPartialCopies() {
-        return false;
-    }
-
     private Path withSuffix(Path partial, String suffix) {
         return partial.resolveSibling(partial.getFileName() + suffix);
     }
 
     @Override
-    public Path partialCopy(Path p) throws IOException {
+    protected Path partialCopy(Path p) throws IOException {
         Path partial = partialCopyPath(p);
         Path full = root.resolve(partial);
         if (Files.exists(full))
@@ -294,19 +289,18 @@ public class LocalFileSystem implements SyncFilesystem {
         return partial;
     }
 
-    @Override
-    public void completeCopy(Path p) throws IOException {
+    private void moveIntoPlace(Path p) throws IOException {
         Path target = root.resolve(p);
         Files.createDirectories(target.getParent());
         Files.move(root.resolve(partialCopyPath(p)), target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
     }
 
     @Override
-    public void completeCopy(Path p, List<Pair<Long, Long>> ranges, long size) throws IOException {
+    protected void completeCopy(Path p, List<Pair<Long, Long>> ranges, long size) throws IOException {
         Path partial = partialCopyPath(p);
         Path diff = root.resolve(withSuffix(partial, ".diff"));
         if (! Files.exists(diff)) {
-            completeCopy(p);
+            moveIntoPlace(p);
             return;
         }
         // from here the file is part written, so a stop has to be finished from the parts here, with no network needed
@@ -335,12 +329,12 @@ public class LocalFileSystem implements SyncFilesystem {
     }
 
     @Override
-    public boolean completingCopy(Path p) {
+    protected boolean completingCopy(Path p) {
         return Files.exists(root.resolve(withSuffix(partialCopyPath(p), ".applying")));
     }
 
     @Override
-    public void discardCopy(Path p) {
+    protected void discardCopy(Path p) {
         try {
             Files.deleteIfExists(root.resolve(withSuffix(partialCopyPath(p), ".diff")));
             Files.deleteIfExists(root.resolve(withSuffix(partialCopyPath(p), ".applying")));
