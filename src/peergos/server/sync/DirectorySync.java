@@ -1466,7 +1466,9 @@ public class DirectorySync {
      */
     private static void completeCopy(SyncFilesystem targetFs, List<CopyOp> ops, SyncState syncDb) throws IOException {
         CopyOp op = ops.get(0);
-        if (! targetFs.showsPartialCopies() && ! targetAsScanned(targetFs, op, syncDb)) {
+        // a copy written to the target itself changed it
+        boolean staged = ! targetFs.partialCopy(op.target).equals(op.target);
+        if (staged && ! targetAsScanned(targetFs, op, syncDb)) {
             targetFs.discardCopy(op.target);
             syncDb.finishCopies(ops);
             throw new IllegalStateException(op.target + " changed while it was being synced");

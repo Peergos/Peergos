@@ -87,6 +87,31 @@ public class PeergosSyncClashTests {
         Assert.assertTrue(context.getByPath(remoteRoot.resolve("backups/files")).join().get().isDirectory());
     }
 
+    /** An upload to Peergos is written to the file itself, so finishing it was taken for a change made meanwhile */
+    @Test
+    public void largeFileUploads() throws Exception {
+        UserContext context = signIn("sl" + Math.abs(random.nextInt() % 1_000_000));
+        Path remoteRoot = PathUtil.get(context.username, "sync");
+        PeergosSyncFS remote = syncedFolder(context, remoteRoot);
+        Path base = Files.createTempDirectory("peergos-sync");
+        LocalFileSystem local = new LocalFileSystem(base, crypto.hasher);
+        SyncState state = new JdbcTreeState(":memory:");
+        byte[] data = new byte[2 * 1024 * 1024];
+        random.nextBytes(data);
+        Files.write(base.resolve("big"), data);
+        DirectorySync.syncDir(local, remote, true, true, null, null, state, 32, 5,
+                Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+        Assert.assertEquals(data.length, context.getByPath(remoteRoot.resolve("big")).join().get().getSize());
+
+        byte[] edit = new byte[3 * 1024 * 1024];
+        random.nextBytes(edit);
+        Files.write(base.resolve("big"), edit);
+        Files.setLastModifiedTime(base.resolve("big"), java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 5_000));
+        DirectorySync.syncDir(local, remote, true, true, null, null, state, 32, 5,
+                Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+        Assert.assertEquals(edit.length, context.getByPath(remoteRoot.resolve("big")).join().get().getSize());
+    }
+
     /** The remote scan took a file with the size and modification time it was synced with as unchanged, but Peergos
      *  keeps modification times to the second, so an edit within one second of the last was missed and overwritten.
      */
