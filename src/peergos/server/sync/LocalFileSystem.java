@@ -15,10 +15,14 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -30,6 +34,10 @@ import java.util.stream.Stream;
 public class LocalFileSystem implements SyncFilesystem {
 
     private static final Logger LOG = LoggerFactory.getLogger(LocalFileSystem.class);
+    /** Holds files being downloaded until they are complete, so a part written is never synced, moved or edited as a
+     *  file of its own
+     */
+    public static final String PARTIAL_COPIES_DIR = ".peergos-partial-downloads";
     private final Hasher hasher;
     private final Path root;
     private final boolean hasBackSlashes;
@@ -199,6 +207,78 @@ public class LocalFileSystem implements SyncFilesystem {
         return reader.seek(fileOffset).join();
     }
 
+    private Path partialCopyPath(Path p) {
+        try {
+            byte[] hash = MessageDigest.getInstance("SHA-256").digest(p.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return PathUtil.get(PARTIAL_COPIES_DIR, HexFormat.of().formatHex(hash));
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public boolean showsPartialCopies() {
+        return false;
+    }
+
+    @Override
+    public Path partialCopy(Path p) throws IOException {
+        Path partial = partialCopyPath(p);
+        Path full = root.resolve(partial);
+        if (Files.exists(full))
+            return partial;
+        Files.createDirectories(full.getParent());
+        Path tmp = full.resolveSibling(full.getFileName() + ".tmp");
+        if (Files.isRegularFile(root.resolve(p)))
+            Files.copy(root.resolve(p), tmp, StandardCopyOption.REPLACE_EXISTING);
+        else
+            Files.write(tmp, new byte[0]);
+        Files.move(tmp, full, StandardCopyOption.ATOMIC_MOVE);
+        return partial;
+    }
+
+    @Override
+    public void completeCopy(Path p) throws IOException {
+        Path target = root.resolve(p);
+        Files.createDirectories(target.getParent());
+        Files.move(root.resolve(partialCopyPath(p)), target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        removeEmptyPartialCopiesDir();
+    }
+
+    @Override
+    public void discardCopy(Path p) {
+        try {
+            Files.deleteIfExists(root.resolve(partialCopyPath(p)));
+            removeEmptyPartialCopiesDir();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public void discardCopies() {
+        Path dir = root.resolve(PARTIAL_COPIES_DIR);
+        if (! Files.isDirectory(dir))
+            return;
+        try (Stream<Path> files = Files.list(dir)) {
+            for (Path f : files.toList())
+                Files.delete(f);
+            Files.delete(dir);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void removeEmptyPartialCopiesDir() {
+        Path dir = root.resolve(PARTIAL_COPIES_DIR);
+        try (Stream<Path> files = Files.list(dir)) {
+            if (files.findAny().isEmpty())
+                Files.delete(dir);
+        } catch (IOException e) {
+            // another copy has just started, or finished and removed it
+        }
+    }
+
     @Override
     public void uploadSubtree(Stream<FileWrapper.FolderUploadProperties> directories) {
         byte[] buf = new byte[5*1024*1024];
@@ -283,6 +363,8 @@ public class LocalFileSystem implements SyncFilesystem {
                     return;
                 }
                 if (attrs.isSymbolicLink())
+                    return;
+                if (start.equals(root) && c.getFileName().toString().equals(PARTIAL_COPIES_DIR))
                     return;
                 String relPath = root.relativize(start.resolve(c.getFileName())).normalize().toString();
                 String canonicalRelPath = hasBackSlashes ? relPath.replaceAll("\\\\", "/") : relPath;

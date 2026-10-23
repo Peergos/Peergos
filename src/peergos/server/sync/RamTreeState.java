@@ -14,7 +14,6 @@ class RamTreeState implements SyncState {
     private final Set<String> localDeletes = new HashSet<>();
     private final Set<String> remoteDeletes = new HashSet<>();
     private final List<CopyOp> inProgress = new ArrayList<>();
-    private final Map<String, long[]> interrupted = new HashMap<>();
     private final Map<String, Snapshot> versions = new HashMap<>();
     private final AtomicBoolean completedSync = new AtomicBoolean(false);
 
@@ -125,28 +124,11 @@ class RamTreeState implements SyncState {
     @Override
     public synchronized void startCopies(List<CopyOp> ops) {
         inProgress.addAll(ops);
-        ops.forEach(op -> interrupted.remove(op.target.toString()));
     }
 
     @Override
     public synchronized void finishCopies(List<CopyOp> ops) {
         inProgress.removeAll(ops);
-        ops.forEach(op -> interrupted.remove(op.target.toString()));
-    }
-
-    @Override
-    public synchronized void setInterruptedCopy(String target, long size, long modified) {
-        interrupted.put(target, new long[]{size, modified});
-    }
-
-    @Override
-    public synchronized Optional<long[]> getInterruptedCopy(String target) {
-        return Optional.ofNullable(interrupted.get(target));
-    }
-
-    @Override
-    public synchronized void removeInterruptedCopy(String target) {
-        interrupted.remove(target);
     }
 
     @Override

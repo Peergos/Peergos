@@ -49,9 +49,6 @@ public class JdbcTreeState implements SyncState {
     private static final String INSERT_COPY_OP = "INSERT INTO copyops2 (islocal, source, target, start, end, sourcestate, targetstate, props) VALUES(?, ?, ?, ?, ?, ?, ?, ?);";
     private static final String REMOVE_COPY_OP = "DELETE FROM copyops2 WHERE source=? AND target=? AND start=? AND end=?";
     private static final String LIST_COPY_OPS = "SELECT islocal, source, target, start, end, sourcestate, targetstate, props FROM copyops2;";
-    private static final String INSERT_COPY_STOP = "INSERT INTO copystops (target, size, modtime) VALUES(?, ?, ?);";
-    private static final String REMOVE_COPY_STOP = "DELETE FROM copystops WHERE target=?;";
-    private static final String GET_COPY_STOP = "SELECT size, modtime FROM copystops WHERE target=?;";
 
     private final Supplier<Sqlite.UncloseableConnection> conn;
     private final SqlSupplier cmds = new SqliteCommands();
@@ -111,7 +108,6 @@ public class JdbcTreeState implements SyncState {
             cmds.createTable("CREATE TABLE IF NOT EXISTS snapshots (path text primary key not null, snapshot blob);", conn);
             cmds.createTable("CREATE TABLE IF NOT EXISTS copyops2 (islocal bool not null, source text not null, target text not null, props blob not null," +
                     "start "+cmds.sqlInteger()+" not null, end " + cmds.sqlInteger() + " not null, sourcestate blob, targetstate blob);", conn);
-            cmds.createTable("CREATE TABLE IF NOT EXISTS copystops (target text primary key not null, size bigint not null, modtime bigint not null);", conn);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -431,7 +427,6 @@ public class JdbcTreeState implements SyncState {
             } catch (SQLException sqe) {
                 throw new IllegalStateException(sqe);
             }
-            removeInterruptedCopy(op.target.toString());
         }
     }
 
@@ -448,46 +443,6 @@ public class JdbcTreeState implements SyncState {
             } catch (SQLException sqe) {
                 throw new IllegalStateException(sqe);
             }
-            removeInterruptedCopy(op.target.toString());
-        }
-    }
-
-    @Override
-    public void removeInterruptedCopy(String target) {
-        try (Connection conn = getConnection();
-             PreparedStatement remove = conn.prepareStatement(REMOVE_COPY_STOP)) {
-            remove.setString(1, target);
-            remove.executeUpdate();
-        } catch (SQLException sqe) {
-            throw new IllegalStateException(sqe);
-        }
-    }
-
-    @Override
-    public void setInterruptedCopy(String target, long size, long modified) {
-        removeInterruptedCopy(target);
-        try (Connection conn = getConnection();
-             PreparedStatement insert = conn.prepareStatement(INSERT_COPY_STOP)) {
-            insert.setString(1, target);
-            insert.setLong(2, size);
-            insert.setLong(3, modified);
-            insert.executeUpdate();
-        } catch (SQLException sqe) {
-            throw new IllegalStateException(sqe);
-        }
-    }
-
-    @Override
-    public Optional<long[]> getInterruptedCopy(String target) {
-        try (Connection conn = getConnection();
-             PreparedStatement select = conn.prepareStatement(GET_COPY_STOP)) {
-            select.setString(1, target);
-            ResultSet rs = select.executeQuery();
-            if (! rs.next())
-                return Optional.empty();
-            return Optional.of(new long[]{rs.getLong(1), rs.getLong(2)});
-        } catch (SQLException sqe) {
-            throw new IllegalStateException(sqe);
         }
     }
 

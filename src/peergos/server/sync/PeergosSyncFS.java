@@ -248,6 +248,12 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     @Override
+    public boolean showsPartialCopies() {
+        // an upload is only seen once it is complete, and resumes from the props it was started with
+        return false;
+    }
+
+    @Override
     public AsyncReader getBytes(Path p, long fileOffset) throws IOException {
         Optional<FileWrapper> file = context.getByPath(root.resolve(p)).join();
         if (file.isEmpty())

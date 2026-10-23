@@ -190,7 +190,8 @@ public class SyncDirWatcher implements AutoCloseable {
             }
             // with FILE_TREE this is relative to the root, not just a filename
             Path name = (Path) event.context();
-            if (DirectorySync.IGNORED_FILENAMES.contains(name.getFileName().toString()))
+            if (DirectorySync.IGNORED_FILENAMES.contains(name.getFileName().toString()) ||
+                    name.getName(0).toString().equals(LocalFileSystem.PARTIAL_COPIES_DIR))
                 continue;
             Path changed = dir == null ? null : dir.resolve(name);
             // a mv of a populated tree into the sync dir gives one CREATE, for its top dir only
@@ -267,6 +268,8 @@ public class SyncDirWatcher implements AutoCloseable {
             Files.walkFileTree(start, new SimpleFileVisitor<Path>() {
                 @Override
                 public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                    if (dir.getFileName() != null && dir.getFileName().toString().equals(LocalFileSystem.PARTIAL_COPIES_DIR))
+                        return FileVisitResult.SKIP_SUBTREE;
                     // walkFileTree doesn't follow links, so a symlinked dir arrives as a file:
                     // matching applyToSubtree, which never leaves the sync root either
                     if (rootKeys.get(root).size() >= MAX_DIRS_PER_ROOT) {

@@ -89,6 +89,27 @@ public interface SyncFilesystem {
 
     AsyncReader getBytes(Path p, long fileOffset) throws IOException;
 
+    /** Whether a copy to a file shows in it before the copy is complete, so it can be left part written */
+    default boolean showsPartialCopies() {
+        return true;
+    }
+
+    /** Where a copy to p writes until it is complete, starting from p as it is if it isn't already under way.
+     *  A filesystem that doesn't show a file until it is complete writes to p itself.
+     */
+    default Path partialCopy(Path p) throws IOException {
+        return p;
+    }
+
+    /** Puts a copy to p that is complete in place of p */
+    default void completeCopy(Path p) throws IOException {}
+
+    /** Throws away what a copy to p has written so far */
+    default void discardCopy(Path p) {}
+
+    /** Throws away what any copy has written so far */
+    default void discardCopies() {}
+
     void uploadSubtree(Stream<FileWrapper.FolderUploadProperties> directories);
 
     Optional<Thumbnail> getThumbnail(Path p);
