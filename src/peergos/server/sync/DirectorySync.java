@@ -612,8 +612,8 @@ public class DirectorySync {
             long t4 = System.currentTimeMillis();
             LOG.accept("Found " + remoteState.filesCount() + " remote files in " + (t4-t3)/1_000 + "s");
 
-            resolveFileFolderClashes(localFS, localState, remoteFS, remoteState, syncedVersions, syncLocalDeletes, LOG);
-            resolveFileFolderClashes(remoteFS, remoteState, localFS, localState, syncedVersions, syncRemoteDeletes, LOG);
+            resolveFileFolderClashes(localFS, localState, remoteFS, remoteState, syncedVersions, syncLocalDeletes, syncRemoteDeletes, LOG);
+            resolveFileFolderClashes(remoteFS, remoteState, localFS, localState, syncedVersions, syncRemoteDeletes, syncLocalDeletes, LOG);
 
             TreeSet<String> allPaths = new TreeSet<>(localState.allFilePaths());
             allPaths.addAll(remoteState.allFilePaths());
@@ -1333,13 +1333,16 @@ public class DirectorySync {
                                                  SyncState folderState,
                                                  SyncState syncedVersions,
                                                  boolean deleteEmptyFolder,
+                                                 boolean folderSideDeletesSync,
                                                  Consumer<String> LOG) {
         List<String> clashes = fileState.allFilePaths().stream()
                 .filter(folderState::hasDir)
-                // an unchanged file that was synced is deleted as usual, the folder having replaced it
+                // an unchanged file that was synced is deleted as usual, the folder having replaced it, unless that
+                // side's deletes aren't synced
                 .filter(p -> {
                     FileState synced = syncedVersions.byPath(p);
-                    return synced == null || ! synced.hashTree.rootHash.equals(fileState.byPath(p).hashTree.rootHash);
+                    return ! folderSideDeletesSync || synced == null ||
+                            ! synced.hashTree.rootHash.equals(fileState.byPath(p).hashTree.rootHash);
                 })
                 .sorted()
                 .collect(Collectors.toList());
