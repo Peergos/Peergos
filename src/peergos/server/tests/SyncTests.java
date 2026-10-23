@@ -1100,6 +1100,23 @@ public class SyncTests {
     }
 
     @Test
+    public void editOfAFileTheOtherSideMovedWithTheSameEdit() throws Exception {
+        // the edit was uploaded to the old path, and then taken for the source of the move, leaving it on one side only
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        write(base1, "b/f", "original");
+        syncBoth(base1, base2, state);
+
+        write(base1, "b/f", "the same edit");
+        Files.move(base2.resolve("b"), base2.resolve("e"));
+        write(base2, "e/f", "the same edit");
+        syncBoth(base1, base2, state);
+        Map<String, String> synced = tree(base1);
+        Assert.assertEquals(synced, tree(base2));
+        Assert.assertEquals("the same edit", synced.get("e/f"));
+    }
+
+    @Test
     public void folderReplacedByAFileWhileItsDeleteSyncs() throws Exception {
         // the folder's delete deleted the file instead
         Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");

@@ -998,7 +998,9 @@ public class DirectorySync {
                         Optional.ofNullable(remoteTree.byPath(extraLocal.get(index).relPath)) :
                         Optional.empty();
 
-                if (extraLocal.size() == extraRemote.size() && remoteAtHashedPath.isEmpty()) {// rename
+                // the scan can't know of a copy this pass has made there since
+                if (extraLocal.size() == extraRemote.size() && remoteAtHashedPath.isEmpty() &&
+                        ! isFile(remoteFs, remoteFs.resolve(extraLocal.get(index).relPath))) {// rename
                     FileState toMove = extraLocal.get(index);
                     LOG.accept("Sync Local: Moving " + toMove.relPath + " ==> " + remote.relPath + " " + progress);
                     move(localFs, localFs.resolve(toMove.relPath), localFs.resolve(remote.relPath));
@@ -1036,7 +1038,9 @@ public class DirectorySync {
                         Optional.ofNullable(localTree.byPath(extraRemote.get(index).relPath)) :
                         Optional.empty();
 
-                if (extraRemote.size() == extraLocal.size() && localAtHashedPath.isEmpty()) {// rename
+                // the scan can't know of a copy this pass has made there since
+                if (extraRemote.size() == extraLocal.size() && localAtHashedPath.isEmpty() &&
+                        ! isFile(localFs, localFs.resolve(extraRemote.get(index).relPath))) {// rename
                     FileState toMove = extraRemote.get(index);
                     LOG.accept("Sync Remote: Moving " + toMove.relPath + " ==> " + local.relPath + " " + progress);
                     move(remoteFs, remoteFs.resolve(toMove.relPath), Paths.get(local.relPath));
