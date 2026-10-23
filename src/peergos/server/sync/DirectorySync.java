@@ -1330,6 +1330,8 @@ public class DirectorySync {
                     progress.doneFile();
                     if (! syncLocalDeletes && syncedVersions.hasLocalDelete(remote.relPath))
                         syncedVersions.removeLocalDelete(remote.relPath);
+                    if (! syncRemoteDeletes && syncedVersions.hasRemoteDelete(remote.relPath))
+                        syncedVersions.removeRemoteDelete(remote.relPath);
                     return;
                 }
                 if (remote == null) { // remote delete, copy changed local
