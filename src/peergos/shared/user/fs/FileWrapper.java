@@ -3156,7 +3156,7 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                         }));
     }
 
-    private static CompletableFuture<Snapshot> deleteFileChunks(byte[] streamSecret,
+    public static CompletableFuture<Snapshot> deleteFileChunks(byte[] streamSecret,
                                                                 int nChunks,
                                                                 WritableAbsoluteCapability startCap,
                                                                 SigningPrivateKeyAndPublicHash ourSigner,

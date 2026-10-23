@@ -505,7 +505,8 @@ public class DirectorySync {
                     throw new RuntimeException(e);
                 // A local file has been added and removed concurrently with us trying to copy it, ignore the copy op now
             }
-            targetFs.discardCopy(first.target);
+            for (CopyOp op : sameTarget)
+                targetFs.discardCopy(op);
             syncedVersions.finishCopies(sameTarget);
         }
         // anything left was written by a copy that has been forgotten, such as when the sync state is reset
@@ -1571,12 +1572,12 @@ public class DirectorySync {
         // a copy written to the target itself changed it
         boolean staged = ! targetFs.partialCopy(op.target).equals(op.target);
         if (staged && ! targetAsScanned(targetFs, op, syncDb)) {
-            targetFs.discardCopy(op.target);
+            targetFs.discardCopy(op);
             syncDb.finishCopies(ops);
             throw new IllegalStateException(op.target + " changed while it was being synced");
         }
         if (staged && ! asScanned(srcFs, op.source, op.sourceState, syncDb)) {
-            targetFs.discardCopy(op.target);
+            targetFs.discardCopy(op);
             syncDb.finishCopies(ops);
             throw new IllegalStateException(op.source + " changed while it was being copied");
         }

@@ -9,6 +9,7 @@ import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.ProgressConsumer;
 import peergos.shared.user.fs.cryptree.CryptreeNode;
+import peergos.shared.storage.IpfsTransaction;
 import peergos.shared.storage.PointerCasException;
 import peergos.shared.util.Exceptions;
 import peergos.shared.util.Futures;
@@ -379,16 +380,49 @@ public class PeergosSyncFS implements SyncFilesystem {
      *  resumed upload, finding all of it there, would link into the folder again
      */
     private boolean uploadedAndMoved(FileWrapper parent, ResumeUploadProps props) {
-        WritableAbsoluteCapability cap = new WritableAbsoluteCapability(parent.owner(), parent.writer(), props.firstChunkMapKey,
+        return uploaded(parent, props).map(f -> linked(parent, f, props)).orElse(false);
+    }
+
+    /** The first chunk an upload with props into parent has written, if it has written one */
+    private Optional<FileWrapper> uploaded(FileWrapper parent, ResumeUploadProps props) {
+        return context.network.getFile(uploadCap(parent, props).readOnly(), context.username).join();
+    }
+
+    private static WritableAbsoluteCapability uploadCap(FileWrapper parent, ResumeUploadProps props) {
+        return new WritableAbsoluteCapability(parent.owner(), parent.writer(), props.firstChunkMapKey,
                 Optional.of(props.firstChunkBat), props.baseKey, props.writeKey);
-        Optional<FileWrapper> uploaded = context.network.getFile(cap.readOnly(), context.username).join();
-        if (uploaded.isEmpty())
-            return false;
-        Location uploadedTo = uploaded.get().getPointer().getParentCap().getLocation(parent.owner(), parent.writer());
+    }
+
+    /** Whether the file an upload into parent made is in a folder, parent or one it has been moved to since, so is
+     *  complete, rather than written in part and in no folder
+     */
+    private boolean linked(FileWrapper parent, FileWrapper uploaded, ResumeUploadProps props) {
+        Location uploadedTo = uploaded.getPointer().getParentCap().getLocation(parent.owner(), parent.writer());
         if (! Arrays.equals(uploadedTo.getMapKey(), parent.writableFilePointer().getMapKey()))
             return true;
         return parent.getChildrenCapabilities(context.crypto.hasher, context.network).join().stream()
                 .anyMatch(c -> Arrays.equals(c.cap.getMapKey(), props.firstChunkMapKey));
+    }
+
+    @Override
+    public void discardCopy(CopyOp op) {
+        // an upload over a file writes into it, and anything else is the file, once some folder has it
+        if (op.targetState != null)
+            return;
+        Path dir = op.target.getParent();
+        Optional<FileWrapper> parent = context.getByPath(dir == null ? root : root.resolve(dir)).join();
+        if (parent.isEmpty() || ! parent.get().isDirectory())
+            return;
+        FileWrapper folder = parent.get();
+        Optional<FileWrapper> uploaded = uploaded(folder, op.props);
+        if (uploaded.isEmpty() || linked(folder, uploaded.get(), op.props))
+            return;
+        FileProperties props = uploaded.get().getFileProperties();
+        int nChunks = (int) Math.max(1, (props.size + props.chunkSize - 1) / props.chunkSize);
+        WritableAbsoluteCapability cap = uploadCap(folder, op.props);
+        context.network.synchronizer.applyComplexUpdate(folder.owner(), folder.signingPair(),
+                (s, c) -> IpfsTransaction.call(folder.owner(), tid -> FileWrapper.deleteFileChunks(op.props.streamSecret, nChunks,
+                        cap, folder.signingPair(), tid, context.crypto.hasher, context.network, s, c), context.network.dhtClient)).join();
     }
 
     @Override

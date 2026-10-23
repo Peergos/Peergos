@@ -131,6 +131,11 @@ public interface SyncFilesystem {
     /** Throws away what a copy to p has written so far */
     default void discardCopy(Path p) {}
 
+    /** Throws away what op has written so far, wherever it wrote it */
+    default void discardCopy(CopyOp op) {
+        discardCopy(op.target);
+    }
+
     /** Throws away what any copy has written so far */
     default void discardCopies() {}
 

@@ -6,6 +6,7 @@ import peergos.server.sync.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -552,6 +553,68 @@ public class PeergosSyncClashTests {
         }
     }
 
+    /** An upload of a new file to Peergos that stopped part way, after more than a buffer's worth had been committed,
+     *  and was then abandoned as its source had changed, left the chunks it had written, in no folder, using the space
+     *  they took for good
+     */
+    @Test
+    public void abandonedUploadToPeergosLeavesNothingBehind() throws Exception {
+        UserContext context = signIn("sa" + Math.abs(random.nextInt() % 1_000_000));
+        Path remoteRoot = PathUtil.get(context.username, "sync");
+        PeergosSyncFS remote = syncedFolder(context, remoteRoot);
+        Path base = Files.createTempDirectory("peergos-sync");
+        LocalFileSystem local = new LocalFileSystem(base, crypto.hasher);
+        SyncState state = new JdbcTreeState(":memory:");
+        Files.write(base.resolve("keep"), "keep".getBytes());
+        DirectorySync.syncDir(local, remote, true, true, null, null, state, 32, 5,
+                Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+
+        int chunkSize = FileProperties.chunkSizeForNewFiles();
+        // the sync's network commits once it has buffered 20 MiB, so a stop before then leaves nothing
+        byte[] data = new byte[8 * chunkSize];
+        random.nextBytes(data);
+        Files.write(base.resolve("big"), data);
+        Path rel = Paths.get("big");
+        HashTree hash = local.hashFile(rel, Optional.empty(), "big", state, data.length, chunkSize);
+        FileState source = new FileState("big", local.getLastModified(rel), data.length, hash, chunkSize);
+        List<CopyOp> ops = source.diffRanges(null).stream()
+                .map(d -> new CopyOp(false, local.resolve("big"), remote.resolve("big"), source, null, d.left, d.right,
+                        ResumeUploadProps.random(crypto)))
+                .collect(java.util.stream.Collectors.toList());
+        Assert.assertEquals(1, ops.size());
+        AtomicBoolean sixChunksUp = new AtomicBoolean();
+        try {
+            DirectorySync.copyFileDiffAndTruncate(local, remote, ops, state, sixChunksUp::get, m -> {
+                if (m.startsWith("Uploaded ") && Long.parseLong(m.split(" ")[1]) * 1024 * 1024 >= 6L * chunkSize)
+                    sixChunksUp.set(true);
+            });
+            Assert.fail("The upload was not interrupted");
+        } catch (RuntimeException expected) {}
+        ResumeUploadProps props = ops.get(0).props;
+        FileWrapper folder = context.getByPath(remoteRoot).join().get();
+        WritableAbsoluteCapability first = new WritableAbsoluteCapability(folder.owner(), folder.writer(), props.firstChunkMapKey,
+                Optional.of(props.firstChunkBat), props.baseKey, props.writeKey);
+        Pair<byte[], Optional<Bat>> secondLabel = FileProperties.calculateMapKey(props.streamSecret, props.firstChunkMapKey,
+                Optional.of(props.firstChunkBat), chunkSize, chunkSize, crypto.hasher).join();
+        AbsoluteCapability second = first.withMapKey(secondLabel.left, secondLabel.right);
+        java.util.function.Function<AbsoluteCapability, Boolean> present = cap -> context.network.getMetadata(
+                context.network.synchronizer.getValue(folder.owner(), folder.writer()).join().get(folder.writer()), cap).join().isPresent();
+        Assert.assertTrue(present.apply(first) && present.apply(second));
+
+        byte[] changed = new byte[data.length];
+        random.nextBytes(changed);
+        Files.write(base.resolve("big"), changed);
+        Files.setLastModifiedTime(base.resolve("big"), java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 5_000));
+        DirectorySync.syncDir(local, remote, true, true, null, null, state, 32, 5,
+                Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+        Assert.assertFalse(present.apply(first));
+        Assert.assertFalse(present.apply(second));
+        Assert.assertEquals(changed.length, context.getByPath(remoteRoot.resolve("big")).join().get().getSize());
+    }
+
+    /** An upload into a folder that had been replaced in Peergos by a file found the file at the folder's path, and
+     *  added the upload to it as if it were a folder, leaving a file that could no longer be read
+     */
     /** The remote scan took a file with the size and modification time it was synced with as unchanged, but Peergos
      *  keeps modification times to the second, so an edit within one second of the last was missed and overwritten.
      */
