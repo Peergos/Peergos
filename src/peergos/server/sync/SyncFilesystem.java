@@ -52,8 +52,8 @@ public interface SyncFilesystem {
 
     void bulkDelete(Path dir, Set<String> children);
 
-    /** Deletes the files in dir that are still as scanned, and returns the names of those it deleted. Anything else
-     *  there has been changed since, or replaced by a folder.
+    /** Deletes the files in dir that are still as scanned, and returns the names of those that are now gone. Anything
+     *  else there has been changed since, or replaced by a folder.
      */
     default Set<String> bulkDeleteFiles(Path dir, java.util.Map<String, FileState> scanned) {
         bulkDelete(dir, scanned.keySet());

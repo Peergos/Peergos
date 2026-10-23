@@ -140,6 +140,10 @@ public class LocalFileSystem implements SyncFilesystem {
             Path p = dir.resolve(e.getKey());
             Path full = root.resolve(p);
             FileState s = e.getValue();
+            if (! Files.exists(full, LinkOption.NOFOLLOW_LINKS)) {
+                deleted.add(e.getKey());
+                continue;
+            }
             // a scan keeps the synced version of a file whose contents haven't changed, whatever its modification time
             if (Files.isRegularFile(full, LinkOption.NOFOLLOW_LINKS) && size(p) == s.size && (getLastModified(p) == s.modificationTime ||
                     hashFile(p, Optional.empty(), s.relPath, null, s.size, s.chunkSize).rootHash.equals(s.hashTree.rootHash))) {

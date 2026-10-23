@@ -1256,6 +1256,36 @@ public class SyncTests {
     }
 
     @Test
+    public void fileDeletedOnBothSidesWhileTheDeleteSyncs() throws Exception {
+        // the sync kept a record of the file as synced, which a pass that reuses that record for Drive took for a file
+        // there still
+        for (boolean here : List.of(true, false)) {
+            Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+            SyncState state = new JdbcTreeState(":memory:");
+            write(base1, "d/f", "original");
+            write(base1, "d/g", "stays");
+            syncBoth(base1, base2, state);
+
+            Path deletedFirst = here ? base2 : base1, deletedSince = here ? base1 : base2;
+            Files.delete(deletedFirst.resolve("d/f"));
+            DirectorySync.syncDir(new LocalFileSystem(base1, crypto.hasher), new LocalFileSystem(base2, crypto.hasher), true, true,
+                    null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, m -> {
+                        if (m.contains("remote files in")) {
+                            try {
+                                Files.delete(deletedSince.resolve("d/f"));
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        }
+                    });
+            Assert.assertNull("here " + here, state.byPath("d/f"));
+            Map<String, String> expected = Map.of("d", "dir", "d/g", "stays");
+            Assert.assertEquals("here " + here, expected, tree(base1));
+            Assert.assertEquals("here " + here, expected, tree(base2));
+        }
+    }
+
+    @Test
     public void newFolderWhereAFileWasRenamedFrom() throws Exception {
         // the new folder's small files were bulk uploaded before the rename, into the file still at that path
         Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");

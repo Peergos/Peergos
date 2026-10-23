@@ -1123,7 +1123,10 @@ public class DirectorySync {
                             ! syncedBefore.contains(extraRemote.get(index).relPath)) {// rename
                         // we will do the local rename when we process the new remote entry
                     } else {
-                        if (syncRemoteDeletes && ! asScanned(localFs, localFs.resolve(local.relPath), local, syncedVersions)) {
+                        if (syncRemoteDeletes && ! localFs.exists(localFs.resolve(local.relPath))) {
+                            // deleted here too since
+                            syncedVersions.remove(local.relPath);
+                        } else if (syncRemoteDeletes && ! asScanned(localFs, localFs.resolve(local.relPath), local, syncedVersions)) {
                             // an edit since the scan is a change against a delete, which the next sync keeps
                             LOG.accept("Sync Local: not deleting " + local.relPath + ", as it has changed since " + progress);
                         } else if (syncRemoteDeletes) {
@@ -1200,7 +1203,10 @@ public class DirectorySync {
                             ! syncedBefore.contains(extraLocal.get(index).relPath)) {// rename
                         // we will do the remote rename when we process the new local entry
                     } else {
-                        if (syncLocalDeletes && ! asScanned(remoteFs, remoteFs.resolve(remote.relPath), remote, syncedVersions)) {
+                        if (syncLocalDeletes && ! remoteFs.exists(remoteFs.resolve(remote.relPath))) {
+                            // deleted there too since
+                            syncedVersions.remove(remote.relPath);
+                        } else if (syncLocalDeletes && ! asScanned(remoteFs, remoteFs.resolve(remote.relPath), remote, syncedVersions)) {
                             // an edit since the scan is a change against a delete, which the next sync keeps
                             LOG.accept("Sync Remote: not deleting " + remote.relPath + ", as it has changed since " + progress);
                         } else if (syncLocalDeletes) {

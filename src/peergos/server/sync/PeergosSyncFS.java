@@ -120,13 +120,16 @@ public class PeergosSyncFS implements SyncFilesystem {
     public Set<String> bulkDeleteFiles(Path dir, Map<String, FileState> scanned) {
         Optional<FileWrapper> parentOpt = context.getByPath(root.resolve(dir)).join();
         if (parentOpt.isEmpty())
-            return Collections.emptySet();
+            return scanned.keySet();
         FileWrapper parent = parentOpt.get();
-        Set<FileWrapper> kids = parent.getChildren(scanned.keySet(), context.crypto.hasher, context.network, false).join().stream()
+        Set<FileWrapper> present = parent.getChildren(scanned.keySet(), context.crypto.hasher, context.network, false).join();
+        Set<FileWrapper> kids = present.stream()
                 .filter(f -> asScanned(f, scanned.get(f.getName())))
                 .collect(Collectors.toSet());
         FileWrapper.deleteChildren(parent, kids, dir, context).join();
-        return kids.stream().map(FileWrapper::getName).collect(Collectors.toSet());
+        Set<String> gone = new HashSet<>(scanned.keySet());
+        present.stream().filter(f -> ! kids.contains(f)).forEach(f -> gone.remove(f.getName()));
+        return gone;
     }
 
     private static boolean asScanned(FileWrapper f, FileState scanned) {
