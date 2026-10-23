@@ -532,15 +532,10 @@ public class DirectorySync {
                             LOG.accept("REMOTE: Uploading " + file.relPath + " " + progress);
                             int chunkSize = FileProperties.chunkSizeForNewFiles();
                             HashTree hashTree = localFS.hashFile(p, Optional.empty(), file.relPath, syncedVersions, file.size, chunkSize);
-                            LocalDateTime modified = LocalDateTime.ofInstant(Instant.ofEpochSecond(file.modifiedTime / 1000, 0), ZoneOffset.UTC);
                             CopyOp op = new CopyOp(false, localFS.resolve(file.relPath),
                                     remoteFS.resolve(file.relPath), new FileState(file.relPath, file.modifiedTime, file.size, hashTree, chunkSize), null,
                                     0, file.size, ResumeUploadProps.random(crypto));
-                            syncedVersions.startCopies(List.of(op));
-                            remoteFS.mkdirs(getParent(p));
-                            remoteFS.setBytes(p, 0, localFS.getBytes(p, 0), file.size, Optional.of(hashTree),
-                                    Optional.of(modified), localFS.getThumbnail(p), op.props, isCancelled, m -> LOG.accept(m + " " + progress));
-                            syncedVersions.finishCopies(List.of(op));
+                            copyFileDiffAndTruncate(localFS, remoteFS, List.of(op), syncedVersions, isCancelled, m -> LOG.accept(m + " " + progress));
                             syncedVersions.add(new FileState(file.relPath, file.modifiedTime, file.size, hashTree, chunkSize));
                             progress.doneFile();
                         } catch (IOException e) {

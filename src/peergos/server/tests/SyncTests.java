@@ -1196,6 +1196,35 @@ public class SyncTests {
     }
 
     @Test
+    public void folderMadeWhereAnInitialUploadIsGoing() throws Exception {
+        // the part uploaded was visible, so it could be replaced, which the next sync took for a delete of the original
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        byte[] data = randomText(3 * 1024 * 1024, 1);
+        Files.write(base1.resolve("big"), data);
+        try {
+            DirectorySync.syncDir(new LocalFileSystem(base1, crypto.hasher), new LocalFileSystem(base2, crypto.hasher), true, true,
+                    null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, m -> {
+                        if (m.startsWith("Downloaded 1 /") && ! Files.isDirectory(base2.resolve("big"))) {
+                            try {
+                                Files.deleteIfExists(base2.resolve("big"));
+                                Files.createDirectory(base2.resolve("big"));
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        }
+                    });
+        } catch (RuntimeException e) {
+            // the folder came first
+        }
+        syncBoth(base1, base2, state);
+        syncBoth(base1, base2, state);
+        Map<String, String> synced = tree(base1);
+        Assert.assertEquals(synced, tree(base2));
+        Assert.assertTrue(synced.keySet().toString(), synced.containsValue(new String(data)));
+    }
+
+    @Test
     public void newFolderWhereAFileWasRenamedFrom() throws Exception {
         // the new folder's small files were bulk uploaded before the rename, into the file still at that path
         Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
