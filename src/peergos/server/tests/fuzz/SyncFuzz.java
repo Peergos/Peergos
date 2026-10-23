@@ -83,6 +83,13 @@ public class SyncFuzz {
     private final Set<String> crashedCopies = new HashSet<>();
     private final Set<String> mayLose = new HashSet<>();
 
+    /** What an edit chose to change is no longer there */
+    private static class Gone extends IllegalStateException {
+        Gone(String message) {
+            super(message);
+        }
+    }
+
     /** The process dying part way through a sync */
     private static class Crash extends Error {}
     private final List<String> log = new ArrayList<>();
@@ -252,7 +259,7 @@ public class SyncFuzz {
 
         private FileWrapper get(String path) {
             return context.getByPath(resolve(path)).join()
-                    .orElseThrow(() -> new IllegalStateException("No " + path + " in Peergos"));
+                    .orElseThrow(() -> new Gone("No " + path + " in Peergos"));
         }
 
         private static String parent(String path) {
@@ -681,7 +688,11 @@ public class SyncFuzz {
                                     try {
                                         edit(rnd.nextBoolean() ? local : remote, killed);
                                     } catch (RuntimeException e) {
-                                        throw new AssertionError("Edit failed during a sync", e);
+                                        // the sync can move what the edit chose between its choosing and its edit
+                                        Throwable cause = peergos.shared.util.Exceptions.getRootCause(e);
+                                        if (! (cause instanceof Gone) && ! (cause instanceof java.nio.file.NoSuchFileException))
+                                            throw new AssertionError("Edit failed during a sync", e);
+                                        record("which found what it chose gone");
                                     }
                                     present.addAll(local.tree().values());
                                     present.addAll(remote.tree().values());
