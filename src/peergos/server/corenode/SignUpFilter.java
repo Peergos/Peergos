@@ -221,7 +221,20 @@ public class SignUpFilter implements CoreNode {
                                                                        List<UserPublicKeyLink> chain,
                                                                        ProofOfWork proof,
                                                                        String token) {
-        return target.updateChain(username, chain, proof, token);
+        if (chain.isEmpty() || ! forUs(chain) || ! target.getChain(username).join().isEmpty())
+            return target.updateChain(username, chain, proof, token);
+
+        // a new username with us as storage provider is a signup
+        if (! quotaStore.allowSignupOrUpdate(username, token)) {
+            if (! token.isEmpty())
+                return Futures.errored(new IllegalStateException("Invalid signup token."));
+            return Futures.errored(new IllegalStateException("This server is not currently accepting new sign ups. Please try again later"));
+        }
+        return target.updateChain(username, chain, proof, token).thenApply(res -> {
+            if (res.isEmpty())
+                quotaStore.consumeToken(username, token);
+            return res;
+        });
     }
 
     private boolean forUs(List<UserPublicKeyLink> chain) {

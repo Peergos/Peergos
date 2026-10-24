@@ -214,11 +214,21 @@ public class UserPublicKeyLink implements Cborable {
                 .thenApply(newClaim -> Collections.singletonList(new UserPublicKeyLink(signer.publicKeyHash, newClaim)));
     }
 
-    public static CompletableFuture<List<UserPublicKeyLink>> merge(List<UserPublicKeyLink> existing,
+    public static CompletableFuture<List<UserPublicKeyLink>> merge(String username,
+                                                                   List<UserPublicKeyLink> existing,
                                                                    List<UserPublicKeyLink> updated,
                                                                    ContentAddressedStorage ipfs) {
-        if (existing.size() == 0 || updated.equals(existing))
+        if (updated.isEmpty())
+            return Futures.errored(new IllegalStateException("Empty claim chain!"));
+        if (updated.equals(existing))
             return CompletableFuture.completedFuture(updated);
+        if (existing.isEmpty())
+            return validChain(updated, username, ipfs)
+                    .thenApply(valid -> {
+                        if (! valid)
+                            throw new IllegalStateException("Invalid claim chain for " + username);
+                        return updated;
+                    });
         int indexOfChange = 0;
         for (int i=0; i < updated.size() && i < existing.size(); i++)
             if (updated.get(i).equals(existing.get(i)))
@@ -250,7 +260,7 @@ public class UserPublicKeyLink implements Cborable {
                 existing.subList(0, existing.size() - 1).stream(),
                 tail.stream())
                 .collect(Collectors.toList());
-        return validChain(result, tail.get(0).claim.username, ipfs)
+        return validChain(result, username, ipfs)
                 .thenApply(valid -> {
                     if (! valid)
                         throw new IllegalStateException("Invalid key chain merge!");

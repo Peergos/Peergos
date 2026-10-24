@@ -81,7 +81,7 @@ public class TofuKeyStore implements Cborable {
                             expired.remove(username);
                         }
                     }
-                    mergedFuture = UserPublicKeyLink.merge(existing, tail, ipfs);
+                    mergedFuture = UserPublicKeyLink.merge(username, existing, tail, ipfs);
 
                     // lookups of different users complete on different threads
                     return mergedFuture.thenApply(merged -> {

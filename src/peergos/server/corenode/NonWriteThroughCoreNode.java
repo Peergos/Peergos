@@ -115,7 +115,7 @@ public class NonWriteThroughCoreNode implements CoreNode {
             List<UserPublicKeyLink> modified = tempChains.get(username);
             if (modified != null)
                 modified = source.getChain(username).get();
-            List<UserPublicKeyLink> mergedChain = UserPublicKeyLink.merge(modified, updated, ipfs).get();
+            List<UserPublicKeyLink> mergedChain = UserPublicKeyLink.merge(username, modified, updated, ipfs).get();
             tempChains.put(username, mergedChain);
             UserPublicKeyLink last = mergedChain.get(mergedChain.size() - 1);
             tempOwnerToUsername.put(last.owner, username);

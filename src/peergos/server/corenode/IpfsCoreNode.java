@@ -300,7 +300,7 @@ public class IpfsCoreNode implements CoreNode {
                         .map(UserPublicKeyLink::fromCbor)
                         .collect(Collectors.toList());
                 // Check legality
-                UserPublicKeyLink.merge(existingChain, updatedChain, ipfs).orTimeout(30, TimeUnit.SECONDS).join();
+                UserPublicKeyLink.merge(username, existingChain, updatedChain, ipfs).orTimeout(30, TimeUnit.SECONDS).join();
             }
 
             for (UserPublicKeyLink link : updatedChain) {
@@ -500,7 +500,7 @@ public class IpfsCoreNode implements CoreNode {
                 }
             }
 
-            List<UserPublicKeyLink> mergedChain = UserPublicKeyLink.merge(existingChain, updatedChain, ipfs).get();
+            List<UserPublicKeyLink> mergedChain = UserPublicKeyLink.merge(username, existingChain, updatedChain, ipfs).get();
             CborObject.CborList mergedChainCbor = new CborObject.CborList(mergedChain.stream()
                     .map(Cborable::toCbor)
                     .collect(Collectors.toList()));

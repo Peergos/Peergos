@@ -706,7 +706,7 @@ public class MirrorCoreNode implements CoreNode {
         UserPublicKeyLink newLast = newChain.get(newChain.size() - 1);
         if (currentLast.claim.expiry.isAfter(newLast.claim.expiry))
             throw new IllegalStateException("Migration claim has earlier expiry than current one!");
-        UserPublicKeyLink.merge(existingChain, newChain, ipfs).join();
+        UserPublicKeyLink.merge(username, existingChain, newChain, ipfs).join();
         Multihash migrationTargetNode = newLast.claim.storageProviders.get(0);
         PublicKeyHash owner = newLast.owner;
 
