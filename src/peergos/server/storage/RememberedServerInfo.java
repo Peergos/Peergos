@@ -29,8 +29,8 @@ import java.util.stream.Collectors;
  *  background, once per start, and the file follows what it says.
  *
  *  Only these two: a server's identity does not change between runs, and anything that can
- *  is left to the server. In particular id() still goes to the server, so a probe of it still
- *  says whether the server can be reached. */
+ *  is left to the server. In particular id() still goes to the server, and directToOrigin()
+ *  is the server's own, so a probe of the origin's id says whether it can be reached. */
 public class RememberedServerInfo extends DelegatingStorage {
     public static final String FILENAME = "server-info.cbor";
 
