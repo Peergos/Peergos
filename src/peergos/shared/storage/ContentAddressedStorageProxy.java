@@ -129,13 +129,16 @@ public interface ContentAddressedStorageProxy {
                                                               PublicKeyHash owner,
                                                               Multihash root,
                                                               List<ChunkMirrorCap> caps) {
+            // Base64, not base58: the caps run to a few KB, and base58 encodes in time
+            // quadratic in the length (tens of ms per request in the browser). The server
+            // decodes any multibase prefix. Url-encoded for the + and / of the alphabet.
             CborObject.CborList capsCbor = new CborObject.CborList(caps.stream()
                     .map(ChunkMirrorCap::toCbor)
                     .collect(Collectors.toList()));
             return poster.get(getProxyUrlPrefix(targetServerId) + apiPrefix
                             + ContentAddressedStorage.HTTP.CHAMP_GET_BULK + "?arg=" + root.toString()
                             + "&owner=" + encode(owner.toString())
-                            + "&caps=" + Multibase.encode(Multibase.Base.Base58BTC, capsCbor.serialize()))
+                            + "&caps=" + encode(Multibase.encode(Multibase.Base.Base64, capsCbor.serialize())))
                     .thenApply(CborObject::fromByteArray)
                     .thenApply(c -> (CborObject.CborList)c)
                     .thenApply(res -> res.map(c -> ((CborObject.CborByteArray)c).value));
