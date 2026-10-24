@@ -89,13 +89,16 @@ public class StringUtils {
      *            The bytes to be decoded into characters
      * @return A new <code>String</code> decoded from the specified array of bytes using the US-ASCII charset,
      *         or <code>null</code> if the input byte array was <code>null</code>.
-     * @throws NullPointerException
-     *             Thrown if {@link Charsets#US_ASCII} is not initialized, which should never happen since it is
-     *             required by the Java platform specification.
-     * @since As of 1.7, throws {@link NullPointerException} instead of UnsupportedEncodingException
      */
     public static String newStringUsAscii(final byte[] bytes) {
-        return newString(bytes, Charset.forName("US-ASCII"));
+        // Built from the bytes directly: the GWT build has no US-ASCII charset, and
+        // Charset.forName threw at the first base64 encoding in the browser.
+        if (bytes == null)
+            return null;
+        char[] chars = new char[bytes.length];
+        for (int i = 0; i < bytes.length; i++)
+            chars[i] = bytes[i] >= 0 ? (char) bytes[i] : '\ufffd';
+        return new String(chars);
     }
 
     /**
