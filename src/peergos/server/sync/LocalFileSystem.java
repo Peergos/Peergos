@@ -8,6 +8,7 @@ import peergos.shared.crypto.hash.Hasher;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.ProgressConsumer;
+import peergos.shared.util.ArrayOps;
 import peergos.shared.util.Pair;
 import peergos.shared.util.PathUtil;
 import peergos.shared.util.Triple;
@@ -25,13 +26,13 @@ import java.time.ZoneOffset;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class LocalFileSystem extends StagedFileSystem {
@@ -120,7 +121,7 @@ public class LocalFileSystem extends StagedFileSystem {
             if (Files.isDirectory(p)) {
                 List<Path> children;
                 try (Stream<Path> stream = Files.list(p)) {
-                    children = stream.toList();
+                    children = stream.collect(Collectors.toList());
                 }
                 // A dir we have synced as empty can still contain files we never sync, like the .DS_Store
                 // the Finder creates in any dir it displays. Delete those rather than failing.
@@ -249,7 +250,7 @@ public class LocalFileSystem extends StagedFileSystem {
     private Path partialCopyPath(Path p) {
         try {
             byte[] hash = MessageDigest.getInstance("SHA-256").digest(p.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            return PathUtil.get(PARTIAL_COPIES_DIR, HexFormat.of().formatHex(hash));
+            return PathUtil.get(PARTIAL_COPIES_DIR, ArrayOps.bytesToHex(hash));
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException(e);
         }
@@ -345,7 +346,7 @@ public class LocalFileSystem extends StagedFileSystem {
         if (! Files.isDirectory(dir))
             return;
         try (Stream<Path> files = Files.list(dir)) {
-            for (Path f : files.toList())
+            for (Path f : files.collect(Collectors.toList()))
                 Files.delete(f);
             Files.delete(dir);
         } catch (IOException e) {
