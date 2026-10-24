@@ -37,6 +37,21 @@ public class MultibaseTests {
     }
 
     @Test
+    public void base64Test() {
+        // the caps of a bulk champ get travel base64 in a query string, url-encoded
+        Random r = new Random(42);
+        for (int size : new int[]{0, 1, 2, 3, 31, 32, 33, 2381}) {
+            byte[] input = new byte[size];
+            r.nextBytes(input);
+            String encoded = Multibase.encode(Multibase.Base.Base64, input);
+            assertEquals('m', encoded.charAt(0));
+            assertArrayEquals(input, Multibase.decode(encoded));
+            String urlEncoded = java.net.URLEncoder.encode(encoded, java.nio.charset.StandardCharsets.UTF_8);
+            assertArrayEquals(input, Multibase.decode(java.net.URLDecoder.decode(urlEncoded, java.nio.charset.StandardCharsets.UTF_8)));
+        }
+    }
+
+    @Test
     public void base36Test() {
         // a leading byte >= 0x80 gains a sign byte in BigInteger.toByteArray()
         for (int leadingByte = 0x80; leadingByte <= 0xFF; leadingByte++) {
