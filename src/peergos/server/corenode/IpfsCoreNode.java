@@ -372,6 +372,8 @@ public class IpfsCoreNode implements CoreNode {
                                                                   OpLog setupOperations,
                                                                   ProofOfWork proof,
                                                                   String token) {
+        if (chains.containsKey(username))
+            return Futures.errored(new IllegalStateException("User already exists!"));
         Optional<RequiredDifficulty> pkiResult = updateChain(username, Arrays.asList(chain), proof, token).join();
         if (pkiResult.isPresent())
             return Futures.of(pkiResult);
@@ -385,6 +387,8 @@ public class IpfsCoreNode implements CoreNode {
     public CompletableFuture<Either<PaymentProperties, RequiredDifficulty>> startPaidSignup(String username,
                                                                                             UserPublicKeyLink chain,
                                                                                             ProofOfWork proof) {
+        if (chains.containsKey(username))
+            return Futures.errored(new IllegalStateException("User already exists!"));
         // reserve the username after checking proof of work is sufficient
         Optional<RequiredDifficulty> retry = enforceRateLimit(proof, Arrays.asList(chain));
         if (retry.isPresent())
@@ -403,6 +407,8 @@ public class IpfsCoreNode implements CoreNode {
                                                                    OpLog setupOperations,
                                                                    byte[] signedSpaceRequest,
                                                                    ProofOfWork proof) {
+        if (chains.containsKey(username))
+            return Futures.errored(new IllegalStateException("User already exists!"));
         if (! reservedUsernames.containsKey(username))
             return Futures.errored(new IllegalStateException("Username not reserved!"));
         if (! chain.claim.username.equals(username))

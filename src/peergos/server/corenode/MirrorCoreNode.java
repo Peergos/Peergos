@@ -482,6 +482,8 @@ public class MirrorCoreNode implements CoreNode {
                                                                   String token) {
         if (! chain.claim.storageProviders.get(0).bareMultihash().equals(ourNodeId.bareMultihash()))
             throw new IllegalStateException("Trying to signup to wrong host! " + chain.claim.storageProviders.get(0));
+        if (! getChain(username).join().isEmpty())
+            throw new IllegalStateException("User already exists!");
         Optional<RequiredDifficulty> pkiResult = writeTarget.updateChain(username, Arrays.asList(chain), proof, token).join();
         if (pkiResult.isPresent()) { // signup rejected
             LOG.info("Rejecting signup: required " + pkiResult.get());
@@ -513,6 +515,8 @@ public class MirrorCoreNode implements CoreNode {
                                                                    OpLog setupOperations,
                                                                    byte[] signedSpaceRequest,
                                                                    ProofOfWork proof) {
+        if (! getChain(username).join().isEmpty())
+            throw new IllegalStateException("User already exists!");
         usageStore.addUserIfAbsent(username);
         usageStore.addWriter(username, chain.owner);
         long t0 = System.currentTimeMillis();
