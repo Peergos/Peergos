@@ -681,7 +681,11 @@ public class Main extends Builder {
                             Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-proxy"),
                             proxy);
                     ScryptJava hasher = new ScryptJava();
-                    ContentAddressedStorage localDht = NetworkAccess.buildLocalDht(poster, true, hasher);
+                    ContentAddressedStorage remote = NetworkAccess.buildLocalDht(poster, true, hasher);
+                    // The server's ids and block store properties come from disk after the first run:
+                    // nothing waits on the server before the page can load, and the page still loads,
+                    // and a cached sign-in still works, when the server cannot be reached.
+                    ContentAddressedStorage localDht = new RememberedServerInfo(remote, a.getPeergosDir().resolve(RememberedServerInfo.FILENAME));
                     CoreNode core = NetworkAccess.buildDirectCorenode(poster);
                     ContentAddressedStorage s3 = NetworkAccess.buildDirectS3Blockstore(localDht, core, poster, true, hasher).join();
                     MutablePointersProxy httpMutable = new HttpMutablePointers(poster, poster);
@@ -700,7 +704,9 @@ public class Main extends Builder {
 
                     Supplier<Connection> dbConnector = Builder.getDBConnector(a, "mutable-pointers-cache");
                     JdbcIpnsAndSocial rawPointers = Builder.buildRawPointers(a, dbConnector);
-                    OnlineState online = new OnlineState(() -> Futures.of(true));
+                    // Asked of the server itself, not the remembered answer, so the offline caches
+                    // stay in use until it really answers again.
+                    OnlineState online = new OnlineState(() -> remote.ids().thenApply(x -> true).exceptionally(t -> false));
                     OfflinePointerCache pointerCache = new OfflinePointerCache(httpMutable, new JdbcPointerCache(rawPointers, locallyCachedStorage), online);
 
                     SqlSupplier commands = Builder.getSqlCommands(a);
