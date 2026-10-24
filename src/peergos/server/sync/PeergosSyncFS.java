@@ -9,6 +9,9 @@ import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.ProgressConsumer;
 import peergos.shared.user.fs.cryptree.CryptreeNode;
+import peergos.shared.storage.IpfsTransaction;
+import peergos.shared.storage.PointerCasException;
+import peergos.shared.util.Exceptions;
 import peergos.shared.util.Futures;
 import peergos.shared.util.Pair;
 import peergos.shared.util.PathUtil;
@@ -23,6 +26,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
@@ -73,6 +77,16 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     @Override
+    public boolean canCreate(Path p) {
+        for (Path dir = p.getParent(); dir != null; dir = dir.getParent()) {
+            Optional<FileWrapper> f = context.getByPath(root.resolve(dir)).join();
+            if (f.isPresent())
+                return f.get().isDirectory();
+        }
+        return true;
+    }
+
+    @Override
     public void mkdirs(Path p) {
         if (p == null) // base dir
             return;
@@ -97,13 +111,28 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     @Override
-    public void bulkDelete(Path dir, Set<String> children) {
+    public Set<String> bulkDeleteFiles(Path dir, Map<String, FileState> scanned) {
         Optional<FileWrapper> parentOpt = context.getByPath(root.resolve(dir)).join();
         if (parentOpt.isEmpty())
-            return;
+            return scanned.keySet();
         FileWrapper parent = parentOpt.get();
-        Set<FileWrapper> kids = parent.getChildren(children, context.crypto.hasher, context.network, false).join();
+        Set<FileWrapper> present = parent.getChildren(scanned.keySet(), context.crypto.hasher, context.network, false).join();
+        Set<FileWrapper> kids = present.stream()
+                .filter(f -> asScanned(f, scanned.get(f.getName())))
+                .collect(Collectors.toSet());
         FileWrapper.deleteChildren(parent, kids, dir, context).join();
+        Set<String> gone = new HashSet<>(scanned.keySet());
+        present.stream().filter(f -> ! kids.contains(f)).forEach(f -> gone.remove(f.getName()));
+        return gone;
+    }
+
+    private static boolean asScanned(FileWrapper f, FileState scanned) {
+        if (f.isDirectory() || f.getSize() != scanned.size)
+            return false;
+        Optional<HashBranch> hash = f.getFileProperties().treeHash;
+        if (hash.isPresent())
+            return hash.get().rootHash.equals(scanned.hashTree.rootHash);
+        return f.getFileProperties().modified.toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000 == scanned.modificationTime;
     }
 
     @Override
@@ -221,6 +250,8 @@ public class PeergosSyncFS implements SyncFilesystem {
                 parentOpt = context.getByPath(root.resolve(p).getParent()).join();
             }
             FileWrapper parent = parentOpt.get();
+            if (uploadedAndMoved(parent, props))
+                throw new java.io.FileNotFoundException("An upload of " + relPath + " has completed, and the file been moved since");
             parent.uploadFileWithHash(filename, data, size, hash, modificationTime, thumbnail,
                     Optional.of(props),
                     context.network, context.crypto, isCancelled,
@@ -248,6 +279,186 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     @Override
+    public Optional<LocalDateTime> copy(SyncFilesystem srcFs,
+                                        List<CopyOp> ops,
+                                        boolean resuming,
+                                        SyncState synced,
+                                        Supplier<Boolean> isCancelled,
+                                        Consumer<String> progress) throws IOException {
+        CopyOp first = ops.get(0);
+        boolean sourceUnchanged = SyncFilesystem.unchanged(srcFs, first.source, first.sourceState);
+        if (first.targetState == null) {
+            // a new file is only seen once its upload is complete, and an upload resumes from the props it started with
+            if (resuming && ! (sourceUnchanged && SyncFilesystem.asScanned(this, first.target, null, synced)))
+                throw new ConcurrentChangeException(first.sourceState.relPath + " has changed since it was uploaded in part");
+            Optional<LocalDateTime> res = Optional.empty();
+            for (CopyOp op : ops) {
+                Optional<LocalDateTime> mod = SyncFilesystem.copyRange(srcFs, this, op.target, op, isCancelled, progress);
+                res = res.isEmpty() ? mod : mod.isEmpty() ? res : res.map(t -> mod.get().isAfter(t) ? mod.get() : t);
+            }
+            return res;
+        }
+        // a copy over a file writes into it, in one change
+        if (! resuming)
+            return overwrite(srcFs, ops, true, isCancelled, progress);
+        Optional<FileWrapper> target = context.getByPath(root.resolve(first.target)).join();
+        if (target.isEmpty() || target.get().isDirectory())
+            throw new ConcurrentChangeException(first.target + " is no longer a file");
+        // what has been written into it is the start of this copy, not the state it expects
+        if (sourceUnchanged)
+            return overwrite(srcFs, ops, false, isCancelled, progress);
+        if (! srcFs.exists(first.source))
+            throw new ConcurrentChangeException(first.source + " has gone since it was uploaded in part");
+        // what has been written is a mix of two versions that neither side made, so put all of the source as it is now
+        // in its place
+        progress.accept("Sync: redoing an interrupted upload of " + first.sourceState.relPath + ", as it has changed since");
+        long size = srcFs.size(first.source);
+        int chunkSize = first.sourceState.chunkSize;
+        HashTree hash = srcFs.hashFile(first.source, Optional.empty(), first.sourceState.relPath, synced, size, chunkSize);
+        FileState now = new FileState(first.sourceState.relPath, srcFs.getLastModified(first.source), size, hash, chunkSize);
+        return overwrite(srcFs, List.of(new CopyOp(false, first.source, first.target, now, first.targetState, 0, size,
+                ResumeUploadProps.random(context.crypto))), false, isCancelled, progress);
+    }
+
+    @Override
+    public void discardCopies() {}
+
+    /** Writes ops, which are all over the one file at their target, from srcFs, cuts the file to the source's size and
+     *  gives it the source's hash, as one change. That fails with a ConcurrentChangeException, and writes nothing more,
+     *  if anyone else changes the file while it is written, or, if checkTarget, if it isn't still the ops' target state.
+     */
+    private Optional<LocalDateTime> overwrite(SyncFilesystem srcFs,
+                                             List<CopyOp> ops,
+                                             boolean checkTarget,
+                                             Supplier<Boolean> isCancelled,
+                                             Consumer<String> progress) throws IOException {
+        CopyOp first = ops.get(0);
+        Path p = first.target;
+        FileState source = first.sourceState;
+        Optional<FileWrapper> existing = context.getByPath(root.resolve(p)).join();
+        if (existing.isEmpty() || existing.get().isDirectory())
+            throw new ConcurrentChangeException(p + " is no longer a file");
+        FileWrapper f = existing.get();
+        if (f.isDirty()) {
+            FileWrapper ff = f;
+            context.network.synchronizer.applyComplexUpdate(f.owner(), f.signingPair(), (v, c) -> ff.clean(v, c, context.network, context.crypto)
+                    .thenApply(r -> r.right)).join();
+            f = context.getByPath(root.resolve(p)).join().get();
+        }
+        FileWrapper start = f;
+        LocalDateTime modified = LocalDateTime.ofInstant(Instant.ofEpochSecond(source.modificationTime / 1000, 0), ZoneOffset.UTC);
+        ProgressConsumer<Long> reporter = SyncFilesystem.perMiB("Uploaded",
+                ops.stream().mapToLong(op -> op.diffEnd - op.diffStart).sum(), p.toString(), progress);
+        ProgressConsumer<Long> monitor = x -> {
+            if (isCancelled.get())
+                throw new IllegalStateException("Upload cancelled!");
+            reporter.accept(x);
+        };
+        try {
+            context.network.synchronizer.applyComplexUpdate(f.owner(), f.signingPair(), (current, committer) ->
+                    start.getUpdated(current, context.network).thenCompose(now -> {
+                        if (checkTarget && ! hasState(now, first.targetState))
+                            return Futures.errored(new ConcurrentChangeException(p + " has changed since it was scanned"));
+                        return Futures.reduceAll(ops, current, (v, op) -> start.getUpdated(v, context.network)
+                                        .thenCompose(us -> {
+                                            AsyncReader in;
+                                            try {
+                                                in = srcFs.getBytes(op.source, op.diffStart);
+                                            } catch (IOException e) {
+                                                return Futures.errored(e);
+                                            }
+                                            return us.overwriteSection(v, committer, in, op.diffStart, op.diffEnd, Optional.of(modified),
+                                                    context.network, context.crypto, monitor)
+                                                    .whenComplete((r, t) -> in.close());
+                                        }), (a, b) -> b)
+                                .thenCompose(written -> start.getUpdated(written, context.network)
+                                        .thenCompose(us -> us.getSize() > source.size ?
+                                                us.truncate(written, committer, source.size, context.network, context.crypto) :
+                                                Futures.of(written)))
+                                .thenCompose(cut -> start.getUpdated(cut, context.network)
+                                        .thenCompose(us -> us.getHashUpdates(source.hashTree, context.network, context.crypto.hasher)
+                                                .thenCompose(updates -> FileWrapper.bulkSetSameNameProperties(cut, committer, us.owner(),
+                                                        withModified(updates, modified), context.network))));
+                    })).join();
+        } catch (CompletionException e) {
+            Throwable cause = Exceptions.getRootCause(e);
+            if (cause instanceof ConcurrentChangeException)
+                throw (ConcurrentChangeException) cause;
+            // a commit that changes what another has since is refused, and the file's own properties are in every one
+            if (cause instanceof PointerCasException ||
+                    (cause.getMessage() != null && cause.getMessage().toLowerCase().contains("concurrent modification")))
+                throw new ConcurrentChangeException(p + " was changed while it was being synced");
+            throw e;
+        }
+        return Optional.of(modified);
+    }
+
+    /** Whether a file is still as a scan found it, which an edit since, that drops its hash, or replaces it, isn't */
+    private static boolean hasState(FileWrapper f, FileState scanned) {
+        FileProperties props = f.getFileProperties();
+        return props.size == scanned.size && props.treeHash.map(h -> h.rootHash.equals(scanned.hashTree.rootHash)).orElse(false);
+    }
+
+    /** The file's own properties are in the first update, of its first chunk */
+    private static List<FileWrapper.PropsUpdate> withModified(List<FileWrapper.PropsUpdate> updates, LocalDateTime modified) {
+        if (updates.isEmpty())
+            return updates;
+        List<FileWrapper.PropsUpdate> res = new ArrayList<>(updates);
+        FileWrapper.PropsUpdate first = res.get(0);
+        res.set(0, new FileWrapper.PropsUpdate(first.cap, first.meta, first.entryWriter, first.newProps.withModified(modified)));
+        return res;
+    }
+
+    /** Whether an upload with props has completed, and the file it made has been moved or renamed since, which a
+     *  resumed upload, finding all of it there, would link into the folder again
+     */
+    private boolean uploadedAndMoved(FileWrapper parent, ResumeUploadProps props) {
+        return uploaded(parent, props).map(f -> linked(parent, f, props)).orElse(false);
+    }
+
+    /** The first chunk an upload with props into parent has written, if it has written one */
+    private Optional<FileWrapper> uploaded(FileWrapper parent, ResumeUploadProps props) {
+        return context.network.getFile(uploadCap(parent, props).readOnly(), context.username).join();
+    }
+
+    private static WritableAbsoluteCapability uploadCap(FileWrapper parent, ResumeUploadProps props) {
+        return new WritableAbsoluteCapability(parent.owner(), parent.writer(), props.firstChunkMapKey,
+                Optional.of(props.firstChunkBat), props.baseKey, props.writeKey);
+    }
+
+    /** Whether the file an upload into parent made is in a folder, parent or one it has been moved to since, so is
+     *  complete, rather than written in part and in no folder
+     */
+    private boolean linked(FileWrapper parent, FileWrapper uploaded, ResumeUploadProps props) {
+        Location uploadedTo = uploaded.getPointer().getParentCap().getLocation(parent.owner(), parent.writer());
+        if (! Arrays.equals(uploadedTo.getMapKey(), parent.writableFilePointer().getMapKey()))
+            return true;
+        return parent.getChildrenCapabilities(context.crypto.hasher, context.network).join().stream()
+                .anyMatch(c -> Arrays.equals(c.cap.getMapKey(), props.firstChunkMapKey));
+    }
+
+    @Override
+    public void discardCopy(CopyOp op) {
+        // an upload over a file writes into it, and anything else is the file, once some folder has it
+        if (op.targetState != null)
+            return;
+        Path dir = op.target.getParent();
+        Optional<FileWrapper> parent = context.getByPath(dir == null ? root : root.resolve(dir)).join();
+        if (parent.isEmpty() || ! parent.get().isDirectory())
+            return;
+        FileWrapper folder = parent.get();
+        Optional<FileWrapper> uploaded = uploaded(folder, op.props);
+        if (uploaded.isEmpty() || linked(folder, uploaded.get(), op.props))
+            return;
+        FileProperties props = uploaded.get().getFileProperties();
+        int nChunks = (int) Math.max(1, (props.size + props.chunkSize - 1) / props.chunkSize);
+        WritableAbsoluteCapability cap = uploadCap(folder, op.props);
+        context.network.synchronizer.applyComplexUpdate(folder.owner(), folder.signingPair(),
+                (s, c) -> IpfsTransaction.call(folder.owner(), tid -> FileWrapper.deleteFileChunks(op.props.streamSecret, nChunks,
+                        cap, folder.signingPair(), tid, context.crypto.hasher, context.network, s, c), context.network.dhtClient)).join();
+    }
+
+    @Override
     public AsyncReader getBytes(Path p, long fileOffset) throws IOException {
         Optional<FileWrapper> file = context.getByPath(root.resolve(p)).join();
         if (file.isEmpty())
@@ -261,7 +472,10 @@ public class PeergosSyncFS implements SyncFilesystem {
     public void uploadSubtree(Stream<FileWrapper.FolderUploadProperties> directories) {
         FileWrapper base = context.getByPath(root).join().get();
         Optional<BatId> mirrorBat = base.mirrorBatId();
-        base.uploadSubtree(directories, mirrorBat, context.network, context.crypto, context.getTransactionService(), x -> Futures.of(false), f -> Futures.of(true), () -> true).join();
+        // these are new files, so a different one there now was put there since the scan, by someone else, and
+        // failing the batch leaves both to the next sync, where skipping would record ours as synced over it
+        base.uploadSubtree(directories, mirrorBat, context.network, context.crypto, context.getTransactionService(), x -> Futures.of(false),
+                f -> Futures.errored(new FileExistsException(f)), () -> true).join();
     }
 
     @Override

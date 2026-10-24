@@ -46,6 +46,7 @@ public class JdbcTreeState implements SyncState {
     private static final String DONE_SYNC = "SELECT done FROM syncdone WHERE key=?;";
     private static final String HAS_LOCAL_DELETE = "SELECT path FROM synclocaldeletes WHERE path=?;";
     private static final String HAS_REMOTE_DELETE = "SELECT path FROM syncremotedeletes WHERE path=?;";
+    private static final String GET_REMOTE_DELETES = "SELECT path FROM syncremotedeletes;";
     private static final String INSERT_COPY_OP = "INSERT INTO copyops2 (islocal, source, target, start, end, sourcestate, targetstate, props) VALUES(?, ?, ?, ?, ?, ?, ?, ?);";
     private static final String REMOVE_COPY_OP = "DELETE FROM copyops2 WHERE source=? AND target=? AND start=? AND end=?";
     private static final String LIST_COPY_OPS = "SELECT islocal, source, target, start, end, sourcestate, targetstate, props FROM copyops2;";
@@ -323,6 +324,20 @@ public class JdbcTreeState implements SyncState {
     }
 
     @Override
+    public Set<String> getRemoteDeletes() {
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement(GET_REMOTE_DELETES)) {
+            ResultSet rs = select.executeQuery();
+            Set<String> res = new HashSet<>();
+            while (rs.next())
+                res.add(rs.getString(1));
+            return res;
+        } catch (SQLException sqe) {
+            throw new IllegalStateException(sqe);
+        }
+    }
+
+    @Override
     public FileState byPath(String path) {
         try (Connection conn = getConnection();
              PreparedStatement select = conn.prepareStatement(GET_BY_PATH)) {
@@ -381,6 +396,11 @@ public class JdbcTreeState implements SyncState {
             } catch (SQLException sqe) {
                 throw new IllegalStateException(sqe);
             }
+        // both sides hold it now, so a delete of it that hasn't been synced is over
+        if (hasLocalDelete(fs.relPath))
+            removeLocalDelete(fs.relPath);
+        if (hasRemoteDelete(fs.relPath))
+            removeRemoteDelete(fs.relPath);
     }
 
     @Override

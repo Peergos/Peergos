@@ -923,6 +923,8 @@ public class FileWrapper {
                                                              ProgressConsumer<Long> monitor) {
         if (! isWritable())
             throw new IllegalStateException("Folder not writable!");
+        if (! isDirectory())
+            throw new IllegalStateException("Cannot upload a file into a file!");
 
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (current, committer) ->
                         (props.isPresent() ?
@@ -1205,7 +1207,9 @@ public class FileWrapper {
         if (remaining == 0)
             return Futures.of(null);
         return reader.readIntoArray(buf, offset, remaining)
-                .thenCompose(read -> readFully(reader, buf, offset + read, remaining - read));
+                .thenCompose(read -> read <= 0 ?
+                        Futures.errored(new IllegalStateException("The data ended " + remaining + " bytes early")) :
+                        readFully(reader, buf, offset + read, remaining - read));
     }
 
     @JsMethod
@@ -2100,6 +2104,8 @@ public class FileWrapper {
                                                         List<NamedRelativeCapability> childCaps,
                                                         NetworkAccess network,
                                                         Crypto crypto) {
+        if (! isDirectory())
+            return Futures.errored(new IllegalStateException("Cannot add a child to a file!"));
         return pointer.fileAccess.addChildrenAndCommit(current, committer,
                 childCaps, writableFilePointer(), signingPair(), mirrorBatId(), network, crypto)
                 .thenApply(newBase -> {
@@ -2658,8 +2664,10 @@ public class FileWrapper {
                                                                     .removeChildren(v3, c, Arrays.asList(isLink() ? linkPointer.get().capability : getPointer().capability), freshParent.writableFilePointer(),
                                                                             freshParent.entryWriter, net, context.crypto.random, hasher)))
                                                     .thenCompose(v4 -> !ourFile || shared.isEmpty() ? Futures.of(v4) : context.sharedWithCache.clearSharedWith(ourPath, v4, c, net))
+                                                    // each key is a folder of shares, and is given here as a path in that folder
                                                     .thenCompose(v5 -> !ourFile || shared.isEmpty() ? Futures.of(v5) : context.sharedWithCache.addAllSharedWith(shared.entrySet().stream()
-                                                            .collect(Collectors.toMap(e -> PathUtil.getUntrimmed(newPath).resolve(e.getKey().relativize(ourPath)), e -> e.getValue())), v5, c, net))
+                                                            .collect(Collectors.toMap(e -> PathUtil.getUntrimmed(newPath).resolve(ourPath.getParent().relativize(e.getKey())).resolve(getName()),
+                                                                    e -> e.getValue())), v5, c, net))
                                                     .thenCompose(v6 -> !ourFile || shared.isEmpty() || ! renamed ? Futures.of(v6) :
                                                             context.sharedWithCache.rename(PathUtil.getUntrimmed(newPath).resolve(getName()),
                                                                     PathUtil.getUntrimmed(newPath).resolve(newName), v6, c, net))),
@@ -3152,7 +3160,7 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                         }));
     }
 
-    private static CompletableFuture<Snapshot> deleteFileChunks(byte[] streamSecret,
+    public static CompletableFuture<Snapshot> deleteFileChunks(byte[] streamSecret,
                                                                 int nChunks,
                                                                 WritableAbsoluteCapability startCap,
                                                                 SigningPrivateKeyAndPublicHash ourSigner,

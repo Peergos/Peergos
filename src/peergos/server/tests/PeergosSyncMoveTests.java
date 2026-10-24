@@ -174,4 +174,32 @@ public class PeergosSyncMoveTests {
         Assert.assertTrue(fresh.sharedWith(t.resolve("doc.pdf")).join().readAccess.isEmpty());
         Assert.assertTrue(signIn(friend.username).getByPath(t.resolve("doc 1.pdf")).join().isPresent());
     }
+
+    @Test
+    public void moveOfAFolderKeepsTheSharesInIt() {
+        // a share in a subfolder failed the move with "Illegal directory name: ..", and one in the folder itself was
+        // recorded against the folder above the target
+        String suffix = "" + Math.abs(random.nextInt() % 1_000_000);
+        UserContext owner = signIn("fo" + suffix);
+        UserContext friend = signIn("ff" + suffix);
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(friend));
+        for (String dir : List.of("a", "t"))
+            owner.getUserRoot().join().mkdir(dir, owner.network, false, owner.mirrorBatId(), crypto).join();
+        Path a = PathUtil.get(owner.username, "a"), t = PathUtil.get(owner.username, "t");
+        owner.getByPath(a).join().get().mkdir("s", owner.network, false, owner.mirrorBatId(), crypto).join();
+        Path inFolder = upload(owner, a, "x.pdf", randomBytes());
+        Path inSubfolder = upload(owner, a.resolve("s"), "doc.pdf", randomBytes());
+        owner.shareReadAccessWith(inFolder, Set.of(friend.username)).join();
+        owner.shareReadAccessWith(inSubfolder, Set.of(friend.username)).join();
+
+        moveAndRename(owner, a, t, "a");
+
+        UserContext fresh = signIn(owner.username);
+        Path moved = t.resolve("a");
+        Assert.assertEquals(Set.of(friend.username), fresh.sharedWith(moved.resolve("x.pdf")).join().readAccess);
+        Assert.assertEquals(Set.of(friend.username), fresh.sharedWith(moved.resolve("s/doc.pdf")).join().readAccess);
+        UserContext freshFriend = signIn(friend.username);
+        Assert.assertTrue(freshFriend.getByPath(moved.resolve("x.pdf")).join().isPresent());
+        Assert.assertTrue(freshFriend.getByPath(moved.resolve("s/doc.pdf")).join().isPresent());
+    }
 }
