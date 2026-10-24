@@ -114,7 +114,12 @@ public class UnauthedCachingStorage extends DelegatingStorage {
                                     if (btreeValue.isPresent())
                                         return cache.get(owner, (Cid) btreeValue.get(), cap.bat)
                                                 .thenApply(x -> Optional.<ChunkMirrorCap>empty());
-                                    return Futures.of(Optional.of(cap));
+                                    // A walk that reached the end from a root we were given, with
+                                    // every node to hand, is the answer: nothing under this key.
+                                    // The server would walk the same nodes and say the same, and
+                                    // asking it was a round trip per probe of a name that is not
+                                    // there, and offline an error for each.
+                                    return Futures.of(Optional.<ChunkMirrorCap>empty());
                                 }).exceptionally(t -> Optional.of(cap)))
                         .collect(Collectors.toList())))
                 .thenApply(missing -> missing.stream()
