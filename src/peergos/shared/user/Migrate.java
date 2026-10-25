@@ -16,7 +16,7 @@ public class Migrate {
         UserPublicKeyLink last = existing.get(existing.size() - 1);
         return UserPublicKeyLink.Claim.build(last.claim.username, signer,
                 last.claim.expiry.plusDays(1), Arrays.asList(newStorageId)).thenApply(newClaim -> {
-            UserPublicKeyLink updatedLast = last.withClaim(newClaim);
+            UserPublicKeyLink updatedLast = new UserPublicKeyLink(last.owner, newClaim);
             return Stream.concat(
                             existing.stream().limit(existing.size() - 1),
                             Stream.of(updatedLast))

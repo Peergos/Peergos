@@ -222,6 +222,9 @@ public class UserPublicKeyLink implements Cborable {
             return Futures.errored(new IllegalStateException("Empty claim chain!"));
         if (updated.equals(existing))
             return CompletableFuture.completedFuture(updated);
+        // nothing signs the key change proof of the final link
+        if (updated.get(updated.size() - 1).getKeyChangeProof().isPresent())
+            return Futures.errored(new IllegalStateException("Final link in claim chain has a key change proof!"));
         if (existing.isEmpty())
             return validChain(updated, username, ipfs)
                     .thenApply(valid -> {

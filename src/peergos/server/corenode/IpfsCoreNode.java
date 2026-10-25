@@ -374,6 +374,9 @@ public class IpfsCoreNode implements CoreNode {
                                                                   String token) {
         if (chains.containsKey(username))
             return Futures.errored(new IllegalStateException("User already exists!"));
+        Multihash host = chain.claim.storageProviders.get(0).bareMultihash();
+        if (ipfs.ids().join().stream().noneMatch(id -> id.bareMultihash().equals(host)))
+            return Futures.errored(new IllegalStateException("Trying to signup to wrong host! " + host));
         Optional<RequiredDifficulty> pkiResult = updateChain(username, Arrays.asList(chain), proof, token).join();
         if (pkiResult.isPresent())
             return Futures.of(pkiResult);
@@ -394,7 +397,9 @@ public class IpfsCoreNode implements CoreNode {
         if (retry.isPresent())
             return Futures.of(Either.b(retry.get()));
 
-        PublicKeyHash identity = reservedUsernames.get(chain.claim.username);
+        if (! chain.claim.username.equals(username))
+            return Futures.errored(new IllegalStateException("Username different from that in claim!"));
+        PublicKeyHash identity = reservedUsernames.get(username);
         if (identity != null && ! identity.equals(chain.owner))
             return Futures.errored(new IllegalStateException("Username already reserved!"));
         reservedUsernames.put(username, chain.owner);
@@ -507,6 +512,8 @@ public class IpfsCoreNode implements CoreNode {
             }
 
             List<UserPublicKeyLink> mergedChain = UserPublicKeyLink.merge(username, existingChain, updatedChain, ipfs).get();
+            if (mergedChain.equals(existingChain))
+                return Futures.of(Optional.empty());
             CborObject.CborList mergedChainCbor = new CborObject.CborList(mergedChain.stream()
                     .map(Cborable::toCbor)
                     .collect(Collectors.toList()));
