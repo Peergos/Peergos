@@ -237,6 +237,8 @@ public class UserPublicKeyLink implements Cborable {
                 break;
 
         List<UserPublicKeyLink> tail = updated.subList(indexOfChange, updated.size());
+        if (tail.isEmpty())
+            return Futures.errored(new IllegalStateException("Claim chain is a prefix of the existing chain!"));
 
         UserPublicKeyLink currentLast = existing.get(existing.size() - 1);
         if (tail.get(0).claim.expiry.isBefore(currentLast.claim.expiry))
