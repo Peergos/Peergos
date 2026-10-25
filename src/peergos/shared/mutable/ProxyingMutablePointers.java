@@ -63,6 +63,11 @@ public class ProxyingMutablePointers implements MutablePointers {
     }
 
     @Override
+    public void expireCache() {
+        local.expireCache();
+    }
+
+    @Override
     public MutablePointers clearCache() {
         return new ProxyingMutablePointers(serverIds, core, local.clearCache(), p2p, weMirror);
     }

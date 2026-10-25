@@ -228,6 +228,11 @@ public class BufferedPointers implements MutablePointers {
     }
 
     @Override
+    public void expireCache() {
+        target.expireCache();
+    }
+
+    @Override
     public MutablePointers clearCache() {
         return new BufferedPointers(target.clearCache(), commitsToTarget);
     }

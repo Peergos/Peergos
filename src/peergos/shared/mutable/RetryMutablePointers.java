@@ -90,6 +90,11 @@ public class RetryMutablePointers implements MutablePointers {
     }
 
     @Override
+    public void expireCache() {
+        target.expireCache();
+    }
+
+    @Override
     public MutablePointers clearCache() {
         return new RetryMutablePointers(target.clearCache());
     }

@@ -69,6 +69,11 @@ public interface MutablePointers {
 
     MutablePointers clearCache();
 
+    /** Drop cached pointers in place, so the next read of each goes to the source. Used when we
+     *  learn that something we may have cached has just changed.
+     */
+    default void expireCache() {}
+
     static CompletableFuture<PointerUpdate> parsePointerTarget(byte[] pointerCas,
                                                                PublicKeyHash owner,
                                                                PublicKeyHash writerKeyHash,

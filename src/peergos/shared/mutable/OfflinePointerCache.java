@@ -99,6 +99,11 @@ public class OfflinePointerCache implements MutablePointers {
     }
 
     @Override
+    public void expireCache() {
+        target.expireCache();
+    }
+
+    @Override
     public MutablePointers clearCache() {
         return new OfflinePointerCache(target.clearCache(), cache, online);
     }
