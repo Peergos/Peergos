@@ -103,7 +103,8 @@ public class AuthedStorage extends DelegatingDeletableStorage {
     @Override
     public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean  persistblock) {
         if (bat.isEmpty())
-            return get(peerIds, owner, hash, "", persistblock);
+            return getRaw(peerIds, owner, hash, bat, ourId, h, true, persistblock)
+                    .thenApply(opt -> opt.map(CborObject::fromByteArray));
         return Futures.asyncExceptionally(() -> bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
                 .thenApply(BlockAuth::encode)
                 .thenCompose(auth -> get(peerIds, owner, hash, auth, persistblock)),
@@ -113,6 +114,29 @@ public class AuthedStorage extends DelegatingDeletableStorage {
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
         return getRaw(pki.getStorageProviders(owner), owner, hash, bat, ourNodeId, h, true);
+    }
+
+    @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds,
+                                                      PublicKeyHash owner,
+                                                      Cid hash,
+                                                      Optional<BatWithId> bat,
+                                                      Cid ourId,
+                                                      Hasher h,
+                                                      boolean doAuth,
+                                                      boolean persistBlock) {
+        return target.getRaw(peerIds, owner, hash, bat, ourId, h, doAuth, persistBlock).thenApply(bopt -> {
+            if (bopt.isEmpty())
+                return Optional.empty();
+            byte[] block = bopt.get();
+            if (doAuth) {
+                String auth = bat.isEmpty() ? "" : bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
+                        .thenApply(BlockAuth::encode).join();
+                if (! authoriser.allowRead(hash, block, id().join(), auth).join())
+                    throw new IllegalStateException("Unauthorised!");
+            }
+            return bopt;
+        });
     }
 
     @Override
