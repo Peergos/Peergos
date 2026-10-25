@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.SortedMap;
 import java.util.TreeMap;
@@ -20,7 +21,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
-/** The server's identities and block store properties, remembered on disk between runs.
+/** The server's identities and block store properties, remembered on disk between runs,
+ *  keyed by the server's name, so a run pointed at another server never gets this one's.
  *
  *  Both are asked for before anything else can happen: by this app as it builds its storage,
  *  and by the page as it builds its network. Answered from the file they cost no round trip,
@@ -36,14 +38,17 @@ public class RememberedServerInfo extends DelegatingStorage {
 
     private final ContentAddressedStorage server;
     private final Path file;
+    /** The server's host, and port if it has one: what the file keys this server's entry by. */
+    private final String serverName;
     private volatile List<Cid> ids;
     private volatile BlockStoreProperties props;
     private final AtomicBoolean refreshed = new AtomicBoolean(false);
 
-    public RememberedServerInfo(ContentAddressedStorage server, Path file) {
+    public RememberedServerInfo(ContentAddressedStorage server, Path file, String serverName) {
         super(server);
         this.server = server;
         this.file = file;
+        this.serverName = serverName;
         load();
     }
 
@@ -95,16 +100,16 @@ public class RememberedServerInfo extends DelegatingStorage {
     }
 
     private void load() {
-        if (! Files.exists(file))
-            return;
         try {
-            CborObject.CborMap map = (CborObject.CborMap) CborObject.fromByteArray(Files.readAllBytes(file));
-            Optional<List<Cid>> savedIds = map.getOptional("ids", c -> ((CborObject.CborList) c).value.stream()
+            CborObject.CborMap entry = readAll().get(serverName);
+            if (entry == null)
+                return;
+            Optional<List<Cid>> savedIds = entry.getOptional("ids", c -> ((CborObject.CborList) c).value.stream()
                     .map(id -> Cid.decodePeerId(((CborObject.CborString) id).value))
                     .collect(Collectors.toList()));
             if (savedIds.isPresent() && ! savedIds.get().isEmpty())
                 ids = savedIds.get();
-            props = map.getOptional("props", BlockStoreProperties::fromCbor).orElse(null);
+            props = entry.getOptional("props", BlockStoreProperties::fromCbor).orElse(null);
         } catch (Throwable t) {
             // a file we cannot read is one we are better off without
             try {
@@ -113,19 +118,35 @@ public class RememberedServerInfo extends DelegatingStorage {
         }
     }
 
+    /** Every server's entry in the file, by name; empty when there is no file. */
+    private Map<String, CborObject.CborMap> readAll() throws IOException {
+        Map<String, CborObject.CborMap> all = new TreeMap<>();
+        if (! Files.exists(file))
+            return all;
+        CborObject.CborMap map = (CborObject.CborMap) CborObject.fromByteArray(Files.readAllBytes(file));
+        map.applyToAll((name, entry) -> all.put(name, (CborObject.CborMap) entry));
+        return all;
+    }
+
     private synchronized void save() {
-        SortedMap<String, Cborable> state = new TreeMap<>();
+        SortedMap<String, Cborable> entry = new TreeMap<>();
         List<Cid> currentIds = ids;
         if (currentIds != null)
-            state.put("ids", new CborObject.CborList(currentIds.stream()
+            entry.put("ids", new CborObject.CborList(currentIds.stream()
                     .map(id -> new CborObject.CborString(id.toString()))
                     .collect(Collectors.toList())));
         BlockStoreProperties currentProps = props;
         if (currentProps != null)
-            state.put("props", currentProps);
+            entry.put("props", currentProps);
         try {
+            // this server's entry replaced, the others kept
+            SortedMap<String, Cborable> all = new TreeMap<>();
+            try {
+                all.putAll(readAll());
+            } catch (Throwable t) {}
+            all.put(serverName, CborObject.CborMap.build(entry));
             Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
-            Files.write(tmp, CborObject.CborMap.build(state).serialize());
+            Files.write(tmp, CborObject.CborMap.build(all).serialize());
             Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException e) {
             // next start asks the server, as before

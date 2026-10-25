@@ -685,7 +685,7 @@ public class Main extends Builder {
                     // The server's ids and block store properties come from disk after the first run:
                     // nothing waits on the server before the page can load, and the page still loads,
                     // and a cached sign-in still works, when the server cannot be reached.
-                    ContentAddressedStorage localDht = new RememberedServerInfo(remote, a.getPeergosDir().resolve(RememberedServerInfo.FILENAME));
+                    ContentAddressedStorage localDht = new RememberedServerInfo(remote, a.getPeergosDir().resolve(RememberedServerInfo.FILENAME), target.getAuthority());
                     CoreNode core = NetworkAccess.buildDirectCorenode(poster);
                     ContentAddressedStorage s3 = NetworkAccess.buildDirectS3Blockstore(localDht, core, poster, true, hasher).join();
                     MutablePointersProxy httpMutable = new HttpMutablePointers(poster, poster);
