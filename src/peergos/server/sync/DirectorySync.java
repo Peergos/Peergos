@@ -732,7 +732,8 @@ public class DirectorySync {
                 for (String relPath : localDeletes) {
                     doneFiles.add(relPath);
                     if (! syncLocalDeletes) {
-                        LOG.accept("Sync ignore local delete " + relPath + " " + progress);
+                        if (! syncedVersions.hasLocalDelete(relPath))
+                            LOG.accept("Sync ignore local delete " + relPath + " " + progress);
                         syncedVersions.addLocalDelete(relPath);
                     } else {
                         String folderPath = relPath.contains("/") ? relPath.substring(0, relPath.lastIndexOf("/")) : "";
@@ -1165,7 +1166,8 @@ public class DirectorySync {
                             localFs.delete(localFs.resolve(local.relPath));
                             syncedVersions.remove(local.relPath);
                         } else {
-                            LOG.accept("Sync ignore remote delete " + local.relPath + " " + progress);
+                            if (! syncedVersions.hasRemoteDelete(local.relPath))
+                                LOG.accept("Sync ignore remote delete " + local.relPath + " " + progress);
                             syncedVersions.addRemoteDelete(local.relPath);
                         }
                         progress.doneFile();
@@ -1247,7 +1249,8 @@ public class DirectorySync {
                             remoteFs.delete(remoteFs.resolve(remote.relPath));
                             syncedVersions.remove(remote.relPath);
                         } else {
-                            LOG.accept("Sync ignore local delete " + remote.relPath + " " + progress);
+                            if (! syncedVersions.hasLocalDelete(remote.relPath))
+                                LOG.accept("Sync ignore local delete " + remote.relPath + " " + progress);
                             syncedVersions.addLocalDelete(remote.relPath);
                         }
                         progress.doneFile();

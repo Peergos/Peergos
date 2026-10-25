@@ -160,6 +160,28 @@ public class SyncTests {
                 null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
     }
 
+    @Test
+    public void ignoredDeletesAreOnlyLoggedOnce() throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync");
+        Path base2 = Files.createTempDirectory("peergos-sync");
+        Files.writeString(base1.resolve("local.txt"), "local");
+        Files.writeString(base2.resolve("remote.txt"), "remote");
+        SyncState state = new JdbcTreeState(":memory:");
+        syncKeepingDeletes(base1, base2, state);
+        Files.delete(base1.resolve("local.txt"));
+        Files.delete(base2.resolve("remote.txt"));
+
+        for (int pass = 0; pass < 2; pass++) {
+            List<String> log = new ArrayList<>();
+            DirectorySync.syncDir(new LocalFileSystem(base1, crypto.hasher), new LocalFileSystem(base2, crypto.hasher), false, false,
+                    null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, log::add);
+            long ignored = log.stream().filter(m -> m.startsWith("Sync ignore")).count();
+            Assert.assertEquals(log.toString(), pass == 0 ? 2 : 0, ignored);
+        }
+        Assert.assertTrue(Files.exists(base2.resolve("local.txt")));
+        Assert.assertTrue(Files.exists(base1.resolve("remote.txt")));
+    }
+
     private static Map<String, String> tree(Path base) throws IOException {
         Map<String, String> res = new TreeMap<>();
         try (Stream<Path> all = Files.walk(base)) {
