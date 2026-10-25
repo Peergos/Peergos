@@ -17,9 +17,12 @@ import java.util.stream.*;
  *
  *  Each chat that uses them has a random symmetric key in its group state, which every member can
  *  read and nobody else can. The relay channel is derived from that key, and every signal is signed
- *  with the sender's chat identity and then encrypted with it, so the relay sees neither who is in a
- *  chat nor what they signal, and members can't send signals in each other's name. Removing a member
- *  replaces the key, after which the removed member can't follow the chat's signals any more.
+ *  with the sender's chat identity and then encrypted with it, so the relay can't read what is
+ *  signalled or which chat it belongs to, and members can't send signals in each other's name.
+ *  The relay does see which of its users post to and poll a channel, and when, as every call is
+ *  made in a user's name for rate limiting; the channel changes daily, so it can link members of
+ *  a chat within a day but not across days. Removing a member replaces the key, after which the
+ *  removed member can't follow the chat's signals any more.
  */
 public class ChatSignals {
 

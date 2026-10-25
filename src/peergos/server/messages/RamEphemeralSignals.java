@@ -23,13 +23,17 @@ import java.util.stream.*;
 public class RamEphemeralSignals implements EphemeralSignals {
 
     public static final long EVENT_TTL_MILLIS = 30_000;
-    public static final long STICKY_TTL_MILLIS = 14 * 24 * 3600_000L;
+    // a chat's channel changes every day and clients send their sticky signals again in the new one,
+    // so nothing needs keeping much beyond a day
+    public static final long STICKY_TTL_MILLIS = 26 * 3600_000L;
     public static final int MAX_EVENTS_PER_CHANNEL = 64;
     public static final int MAX_SLOTS_PER_CHANNEL = 64;
     public static final int MAX_CHANNELS = 20_000;
     public static final int MAX_WAITING_POLLS = 500;
     public static final int MAX_WAITING_POLLS_PER_USER = 20;
     public static final int MAX_POSTS_PER_USER_PER_MINUTE = 120;
+    /** Sticky signals one user may have stored across all channels, so the rate limit alone can't fill memory. */
+    public static final int MAX_STICKY_PER_USER = 256;
     private static final int AUTH_WINDOW_SECONDS = 300;
 
     private final CoreNode pki;
@@ -38,6 +42,7 @@ public class RamEphemeralSignals implements EphemeralSignals {
     private final Map<String, Channel> channels = new LinkedHashMap<>(16, 0.75f, true);
     private final Map<String, Integer> waitingPerUser = new HashMap<>();
     private final Map<String, Deque<Long>> recentPosts = new HashMap<>();
+    private final Map<String, Integer> stickyPerUser = new HashMap<>();
     private final ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "ephemeral-signals");
         t.setDaemon(true);
@@ -58,12 +63,14 @@ public class RamEphemeralSignals implements EphemeralSignals {
     private static class Stored {
         final long seq, expiry;
         final byte[] slot, payload;
+        final String user;
 
-        Stored(long seq, long expiry, byte[] slot, byte[] payload) {
+        Stored(long seq, long expiry, byte[] slot, byte[] payload, String user) {
             this.seq = seq;
             this.expiry = expiry;
             this.slot = slot;
             this.payload = payload;
+            this.user = user;
         }
 
         Signal toSignal() {
@@ -80,9 +87,14 @@ public class RamEphemeralSignals implements EphemeralSignals {
             return events.isEmpty() && sticky.isEmpty() && waiters.isEmpty();
         }
 
-        void expire(long now) {
+        void expire(long now, Consumer<Stored> dropped) {
             events.removeIf(s -> s.expiry < now);
-            sticky.values().removeIf(s -> s.expiry < now);
+            sticky.values().removeIf(s -> {
+                if (s.expiry >= now)
+                    return false;
+                dropped.accept(s);
+                return true;
+            });
         }
 
         List<Signal> after(long since) {
@@ -134,11 +146,18 @@ public class RamEphemeralSignals implements EphemeralSignals {
             long n = ++seq;
             if (post.isSticky()) {
                 String slotId = ArrayOps.bytesToHex(post.slot);
-                if (! channel.sticky.containsKey(slotId) && channel.sticky.size() >= MAX_SLOTS_PER_CHANNEL)
+                Stored previous = channel.sticky.get(slotId);
+                if (previous == null && channel.sticky.size() >= MAX_SLOTS_PER_CHANNEL)
                     throw new IllegalStateException("Too many slots in channel");
-                channel.sticky.put(slotId, new Stored(n, now + STICKY_TTL_MILLIS, post.slot, post.payload));
+                boolean replacesOwn = previous != null && previous.user.equals(username);
+                if (! replacesOwn && stickyPerUser.getOrDefault(username, 0) >= MAX_STICKY_PER_USER)
+                    throw new IllegalStateException("Too many stored signals, please wait");
+                if (previous != null)
+                    releaseSticky(previous);
+                channel.sticky.put(slotId, new Stored(n, now + STICKY_TTL_MILLIS, post.slot, post.payload, username));
+                stickyPerUser.merge(username, 1, Integer::sum);
             } else {
-                channel.events.addLast(new Stored(n, now + EVENT_TTL_MILLIS, post.slot, post.payload));
+                channel.events.addLast(new Stored(n, now + EVENT_TTL_MILLIS, post.slot, post.payload, username));
                 while (channel.events.size() > MAX_EVENTS_PER_CHANNEL)
                     channel.events.removeFirst();
             }
@@ -195,11 +214,17 @@ public class RamEphemeralSignals implements EphemeralSignals {
         return new Batch(signals, next);
     }
 
+    private void releaseSticky(Stored s) {
+        stickyPerUser.computeIfPresent(s.user, (u, c) -> c > 1 ? c - 1 : null);
+    }
+
     /** Drop the least recently used channel that nobody is waiting on. */
     private void evictOldest() {
         Iterator<Map.Entry<String, Channel>> it = channels.entrySet().iterator();
         while (it.hasNext()) {
-            if (it.next().getValue().waiters.isEmpty()) {
+            Channel c = it.next().getValue();
+            if (c.waiters.isEmpty()) {
+                c.sticky.values().forEach(this::releaseSticky);
                 it.remove();
                 return;
             }
@@ -212,7 +237,7 @@ public class RamEphemeralSignals implements EphemeralSignals {
         Iterator<Map.Entry<String, Channel>> it = channels.entrySet().iterator();
         while (it.hasNext()) {
             Channel c = it.next().getValue();
-            c.expire(now);
+            c.expire(now, this::releaseSticky);
             if (c.isEmpty())
                 it.remove();
         }

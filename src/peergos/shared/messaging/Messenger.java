@@ -255,6 +255,19 @@ public class Messenger {
         return ChatSignals.send(current, type, value, context.username, context.signer, network.signals, hasher);
     }
 
+    private long lastCacheExpiry = 0;
+
+    /** A member's "updated" signal drops our pointer cache, but at most every few seconds, so that a
+     *  member sending many of them can't make every other member's client refetch all the time.
+     */
+    private synchronized void expireCacheRateLimited() {
+        long now = System.currentTimeMillis();
+        if (now - lastCacheExpiry < 3_000)
+            return;
+        lastCacheExpiry = now;
+        network.mutable.expireCache();
+    }
+
     /** Wait up to waitMillis for signals from the other members after the given position.
      *
      * @param since the "next" of the previous result, or "0"
@@ -276,7 +289,7 @@ public class Messenger {
                         .thenApply(received -> {
                             // a member committed something new, which a cached pointer would hide for a while
                             if (received.stream().anyMatch(r -> r.type.equals(ChatSignals.UPDATED)))
-                                network.mutable.expireCache();
+                                expireCacheRateLimited();
                             Map<String, Object> res = new LinkedHashMap<>();
                             res.put("next", Long.toString(batch.next));
                             // sticky signals don't carry over to a new day's channel, so clients send theirs again
