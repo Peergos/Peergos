@@ -674,7 +674,7 @@ public class UserContext {
         BatWithId mirrorBat = this.mirrorBat.orElseThrow(() -> new IllegalStateException("You need a mirror bat!"));
         return startMirror(username,
                 addCard.isPresent() ?
-                        proof -> TimeLimitedClient.signNow(signer.secret)
+                        proof -> new TimeLimitedClient.SignedRequest(Constants.CORE_URL + "startPaidMirror", System.currentTimeMillis()).sign(signer.secret)
                                 .thenCompose(signedTime -> network.coreNode.startPaidMirror(username, signedTime, proof))
                                 .thenCompose(toPayOrRetry -> toPayOrRetry.isB() ?
                                         Futures.of(Optional.of(toPayOrRetry.b())) :
@@ -686,7 +686,7 @@ public class UserContext {
                                                                 retryUntilPositiveQuota(network, signer,
                                                                         () -> network.coreNode.completePaidMirror(username, mirrorBat, signedSpaceReq, proof), 1_000, 5)
                                                                         .thenApply(z -> Optional.<RequiredDifficulty>empty())))) :
-                        proof -> TimeLimitedClient.signNow(signer.secret)
+                        proof -> new TimeLimitedClient.SignedRequest(Constants.CORE_URL + "startMirror", System.currentTimeMillis()).sign(signer.secret)
                                 .thenCompose(signedTime -> network.coreNode.startMirror(username, mirrorBat, signedTime, proof))
                                 .thenApply(x -> Optional.<RequiredDifficulty>empty()),
                 crypto.hasher, progressCallback);

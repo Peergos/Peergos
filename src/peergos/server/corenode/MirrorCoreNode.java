@@ -542,7 +542,7 @@ public class MirrorCoreNode implements CoreNode {
     public CompletableFuture<Boolean> startMirror(String username, BatWithId mirrorBat, byte[] auth, ProofOfWork proof) {
         // verify auth
         PublicKeyHash identityHash = getPublicKeyHash(username).join().get();
-        TimeLimited.isAllowedTime(auth, 10*60, ipfs, identityHash);
+        TimeLimited.isAllowed(Constants.CORE_URL + "startMirror", auth, 10*60, ipfs, identityHash);
 
         // double check mirror bat and add to db
         if (! BatId.sha256(mirrorBat.bat, hasher).join().equals(mirrorBat.id()))
@@ -558,7 +558,7 @@ public class MirrorCoreNode implements CoreNode {
     public CompletableFuture<Either<PaymentProperties, RequiredDifficulty>> startPaidMirror(String username, byte[] auth, ProofOfWork proof) {
         // verify auth
         PublicKeyHash identityHash = getPublicKeyHash(username).join().get();
-        TimeLimited.isAllowedTime(auth, 10*60, ipfs, identityHash);
+        TimeLimited.isAllowed(Constants.CORE_URL + "startPaidMirror", auth, 10*60, ipfs, identityHash);
         return Futures.of(Either.a(new PaymentProperties(0)));
     }
 
