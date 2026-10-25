@@ -456,18 +456,30 @@ public class DirectorySync {
         List<CopyOp> ops = syncedVersions.getInProgressCopies();
         if (! ops.isEmpty())
             log("Rerunning failed copy operations...");
-        for (CopyOp op : ops) {
+        Map<Pair<Boolean, Path>, List<CopyOp>> byTarget = ops.stream()
+                .collect(Collectors.groupingBy(op -> new Pair<>(op.isLocalTarget, op.target), LinkedHashMap::new, Collectors.toList()));
+        for (List<CopyOp> sameTarget : byTarget.values()) {
+            CopyOp first = sameTarget.get(0);
+            SyncFilesystem srcFs = first.isLocalTarget ? remoteFS : localFS;
+            SyncFilesystem targetFs = first.isLocalTarget ? localFS : remoteFS;
             try {
-                applyCopyOp(op.isLocalTarget ? remoteFS : localFS, op.isLocalTarget ? localFS : remoteFS, op, isCancelled, LOG);
+                copy(srcFs, targetFs, sameTarget, true, syncedVersions, isCancelled, LOG);
+            } catch (ConcurrentChangeException e) {
+                LOG.accept("Sync: abandoning an interrupted " + (first.isLocalTarget ? "download" : "upload") + " of " +
+                        first.sourceState.relPath + ", as it has changed since");
             } catch (Exception e) {
                 Throwable cause = Exceptions.getRootCause(e);
-                if (cause instanceof FileNotFoundException) {
-                    // A local file has been added and removed concurrently with us trying to copy it, ignore the copy op now
-                } else
+                if (! (cause instanceof FileNotFoundException))
                     throw new RuntimeException(e);
+                // A local file has been added and removed concurrently with us trying to copy it, ignore the copy op now
+                for (CopyOp op : sameTarget)
+                    targetFs.discardCopy(op);
+                syncedVersions.finishCopies(sameTarget);
             }
-            syncedVersions.finishCopies(List.of(op));
         }
+        // anything left was written by a copy that has been forgotten, such as when the sync state is reset
+        localFS.discardCopies();
+        remoteFS.discardCopies();
         if (! syncedVersions.hasCompletedSync()) {
             // Do an incremental sync of only files to make progress quicker
             // We don't need to prehash entire dirs here,
@@ -504,7 +516,8 @@ public class DirectorySync {
                     if (remote == null) {
                         // avoid doing many small files in non bulk uploads, and leave a file where the other side
                         // has a folder to the full sync, which resolves the clash
-                        if (file.size <= 1024*1024 || initialRemote.hasDir(file.relPath)) {
+                        if (file.size <= 1024*1024 || initialRemote.hasDir(file.relPath) ||
+                                ancestors(file.relPath).stream().anyMatch(a -> initialRemote.byPath(a) != null)) {
                             progress.doneFile();
                             return;
                         }
@@ -512,14 +525,10 @@ public class DirectorySync {
                             LOG.accept("REMOTE: Uploading " + file.relPath + " " + progress);
                             int chunkSize = FileProperties.chunkSizeForNewFiles();
                             HashTree hashTree = localFS.hashFile(p, Optional.empty(), file.relPath, syncedVersions, file.size, chunkSize);
-                            LocalDateTime modified = LocalDateTime.ofInstant(Instant.ofEpochSecond(file.modifiedTime / 1000, 0), ZoneOffset.UTC);
                             CopyOp op = new CopyOp(false, localFS.resolve(file.relPath),
                                     remoteFS.resolve(file.relPath), new FileState(file.relPath, file.modifiedTime, file.size, hashTree, chunkSize), null,
                                     0, file.size, ResumeUploadProps.random(crypto));
-                            syncedVersions.startCopies(List.of(op));
-                            remoteFS.setBytes(p, 0, localFS.getBytes(p, 0), file.size, Optional.of(hashTree),
-                                    Optional.of(modified), localFS.getThumbnail(p), op.props, isCancelled, m -> LOG.accept(m + " " + progress));
-                            syncedVersions.finishCopies(List.of(op));
+                            copyFileDiffAndTruncate(localFS, remoteFS, List.of(op), syncedVersions, isCancelled, m -> LOG.accept(m + " " + progress));
                             syncedVersions.add(new FileState(file.relPath, file.modifiedTime, file.size, hashTree, chunkSize));
                             progress.doneFile();
                         } catch (IOException e) {
@@ -580,8 +589,23 @@ public class DirectorySync {
 
             boolean remoteChange = ! remoteVersion.equals(syncedVersion) || remoteVersion.versions.isEmpty();
             remoteStatePath = File.createTempFile("peergos-sync", ".sqlite", peergosDir.toFile()).toString();
-            SyncState remoteState = remoteChange ? new JdbcTreeState(remoteStatePath) : syncedVersions;
+            // with nothing changed there since, Drive holds what was synced, except for any deletes we haven't synced
+            Set<String> remoteDeletes = remoteChange ? Collections.emptySet() : syncedVersions.getRemoteDeletes();
+            if (! remoteChange && ! remoteDeletes.isEmpty())
+                syncedVersions.copyTo(remoteStatePath);
+            SyncState remoteState = remoteChange || ! remoteDeletes.isEmpty() ? new JdbcTreeState(remoteStatePath) : syncedVersions;
             long t3 = System.currentTimeMillis();
+            if (! remoteChange && ! remoteDeletes.isEmpty()) {
+                if (remoteState.filesCount() == 0) {
+                    // a state kept in memory has no file to copy
+                    for (String path : syncedVersions.allFilePaths())
+                        remoteState.add(syncedVersions.byPath(path));
+                    for (String dir : syncedVersions.getDirs())
+                        remoteState.addDir(dir);
+                }
+                for (String path : remoteDeletes)
+                    remoteState.remove(path);
+            }
             if (remoteChange) {
                 // this rehashes anything it cannot match from cache, which for a file of
                 // several GiB is minutes with nothing else to report
@@ -591,11 +615,15 @@ public class DirectorySync {
             long t4 = System.currentTimeMillis();
             LOG.accept("Found " + remoteState.filesCount() + " remote files in " + (t4-t3)/1_000 + "s");
 
-            resolveFileFolderClashes(localFS, localState, remoteFS, remoteState, syncedVersions, syncLocalDeletes, LOG);
-            resolveFileFolderClashes(remoteFS, remoteState, localFS, localState, syncedVersions, syncRemoteDeletes, LOG);
+            resolveFileFolderClashes(localFS, localState, remoteFS, remoteState, syncedVersions, syncLocalDeletes, syncRemoteDeletes, LOG);
+            resolveFileFolderClashes(remoteFS, remoteState, localFS, localState, syncedVersions, syncRemoteDeletes, syncLocalDeletes, LOG);
 
             TreeSet<String> allPaths = new TreeSet<>(localState.allFilePaths());
             allPaths.addAll(remoteState.allFilePaths());
+            // gone from both sides, by deletes or moves, so nothing will visit them, and they would keep their folders
+            for (String path : syncedVersions.allFilePaths())
+                if (! allPaths.contains(path))
+                    syncedVersions.remove(path);
             TreeSet<String> allChangedPaths = new TreeSet<>();
 
             // remove identical paths
@@ -604,7 +632,8 @@ public class DirectorySync {
                 FileState remote = remoteState.byPath(path);
                 FileState synced = syncedVersions.byPath(path);
                 if (Objects.equals(local, remote)) {
-                    if (synced == null)
+                    // an interrupted copy that a later sync finished can leave an older version recorded
+                    if (! Objects.equals(synced, local))
                         syncedVersions.add(local);
                     // already synced
                     if (! syncLocalDeletes && syncedVersions.hasLocalDelete(path))
@@ -623,6 +652,8 @@ public class DirectorySync {
                     allChangedPaths.add(path);
             }
             Set<String> doneFiles = Collections.synchronizedSet(new HashSet<>());
+            // what was synced before this pass changed it, as a moved file's new path can't be one of these
+            Set<String> syncedBefore = syncedVersions.allFilePaths();
             SyncProgress progress = new SyncProgress(allChangedPaths.size());
 
             // upload new small files in large bulk operations
@@ -635,7 +666,9 @@ public class DirectorySync {
                 FileState synced = syncedVersions.byPath(relativePath);
                 FileState local = localState.byPath(relativePath);
                 FileState remote = remoteState.byPath(relativePath);
-                boolean isSmallRemoteCopy = synced == null && remote == null && local.size < FileProperties.chunkSizeForNewFiles();
+                // a file under a path the other side still has a file at waits for that to be moved or deleted
+                boolean isSmallRemoteCopy = synced == null && remote == null && local.size < FileProperties.chunkSizeForNewFiles() &&
+                        ancestors(relativePath).stream().noneMatch(a -> remoteState.byPath(a) != null);
                 if (isSmallRemoteCopy) {
                     List<FileState> remoteByHash = remoteState.byHash(local.hashTree.rootHash);
                     List<FileState> localByHash = localState.byHash(local.hashTree.rootHash);
@@ -685,12 +718,47 @@ public class DirectorySync {
                     Optional<FileState> remoteAtHashedPath = extraLocal.size() == extraRemote.size() ?
                             Optional.ofNullable(remoteState.byPath(extraLocal.get(index).relPath)) :
                             Optional.empty();
-                    if (extraLocal.size() != extraRemote.size() || remoteAtHashedPath.isPresent())
+                    if (extraLocal.size() != extraRemote.size() || remoteAtHashedPath.isPresent() ||
+                            syncedBefore.contains(extraLocal.get(index).relPath))
                         localDeletes.add(relativePath);
                 }
             }
             if (isCancelled.get())
                 return;
+
+            // do deletes in bulk, before uploads, which may need a deleted file's path for a folder
+            if (! localDeletes.isEmpty()) {
+                Map<String, Map<String, FileState>> byFolder = new HashMap<>();
+                for (String relPath : localDeletes) {
+                    doneFiles.add(relPath);
+                    if (! syncLocalDeletes) {
+                        LOG.accept("Sync ignore local delete " + relPath + " " + progress);
+                        syncedVersions.addLocalDelete(relPath);
+                    } else {
+                        String folderPath = relPath.contains("/") ? relPath.substring(0, relPath.lastIndexOf("/")) : "";
+                        String filename = relPath.substring(relPath.lastIndexOf("/") + 1);
+                        byFolder.computeIfAbsent(folderPath, f -> new HashMap<>()).put(filename, remoteState.byPath(relPath));
+                    }
+                }
+                byFolder.forEach((dir, files) -> {
+                    if (isCancelled.get())
+                        throw new RuntimeException("Sync cancelled before deleting from " + dir);
+                    LOG.accept("REMOTE: bulk deleting " + files.size() + " from " + remoteFS.resolve(dir) + " " + progress);
+                    Set<String> deleted = remoteFS.bulkDeleteFiles(remoteFS.resolve(dir), files);
+                    for (String file : files.keySet()) {
+                        String path = dir + (dir.isEmpty() ? "" : "/") + file;
+                        progress.doneFile();
+                        if (deleted.contains(file)) {
+                            LOG.accept("REMOTE: deleted " + path + " " + progress);
+                            syncedVersions.remove(path);
+                        } else {
+                            // a change since the scan is a change against a delete, which the next sync copies over as new
+                            LOG.accept("REMOTE: not deleting " + path + ", as it has changed since " + progress);
+                            syncedVersions.remove(path);
+                        }
+                    }
+                });
+            }
 
             for (Set<String> smallFiles : smallFileBatches) {
                 if (!smallFiles.isEmpty()) {
@@ -720,7 +788,8 @@ public class DirectorySync {
                                         throw new RuntimeException(e);
                                     }
                                 },
-                                (int) (local.size >> 32), (int) local.size, Optional.of(modificationTime), Optional.of(local.hashTree), false, true,
+                                // a new file, so one there now was put there since the scan, by someone else
+                                (int) (local.size >> 32), (int) local.size, Optional.of(modificationTime), Optional.of(local.hashTree), false, false,
                                 x -> {
                                     // the batch is one call, and the check after it only runs once
                                     // the whole batch is done: without this a stopped sync keeps
@@ -746,77 +815,83 @@ public class DirectorySync {
                     return;
             }
 
-            // do deletes in bulk
-            if (! localDeletes.isEmpty()) {
-                Map<String, Set<String>> byFolder = new HashMap<>();
-                for (String relPath : localDeletes) {
-                    doneFiles.add(relPath);
-                    if (! syncLocalDeletes) {
-                        LOG.accept("Sync ignore local delete " + relPath + " " + progress);
-                        syncedVersions.addLocalDelete(relPath);
-                    } else {
-                        String folderPath = relPath.contains("/") ? relPath.substring(0, relPath.lastIndexOf("/")) : "";
-                        Set<String> folder = byFolder.get(folderPath);
-                        if (folder == null) {
-                            folder = new HashSet<>();
-                            byFolder.put(folderPath, folder);
-                        }
-                        String filename = relPath.substring(relPath.lastIndexOf("/") + 1);
-                        folder.add(filename);
-                    }
-                }
-                byFolder.forEach((dir, files) -> {
-                    if (isCancelled.get())
-                        throw new RuntimeException("Sync cancelled before deleting from " + dir);
-                    LOG.accept("REMOTE: bulk deleting " + files.size() + " from " + remoteFS.resolve(dir) + " " + progress);
-                    remoteFS.bulkDelete(remoteFS.resolve(dir), files);
-                    for (String file : files) {
-                        String path = dir + (dir.isEmpty() ? "" : "/") + file;
-                        progress.doneFile();
-                        LOG.accept("REMOTE: deleted " + path + " " + progress);
-                        syncedVersions.remove(path);
-                    }
-                });
-            }
-
             List<ForkJoinTask<?>> downloads = new ArrayList<>();
             AtomicInteger maxDownloadConcurrency = new AtomicInteger(maxParallelism);
 
-            for (String relativePath : allChangedPaths) {
-                if (doneFiles.contains(relativePath))
-                    continue;
-                if (isCancelled.get())
-                    return;
-                FileState synced = syncedVersions.byPath(relativePath);
-                FileState local = localState.byPath(relativePath);
-                FileState remote = remoteState.byPath(relativePath);
-                boolean isLocalCopy = synced == null && local == null;
-                if (isLocalCopy) {
-                    while (maxDownloadConcurrency.get() == 0) {
-                        try {
-                            Thread.sleep(100);
-                        } catch (InterruptedException e) {
+            // a file under a path either side has a file at waits for that file to be moved or deleted, which can be
+            // done from a path that sorts after it
+            List<String> ordered = new ArrayList<>(), blocked = new ArrayList<>();
+            for (String path : allChangedPaths)
+                (ancestors(path).stream().anyMatch(a -> localState.byPath(a) != null || remoteState.byPath(a) != null) ?
+                        blocked : ordered).add(path);
+            ordered.addAll(blocked);
+            // a download left running when this returns would race the next sync, so every one is waited for, and
+            // the rest stop at the first failure
+            AtomicBoolean failed = new AtomicBoolean(false);
+            Supplier<Boolean> stopDownload = () -> failed.get() || isCancelled.get();
+            Throwable failure = null;
+            try {
+                for (String relativePath : ordered) {
+                    if (doneFiles.contains(relativePath))
+                        continue;
+                    if (isCancelled.get())
+                        break;
+                    FileState synced = syncedVersions.byPath(relativePath);
+                    FileState local = localState.byPath(relativePath);
+                    FileState remote = remoteState.byPath(relativePath);
+                    // one that the same contents here could make a move must not race the files it moves
+                    boolean isLocalCopy = synced == null && local == null && localState.byHash(remote.hashTree.rootHash).isEmpty();
+                    if (isLocalCopy) {
+                        while (maxDownloadConcurrency.get() == 0) {
+                            try {
+                                Thread.sleep(100);
+                            } catch (InterruptedException e) {
+                            }
                         }
-                    }
-                    maxDownloadConcurrency.decrementAndGet();
-                    downloads.add(ForkJoinPool.commonPool().submit(() -> {
-                        try {
-                            syncFile(synced, local, remote, localFS, remoteFS, syncedVersions,
-                                    localState, remoteState, syncLocalDeletes, syncRemoteDeletes, doneFiles, minPercentFreeSpace, crypto, isCancelled, LOG, progress);
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
-                        } finally {
-                            maxDownloadConcurrency.incrementAndGet();
-                        }
-                    }));
-                } else
-                    syncFile(synced, local, remote, localFS, remoteFS, syncedVersions, localState,
-                            remoteState, syncLocalDeletes, syncRemoteDeletes, doneFiles, minPercentFreeSpace, crypto, isCancelled, LOG, progress);
+                        maxDownloadConcurrency.decrementAndGet();
+                        downloads.add(ForkJoinPool.commonPool().submit(() -> {
+                            try {
+                                syncFile(synced, local, remote, localFS, remoteFS, syncedVersions, syncedBefore,
+                                        localState, remoteState, syncLocalDeletes, syncRemoteDeletes, doneFiles, minPercentFreeSpace, crypto, stopDownload, LOG, progress);
+                            } catch (IOException e) {
+                                failed.set(true);
+                                throw new RuntimeException(e);
+                            } catch (RuntimeException | Error e) {
+                                failed.set(true);
+                                throw e;
+                            } finally {
+                                maxDownloadConcurrency.incrementAndGet();
+                            }
+                        }));
+                    } else
+                        syncFile(synced, local, remote, localFS, remoteFS, syncedVersions, syncedBefore, localState,
+                                remoteState, syncLocalDeletes, syncRemoteDeletes, doneFiles, minPercentFreeSpace, crypto, isCancelled, LOG, progress);
+                    if (failed.get())
+                        break;
+                }
+            } catch (IOException | RuntimeException | Error e) {
+                failure = e;
+                failed.set(true);
             }
-
             for (ForkJoinTask<?> download : downloads) {
-                download.join();
+                try {
+                    download.join();
+                } catch (RuntimeException | Error e) {
+                    if (failure == null)
+                        failure = e;
+                }
             }
+            if (failure instanceof IOException)
+                throw (IOException) failure;
+            if (failure instanceof RuntimeException)
+                throw (RuntimeException) failure;
+            if (failure instanceof Error)
+                throw (Error) failure;
+            if (isCancelled.get())
+                return;
+            // every copy is complete, and none is under way to need the folder they were written in
+            localFS.discardCopies();
+            remoteFS.discardCopies();
 
             // all files are in sync, now sync dirs
             Comparator<String> longestFirst = (a, b) -> -a.compareTo(b);
@@ -824,37 +899,45 @@ public class DirectorySync {
             allDirs.addAll(remoteState.getDirs());
             allDirs.addAll(localState.getDirs());
             allDirs.addAll(syncedVersions.getDirs());
+            // a folder deleted on one side, but given new files or folders on the other, still has to exist on both
+            // now, as the copies made it again. Subfolders come first, so they can mark the folders above them.
+            Set<String> kept = new HashSet<>();
+            for (String file : syncedVersions.allFilePaths())
+                kept.addAll(ancestors(file));
             for (String dirPath : allDirs) {
                 boolean hasLocal = localState.hasDir(dirPath);
                 boolean hasRemote = remoteState.hasDir(dirPath);
                 boolean hasSynced = syncedVersions.hasDir(dirPath);
-                if (hasLocal && hasRemote) {
+                if ((hasLocal && hasRemote) || kept.contains(dirPath)) {
                     syncedVersions.addDir(dirPath);
+                    kept.addAll(ancestors(dirPath));
                 } else if (!hasLocal && !hasRemote) {
                     syncedVersions.removeDir(dirPath);
                 } else if (hasLocal) {
                     if (hasSynced) { // delete
                         if (syncRemoteDeletes) {
                             LOG.accept("Sync local: delete dir " + dirPath + " " + progress);
-                            localFS.delete(localFS.resolve(dirPath));
+                            deleteDir(localFS, localFS.resolve(dirPath), LOG);
                             syncedVersions.removeDir(dirPath);
                         }
                     } else {
                         LOG.accept("Sync Remote: mkdir " + dirPath + " " + progress);
                         remoteFS.mkdirs(remoteFS.resolve(dirPath));
                         syncedVersions.addDir(dirPath);
+                        kept.addAll(ancestors(dirPath));
                     }
                 } else {
                     if (hasSynced) { // delete
                         if (syncLocalDeletes) {
                             LOG.accept("Sync Remote: delete dir " + dirPath + " " + progress);
-                            remoteFS.delete(remoteFS.resolve(dirPath));
+                            deleteDir(remoteFS, remoteFS.resolve(dirPath), LOG);
                             syncedVersions.removeDir(dirPath);
                         }
                     } else {
                         LOG.accept("Sync Local: mkdir " + dirPath + " " + progress);
                         localFS.mkdirs(localFS.resolve(dirPath));
                         syncedVersions.addDir(dirPath);
+                        kept.addAll(ancestors(dirPath));
                     }
                 }
             }
@@ -916,7 +999,7 @@ public class DirectorySync {
     public static void syncFile(FileState synced, FileState local, FileState remote,
                                 SyncFilesystem localFs,
                                 SyncFilesystem remoteFs,
-                                SyncState syncedVersions, SyncState localTree, SyncState remoteTree,
+                                SyncState syncedVersions, Set<String> syncedBefore, SyncState localTree, SyncState remoteTree,
                                 boolean syncLocalDeletes,
                                 boolean syncRemoteDeletes,
                                 Set<String> doneFiles,
@@ -948,10 +1031,12 @@ public class DirectorySync {
                         Optional.ofNullable(remoteTree.byPath(extraLocal.get(index).relPath)) :
                         Optional.empty();
 
-                if (extraLocal.size() == extraRemote.size() && remoteAtHashedPath.isEmpty()) {// rename
+                // the scan can't know of a copy this pass has made there since
+                if (extraLocal.size() == extraRemote.size() && remoteAtHashedPath.isEmpty() &&
+                        ! isFile(remoteFs, remoteFs.resolve(extraLocal.get(index).relPath))) {// rename
                     FileState toMove = extraLocal.get(index);
                     LOG.accept("Sync Local: Moving " + toMove.relPath + " ==> " + remote.relPath + " " + progress);
-                    localFs.moveTo(localFs.resolve(toMove.relPath), localFs.resolve(remote.relPath));
+                    move(localFs, localFs.resolve(toMove.relPath), localFs.resolve(remote.relPath));
                     syncedVersions.remove(toMove.relPath);
                     doneFiles.add(toMove.relPath);
                     syncedVersions.add(remote);
@@ -986,10 +1071,12 @@ public class DirectorySync {
                         Optional.ofNullable(localTree.byPath(extraRemote.get(index).relPath)) :
                         Optional.empty();
 
-                if (extraRemote.size() == extraLocal.size() && localAtHashedPath.isEmpty()) {// rename
+                // the scan can't know of a copy this pass has made there since
+                if (extraRemote.size() == extraLocal.size() && localAtHashedPath.isEmpty() &&
+                        ! isFile(localFs, localFs.resolve(extraRemote.get(index).relPath))) {// rename
                     FileState toMove = extraRemote.get(index);
                     LOG.accept("Sync Remote: Moving " + toMove.relPath + " ==> " + local.relPath + " " + progress);
-                    remoteFs.moveTo(remoteFs.resolve(toMove.relPath), Paths.get(local.relPath));
+                    move(remoteFs, remoteFs.resolve(toMove.relPath), Paths.get(local.relPath));
                     syncedVersions.remove(toMove.relPath);
                     doneFiles.add(toMove.relPath);
                     syncedVersions.add(local);
@@ -1026,7 +1113,7 @@ public class DirectorySync {
                     if ((freeSpace - remote.size) * 100 / totalSpace < minPercentFree && (freeSpace - remote.size < 5L * 1024*1024*1024))
                         throw new IllegalStateException("Not enough local free space to sync and keep " + minPercentFree + "% free or 5GB free. Conflict on " + local.relPath);
                     LOG.accept("Sync Remote: Concurrent file addition: " + local.relPath + " renaming local version" + " " + progress);
-                    FileState renamed = renameOnConflict(localFs, localFs.resolve(local.relPath), local);
+                    FileState renamed = renameOnConflict(localFs, remoteFs, localFs.resolve(local.relPath), local);
                     List<Pair<Long, Long>> diffs = remote.diffRanges(null);
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, ResumeUploadProps.random(crypto)))
@@ -1061,10 +1148,19 @@ public class DirectorySync {
                     Optional<FileState> localAtHashedPath = extraRemote.size() == extraLocal.size() ?
                             Optional.ofNullable(localTree.byPath(extraRemote.get(index).relPath)) :
                             Optional.empty();
-                    if (extraRemote.size() == extraLocal.size() && localAtHashedPath.isEmpty()) {// rename
+                    // a synced partner is a copy that was already there, not where this moved to
+                    if (extraRemote.size() == extraLocal.size() && localAtHashedPath.isEmpty() &&
+                            ! syncedBefore.contains(extraRemote.get(index).relPath)) {// rename
                         // we will do the local rename when we process the new remote entry
                     } else {
-                        if (syncRemoteDeletes) {
+                        if (syncRemoteDeletes && ! localFs.exists(localFs.resolve(local.relPath))) {
+                            // deleted here too since
+                            syncedVersions.remove(local.relPath);
+                        } else if (syncRemoteDeletes && ! SyncFilesystem.asScanned(localFs, localFs.resolve(local.relPath), local, syncedVersions)) {
+                            // an edit since the scan is a change against a delete, which the next sync copies over as new
+                            LOG.accept("Sync Local: not deleting " + local.relPath + ", as it has changed since " + progress);
+                            syncedVersions.remove(local.relPath);
+                        } else if (syncRemoteDeletes) {
                             LOG.accept("Sync Local: delete " + local.relPath + " " + progress);
                             localFs.delete(localFs.resolve(local.relPath));
                             syncedVersions.remove(local.relPath);
@@ -1082,10 +1178,11 @@ public class DirectorySync {
                         syncedVersions.removeRemoteDelete(remote.relPath);
                     progress.doneFile();
                 } else {
-                    if (syncedVersions.hasRemoteDelete(remote.relPath)) {
+                    if (syncedVersions.hasRemoteDelete(remote.relPath) ||
+                            ! syncRemoteDeletes && movedOver(remote, syncedVersions, remoteTree)) {
                         // remote file was deleted, then a different file with same path was added. Rename local and copy remote
                         LOG.accept("Sync Remote: Concurrent change: " + local.relPath + " renaming local version" + " " + progress);
-                        FileState renamed = renameOnConflict(localFs, localFs.resolve(local.relPath), local);
+                        FileState renamed = renameOnConflict(localFs, remoteFs, localFs.resolve(local.relPath), local);
                         List<Pair<Long, Long>> diffs = remote.diffRanges(null);
                         List<CopyOp> ops = diffs.stream()
                                 .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, ResumeUploadProps.random(crypto)))
@@ -1133,10 +1230,19 @@ public class DirectorySync {
                     Optional<FileState> remoteAtHashedPath = extraLocal.size() == extraRemote.size() ?
                             Optional.ofNullable(remoteTree.byPath(extraLocal.get(index).relPath)) :
                             Optional.empty();
-                    if (extraLocal.size() == extraRemote.size() && remoteAtHashedPath.isEmpty()) {// rename
-                        // we will do the local rename when we process the new remote entry
+                    // a synced partner is a copy that was already there, not where this moved to
+                    if (extraLocal.size() == extraRemote.size() && remoteAtHashedPath.isEmpty() &&
+                            ! syncedBefore.contains(extraLocal.get(index).relPath)) {// rename
+                        // we will do the remote rename when we process the new local entry
                     } else {
-                        if (syncLocalDeletes) {
+                        if (syncLocalDeletes && ! remoteFs.exists(remoteFs.resolve(remote.relPath))) {
+                            // deleted there too since
+                            syncedVersions.remove(remote.relPath);
+                        } else if (syncLocalDeletes && ! SyncFilesystem.asScanned(remoteFs, remoteFs.resolve(remote.relPath), remote, syncedVersions)) {
+                            // an edit since the scan is a change against a delete, which the next sync copies over as new
+                            LOG.accept("Sync Remote: not deleting " + remote.relPath + ", as it has changed since " + progress);
+                            syncedVersions.remove(remote.relPath);
+                        } else if (syncLocalDeletes) {
                             LOG.accept("Sync Remote: delete " + remote.relPath + " " + progress);
                             remoteFs.delete(remoteFs.resolve(remote.relPath));
                             syncedVersions.remove(remote.relPath);
@@ -1154,10 +1260,11 @@ public class DirectorySync {
                         syncedVersions.removeRemoteDelete(remote.relPath);
                     progress.doneFile();
                 } else {
-                    if (syncedVersions.hasLocalDelete(local.relPath)) {
+                    if (syncedVersions.hasLocalDelete(local.relPath) ||
+                            ! syncLocalDeletes && movedOver(local, syncedVersions, localTree)) {
                         // local file was deleted, then a different file with same path was added. Keep remote, rename local.
                         LOG.accept("Sync Remote: Concurrent change: " + local.relPath + " renaming different local version after local delete" + " " + progress);
-                        FileState renamed = renameOnConflict(localFs, localFs.resolve(local.relPath), local);
+                        FileState renamed = renameOnConflict(localFs, remoteFs, localFs.resolve(local.relPath), local);
                         List<Pair<Long, Long>> diffs = remote.diffRanges(null);
                         List<CopyOp> ops = diffs.stream()
                                 .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, ResumeUploadProps.random(crypto)))
@@ -1181,7 +1288,6 @@ public class DirectorySync {
                                 .map(d -> new CopyOp(false, localFs.resolve(local.relPath), remoteFs.resolve(local.relPath), local, remote, d.left, d.right, ResumeUploadProps.random(crypto)))
                                 .collect(Collectors.toList());
                         Optional<LocalDateTime> actualModTime = copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions, isCancelled, transferLog);
-                        remoteFs.setHash(remoteFs.resolve(local.relPath), local.hashTree, local.size);
                         syncedVersions.add(local.withModtime(actualModTime));
                         progress.doneFile();
                     }
@@ -1206,6 +1312,8 @@ public class DirectorySync {
                     progress.doneFile();
                     if (! syncLocalDeletes && syncedVersions.hasLocalDelete(remote.relPath))
                         syncedVersions.removeLocalDelete(remote.relPath);
+                    if (! syncRemoteDeletes && syncedVersions.hasRemoteDelete(remote.relPath))
+                        syncedVersions.removeRemoteDelete(remote.relPath);
                     return;
                 }
                 if (remote == null) { // remote delete, copy changed local
@@ -1225,7 +1333,7 @@ public class DirectorySync {
                 if ((freeSpace - remote.size) * 100 / totalSpace < minPercentFree && (freeSpace - remote.size < 5L * 1024*1024*1024))
                     throw new IllegalStateException("Not enough local free space to sync and keep " + minPercentFree + "% free or 5 GiB free");
                 // if local and remote are the same, update sync and return
-                if (local.equals(remote)) {
+                if (local.size == remote.size && local.hashTree.rootHash.equals(remote.hashTree.rootHash)) {
                     syncedVersions.add(local);
                 } else if (synced.hashTree.rootHash.equals(remote.hashTree.rootHash)) {
                     // synced content is same as remote, so just a local change
@@ -1235,12 +1343,11 @@ public class DirectorySync {
                             .map(d -> new CopyOp(false, localFs.resolve(local.relPath), remoteFs.resolve(local.relPath), local, remote, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
                     Optional<LocalDateTime> actualModTime = copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions, isCancelled, transferLog);
-                    remoteFs.setHash(remoteFs.resolve(local.relPath), local.hashTree, local.size);
                     syncedVersions.add(local.withModtime(actualModTime));
                     progress.doneFile();
                 } else {
                     LOG.accept("Sync Remote: Concurrent change: " + local.relPath + " renaming local version" + " " + progress);
-                    FileState renamed = renameOnConflict(localFs, localFs.resolve(local.relPath), local);
+                    FileState renamed = renameOnConflict(localFs, remoteFs, localFs.resolve(local.relPath), local);
                     List<Pair<Long, Long>> diffs = remote.diffRanges(null);
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, ResumeUploadProps.random(crypto)))
@@ -1261,6 +1368,40 @@ public class DirectorySync {
         }
     }
 
+    /** A file moved into a folder that took its name has to make way for the folder first */
+    private static void move(SyncFilesystem fs, Path from, Path to) {
+        if (! to.startsWith(from)) {
+            fs.moveTo(from, to);
+            return;
+        }
+        Path aside = getParent(from).resolve(from.getFileName() + ".sync-moving");
+        for (int i = 1; fs.exists(aside); i++)
+            aside = getParent(from).resolve(from.getFileName() + ".sync-moving" + i);
+        fs.moveTo(from, aside);
+        fs.moveTo(aside, to);
+    }
+
+    /** Deletes a folder the scan found, unless it has since been replaced by a file, which the next sync will see */
+    private static void deleteDir(SyncFilesystem fs, Path dir, Consumer<String> LOG) {
+        if (isFile(fs, dir)) {
+            LOG.accept("Sync: not deleting " + dir + ", as it has been replaced by a file since");
+            return;
+        }
+        fs.delete(dir);
+    }
+
+    private static boolean isFile(SyncFilesystem fs, Path p) {
+        // only a folder can have something put in it
+        return fs.exists(p) && ! fs.canCreate(p.resolve("f"));
+    }
+
+    private static List<String> ancestors(String path) {
+        List<String> res = new ArrayList<>();
+        for (int slash = path.lastIndexOf("/"); slash > 0; slash = path.lastIndexOf("/", slash - 1))
+            res.add(path.substring(0, slash));
+        return res;
+    }
+
     /** A file on one side where the other side has a folder can't be copied over, and nothing else would resolve
      *  it, so every sync would fail on it. An empty folder holds nothing, so remove it when deletes are synced in
      *  that direction, otherwise move the file aside the way a conflicting edit is.
@@ -1271,10 +1412,17 @@ public class DirectorySync {
                                                  SyncState folderState,
                                                  SyncState syncedVersions,
                                                  boolean deleteEmptyFolder,
+                                                 boolean folderSideDeletesSync,
                                                  Consumer<String> LOG) {
         List<String> clashes = fileState.allFilePaths().stream()
                 .filter(folderState::hasDir)
-                .filter(p -> syncedVersions.byPath(p) == null)
+                // an unchanged file that was synced is deleted as usual, the folder having replaced it, unless that
+                // side's deletes aren't synced
+                .filter(p -> {
+                    FileState synced = syncedVersions.byPath(p);
+                    return ! folderSideDeletesSync || synced == null ||
+                            ! synced.hashTree.rootHash.equals(fileState.byPath(p).hashTree.rootHash);
+                })
                 .sorted()
                 .collect(Collectors.toList());
         if (clashes.isEmpty())
@@ -1287,12 +1435,12 @@ public class DirectorySync {
                     folderDirs.stream().noneMatch(d -> d.startsWith(prefix));
             if (emptyFolder && deleteEmptyFolder) {
                 LOG.accept("Sync: deleting empty folder " + path + " where the other side has a file");
-                folderFS.delete(folderFS.resolve(path));
+                deleteDir(folderFS, folderFS.resolve(path), LOG);
                 folderState.removeDir(path);
                 syncedVersions.removeDir(path);
             } else {
                 FileState file = fileState.byPath(path);
-                FileState renamed = renameOnConflict(fileFS, fileFS.resolve(path), file);
+                FileState renamed = renameOnConflict(fileFS, folderFS, fileFS.resolve(path), file);
                 LOG.accept("Sync: renamed file " + path + " to " + renamed.relPath + " as the other side has a folder there");
                 fileState.remove(path);
                 fileState.add(renamed);
@@ -1301,7 +1449,17 @@ public class DirectorySync {
     }
 
     public static FileState renameOnConflict(SyncFilesystem fs, Path f, FileState s) {
+        return renameOnConflict(fs, null, f, s);
+    }
+
+    /** Rename to a conflict name that is free on this side and, if given, on the other one, where a file may yet
+     *  be copied across under the same name
+     */
+    public static FileState renameOnConflict(SyncFilesystem fs, SyncFilesystem other, Path f, FileState s) {
         String name = f.getFileName().toString();
+        String dirRel = s.relPath.substring(0, s.relPath.length() - name.length());
+        Predicate<String> taken = n -> fs.exists(getParent(f).resolve(n)) ||
+                (other != null && other.exists(other.resolve(dirRel + n)));
         String newName;
         if (name.contains("[conflict-")) {
             int start = name.lastIndexOf("[conflict-");
@@ -1309,7 +1467,7 @@ public class DirectorySync {
             int version = Integer.parseInt(name.substring(start + "[conflict-".length(), end));
             while (true) {
                 newName = name.substring(0, start) + "[conflict-" + (version + 1) + "]" + name.substring(end + 1);
-                if (! fs.exists(getParent(f).resolve(newName)))
+                if (! taken.test(newName))
                     break;
                 version++;
             }
@@ -1321,7 +1479,7 @@ public class DirectorySync {
                     newName = name.substring(0, dot) + "[conflict-" + version + "]" + name.substring(dot);
                 } else
                     newName = name + "[conflict-" + version + "]";
-                if (! fs.exists(getParent(f).resolve(newName)))
+                if (! taken.test(newName))
                     break;
                 version++;
             }
@@ -1329,7 +1487,7 @@ public class DirectorySync {
         Path newFile = getParent(f).resolve(newName);
         fs.moveTo(f, newFile);
         long newModified = fs.getLastModified(newFile);
-        return new FileState(s.relPath.substring(0, s.relPath.length() - name.length()) + newName, newModified, s.size, s.hashTree, s.chunkSize);
+        return new FileState(dirRel + newName, newModified, s.size, s.hashTree, s.chunkSize);
     }
 
     public static Optional<LocalDateTime> copyFileDiffAndTruncate(SyncFilesystem srcFs,
@@ -1340,44 +1498,37 @@ public class DirectorySync {
                                                                   Consumer<String> progress) throws IOException {
         // first write the operation to the db
         syncDb.startCopies(ops);
-
-        Optional<LocalDateTime> res = Optional.empty();
-
-        for (CopyOp op : ops) {
-            Optional<LocalDateTime> mod = applyCopyOp(srcFs, targetFs, op, isCancelled, progress);
-            res = res.isEmpty() ? mod : mod.isEmpty() ? res : res.map(t -> mod.get().isAfter(t) ? mod.get() : t);
-        }
-
-        // now remove the operation from the db
-        syncDb.finishCopies(ops);
-        return res;
+        return copy(srcFs, targetFs, ops, false, syncDb, isCancelled, progress);
     }
 
-    public static Optional<LocalDateTime> applyCopyOp(SyncFilesystem srcFs, SyncFilesystem targetFs, CopyOp op, Supplier<Boolean> isCancelled, Consumer<String> progress) throws IOException {
-        if (isCancelled.get())
-            throw new RuntimeException("Sync cancelled before copying " + op.target);
-        log("COPY from " + op.source + " to " + op.target + " range=[" + op.diffStart +", " + op.diffEnd+"]");
-        targetFs.mkdirs(getParent(op.target));
-        long priorSize = op.targetState != null ? op.targetState.size : 0;
-        long size = op.sourceState.size;
-        long lastModified = op.sourceState.modificationTime;
+    /** Runs copies, which are already recorded as started, and records them as done, or as given up on once someone
+     *  else has changed their source or target, which the next sync sees as a change
+     */
+    private static Optional<LocalDateTime> copy(SyncFilesystem srcFs,
+                                                SyncFilesystem targetFs,
+                                                List<CopyOp> ops,
+                                                boolean resuming,
+                                                SyncState syncDb,
+                                                Supplier<Boolean> isCancelled,
+                                                Consumer<String> progress) throws IOException {
+        try {
+            Optional<LocalDateTime> res = targetFs.copy(srcFs, ops, resuming, syncDb, isCancelled, progress);
+            syncDb.finishCopies(ops);
+            return res;
+        } catch (ConcurrentChangeException e) {
+            for (CopyOp op : ops)
+                targetFs.discardCopy(op);
+            syncDb.finishCopies(ops);
+            throw e;
+        }
+    }
 
-        long start = op.diffStart;
-        long end = op.diffEnd;
-        Optional<LocalDateTime> res;
-        try (AsyncReader fin = srcFs.getBytes(op.source, start)) {
-            Optional<Thumbnail> thumbnail = srcFs.getThumbnail(op.source);
-            LocalDateTime modified = LocalDateTime.ofInstant(Instant.ofEpochSecond(lastModified / 1000, 0), ZoneOffset.UTC);
-            res = targetFs.setBytes(op.target, start, fin, end - start, Optional.of(op.sourceState.hashTree),
-                    Optional.of(modified), thumbnail, op.props, isCancelled, progress);
-        }
-        if (isCancelled.get())
-            throw new RuntimeException("Sync cancelled before copying " + op.target);
-        if (priorSize > size) {
-            log("Sync Truncating file " + op.sourceState.relPath + " from " + priorSize + " to " + size);
-            targetFs.truncate(op.target, size);
-        }
-        return res;
+    /** Whether a file changed on one side is one moved there from a path where that side no longer has it, which
+     *  deleted the file that was there
+     */
+    private static boolean movedOver(FileState changed, SyncState syncedVersions, SyncState tree) {
+        return syncedVersions.byHash(changed.hashTree.rootHash).stream()
+                .anyMatch(f -> ! f.relPath.equals(changed.relPath) && tree.byPath(f.relPath) == null);
     }
 
     /** Counts the mutable pointer commits this sync makes, per writer. A pointer's sequence
@@ -1497,7 +1648,14 @@ public class DirectorySync {
             String relPath = props.relPath;
             presentFiles.add(relPath);
             FileState atSync = synced.byPath(relPath);
-            if (atSync != null && atSync.modificationTime == props.modifiedTime && atSync.size == props.size) {
+            // a Peergos file carries its hash, which catches an edit within the same second at the same size, and
+            // loses it when it is written
+            boolean sameHashIfKnown = atSync == null || props.meta
+                    .map(m -> m.getFileProperties().treeHash
+                            .map(h -> h.rootHash.equals(atSync.hashTree.rootHash))
+                            .orElse(false))
+                    .orElse(true);
+            if (atSync != null && atSync.modificationTime == props.modifiedTime && atSync.size == props.size && sameHashIfKnown) {
                 res.add(atSync);
                 if (props.meta.isPresent())
                     version.update(props.meta.get().version);

@@ -8,6 +8,8 @@ import peergos.shared.crypto.hash.Hasher;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.ProgressConsumer;
+import peergos.shared.util.ArrayOps;
+import peergos.shared.util.Pair;
 import peergos.shared.util.PathUtil;
 import peergos.shared.util.Triple;
 
@@ -15,9 +17,14 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.channels.FileChannel;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -25,18 +32,33 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public class LocalFileSystem implements SyncFilesystem {
+public class LocalFileSystem extends StagedFileSystem {
 
     private static final Logger LOG = LoggerFactory.getLogger(LocalFileSystem.class);
+    /** Holds files being downloaded until they are complete, so a part written is never synced, moved or edited as a
+     *  file of its own
+     */
+    public static final String PARTIAL_COPIES_DIR = ".peergos-partial-downloads";
+    /** A copy over a file larger than this writes only the parts it changes aside, and copies them into the file once
+     *  they are all here, instead of a copy of all of the file
+     */
+    public static final long MIN_DIFF_STAGED_SIZE = 100 * 1024 * 1024;
     private final Hasher hasher;
+    private final long minDiffStagedSize;
     private final Path root;
     private final boolean hasBackSlashes;
 
     public LocalFileSystem(Path root, Hasher hasher) {
+        this(root, hasher, MIN_DIFF_STAGED_SIZE);
+    }
+
+    public LocalFileSystem(Path root, Hasher hasher, long minDiffStagedSize) {
         this.root = root;
         this.hasher = hasher;
+        this.minDiffStagedSize = minDiffStagedSize;
         if (! root.toFile().exists())
             throw new IllegalStateException("Dir does not exist: " + root);
         this.hasBackSlashes = ! root.getFileSystem().getSeparator().equals("/");
@@ -85,13 +107,21 @@ public class LocalFileSystem implements SyncFilesystem {
     }
 
     @Override
+    public boolean canCreate(Path p) {
+        for (Path dir = root.resolve(p).getParent(); dir != null && ! dir.equals(root); dir = dir.getParent())
+            if (Files.exists(dir, LinkOption.NOFOLLOW_LINKS))
+                return Files.isDirectory(dir, LinkOption.NOFOLLOW_LINKS);
+        return true;
+    }
+
+    @Override
     public void delete(Path p) {
         p = root.resolve(p);
         try {
             if (Files.isDirectory(p)) {
                 List<Path> children;
                 try (Stream<Path> stream = Files.list(p)) {
-                    children = stream.toList();
+                    children = stream.collect(Collectors.toList());
                 }
                 // A dir we have synced as empty can still contain files we never sync, like the .DS_Store
                 // the Finder creates in any dir it displays. Delete those rather than failing.
@@ -113,8 +143,24 @@ public class LocalFileSystem implements SyncFilesystem {
     }
 
     @Override
-    public void bulkDelete(Path dir, Set<String> children) {
-        children.forEach(kid -> delete(dir.resolve(kid)));
+    public Set<String> bulkDeleteFiles(Path dir, java.util.Map<String, FileState> scanned) {
+        Set<String> deleted = new java.util.HashSet<>();
+        for (java.util.Map.Entry<String, FileState> e : scanned.entrySet()) {
+            Path p = dir.resolve(e.getKey());
+            Path full = root.resolve(p);
+            FileState s = e.getValue();
+            if (! Files.exists(full, LinkOption.NOFOLLOW_LINKS)) {
+                deleted.add(e.getKey());
+                continue;
+            }
+            // a scan keeps the synced version of a file whose contents haven't changed, whatever its modification time
+            if (Files.isRegularFile(full, LinkOption.NOFOLLOW_LINKS) && size(p) == s.size && (getLastModified(p) == s.modificationTime ||
+                    hashFile(p, Optional.empty(), s.relPath, null, s.size, s.chunkSize).rootHash.equals(s.hashTree.rootHash))) {
+                delete(p);
+                deleted.add(e.getKey());
+            }
+        }
+        return deleted;
     }
 
     @Override
@@ -177,6 +223,8 @@ public class LocalFileSystem implements SyncFilesystem {
                 if (isCancelled.get())
                     throw new IllegalStateException("Download cancelled!");
                 int read = fin.readIntoArray(buf, 0, (int) Math.min(buf.length, size - done)).join();
+                if (read <= 0)
+                    throw new EOFException("The source of " + p + " ended " + (size - done) + " bytes early");
                 raf.write(buf, 0, read);
                 done += read;
                 reporter.accept((long) read);
@@ -199,6 +247,113 @@ public class LocalFileSystem implements SyncFilesystem {
         return reader.seek(fileOffset).join();
     }
 
+    private Path partialCopyPath(Path p) {
+        try {
+            byte[] hash = MessageDigest.getInstance("SHA-256").digest(p.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return PathUtil.get(PARTIAL_COPIES_DIR, ArrayOps.bytesToHex(hash));
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private Path withSuffix(Path partial, String suffix) {
+        return partial.resolveSibling(partial.getFileName() + suffix);
+    }
+
+    @Override
+    protected Path partialCopy(Path p) throws IOException {
+        Path partial = partialCopyPath(p);
+        Path full = root.resolve(partial);
+        if (Files.exists(full))
+            return partial;
+        Path diff = withSuffix(partial, ".diff");
+        if (Files.exists(root.resolve(diff)))
+            return diff;
+        Files.createDirectories(full.getParent());
+        if (Files.isRegularFile(root.resolve(p)) && Files.size(root.resolve(p)) > minDiffStagedSize) {
+            // the parts the copy changes are written here at their own offsets, leaving the rest unwritten
+            Files.newByteChannel(root.resolve(diff), Set.of(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE,
+                    StandardOpenOption.SPARSE)).close();
+            return diff;
+        }
+        Path tmp = full.resolveSibling(full.getFileName() + ".tmp");
+        if (Files.isRegularFile(root.resolve(p)))
+            Files.copy(root.resolve(p), tmp, StandardCopyOption.REPLACE_EXISTING);
+        else
+            Files.write(tmp, new byte[0]);
+        Files.move(tmp, full, StandardCopyOption.ATOMIC_MOVE);
+        return partial;
+    }
+
+    private void moveIntoPlace(Path p) throws IOException {
+        Path target = root.resolve(p);
+        Files.createDirectories(target.getParent());
+        Files.move(root.resolve(partialCopyPath(p)), target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    @Override
+    protected void completeCopy(Path p, List<Pair<Long, Long>> ranges, long size) throws IOException {
+        Path partial = partialCopyPath(p);
+        Path diff = root.resolve(withSuffix(partial, ".diff"));
+        if (! Files.exists(diff)) {
+            moveIntoPlace(p);
+            return;
+        }
+        // from here the file is part written, so a stop has to be finished from the parts here, with no network needed
+        Path applying = root.resolve(withSuffix(partial, ".applying"));
+        if (! Files.exists(applying))
+            Files.createFile(applying);
+        Path target = root.resolve(p);
+        try (FileChannel from = FileChannel.open(diff, StandardOpenOption.READ);
+             FileChannel to = FileChannel.open(target, StandardOpenOption.WRITE)) {
+            for (Pair<Long, Long> range : ranges) {
+                for (long at = range.left; at < range.right; ) {
+                    to.position(at);
+                    long copied = from.transferTo(at, range.right - at, to);
+                    if (copied <= 0)
+                        throw new EOFException("The changes to " + p + " end before " + range.right);
+                    at += copied;
+                }
+            }
+            if (to.size() > size)
+                to.truncate(size);
+            to.force(true);
+        }
+        target.toFile().setLastModified(Files.getLastModifiedTime(diff).toMillis());
+        Files.delete(diff);
+        Files.delete(applying);
+    }
+
+    @Override
+    protected boolean completingCopy(Path p) {
+        return Files.exists(root.resolve(withSuffix(partialCopyPath(p), ".applying")));
+    }
+
+    @Override
+    protected void discardCopy(Path p) {
+        try {
+            Files.deleteIfExists(root.resolve(withSuffix(partialCopyPath(p), ".diff")));
+            Files.deleteIfExists(root.resolve(withSuffix(partialCopyPath(p), ".applying")));
+            Files.deleteIfExists(root.resolve(partialCopyPath(p)));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public void discardCopies() {
+        Path dir = root.resolve(PARTIAL_COPIES_DIR);
+        if (! Files.isDirectory(dir))
+            return;
+        try (Stream<Path> files = Files.list(dir)) {
+            for (Path f : files.collect(Collectors.toList()))
+                Files.delete(f);
+            Files.delete(dir);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     @Override
     public void uploadSubtree(Stream<FileWrapper.FolderUploadProperties> directories) {
         byte[] buf = new byte[5*1024*1024];
@@ -206,18 +361,36 @@ public class LocalFileSystem implements SyncFilesystem {
             Path dir = root.resolve(folder.path());
             dir.toFile().mkdirs();
             for (FileWrapper.FileUploadProperties file : folder.files) {
+                // written aside and moved into place, as an upload to Peergos is only seen once it is complete
+                Path target = dir.resolve(file.filename);
+                Path partial = root.resolve(partialCopyPath(root.relativize(target))).resolveSibling(
+                        partialCopyPath(root.relativize(target)).getFileName() + ".upload");
                 try (AsyncReader reader = file.fileData.get()) {
                     long written = 0;
-                    try (FileOutputStream fout = new FileOutputStream(dir.resolve(file.filename).toFile())) {
+                    Files.createDirectories(partial.getParent());
+                    try (FileOutputStream fout = new FileOutputStream(partial.toFile())) {
                         while (written < file.length) {
                             int read = reader.readIntoArray(buf, 0, (int) Math.min(buf.length, file.length - written)).join();
+                            if (read <= 0)
+                                throw new EOFException("The source of " + file.filename + " ended " + (file.length - written) + " bytes early");
                             fout.write(buf, 0, read);
                             written += read;
                         }
+                        // more is a change since the scan, which would be uploaded as part of the new version under
+                        // the hash of the old one
+                        if (reader.readIntoArray(buf, 0, 1).join() > 0)
+                            throw new IOException("The source of " + file.filename + " has grown since it was scanned");
                         fout.flush();
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
                     }
+                    if (file.overwriteExisting)
+                        Files.move(partial, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                    else // an atomic move would replace a file there
+                        Files.move(partial, target);
+                } catch (IOException e) {
+                    try {
+                        Files.deleteIfExists(partial);
+                    } catch (IOException f) {}
+                    throw new RuntimeException(e);
                 }
             }
         });
@@ -283,6 +456,8 @@ public class LocalFileSystem implements SyncFilesystem {
                     return;
                 }
                 if (attrs.isSymbolicLink())
+                    return;
+                if (start.equals(root) && c.getFileName().toString().equals(PARTIAL_COPIES_DIR))
                     return;
                 String relPath = root.relativize(start.resolve(c.getFileName())).normalize().toString();
                 String canonicalRelPath = hasBackSlashes ? relPath.replaceAll("\\\\", "/") : relPath;

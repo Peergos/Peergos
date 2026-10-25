@@ -219,7 +219,8 @@ public class FileUploader implements AutoCloseable {
         boolean isLastChunk = fileLength < position + props.chunkSize;
         int length =  isLastChunk ? (int)(fileLength -  position) : props.chunkSize;
         byte[] data = new byte[length];
-        return reader.readIntoArray(data, 0, data.length).thenCompose(b ->
+        return reader.readIntoArray(data, 0, data.length).thenCompose(b -> b < data.length ?
+                Futures.errored(new IllegalStateException(name + " ended " + (data.length - b) + " bytes early")) :
                 (hashBuilder == null
                         ? Futures.of(true)
                         : hashBuilder.setChunk((int) chunkIndex, data, hasher))

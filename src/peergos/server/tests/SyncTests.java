@@ -32,6 +32,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -147,6 +148,191 @@ public class SyncTests {
         DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
         for (String relPath : relPaths)
             Assert.assertNotNull(relPath, syncedState.byPath(relPath));
+    }
+
+    private static void syncBoth(Path base1, Path base2, SyncState state) throws Exception {
+        DirectorySync.syncDir(new LocalFileSystem(base1, crypto.hasher), new LocalFileSystem(base2, crypto.hasher), true, true,
+                null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+    }
+
+    private static void syncKeepingDeletes(Path base1, Path base2, SyncState state) throws Exception {
+        DirectorySync.syncDir(new LocalFileSystem(base1, crypto.hasher), new LocalFileSystem(base2, crypto.hasher), false, false,
+                null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+    }
+
+    private static Map<String, String> tree(Path base) throws IOException {
+        Map<String, String> res = new TreeMap<>();
+        try (Stream<Path> all = Files.walk(base)) {
+            for (Path p : all.filter(p -> ! p.equals(base)).collect(Collectors.toList()))
+                res.put(base.relativize(p).toString().replace(base.getFileSystem().getSeparator(), "/"), Files.isDirectory(p) ? "dir" : new String(Files.readAllBytes(p)));
+        }
+        return res;
+    }
+
+    private static void write(Path base, String relPath, String contents) throws IOException {
+        Path p = base.resolve(relPath);
+        Files.createDirectories(p.getParent());
+        Files.write(p, contents.getBytes());
+    }
+
+    private static void deleteTree(Path p) throws IOException {
+        try (Stream<Path> all = Files.walk(p)) {
+            for (Path f : all.sorted(Comparator.reverseOrder()).collect(Collectors.toList()))
+                Files.delete(f);
+        }
+    }
+
+    /** The folders the other side's new files sit in were deleted from the side that deleted the folder too */
+    @Test
+    public void folderDeletedWhileOtherSideAddsToASubfolder() throws Exception {
+        for (boolean deleteLocally : List.of(true, false)) {
+            Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+            SyncState state = new JdbcTreeState(":memory:");
+            write(base1, "x/a", "a");
+            syncBoth(base1, base2, state);
+            deleteTree((deleteLocally ? base1 : base2).resolve("x"));
+            write(deleteLocally ? base2 : base1, "x/y/z", "z");
+            syncBoth(base1, base2, state);
+            Assert.assertEquals(Map.of("x", "dir", "x/y", "dir", "x/y/z", "z"), tree(base1));
+            Assert.assertEquals(tree(base1), tree(base2));
+        }
+    }
+
+    /** As above, with a new empty folder, whose parents the other side gets back from making it */
+    @Test
+    public void folderDeletedWhileOtherSideAddsAnEmptySubfolder() throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        write(base1, "a/files/x", "x");
+        write(base1, "a/files/d", "d");
+        syncBoth(base1, base2, state);
+        deleteTree(base2.resolve("a"));
+        Files.delete(base1.resolve("a/files/d"));
+        Files.createDirectories(base1.resolve("a/files/d"));
+        syncBoth(base1, base2, state);
+        Assert.assertEquals(Map.of("a", "dir", "a/files", "dir", "a/files/d", "dir"), tree(base1));
+        Assert.assertEquals(tree(base1), tree(base2));
+    }
+
+    /** An edit to a synced file must survive the other side replacing it with a folder */
+    @Test
+    public void editedFileReplacedByFolderOnOtherSide() throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        write(base1, "f", "original");
+        syncBoth(base1, base2, state);
+        write(base1, "f", "edited");
+        Files.delete(base2.resolve("f"));
+        write(base2, "f/g", "g");
+        syncBoth(base1, base2, state);
+        Assert.assertEquals(Map.of("f", "dir", "f/g", "g", "f[conflict-0]", "edited"), tree(base1));
+        Assert.assertEquals(tree(base1), tree(base2));
+    }
+
+    /** Uploads ran before deletes, so a new file in a folder that replaced a synced file found the file still there */
+    @Test
+    public void syncedFileReplacedByFolderWithAFile() throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        write(base1, "x", "x");
+        syncBoth(base1, base2, state);
+        Files.delete(base1.resolve("x"));
+        write(base1, "x/y", "y");
+        syncBoth(base1, base2, state);
+        Assert.assertEquals(Map.of("x", "dir", "x/y", "y"), tree(base2));
+        Assert.assertEquals(tree(base1), tree(base2));
+    }
+
+    /** Both sides agreeing on a file the sync state recorded an older version of, as an interrupted copy that a
+     *  later sync finished leaves them, kept the older one, so a delete of it later brought it back.
+     */
+    @Test
+    public void deleteAfterSidesAgreeOnANewerVersion() throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        write(base1, "f", "old");
+        syncBoth(base1, base2, state);
+        write(base1, "f", "new version");
+        write(base2, "f", "new version");
+        Files.setLastModifiedTime(base2.resolve("f"), Files.getLastModifiedTime(base1.resolve("f")));
+        syncBoth(base1, base2, state);
+        Files.delete(base1.resolve("f"));
+        syncBoth(base1, base2, state);
+        Assert.assertEquals(Map.of(), tree(base1));
+        Assert.assertEquals(Map.of(), tree(base2));
+    }
+
+    /** With no sync state, a remote file whose contents are at another path locally was downloaded on another thread,
+     *  where it moved the local copy, while the main thread moved the remote copy, swapping them over.
+     */
+    @Test
+    public void samePathlessContentsOnBothSidesWithNoState() throws Exception {
+        for (int i = 0; i < 20; i++) {
+            Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+            write(base1, "é.txt/main", "same");
+            write(base2, "b", "same");
+            syncBoth(base1, base2, new JdbcTreeState(":memory:"));
+            Assert.assertEquals(tree(base1), tree(base2));
+        }
+    }
+
+    /** Moving a file into a new folder that takes its name moved it beneath itself, which the file was in the way of */
+    @Test
+    public void fileMovedIntoAFolderOfItsName() throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        write(base1, "b/main", "m");
+        syncBoth(base1, base2, state);
+        Files.move(base2.resolve("b/main"), base2.resolve("b/tmp"));
+        Files.createDirectories(base2.resolve("b/main"));
+        Files.move(base2.resolve("b/tmp"), base2.resolve("b/main/b"));
+        syncBoth(base1, base2, state);
+        Assert.assertEquals(Map.of("b", "dir", "b/main", "dir", "b/main/b", "m"), tree(base1));
+        Assert.assertEquals(tree(base1), tree(base2));
+    }
+
+    /** Each side deleting a different copy of the same contents looked like each had moved it to the other's copy,
+     *  and each waited for the other to do the move, so nothing was synced.
+     */
+    @Test
+    public void differentCopiesDeletedOnEachSide() throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        write(base1, "x/a", "same");
+        write(base1, "y/b", "same");
+        syncBoth(base1, base2, state);
+        Files.delete(base1.resolve("x/a"));
+        Files.delete(base2.resolve("y/b"));
+        syncBoth(base1, base2, state);
+        Assert.assertEquals(Map.of("x", "dir", "y", "dir"), tree(base1));
+        Assert.assertEquals(tree(base1), tree(base2));
+    }
+
+    /** A conflict name was only checked on the side being renamed, so it could take the name of a file on the other */
+    @Test
+    public void conflictNameIsFreeOnBothSides() throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        write(base1, "a.txt", "mine");
+        write(base2, "a[conflict-0].txt", "theirs");
+        LocalFileSystem fs1 = new LocalFileSystem(base1, crypto.hasher), fs2 = new LocalFileSystem(base2, crypto.hasher);
+        FileState state = new FileState("a.txt", 0, 4, null, Chunk.LEGACY_SIZE);
+        FileState renamed = DirectorySync.renameOnConflict(fs1, fs2, fs1.resolve("a.txt"), state);
+        Assert.assertEquals("a[conflict-1].txt", renamed.relPath);
+    }
+
+    /** The first sync uploads large files on their own, and one in a folder where the other side has a file failed */
+    @Test
+    public void firstSyncOfALargeFileWhereTheOtherSideHasAFileForItsFolder() throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        byte[] large = new byte[2 * 1024 * 1024];
+        new Random(1).nextBytes(large);
+        Files.createDirectories(base1.resolve("d"));
+        Files.write(base1.resolve("d/b"), large);
+        write(base2, "d", "a file");
+        syncBoth(base1, base2, new JdbcTreeState(":memory:"));
+        Assert.assertEquals(tree(base1), tree(base2));
+        Assert.assertArrayEquals(large, Files.readAllBytes(base2.resolve("d/b")));
+        Assert.assertTrue(tree(base1).containsValue("a file"));
     }
 
     /** A file on one side where the other has a folder can be neither copied over nor left, or every sync fails on it */
@@ -769,6 +955,701 @@ public class SyncTests {
         }
         Assert.assertTrue("A cancelled copy must abort rather than complete normally", threw);
         Assert.assertEquals("A cancelled copy must remain in the retry journal", 1, syncDb.getInProgressCopies().size());
+    }
+
+    /** The process dying, which leaves no chance to record anything */
+    private static class Crash extends Error {}
+
+    /** Syncs a file, unless original is null, changes it on the second side, and interrupts the download of the change
+     *  after a number of writes, by cancelling it or by crashing, leaving the copy to be resumed by the next sync.
+     */
+    private static void interruptDownload(Path base1, Path base2, SyncState state, byte[] original, byte[] changed, int writes,
+                                          boolean crash) throws Exception {
+        interruptDownload(base1, base2, state, "f.bin", original, changed, writes, crash);
+    }
+
+    private static void interruptDownload(Path base1, Path base2, SyncState state, String relPath, byte[] original, byte[] changed,
+                                          int writes, boolean crash) throws Exception {
+        AtomicInteger checks = new AtomicInteger();
+        try {
+            download(base1, base2, state, relPath, original, changed, () -> {
+                if (checks.incrementAndGet() <= writes)
+                    return false;
+                if (crash)
+                    throw new Crash();
+                return true;
+            });
+            Assert.fail("The download was not interrupted");
+        } catch (RuntimeException | Crash expected) {}
+        Assert.assertFalse(state.getInProgressCopies().isEmpty());
+    }
+
+    /** Syncs a file, unless original is null, changes it on the second side, and copies the change to the first */
+    private static void download(Path base1, Path base2, SyncState state, String relPath, byte[] original, byte[] changed,
+                                 java.util.function.Supplier<Boolean> isCancelled) throws Exception {
+        Path rel = Paths.get(relPath);
+        if (original != null) {
+            Files.write(base1.resolve(rel), original);
+            syncBoth(base1, base2, state);
+        }
+        Files.createDirectories(base2.resolve(rel).getParent());
+        Files.write(base2.resolve(rel), changed);
+        Files.setLastModifiedTime(base2.resolve(rel), java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() / 1000 * 1000 + 5_000));
+        LocalFileSystem localFs = new LocalFileSystem(base1, crypto.hasher), remoteFs = new LocalFileSystem(base2, crypto.hasher);
+        FileState synced = state.byPath(relPath);
+        int chunkSize = synced != null ? synced.chunkSize : Chunk.LEGACY_SIZE;
+        HashTree hash = remoteFs.hashFile(rel, Optional.empty(), relPath, state, changed.length, chunkSize);
+        FileState remote = new FileState(relPath, remoteFs.getLastModified(rel), changed.length, hash, chunkSize);
+        List<CopyOp> ops = remote.diffRanges(synced).stream()
+                .map(d -> new CopyOp(true, remoteFs.resolve(relPath), localFs.resolve(relPath), remote, synced, d.left, d.right,
+                        ResumeUploadProps.random(crypto)))
+                .collect(Collectors.toList());
+        DirectorySync.copyFileDiffAndTruncate(remoteFs, localFs, ops, state, isCancelled, DirectorySync::log);
+    }
+
+    private static byte[] randomText(int size, int seed) {
+        Random r = new Random(seed);
+        byte[] data = new byte[size];
+        for (int i = 0; i < size; i++)
+            data[i] = (byte) ('a' + r.nextInt(26));
+        return data;
+    }
+
+    @Test
+    public void editAfterAnInterruptedDownloadIsKept() throws Exception {
+        // resuming the download wrote over the edit, as a half written file and an edited one looked the same
+        for (boolean crash : List.of(false, true)) {
+            Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+            SyncState state = new JdbcTreeState(":memory:");
+            byte[] changed = randomText(64 * 1024, 2);
+            interruptDownload(base1, base2, state, randomText(64 * 1024, 1), changed, 5, crash);
+
+            Files.write(base1.resolve("f.bin"), "an edit".getBytes());
+            syncBoth(base1, base2, state);
+
+            Map<String, String> expected = Map.of("f.bin", new String(changed), "f[conflict-0].bin", "an edit");
+            Assert.assertEquals("crash " + crash, expected, tree(base1));
+            Assert.assertEquals("crash " + crash, expected, tree(base2));
+        }
+    }
+
+    @Test
+    public void sameSizeEditAfterAnInterruptedDownloadIsKept() throws Exception {
+        // within the chunk being written, so only the record of where the download stopped shows it
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        byte[] changed = randomText(64 * 1024, 2);
+        interruptDownload(base1, base2, state, randomText(64 * 1024, 1), changed, 5, false);
+
+        byte[] edit = randomText(64 * 1024, 3);
+        Files.write(base1.resolve("f.bin"), edit);
+        // modification times are to the second, and a person's edit comes later than the one that stopped the download
+        Files.setLastModifiedTime(base1.resolve("f.bin"), java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 3_000));
+        syncBoth(base1, base2, state);
+
+        Map<String, String> expected = Map.of("f.bin", new String(changed), "f[conflict-0].bin", new String(edit));
+        Assert.assertEquals(expected, tree(base1));
+        Assert.assertEquals(expected, tree(base2));
+    }
+
+    @Test
+    public void interruptedDownloadResumes() throws Exception {
+        for (boolean crash : List.of(false, true)) {
+            // the copy stopped part way through a chunk, and past the end of the old version
+            Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+            SyncState state = new JdbcTreeState(":memory:");
+            byte[] changed = randomText(96 * 1024, 2);
+            interruptDownload(base1, base2, state, randomText(64 * 1024, 1), changed, 20, crash);
+            Assert.assertArrayEquals("crash " + crash, randomText(64 * 1024, 1), Files.readAllBytes(base1.resolve("f.bin")));
+
+            syncBoth(base1, base2, state);
+            Map<String, String> expected = Map.of("f.bin", new String(changed));
+            Assert.assertEquals("crash " + crash, expected, tree(base1));
+            Assert.assertEquals("crash " + crash, expected, tree(base2));
+
+            // and part way through a chunk within the old version
+            Path base3 = Files.createTempDirectory("peergos-sync"), base4 = Files.createTempDirectory("peergos-sync");
+            SyncState state2 = new JdbcTreeState(":memory:");
+            byte[] sameSize = randomText(64 * 1024, 3);
+            interruptDownload(base3, base4, state2, randomText(64 * 1024, 1), sameSize, 5, crash);
+            syncBoth(base3, base4, state2);
+            Assert.assertEquals("crash " + crash, Map.of("f.bin", new String(sameSize)), tree(base3));
+            Assert.assertEquals("crash " + crash, Map.of("f.bin", new String(sameSize)), tree(base4));
+        }
+    }
+
+    @Test
+    public void crashWhileResumingAnInterruptedDownload() throws Exception {
+        // the resumed download had written past where the first one stopped, so it looked like an edit, and the part
+        // written was kept as a conflict copy
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        byte[] changed = randomText(96 * 1024, 2);
+        interruptDownload(base1, base2, state, randomText(64 * 1024, 1), changed, 5, false);
+
+        AtomicInteger checks = new AtomicInteger();
+        try {
+            DirectorySync.syncDir(new LocalFileSystem(base1, crypto.hasher), new LocalFileSystem(base2, crypto.hasher), true, true,
+                    null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> {
+                        if (checks.incrementAndGet() > 20)
+                            throw new Crash();
+                        return false;
+                    }, DirectorySync::log);
+            Assert.fail("The resumed download did not crash");
+        } catch (Crash expected) {}
+        Assert.assertArrayEquals(randomText(64 * 1024, 1), Files.readAllBytes(base1.resolve("f.bin")));
+
+        syncBoth(base1, base2, state);
+        Map<String, String> expected = Map.of("f.bin", new String(changed));
+        Assert.assertEquals(expected, tree(base1));
+        Assert.assertEquals(expected, tree(base2));
+    }
+
+    @Test
+    public void editOfAFileTheOtherSideMovedWithTheSameEdit() throws Exception {
+        // the edit was uploaded to the old path, and then taken for the source of the move, leaving it on one side only
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        write(base1, "b/f", "original");
+        syncBoth(base1, base2, state);
+
+        write(base1, "b/f", "the same edit");
+        Files.move(base2.resolve("b"), base2.resolve("e"));
+        write(base2, "e/f", "the same edit");
+        syncBoth(base1, base2, state);
+        Map<String, String> synced = tree(base1);
+        Assert.assertEquals(synced, tree(base2));
+        Assert.assertEquals("the same edit", synced.get("e/f"));
+    }
+
+    @Test
+    public void folderReplacedByAFileWhileItsDeleteSyncs() throws Exception {
+        // the folder's delete deleted the file instead
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        Files.createDirectories(base1.resolve("d"));
+        syncBoth(base1, base2, state);
+
+        Files.delete(base1.resolve("d"));
+        DirectorySync.syncDir(new LocalFileSystem(base1, crypto.hasher), new LocalFileSystem(base2, crypto.hasher), true, true,
+                null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, m -> {
+                    if (m.contains("delete dir d")) {
+                        try {
+                            Files.delete(base2.resolve("d"));
+                            Files.write(base2.resolve("d"), "a new file".getBytes());
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
+                });
+        syncBoth(base1, base2, state);
+        Map<String, String> expected = Map.of("d", "a new file");
+        Assert.assertEquals(expected, tree(base1));
+        Assert.assertEquals(expected, tree(base2));
+    }
+
+    @Test
+    public void folderMovedOverOneDeletedOnTheOtherSideWhenDeletesAreNotSynced() throws Exception {
+        // the file moved over the one kept here was taken for an edit of it, so the one kept was overwritten
+        for (boolean inDrive : List.of(true, false)) {
+            Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+            SyncState state = new JdbcTreeState(":memory:");
+            write(base1, "a/f", "kept");
+            write(base1, "b/f", "moved");
+            syncKeepingDeletes(base1, base2, state);
+
+            Path moved = inDrive ? base2 : base1;
+            deleteTree(moved.resolve("a"));
+            Files.move(moved.resolve("b"), moved.resolve("a"));
+            syncKeepingDeletes(base1, base2, state);
+            syncKeepingDeletes(base1, base2, state);
+            for (Path base : List.of(base1, base2))
+                Assert.assertTrue("in Drive " + inDrive, tree(base).values().containsAll(List.of("kept", "moved")));
+        }
+    }
+
+    @Test
+    public void fileAddedOnTheOtherSideWhileANewFileThereUploads() throws Exception {
+        // the bulk upload of new small files replaced the file put at the same path after the scan
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        write(base1, "keep", "keep");
+        syncBoth(base1, base2, state);
+
+        write(base1, "f", "new here");
+        try {
+            DirectorySync.syncDir(new LocalFileSystem(base1, crypto.hasher), new LocalFileSystem(base2, crypto.hasher), true, true,
+                    null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, m -> {
+                        if (m.contains("remote files in")) {
+                            try {
+                                write(base2, "f", "new there");
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        }
+                    });
+        } catch (Exception e) {
+            // a sync that finds a file where it was about to put one leaves both to the next
+        }
+        syncBoth(base1, base2, state);
+        Assert.assertEquals(tree(base1), tree(base2));
+        Assert.assertTrue(tree(base1).toString(), tree(base1).values().containsAll(List.of("keep", "new here", "new there")));
+    }
+
+    @Test
+    public void editAfterTheScanOfAFileDeletedOnTheOtherSide() throws Exception {
+        // the delete was synced over the edit
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        write(base1, "f", "original");
+        syncBoth(base1, base2, state);
+
+        Files.delete(base2.resolve("f"));
+        DirectorySync.syncDir(new LocalFileSystem(base1, crypto.hasher), new LocalFileSystem(base2, crypto.hasher), true, true,
+                null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, m -> {
+                    if (m.contains("remote files in")) {
+                        try {
+                            write(base1, "f", "edited after the scan");
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
+                });
+        // a record of it as synced would be taken for a copy in Drive by a pass with nothing changed there
+        Assert.assertNull(state.byPath("f"));
+        syncBoth(base1, base2, state);
+        Map<String, String> expected = Map.of("f", "edited after the scan");
+        Assert.assertEquals(expected, tree(base1));
+        Assert.assertEquals(expected, tree(base2));
+    }
+
+    @Test(timeout = 60_000)
+    public void sourceShrinksDuringADownload() throws Exception {
+        // the copy kept reading nothing from the end of the source, forever
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        syncBoth(base1, base2, state);
+        byte[] shorter = randomText(1000, 3);
+        AtomicInteger checks = new AtomicInteger();
+        try {
+            download(base1, base2, state, "f.bin", null, randomText(64 * 1024, 2), () -> {
+                if (checks.incrementAndGet() == 5) {
+                    try {
+                        Files.write(base2.resolve("f.bin"), shorter);
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+                return false;
+            });
+            Assert.fail("A download of a source that shrank completed");
+        } catch (IOException | RuntimeException expected) {}
+
+        syncBoth(base1, base2, state);
+        Map<String, String> expected = Map.of("f.bin", new String(shorter));
+        Assert.assertEquals(expected, tree(base1));
+        Assert.assertEquals(expected, tree(base2));
+    }
+
+    @Test
+    public void folderMadeWhereAnInitialUploadIsGoing() throws Exception {
+        // the part uploaded was visible, so it could be replaced, which the next sync took for a delete of the original
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        byte[] data = randomText(3 * 1024 * 1024, 1);
+        Files.write(base1.resolve("big"), data);
+        try {
+            DirectorySync.syncDir(new LocalFileSystem(base1, crypto.hasher), new LocalFileSystem(base2, crypto.hasher), true, true,
+                    null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, m -> {
+                        if (m.startsWith("Downloaded 1 /") && ! Files.isDirectory(base2.resolve("big"))) {
+                            try {
+                                Files.deleteIfExists(base2.resolve("big"));
+                                Files.createDirectory(base2.resolve("big"));
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        }
+                    });
+        } catch (RuntimeException e) {
+            // the folder came first
+        }
+        syncBoth(base1, base2, state);
+        syncBoth(base1, base2, state);
+        Map<String, String> synced = tree(base1);
+        Assert.assertEquals(synced, tree(base2));
+        Assert.assertTrue(synced.keySet().toString(), synced.containsValue(new String(data)));
+    }
+
+    @Test
+    public void changeAfterTheScanOfAFileDeletedHere() throws Exception {
+        // the other side's file was deleted in bulk as the sync saw it, losing a change made to it since
+        for (boolean toFolder : List.of(false, true)) {
+            Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+            SyncState state = new JdbcTreeState(":memory:");
+            write(base1, "f", "original");
+            syncBoth(base1, base2, state);
+
+            Files.delete(base1.resolve("f"));
+            DirectorySync.syncDir(new LocalFileSystem(base1, crypto.hasher), new LocalFileSystem(base2, crypto.hasher), true, true,
+                    null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, m -> {
+                        if (m.contains("remote files in")) {
+                            try {
+                                if (toFolder) {
+                                    Files.delete(base2.resolve("f"));
+                                    write(base2, "f/g", "in the folder");
+                                } else
+                                    write(base2, "f", "edited after the scan");
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        }
+                    });
+            Assert.assertNull("folder " + toFolder, state.byPath("f"));
+            syncBoth(base1, base2, state);
+            Map<String, String> expected = toFolder ? Map.of("f", "dir", "f/g", "in the folder") : Map.of("f", "edited after the scan");
+            Assert.assertEquals("folder " + toFolder, expected, tree(base1));
+            Assert.assertEquals("folder " + toFolder, expected, tree(base2));
+        }
+    }
+
+    @Test
+    public void fileDeletedOnBothSidesWhileTheDeleteSyncs() throws Exception {
+        // the sync kept a record of the file as synced, which a pass that reuses that record for Drive took for a file
+        // there still
+        for (boolean here : List.of(true, false)) {
+            Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+            SyncState state = new JdbcTreeState(":memory:");
+            write(base1, "d/f", "original");
+            write(base1, "d/g", "stays");
+            syncBoth(base1, base2, state);
+
+            Path deletedFirst = here ? base2 : base1, deletedSince = here ? base1 : base2;
+            Files.delete(deletedFirst.resolve("d/f"));
+            DirectorySync.syncDir(new LocalFileSystem(base1, crypto.hasher), new LocalFileSystem(base2, crypto.hasher), true, true,
+                    null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, m -> {
+                        if (m.contains("remote files in")) {
+                            try {
+                                Files.delete(deletedSince.resolve("d/f"));
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        }
+                    });
+            Assert.assertNull("here " + here, state.byPath("d/f"));
+            Map<String, String> expected = Map.of("d", "dir", "d/g", "stays");
+            Assert.assertEquals("here " + here, expected, tree(base1));
+            Assert.assertEquals("here " + here, expected, tree(base2));
+        }
+    }
+
+    @Test
+    public void sourceRewrittenDuringADownload() throws Exception {
+        // the download took part of each version, under the hash of the first, which the next sync kept as a conflict
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        syncBoth(base1, base2, state);
+        byte[] rewritten = randomText(64 * 1024, 3);
+        AtomicInteger checks = new AtomicInteger();
+        try {
+            download(base1, base2, state, "f.bin", null, randomText(64 * 1024, 2), () -> {
+                if (checks.incrementAndGet() == 5) {
+                    try {
+                        Files.write(base2.resolve("f.bin"), rewritten);
+                        Files.setLastModifiedTime(base2.resolve("f.bin"), java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 60_000));
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+                return false;
+            });
+            Assert.fail("A download of a source that changed completed");
+        } catch (ConcurrentChangeException expected) {}
+
+        syncBoth(base1, base2, state);
+        Map<String, String> expected = Map.of("f.bin", new String(rewritten));
+        Assert.assertEquals(expected, tree(base1));
+        Assert.assertEquals(expected, tree(base2));
+    }
+
+    @Test
+    public void smallFileGrowsAfterTheScan() throws Exception {
+        // the bulk upload took as much of the new version as the scan had seen, under the hash of the old one
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        syncBoth(base1, base2, state);
+        write(base1, "f", "small");
+        // older than the upload, so that what was uploaded is seen as it is
+        Files.setLastModifiedTime(base1.resolve("f"), java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() - 60_000));
+        byte[] grown = randomText(64 * 1024, 4);
+        try {
+            DirectorySync.syncDir(new LocalFileSystem(base1, crypto.hasher), new LocalFileSystem(base2, crypto.hasher), true, true,
+                    null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, m -> {
+                        if (m.contains("remote files in")) {
+                            try {
+                                Files.write(base1.resolve("f"), grown);
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        }
+                    });
+        } catch (RuntimeException e) {
+            // the upload saw the change
+        }
+        syncBoth(base1, base2, state);
+        Map<String, String> expected = Map.of("f", new String(grown));
+        Assert.assertEquals(expected, tree(base1));
+        Assert.assertEquals(expected, tree(base2));
+    }
+
+    @Test
+    public void failedDownloadStopsTheOthersBeforeTheSyncReturns() throws Exception {
+        // the sync failed with the first, and left the others running into the next sync
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        syncBoth(base1, base2, state);
+        for (int i = 0; i < 6; i++)
+            Files.write(base2.resolve("f" + i), randomText(3 * 1024 * 1024, i));
+        AtomicBoolean returned = new AtomicBoolean(false);
+        AtomicInteger lateLines = new AtomicInteger();
+        try {
+            DirectorySync.syncDir(new LocalFileSystem(base1, crypto.hasher), new LocalFileSystem(base2, crypto.hasher), true, true,
+                    null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, m -> {
+                        if (returned.get())
+                            lateLines.incrementAndGet();
+                        if (m.contains("Copying f0"))
+                            throw new IllegalStateException("a failed download");
+                        // the others are still going when the first fails
+                        if (m.contains("Copying f")) {
+                            try {
+                                Thread.sleep(1_000);
+                            } catch (InterruptedException e) {}
+                        }
+                    });
+            Assert.fail("The sync didn't fail");
+        } catch (IllegalStateException expected) {}
+        returned.set(true);
+        Thread.sleep(2_000);
+        Assert.assertEquals(0, lateLines.get());
+
+        syncBoth(base1, base2, state);
+        Assert.assertEquals(tree(base2), tree(base1));
+    }
+
+    @Test
+    public void newFolderWhereAFileWasRenamedFrom() throws Exception {
+        // the new folder's small files were bulk uploaded before the rename, into the file still at that path
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        write(base1, "x.txt", "file");
+        syncBoth(base1, base2, state);
+
+        Files.move(base1.resolve("x.txt"), base1.resolve("y.txt"));
+        write(base1, "x.txt/doc.pdf", "doc");
+        syncBoth(base1, base2, state);
+        Map<String, String> expected = Map.of("x.txt", "dir", "x.txt/doc.pdf", "doc", "y.txt", "file");
+        Assert.assertEquals(expected, tree(base1));
+        Assert.assertEquals(expected, tree(base2));
+    }
+
+    /** Downloads a change in the middle of a file large enough to have its diff staged into base1, with fs1 */
+    private static byte[] downloadLargeFileChange(Path base1, Path base2, SyncState state, LocalFileSystem fs1,
+                                                  java.util.function.Supplier<Boolean> isCancelled) throws Exception {
+        byte[] original = randomText(12 * 1024 * 1024, 1);
+        Files.write(base1.resolve("big.bin"), original);
+        syncBoth(base1, base2, state);
+        byte[] changed = original.clone();
+        System.arraycopy(randomText(1000, 2), 0, changed, 6 * 1024 * 1024, 1000);
+        Files.write(base2.resolve("big.bin"), changed);
+        Files.setLastModifiedTime(base2.resolve("big.bin"), java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() / 1000 * 1000 + 5_000));
+        LocalFileSystem fs2 = new LocalFileSystem(base2, crypto.hasher);
+        FileState synced = state.byPath("big.bin");
+        Path rel = Paths.get("big.bin");
+        HashTree hash = fs2.hashFile(rel, Optional.empty(), "big.bin", state, changed.length, synced.chunkSize);
+        FileState remote = new FileState("big.bin", fs2.getLastModified(rel), changed.length, hash, synced.chunkSize);
+        List<CopyOp> ops = remote.diffRanges(synced).stream()
+                .map(d -> new CopyOp(true, fs2.resolve("big.bin"), fs1.resolve("big.bin"), remote, synced, d.left, d.right,
+                        ResumeUploadProps.random(crypto)))
+                .collect(Collectors.toList());
+        Assert.assertTrue("only part of it changes", ops.stream().mapToLong(op -> op.diffEnd - op.diffStart).sum() < changed.length);
+        try {
+            DirectorySync.copyFileDiffAndTruncate(fs2, fs1, ops, state, isCancelled, DirectorySync::log);
+            Assert.fail("The download was not interrupted");
+        } catch (RuntimeException | Crash expected) {}
+        Assert.assertFalse(state.getInProgressCopies().isEmpty());
+        Assert.assertArrayEquals("the file is as it was until all of the change is here", original, Files.readAllBytes(base1.resolve("big.bin")));
+        return changed;
+    }
+
+    private static List<Path> staged(Path base) throws IOException {
+        try (Stream<Path> files = Files.list(base.resolve(LocalFileSystem.PARTIAL_COPIES_DIR))) {
+            return files.collect(Collectors.toList());
+        }
+    }
+
+    @Test
+    public void largeFileChangeIsStagedAsItsDiff() throws Exception {
+        // the whole file was copied aside to write the change into, which for a large file is a lot of disk for a small change
+        for (boolean crash : List.of(false, true)) {
+            Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+            SyncState state = new JdbcTreeState(":memory:");
+            AtomicInteger checks = new AtomicInteger();
+            byte[] changed = downloadLargeFileChange(base1, base2, state, new LocalFileSystem(base1, crypto.hasher, 1024 * 1024), () -> {
+                if (checks.incrementAndGet() <= 5)
+                    return false;
+                if (crash)
+                    throw new Crash();
+                return true;
+            });
+            List<Path> staged = staged(base1);
+            Assert.assertEquals(1, staged.size());
+            Assert.assertTrue(staged.get(0).getFileName().toString().endsWith(".diff"));
+
+            DirectorySync.syncDir(new LocalFileSystem(base1, crypto.hasher, 1024 * 1024), new LocalFileSystem(base2, crypto.hasher), true, true,
+                    null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+            Assert.assertArrayEquals("crash " + crash, changed, Files.readAllBytes(base1.resolve("big.bin")));
+            Assert.assertFalse(Files.exists(base1.resolve(LocalFileSystem.PARTIAL_COPIES_DIR)));
+        }
+    }
+
+    @Test
+    public void stopWhileAStagedDiffIsPutInPlace() throws Exception {
+        // the file is part written once its change starts going in, which the next sync took for an edit made meanwhile
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        LocalFileSystem stopsBeforePuttingInPlace = new LocalFileSystem(base1, crypto.hasher, 1024 * 1024) {
+            @Override
+            public void completeCopy(Path p, List<Pair<Long, Long>> ranges, long size) {
+                throw new Crash();
+            }
+        };
+        byte[] changed = downloadLargeFileChange(base1, base2, state, stopsBeforePuttingInPlace, () -> false);
+        // as if it stopped part way through putting the change in
+        Path diff = staged(base1).get(0);
+        Files.createFile(diff.resolveSibling(diff.getFileName().toString().replace(".diff", ".applying")));
+        try (java.nio.channels.FileChannel f = java.nio.channels.FileChannel.open(base1.resolve("big.bin"), java.nio.file.StandardOpenOption.WRITE)) {
+            f.write(java.nio.ByteBuffer.wrap(Arrays.copyOfRange(changed, 6 * 1024 * 1024, 6 * 1024 * 1024 + 500)), 6 * 1024 * 1024);
+        }
+
+        DirectorySync.syncDir(new LocalFileSystem(base1, crypto.hasher, 1024 * 1024), new LocalFileSystem(base2, crypto.hasher), true, true,
+                null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+        Assert.assertArrayEquals(changed, Files.readAllBytes(base1.resolve("big.bin")));
+        try (Stream<Path> files = Files.list(base1)) {
+            Assert.assertEquals(List.of(base1.resolve("big.bin")), files.collect(Collectors.toList()));
+        }
+    }
+
+    @Test
+    public void folderMovedAfterAnInterruptedDownload() throws Exception {
+        // the part written moved with its folder, out of reach of the resume, and was synced as a file of its own
+        for (boolean crash : List.of(false, true)) {
+            Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+            SyncState state = new JdbcTreeState(":memory:");
+            write(base1, "d/old.txt", "old");
+            syncBoth(base1, base2, state);
+            byte[] data = randomText(64 * 1024, 2);
+            interruptDownload(base1, base2, state, "d/f.bin", null, data, 5, crash);
+
+            Files.move(base1.resolve("d"), base1.resolve("e"));
+            syncBoth(base1, base2, state);
+            Map<String, String> expected = Map.of("d", "dir", "d/f.bin", new String(data), "e", "dir", "e/old.txt", "old");
+            Assert.assertEquals("crash " + crash, expected, tree(base1));
+            Assert.assertEquals("crash " + crash, expected, tree(base2));
+        }
+    }
+
+    @Test
+    public void fileWhereAnInterruptedDownloadsFolderWas() throws Exception {
+        // resuming tried to create the folder again on every sync, and failed it
+        for (boolean crash : List.of(false, true)) {
+            Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+            SyncState state = new JdbcTreeState(":memory:");
+            byte[] data = randomText(64 * 1024, 2);
+            interruptDownload(base1, base2, state, "b/x.txt/doc.pdf", null, data, 5, crash);
+
+            write(base1, "b", "file");
+            syncBoth(base1, base2, state);
+            Map<String, String> synced = tree(base1);
+            Assert.assertEquals("crash " + crash, synced, tree(base2));
+            Assert.assertTrue("crash " + crash + " " + synced.keySet(),
+                    synced.containsValue(new String(data)) && synced.containsValue("file"));
+        }
+    }
+
+    @Test
+    public void syncStateResetAfterAnInterruptedDownload() throws Exception {
+        // with no record of the copy, the part written was kept as a conflict copy
+        for (boolean crash : List.of(false, true)) {
+            Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+            byte[] data = randomText(64 * 1024, 2);
+            interruptDownload(base1, base2, new JdbcTreeState(":memory:"), "f.bin", null, data, 5, crash);
+
+            syncBoth(base1, base2, new JdbcTreeState(":memory:"));
+            Map<String, String> expected = Map.of("f.bin", new String(data));
+            Assert.assertEquals("crash " + crash, expected, tree(base1));
+            Assert.assertEquals("crash " + crash, expected, tree(base2));
+        }
+    }
+
+    @Test
+    public void editDuringADownloadIsKept() throws Exception {
+        // the download replaced the file when it finished, losing the edit
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        byte[] changed = randomText(64 * 1024, 2);
+        AtomicInteger checks = new AtomicInteger();
+        try {
+            download(base1, base2, state, "f.bin", randomText(64 * 1024, 1), changed, () -> {
+                if (checks.incrementAndGet() == 5) {
+                    try {
+                        Files.write(base1.resolve("f.bin"), "an edit".getBytes());
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+                return false;
+            });
+            Assert.fail("The download replaced an edit made while it ran");
+        } catch (ConcurrentChangeException expected) {}
+
+        syncBoth(base1, base2, state);
+        Map<String, String> expected = Map.of("f.bin", new String(changed), "f[conflict-0].bin", "an edit");
+        Assert.assertEquals(expected, tree(base1));
+        Assert.assertEquals(expected, tree(base2));
+    }
+
+    @Test
+    public void interruptedDownloadOfADeletedFile() throws Exception {
+        // the part written was synced back as a new file
+        for (boolean crash : List.of(false, true)) {
+            Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+            SyncState state = new JdbcTreeState(":memory:");
+            syncBoth(base1, base2, state);
+            interruptDownload(base1, base2, state, null, randomText(64 * 1024, 2), 5, crash);
+
+            Files.delete(base2.resolve("f.bin"));
+            syncBoth(base1, base2, state);
+            Assert.assertEquals("crash " + crash, Map.of(), tree(base1));
+            Assert.assertEquals("crash " + crash, Map.of(), tree(base2));
+        }
+    }
+
+    @Test
+    public void interruptedDownloadOfAFileChangedAgain() throws Exception {
+        // the part written past the end of the old version no longer matched the source, so it looked like an edit,
+        // and was kept as a conflict copy
+        for (boolean crash : List.of(false, true)) {
+            Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+            SyncState state = new JdbcTreeState(":memory:");
+            interruptDownload(base1, base2, state, randomText(64 * 1024, 1), randomText(96 * 1024, 2), 20, crash);
+
+            byte[] latest = randomText(1000, 3);
+            Files.write(base2.resolve("f.bin"), latest);
+            Files.setLastModifiedTime(base2.resolve("f.bin"), java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() / 1000 * 1000 + 10_000));
+            syncBoth(base1, base2, state);
+            Map<String, String> expected = Map.of("f.bin", new String(latest));
+            Assert.assertEquals("crash " + crash, expected, tree(base1));
+            Assert.assertEquals("crash " + crash, expected, tree(base2));
+        }
     }
 
 

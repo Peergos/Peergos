@@ -52,6 +52,9 @@ class RamTreeState implements SyncState {
         filesByPath.put(fs.relPath, fs);
         fileByHash.putIfAbsent(fs.hashTree.rootHash, new ArrayList<>());
         fileByHash.get(fs.hashTree.rootHash).add(fs);
+        // both sides hold it now, so a delete of it that hasn't been synced is over
+        localDeletes.remove(fs.relPath);
+        remoteDeletes.remove(fs.relPath);
     }
 
     public synchronized void addDir(String path) {
@@ -98,6 +101,11 @@ class RamTreeState implements SyncState {
     @Override
     public boolean hasRemoteDelete(String p) {
         return remoteDeletes.contains(p);
+    }
+
+    @Override
+    public synchronized Set<String> getRemoteDeletes() {
+        return new HashSet<>(remoteDeletes);
     }
 
     @Override
