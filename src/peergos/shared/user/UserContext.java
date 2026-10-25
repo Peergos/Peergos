@@ -789,6 +789,17 @@ public class UserContext {
     }
 
     /**
+     * @return "verified", "unverified", or "changed" if the friend's identity is no longer the one that was verified
+     */
+    @JsMethod
+    public CompletableFuture<String> verificationStatus(String friendName, FriendAnnotation annotation) {
+        if (annotation == null || ! annotation.isVerified())
+            return Futures.of("unverified");
+        return network.coreNode.getPublicKeyHash(friendName)
+                .thenApply(id -> id.isPresent() && annotation.isVerifiedFor(id.get()) ? "verified" : "changed");
+    }
+
+    /**
      *
      * @param friendName
      * @return a pair of the friends keys used to generate the fingerprint, and the resulting fingerprint

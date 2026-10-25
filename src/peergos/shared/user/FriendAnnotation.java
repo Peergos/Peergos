@@ -28,6 +28,10 @@ public class FriendAnnotation implements Cborable {
         return isVerified;
     }
 
+    public boolean isVerifiedFor(PublicKeyHash currentIdentity) {
+        return isVerified && ! keysAtVerification.isEmpty() && keysAtVerification.get(0).equals(currentIdentity);
+    }
+
     @Override
     public CborObject toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();
