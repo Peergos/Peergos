@@ -37,6 +37,15 @@ public class RetryStorage implements ContentAddressedStorage {
         return new RetryStorage(target.directToOrigin(), maxAttempts);
     }
 
+    /** The server could not be reached at all, as the exception says it in a java client, or as
+     *  the message of one relayed through a local server says it in a browser, url encoded. */
+    public static boolean isOffline(Throwable e) {
+        String text = e.toString();
+        return text.contains("ConnectException") || text.contains("UnknownHostException")
+                || text.contains("Failed to connect") || text.contains("Failed+to+connect")
+                || text.contains("Unable to resolve host") || text.contains("Unable+to+resolve+host");
+    }
+
     private static <V> void retryAfter(Supplier<CompletableFuture<V>> method, int milliseconds) {
         executor.schedule(method::get, milliseconds, TimeUnit.MILLISECONDS);
     }
@@ -78,6 +87,11 @@ public class RetryStorage implements ContentAddressedStorage {
                         } else if (e instanceof MajorRateLimitException) {
                             res.completeExceptionally(e);
                         } else if (e.getMessage() != null && e.getMessage().contains("Champ+root+not+present")) {
+                            res.completeExceptionally(e);
+                        } else if (isOffline(e)) {
+                            // Nothing to reach: retrying for the two minutes the backoff adds up
+                            // to kept a cached sign-in on "Retrieving Friends" for that long
+                            // before whatever can be read without the server was read.
                             res.completeExceptionally(e);
                         } else if (SecretLink.isRefused(e)) {
                             // an expired, used up or deleted link stays that way, and a viewer
