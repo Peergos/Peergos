@@ -412,7 +412,11 @@ public class StorageHandler implements HttpHandler {
                 }
                 case ID: {
                     AggregatedMetrics.STORAGE_ID.inc();
-                    dht.id().thenAccept(id -> {
+                    // A local server answers from what it remembers of its server, and a direct block
+                    // store from the ids it was built with; origin=true is the page asking whether the
+                    // server itself can be reached now.
+                    boolean origin = params.containsKey("origin") && "true".equals(last.apply("origin"));
+                    (origin ? dht.directToOrigin() : dht).id().thenAccept(id -> {
                         Object json = wrapHash("ID", id);
                         replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
                     }).exceptionally(Futures::logAndThrow).get();
