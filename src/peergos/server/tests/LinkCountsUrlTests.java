@@ -47,11 +47,6 @@ public class LinkCountsUrlTests {
         }
 
         @Override
-        public CompletableFuture<byte[]> postMultipart(String url, List<byte[]> files, int timeoutMillis) {
-            throw new IllegalStateException("unused");
-        }
-
-        @Override
         public CompletableFuture<byte[]> put(String url, byte[] payload, Map<String, String> headers) {
             throw new IllegalStateException("unused");
         }

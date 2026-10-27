@@ -48,13 +48,13 @@ public class MultipartBenchmark {
         return PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
     }
 
-    // 70 KB/S throughput
+    // 4096 KB/S throughput
     @Test
     public void smallFragments() throws Exception {
         testWriteThroughput(4096);
     }
 
-    // 1500 KB/S throughput
+    // 131072 KB/S throughput
     @Test
     public void largeFragments() throws Exception {
         testWriteThroughput(128*1024);
@@ -72,7 +72,7 @@ public class MultipartBenchmark {
             random.nextBytes(data);
             long t1 = System.currentTimeMillis();
             network.dhtClient.put(context.signer.publicKeyHash, context.signer, data, network.hasher, tid).join();
-            long duration = System.currentTimeMillis() - t1;
+            long duration = Math.max(1, System.currentTimeMillis() - t1);
             worst = Math.max(worst, duration);
             best = Math.min(best, duration);
             System.err.printf("PUT(%d) duration: %d mS, best: %d mS, worst: %d mS, av: %d mS %d KB/S\n", i,
