@@ -924,6 +924,32 @@ public class SyncTests {
     }
 
     @Test
+    public void diffRangesOfAShrunkFileStayWithinIt() {
+        byte[] same = new byte[32 * 3];
+        byte[] longer = new byte[32 * 8];
+        byte[] root1 = new byte[32]; root1[0] = 1;
+        byte[] root2 = new byte[32]; root2[0] = 2;
+        HashTree shrunkTree = new HashTree(new RootHash(root1), List.of(new ChunkHashList(same)), Collections.emptyList(), Collections.emptyList());
+        HashTree oldTree = new HashTree(new RootHash(root2), List.of(new ChunkHashList(longer)), Collections.emptyList(), Collections.emptyList());
+        long chunk = Chunk.LEGACY_SIZE;
+
+        FileState old = new FileState("f.bin", 1000, 8 * chunk, oldTree);
+        byte[] partialLast = new byte[32 * 3];
+        partialLast[32 * 2] = 1;
+        HashTree partialLastTree = new HashTree(new RootHash(root1), List.of(new ChunkHashList(partialLast)), Collections.emptyList(), Collections.emptyList());
+        FileState withinLastChunk = new FileState("f.bin", 1000, 3 * chunk - 10, partialLastTree);
+        Assert.assertEquals(List.of(new Pair<>(2 * chunk, 3 * chunk - 10)), withinLastChunk.diffRanges(old));
+
+        // every remaining chunk is unchanged, so there is nothing to copy, only the truncate
+        FileState atBoundary = new FileState("f.bin", 1000, 3 * chunk, shrunkTree);
+        Assert.assertEquals(List.of(new Pair<>(3 * chunk, 3 * chunk)), atBoundary.diffRanges(old));
+
+        HashTree emptyTree = new HashTree(new RootHash(root1), List.of(new ChunkHashList(new byte[32])), Collections.emptyList(), Collections.emptyList());
+        FileState empty = new FileState("f.bin", 1000, 0, emptyTree);
+        Assert.assertEquals(List.of(new Pair<>(0L, 0L)), empty.diffRanges(old));
+    }
+
+    @Test
     public void aStoppedSyncStopsScanning() throws Exception {
         // Pausing used to stop only the transfers: the walk carried on hashing every file and
         // logging a skip line for each one, which on a large folder is minutes of work after
