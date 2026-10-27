@@ -152,7 +152,6 @@ public class UserService {
             localhostServer.stop(0);
         if (gc != null)
             gc.stop();
-        Multipart.ioPool.shutdown();
     }
 
     public boolean initAndStart(InetSocketAddress local,

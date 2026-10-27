@@ -1,6 +1,5 @@
 package peergos.server.util;
 
-import peergos.server.net.Multipart;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
@@ -156,30 +155,6 @@ public class JavaPoster implements HttpPoster {
             res.completeExceptionally(rese);
         } else
             res.completeExceptionally(e);
-    }
-
-    @Override
-    public CompletableFuture<byte[]> postMultipart(String url, List<byte[]> files, int timeoutMillis) {
-        try {
-            Map<String, String> headers = new HashMap<>();
-            if (basicAuth.isPresent())
-                headers.put("Authorization", basicAuth.get());
-            userAgent.ifPresent(agent -> headers.put("User-Agent", agent));
-            Multipart mPost = new Multipart(client, buildURL(url).toString(), "UTF-8", headers, timeoutMillis);
-            int i = 0;
-            for (byte[] file : files) {
-                String fieldName = "file" + i++;
-                mPost.addFilePart(fieldName, new NamedStreamable.ByteArrayWrapper(Optional.of(fieldName), file));
-            }
-            return mPost.finish();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    @Override
-    public CompletableFuture<byte[]> postMultipart(String url, List<byte[]> files) {
-        return postMultipart(url, files, 20_000);
     }
 
     @Override
