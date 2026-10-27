@@ -934,13 +934,15 @@ public class SyncTests {
         long chunk = Chunk.LEGACY_SIZE;
 
         FileState old = new FileState("f.bin", 1000, 8 * chunk, oldTree);
-        FileState withinLastChunk = new FileState("f.bin", 1000, 3 * chunk - 10, shrunkTree);
-        List<Pair<Long, Long>> diff = withinLastChunk.diffRanges(old);
-        Assert.assertEquals(List.of(new Pair<>(2 * chunk, 3 * chunk - 10)), diff);
+        byte[] partialLast = new byte[32 * 3];
+        partialLast[32 * 2] = 1;
+        HashTree partialLastTree = new HashTree(new RootHash(root1), List.of(new ChunkHashList(partialLast)), Collections.emptyList(), Collections.emptyList());
+        FileState withinLastChunk = new FileState("f.bin", 1000, 3 * chunk - 10, partialLastTree);
+        Assert.assertEquals(List.of(new Pair<>(2 * chunk, 3 * chunk - 10)), withinLastChunk.diffRanges(old));
 
-        // every remaining chunk is unchanged, but a copy is still needed to truncate
+        // every remaining chunk is unchanged, so there is nothing to copy, only the truncate
         FileState atBoundary = new FileState("f.bin", 1000, 3 * chunk, shrunkTree);
-        Assert.assertEquals(List.of(new Pair<>(2 * chunk, 3 * chunk)), atBoundary.diffRanges(old));
+        Assert.assertEquals(List.of(new Pair<>(3 * chunk, 3 * chunk)), atBoundary.diffRanges(old));
 
         HashTree emptyTree = new HashTree(new RootHash(root1), List.of(new ChunkHashList(new byte[32])), Collections.emptyList(), Collections.emptyList());
         FileState empty = new FileState("f.bin", 1000, 0, emptyTree);

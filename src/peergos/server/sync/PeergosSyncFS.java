@@ -359,8 +359,8 @@ public class PeergosSyncFS implements SyncFilesystem {
                     start.getUpdated(current, context.network).thenCompose(now -> {
                         if (checkTarget && ! hasState(now, first.targetState))
                             return Futures.errored(new ConcurrentChangeException(p + " has changed since it was scanned"));
-                        return Futures.reduceAll(ops, current, (v, op) -> start.getUpdated(v, context.network)
-                                        .thenCompose(us -> {
+                        return Futures.reduceAll(ops, current, (v, op) -> op.diffStart == op.diffEnd ? Futures.of(v) :
+                                        start.getUpdated(v, context.network).thenCompose(us -> {
                                             AsyncReader in;
                                             try {
                                                 in = srcFs.getBytes(op.source, op.diffStart);

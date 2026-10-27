@@ -143,7 +143,7 @@ public interface SyncFilesystem {
             throw new RuntimeException("Sync cancelled before copying " + op.target);
         DirectorySync.log("COPY from " + op.source + " to " + op.target + " range=[" + op.diffStart +", " + op.diffEnd+"]");
         Optional<LocalDateTime> res;
-        try (AsyncReader fin = srcFs.getBytes(op.source, op.diffStart)) {
+        try (AsyncReader fin = op.diffStart == op.diffEnd ? AsyncReader.build(new byte[0]) : srcFs.getBytes(op.source, op.diffStart)) {
             Optional<Thumbnail> thumbnail = srcFs.getThumbnail(op.source);
             LocalDateTime modified = LocalDateTime.ofInstant(Instant.ofEpochSecond(op.sourceState.modificationTime / 1000, 0), ZoneOffset.UTC);
             res = targetFs.setBytes(to, op.diffStart, fin, op.diffEnd - op.diffStart, Optional.of(op.sourceState.hashTree),
