@@ -8,6 +8,8 @@ import java.util.zip.*;
 
 public class ReproducibleJar {
     public static void main(String[] args) throws Exception {
+        // zip entry DOS times are written in the default timezone
+        TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
         Path inputJar = Paths.get(args[0]);
         long timeStamp = Long.parseLong(args[1]);
 
