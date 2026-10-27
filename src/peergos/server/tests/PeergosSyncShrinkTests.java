@@ -71,7 +71,26 @@ public class PeergosSyncShrinkTests {
         shrink(chunk -> 0L);
     }
 
+    @Test
+    public void editTheStartAndShrinkByManyChunks() throws Exception {
+        shrink(chunk -> 2L * chunk + 12345, 100);
+    }
+
+    @Test
+    public void editTheStartAndShrinkToAChunkBoundary() throws Exception {
+        shrink(chunk -> 2L * chunk, 100);
+    }
+
+    @Test
+    public void editTheNewLastChunkAndShrink() throws Exception {
+        shrink(chunk -> 2L * chunk + 12345, 2 * Chunk.LEGACY_SIZE + 10);
+    }
+
     private void shrink(Function<Integer, Long> newSize) throws Exception {
+        shrink(newSize, -1);
+    }
+
+    private void shrink(Function<Integer, Long> newSize, long editAt) throws Exception {
         UserContext context = signIn("shr" + Math.abs(random.nextInt() % 1_000_000));
         context.getUserRoot().join().mkdir("sync", context.network, false, context.mirrorBatId(), crypto).join();
         Path remoteRoot = PathUtil.get(context.username, "sync");
@@ -97,8 +116,14 @@ public class PeergosSyncShrinkTests {
         long size = newSize.apply(chunkSize);
         try (RandomAccessFile raf = new RandomAccessFile(base2.resolve(name).toFile(), "rw")) {
             raf.setLength(size);
+            if (editAt >= 0) {
+                raf.seek(editAt);
+                raf.write(~data[(int) editAt]);
+            }
         }
         byte[] shrunk = Arrays.copyOfRange(data, 0, (int) size);
+        if (editAt >= 0)
+            shrunk[(int) editAt] = (byte) ~data[(int) editAt];
         sync(local2, remote2, state2);
         FileWrapper remoteFile = context.getByPath(remoteRoot.resolve(name)).join().get();
         Assert.assertEquals(size, remoteFile.getSize());
