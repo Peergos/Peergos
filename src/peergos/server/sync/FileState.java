@@ -79,10 +79,12 @@ public class FileState implements Cborable {
                     if (! aList.equalAt(j, bList))
                         diffChunks.add(i * 1024L + j);
                 }
-                for (int j= aList.nChunks(); j < bList.nChunks(); j++)
-                    diffChunks.add(i * 1024L + j);
             }
         }
+        // Chunks only in other are past our end and removed by the truncate after the copy. A shrink to a chunk
+        // boundary can leave every remaining chunk equal, but a copy needs a range to run the truncate.
+        if (diffChunks.isEmpty())
+            diffChunks.add(size == 0 ? 0 : (size - 1) / chunkSize);
         return diffChunks.stream()
                 .map(c -> new Pair<>(c * chunkSize, Math.min((c + 1) * chunkSize, size)))
                 .collect(Collectors.toList());
