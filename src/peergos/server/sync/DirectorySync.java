@@ -61,6 +61,7 @@ import java.util.stream.Stream;
 
 public class DirectorySync {
     private static final Logger LOG = Logging.LOG();
+    private static final String TEMP_STATE_PREFIX = "peergos-sync";
     static Set<String> IGNORED_FILENAMES = Stream.of(".DS_Store")
             .collect(Collectors.toSet());
 
@@ -183,6 +184,7 @@ public class DirectorySync {
             throw new IllegalStateException("Incorrect number of sync-local-deletes!");
         if (allSyncRemoteDeletes.size() != allLinks.size())
             throw new IllegalStateException("Incorrect number of sync-remote-deletes!");
+        deleteTempStates(peergosDir);
 
         List<String> linkPaths = new ArrayList<>();
         List<Integer> opened = new ArrayList<>();
@@ -489,9 +491,11 @@ public class DirectorySync {
             // matches remotely, whatever its size. Only recording the large ones would leave a
             // small file that is deleted locally before any sync completes indistinguishable from
             // a remote addition, so it would be copied back down instead of deleted remotely.
-            String initialRemotePath = File.createTempFile("peergos-sync", ".sqlite", peergosDir.toFile()).toString();
+            String initialRemotePath = File.createTempFile(TEMP_STATE_PREFIX, ".sqlite", peergosDir.toFile()).toString();
+            List<JdbcTreeState> initialStates = new ArrayList<>();
             try {
-                SyncState initialRemote = new JdbcTreeState(initialRemotePath);
+                JdbcTreeState initialRemote = new JdbcTreeState(initialRemotePath);
+                initialStates.add(initialRemote);
                 long r0 = System.currentTimeMillis();
                 LOG.accept("Checking files in Drive");
                 buildDirState(remoteFS, initialRemote, syncedVersions, isCancelled);
@@ -555,17 +559,17 @@ public class DirectorySync {
                         syncedVersions.addDir(dir.relPath);
                 }, false);
             } finally {
-                File initialRemoteState = new File(initialRemotePath);
-                if (initialRemoteState.exists())
-                    initialRemoteState.delete();
+                discardTempStates(initialStates, List.of(initialRemotePath));
             }
         }
 
-        String localStatePath = File.createTempFile("peergos-sync", ".sqlite", peergosDir.toFile()).toString();
+        String localStatePath = File.createTempFile(TEMP_STATE_PREFIX, ".sqlite", peergosDir.toFile()).toString();
         String remoteStatePath = null;
+        List<JdbcTreeState> tempStates = new ArrayList<>();
         try {
             syncedVersions.copyTo(localStatePath);
-            SyncState localState = new JdbcTreeState(localStatePath);
+            JdbcTreeState localState = new JdbcTreeState(localStatePath);
+            tempStates.add(localState);
             long t1 = System.currentTimeMillis();
             // the remote scan reports itself, so the local one has to as well: hashing a
             // large folder takes minutes, and silence there looks like a hang
@@ -588,12 +592,14 @@ public class DirectorySync {
                 network.synchronizer.setCommitObserver(ourCommits);
 
             boolean remoteChange = ! remoteVersion.equals(syncedVersion) || remoteVersion.versions.isEmpty();
-            remoteStatePath = File.createTempFile("peergos-sync", ".sqlite", peergosDir.toFile()).toString();
+            remoteStatePath = File.createTempFile(TEMP_STATE_PREFIX, ".sqlite", peergosDir.toFile()).toString();
             // with nothing changed there since, Drive holds what was synced, except for any deletes we haven't synced
             Set<String> remoteDeletes = remoteChange ? Collections.emptySet() : syncedVersions.getRemoteDeletes();
             if (! remoteChange && ! remoteDeletes.isEmpty())
                 syncedVersions.copyTo(remoteStatePath);
             SyncState remoteState = remoteChange || ! remoteDeletes.isEmpty() ? new JdbcTreeState(remoteStatePath) : syncedVersions;
+            if (remoteState != syncedVersions)
+                tempStates.add((JdbcTreeState) remoteState);
             long t3 = System.currentTimeMillis();
             if (! remoteChange && ! remoteDeletes.isEmpty()) {
                 if (remoteState.filesCount() == 0) {
@@ -949,14 +955,45 @@ public class DirectorySync {
         } finally {
             if (network != null)
                 network.synchronizer.setCommitObserver((w, s) -> {});
-            File localState = new File(localStatePath);
-            if (localState.exists())
-                localState.delete();
-            if (remoteStatePath != null) {
-                File remoteState = new File(remoteStatePath);
-                if (remoteState.exists())
-                    remoteState.delete();
+            List<String> tempPaths = new ArrayList<>(List.of(localStatePath));
+            if (remoteStatePath != null)
+                tempPaths.add(remoteStatePath);
+            discardTempStates(tempStates, tempPaths);
+        }
+    }
+
+    /** Windows can't delete a db that is still open, so every pass left its copies behind */
+    private static void discardTempStates(List<JdbcTreeState> states, List<String> paths) {
+        for (JdbcTreeState state : states) {
+            try {
+                state.close();
+            } catch (Exception e) {
+                LOG.log(Level.WARNING, e, e::getMessage);
             }
+        }
+        for (String path : paths) {
+            try {
+                Files.deleteIfExists(Paths.get(path));
+            } catch (IOException e) {
+                LOG.log(Level.WARNING, "Couldn't delete temporary sync state " + path, e);
+            }
+        }
+    }
+
+    /** Only one sync runs at a time, so any left now are from a pass that crashed or from before they were closed */
+    private static void deleteTempStates(Path peergosDir) {
+        try (Stream<Path> kids = Files.list(peergosDir)) {
+            kids.filter(p -> p.getFileName().toString().startsWith(TEMP_STATE_PREFIX))
+                    .filter(p -> p.getFileName().toString().endsWith(".sqlite"))
+                    .forEach(p -> {
+                        try {
+                            Files.delete(p);
+                        } catch (IOException e) {
+                            LOG.log(Level.WARNING, "Couldn't delete temporary sync state " + p, e);
+                        }
+                    });
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, e, e::getMessage);
         }
     }
 
