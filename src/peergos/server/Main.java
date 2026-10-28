@@ -1382,6 +1382,22 @@ public class Main extends Builder {
         }
     }
 
+    private static final int FALLBACK_PORT = 7007;
+
+    /** Whether our own version of Peergos is serving on this port. A different version is stopped. */
+    private static boolean isRunningSameVersion(Args args, int port, Optional<ProxySelector> proxy) {
+        try {
+            JavaPoster poster = new JavaPoster(new URI("http://localhost:" + port).toURL(), false, Optional.empty(), Optional.empty(), proxy);
+            NetworkAccess.buildLocalDht(poster, true, new ScryptJava()).ids().join();
+            InstanceAdmin.VersionInfo running = new HttpInstanceAdmin(poster).getVersionInfo().join();
+            InstanceAdmin.VersionInfo ourVersion = new InstanceAdmin.VersionInfo(UserService.CURRENT_VERSION, Admin.getSourceVersion());
+            if (running.equals(ourVersion))
+                return true;
+            STOP.main(args);
+        } catch (Exception e) {}
+        return false;
+    }
+
     public static final Command<Void> MAIN = new Command<>("Main",
             "Run a Peergos command",
             args -> {
@@ -1395,40 +1411,41 @@ public class Main extends Builder {
                     if (args.hasArg(ARG_SERVER_URL.name))
                         args = args.with("peergos-url", getAppServerUrl(args));
                     // By default we run a proxy instance and open it in the browser
-                    // Check if proxy is already running and stop it if the version is different
                     int port = args.getInt("port", 7777);
-                    URI api = new URI("http://localhost:" + port);
                     Optional<ProxySelector> proxy = ProxyChooser.build(args);
-                    JavaPoster poster = new JavaPoster(api.toURL(), false, Optional.empty(), Optional.empty(), proxy);
-                    ScryptJava hasher = new ScryptJava();
-                    ContentAddressedStorage localDht = NetworkAccess.buildLocalDht(poster, true, hasher);
-                    boolean alreadyRunning = false;
-                    try {
-                        localDht.ids().join();
-                        HttpInstanceAdmin admin = new HttpInstanceAdmin(poster);
-                        InstanceAdmin.VersionInfo running = admin.getVersionInfo().join();
-                        InstanceAdmin.VersionInfo ourVersion = new InstanceAdmin.VersionInfo(UserService.CURRENT_VERSION, Admin.getSourceVersion());
-                        if (! running.equals(ourVersion))
-                            STOP.main(args);
-                        else
-                            alreadyRunning = true;
-                    } catch (Exception e){}
+                    // A server that had to fall back is still ours, so look on both ports before starting another
+                    List<Integer> candidates = port == FALLBACK_PORT ? List.of(port) : List.of(port, FALLBACK_PORT);
+                    Optional<Integer> running = Optional.empty();
+                    for (int candidate : candidates) {
+                        if (isRunningSameVersion(args.with("port", candidate + ""), candidate, proxy)) {
+                            running = Optional.of(candidate);
+                            break;
+                        }
+                    }
 
-                    if (! alreadyRunning) {
+                    if (running.isPresent()) {
+                        port = running.get();
+                        args = args.with("port", port + "");
+                    } else {
                         try {
                             PROXY.main(args);
                         } catch (IllegalStateException e) {
-                            if (e.getCause() instanceof BindException) {
-                                // try another port if something is already listening on 7777
-                                port = 7007;
-                                args = args.with("port", port + "");
-                                api = new URI("http://localhost:" + port);
-                                PROXY.main(args);
-                            } else
+                            if (! (e.getCause() instanceof BindException) || port == FALLBACK_PORT)
                                 throw e;
+                            int taken = port;
+                            port = FALLBACK_PORT;
+                            args = args.with("port", port + "");
+                            try {
+                                PROXY.main(args);
+                            } catch (IllegalStateException f) {
+                                if (f.getCause() instanceof BindException)
+                                    throw new IllegalStateException("Ports " + taken + " and " + FALLBACK_PORT +
+                                            " are both in use by other programs. Close one of them, or start Peergos with -port $PORT", f);
+                                throw f;
+                            }
                         }
                     }
-                    DesktopApp.launch(args, port, api);
+                    DesktopApp.launch(args, port, new URI("http://localhost:" + port));
                     return null;
                 } catch (URISyntaxException | IOException e) {
                     throw new RuntimeException(e);
