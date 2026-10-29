@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 
 public final class NettyPinnedHttps {
 
@@ -52,6 +53,7 @@ public final class NettyPinnedHttps {
         InetAddress addr = pinned.next();
 
         CompletableFuture<Pair<byte[], String>> result = new CompletableFuture<>();
+        AtomicReference<HttpResponseStatus> headersStatus = new AtomicReference<>();
 
         SslContext sslCtx = SslContextBuilder.forClient().trustManager(BlockedCertificates.trustManager()).build();
 
@@ -72,6 +74,15 @@ public final class NettyPinnedHttps {
 
                         p.addLast(new ReadTimeoutHandler(6));
                         p.addLast(new HttpClientCodec());
+                        // the aggregator hides the headers, so note them here to tell a stalled body from no response
+                        p.addLast(new ChannelInboundHandlerAdapter() {
+                            @Override
+                            public void channelRead(ChannelHandlerContext ctx, Object msg) {
+                                if (msg instanceof HttpResponse r)
+                                    headersStatus.set(r.status());
+                                ctx.fireChannelRead(msg);
+                            }
+                        });
                         p.addLast(new HttpObjectAggregator(2 * 1024 * 1024));
 
                         p.addLast(new SimpleChannelInboundHandler<FullHttpResponse>() {
@@ -80,9 +91,15 @@ public final class NettyPinnedHttps {
                                                         FullHttpResponse resp) {
                                 int respCode = resp.status().code();
                                 if (respCode != 200) {
-                                    if (respCode == 500 || respCode == 502 || respCode == 503 || respCode == 504)
-                                        result.completeExceptionally(new RateLimitException());
-                                    else if (respCode == 404) {
+                                    if (respCode == 500 || respCode == 502 || respCode == 503 || respCode == 504) {
+                                        ByteBuf reply = resp.content();
+                                        byte[] body = new byte[reply.readableBytes()];
+                                        reply.readBytes(body);
+                                        // suppressed rather than a cause, so the root cause stays a RateLimitException
+                                        RateLimitException e = new RateLimitException();
+                                        e.addSuppressed(new IOException("HTTP " + resp.status() + " from " + addr.getHostAddress() + " " + new String(body)));
+                                        result.completeExceptionally(e);
+                                    } else if (respCode == 404) {
                                         result.completeExceptionally(new FileNotFoundException(uri.getHost() + uri.getRawPath()));
                                     } else {
                                         ByteBuf reply = resp.content();
@@ -106,9 +123,13 @@ public final class NettyPinnedHttps {
                             public void exceptionCaught(ChannelHandlerContext ctx, Throwable t) {
                                 if (t instanceof SslClosedEngineException
                                         || t instanceof SocketException
-                                        || t instanceof ReadTimeoutException)
-                                    result.completeExceptionally(new RateLimitException());
-                                else
+                                        || t instanceof ReadTimeoutException) {
+                                    HttpResponseStatus status = headersStatus.get();
+                                    RateLimitException e = new RateLimitException();
+                                    e.addSuppressed(new IOException(t.getClass().getSimpleName() + " from " + addr.getHostAddress()
+                                            + (status == null ? " before any response headers" : " after response headers " + status)));
+                                    result.completeExceptionally(e);
+                                } else
                                     result.completeExceptionally(t);
                                 ctx.close();
                             }
