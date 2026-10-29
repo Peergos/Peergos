@@ -80,9 +80,15 @@ public final class NettyPinnedHttps {
                                                         FullHttpResponse resp) {
                                 int respCode = resp.status().code();
                                 if (respCode != 200) {
-                                    if (respCode == 500 || respCode == 502 || respCode == 503 || respCode == 504)
-                                        result.completeExceptionally(new RateLimitException());
-                                    else if (respCode == 404) {
+                                    if (respCode == 500 || respCode == 502 || respCode == 503 || respCode == 504) {
+                                        ByteBuf reply = resp.content();
+                                        byte[] body = new byte[reply.readableBytes()];
+                                        reply.readBytes(body);
+                                        // suppressed rather than a cause, so the root cause stays a RateLimitException
+                                        RateLimitException e = new RateLimitException();
+                                        e.addSuppressed(new IOException("HTTP " + resp.status() + " " + new String(body)));
+                                        result.completeExceptionally(e);
+                                    } else if (respCode == 404) {
                                         result.completeExceptionally(new FileNotFoundException(uri.getHost() + uri.getRawPath()));
                                     } else {
                                         ByteBuf reply = resp.content();

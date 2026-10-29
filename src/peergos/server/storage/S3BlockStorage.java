@@ -1061,6 +1061,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             if (rateLimited) {
                 getRateLimited.inc();
                 S3BlockStorage.rateLimited.inc();
+                LOG.info("S3 rate limited reading " + path + " for " + owner + ": " + cause
+                        + Arrays.stream(cause.getSuppressed()).map(s -> " " + s.getMessage()).collect(Collectors.joining()));
                 throw new RateLimitException();
             }
 
