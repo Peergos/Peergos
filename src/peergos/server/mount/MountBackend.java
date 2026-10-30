@@ -13,6 +13,11 @@ public interface MountBackend {
 
     java.util.Optional<String> activeMountPoint();
 
+    /** A sign-in for a saved mount that failed, so whatever waits on it can stop waiting:
+     *  it happens on a thread of its own at start, where only the handler sees the error. */
+    default void enableFailed(String error) {
+    }
+
     /** Whether this platform can mount the drive, which is what the UI offers a switch for. */
     default boolean supportsDrive() {
         return true;
