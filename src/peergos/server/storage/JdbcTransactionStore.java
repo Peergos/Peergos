@@ -52,6 +52,7 @@ public class JdbcTransactionStore implements TransactionStore {
                 if (!f.getMessage().contains("duplicate column"))
                     throw new RuntimeException(f);
             }
+            commands.createTable("CREATE INDEX IF NOT EXISTS transactions_time_index ON transactions (owner, time);", conn);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
