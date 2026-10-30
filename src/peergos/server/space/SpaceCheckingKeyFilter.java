@@ -399,14 +399,14 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
 
     @Override
     public CompletableFuture<PaymentProperties> getPaymentProperties(PublicKeyHash owner, boolean newClientSecret, byte[] signedTime) {
-        return quotaAdmin.getPaymentProperties(owner, newClientSecret, signedTime);
+        return quotaAdmin.getPaymentProperties(usageStore.getOwner(owner), owner, newClientSecret, signedTime);
     }
 
     @Override
     public CompletableFuture<Long> getQuota(PublicKeyHash owner, byte[] signedTime) {
         TimeLimited.isAllowedTime(signedTime, 24*3600, dht, owner);
         String user = usageStore.getOwner(owner);
-        return quotaAdmin.getQuota(owner, signedTime);
+        return quotaAdmin.getQuota(user, owner, signedTime);
     }
 
     @Override
