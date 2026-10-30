@@ -846,7 +846,39 @@ public class MirrorCoreNode implements CoreNode {
             return CompletableFuture.completedFuture(username);
         if (! initialized)
             return writeTarget.getUsername(key);
-        return Futures.errored(new IllegalStateException("Unknown identity key: " + key));
+        return lookupMissingOwner(key);
+    }
+
+    private static final long MISSING_OWNER_RETRY_MILLIS = 30_000;
+    private final LRUCache<PublicKeyHash, Long> recentlyMissingOwners = new LRUCache<>(10_000);
+
+    /** A user who just signed up through another server is in the pki before our next mirror update */
+    private CompletableFuture<String> lookupMissingOwner(PublicKeyHash key) {
+        long now = System.currentTimeMillis();
+        synchronized (recentlyMissingOwners) {
+            Long missedAt = recentlyMissingOwners.get(key);
+            if (missedAt != null && now - missedAt < MISSING_OWNER_RETRY_MILLIS)
+                return Futures.errored(new IllegalStateException("Unknown identity key: " + key));
+        }
+        return Futures.asyncExceptionally(() -> writeTarget.getUsername(key)
+                        .thenCompose(username -> writeTarget.getChain(username)
+                                .thenApply(chain -> {
+                                    UserPublicKeyLink last = chain.isEmpty() ? null : chain.get(chain.size() - 1);
+                                    if (last == null || ! last.owner.equals(key) || ! last.claim.username.equals(username))
+                                        throw new IllegalStateException("Unknown identity key: " + key);
+                                    CorenodeState current = state;
+                                    current.chains.putIfAbsent(username, chain);
+                                    current.reverseLookup.putIfAbsent(key, username);
+                                    if (! current.usernames.contains(username))
+                                        current.usernames.add(username);
+                                    return username;
+                                })),
+                t -> {
+                    synchronized (recentlyMissingOwners) {
+                        recentlyMissingOwners.put(key, now);
+                    }
+                    return Futures.errored(new IllegalStateException("Unknown identity key: " + key));
+                });
     }
 
     @Override
