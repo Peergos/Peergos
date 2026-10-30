@@ -105,7 +105,8 @@ public interface SqlSupplier {
 
     default String createTransactionsTableCommand() {
         return "CREATE TABLE IF NOT EXISTS transactions (" +
-                "tid varchar(64) not null, owner varchar(64) not null, hash varchar(64) not null, time " + sqlInteger()+");";
+                "tid varchar(64) not null, owner varchar(64) not null, hash varchar(64) not null, time " + sqlInteger()+");" +
+                "CREATE INDEX IF NOT EXISTS transactions_tid_index ON transactions (owner, tid);";
     }
 
     default String createServerIdentitiesTableCommand() {
