@@ -860,6 +860,9 @@ public class DirectorySync {
                             try {
                                 syncFile(synced, local, remote, localFS, remoteFS, syncedVersions, syncedBefore,
                                         localState, remoteState, syncLocalDeletes, syncRemoteDeletes, doneFiles, minPercentFreeSpace, crypto, stopDownload, LOG, progress);
+                            } catch (UnrepresentableNameException e) {
+                                // this file alone is left; it is reported every pass until it is renamed
+                                LOG.accept("Sync Local: skipped " + relativePath + ": " + e.getMessage());
                             } catch (IOException e) {
                                 failed.set(true);
                                 throw new RuntimeException(e);
@@ -870,9 +873,15 @@ public class DirectorySync {
                                 maxDownloadConcurrency.incrementAndGet();
                             }
                         }));
-                    } else
-                        syncFile(synced, local, remote, localFS, remoteFS, syncedVersions, syncedBefore, localState,
-                                remoteState, syncLocalDeletes, syncRemoteDeletes, doneFiles, minPercentFreeSpace, crypto, isCancelled, LOG, progress);
+                    } else {
+                        try {
+                            syncFile(synced, local, remote, localFS, remoteFS, syncedVersions, syncedBefore, localState,
+                                    remoteState, syncLocalDeletes, syncRemoteDeletes, doneFiles, minPercentFreeSpace, crypto, isCancelled, LOG, progress);
+                        } catch (UnrepresentableNameException e) {
+                            // this file alone is left; it is reported every pass until it is renamed
+                            LOG.accept("Sync Local: skipped " + relativePath + ": " + e.getMessage());
+                        }
+                    }
                     if (failed.get())
                         break;
                 }
