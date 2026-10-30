@@ -12,6 +12,7 @@ import peergos.shared.util.*;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.*;
 
 /** The api for administrators approving pending space requests
  *
@@ -42,6 +43,20 @@ public interface QuotaAdmin extends QuotaControl {
         String token = ArrayOps.bytesToHex(rnd.randomBytes(32));
         addToken(token);
         return token;
+    }
+
+    /** The username comes from our usage store, as a remote quota admin's pki lookup can't be relied
+     *  on to know a user who signed up moments ago on another server.
+     */
+    default CompletableFuture<PaymentProperties> getPaymentProperties(String username,
+                                                                      PublicKeyHash owner,
+                                                                      boolean newClientSecret,
+                                                                      byte[] signedTime) {
+        return getPaymentProperties(owner, newClientSecret, signedTime);
+    }
+
+    default CompletableFuture<Long> getQuota(String username, PublicKeyHash owner, byte[] signedTime) {
+        return getQuota(owner, signedTime);
     }
 
     long getQuota(String username);
