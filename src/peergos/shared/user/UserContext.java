@@ -788,15 +788,15 @@ public class UserContext {
         return new String(rootKey.decrypt(ciphertext, nonce)).trim();
     }
 
-    /**
-     * @return "verified", "unverified", or "changed" if the friend's identity is no longer the one that was verified
+    /** Whether we have verified a friend's keys: "verified", "unverified", or "changed" if they have keys
+     *  other than the ones we verified, which needs checking again before trusting them.
      */
     @JsMethod
     public CompletableFuture<String> verificationStatus(String friendName, FriendAnnotation annotation) {
         if (annotation == null || ! annotation.isVerified())
             return Futures.of("unverified");
-        return network.coreNode.getPublicKeyHash(friendName)
-                .thenApply(id -> id.isPresent() && annotation.isVerifiedFor(id.get()) ? "verified" : "changed");
+        return getPublicKeyHashes(friendName)
+                .thenApply(keys -> annotation.isVerifiedFor(Arrays.asList(keys.left, keys.right)) ? "verified" : "changed");
     }
 
     /**

@@ -22,6 +22,17 @@ public class CachingPointers implements MutablePointers {
     }
 
     @Override
+    public void expireCache() {
+        synchronized (cache) {
+            cache.clear();
+        }
+        synchronized (targetCache) {
+            targetCache.clear();
+        }
+        target.expireCache();
+    }
+
+    @Override
     public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
         synchronized (cache) {
             Pair<Optional<byte[]>, Long> cached = cache.get(writer);

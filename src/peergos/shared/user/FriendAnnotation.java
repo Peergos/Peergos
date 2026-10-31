@@ -32,6 +32,13 @@ public class FriendAnnotation implements Cborable {
         return isVerified && ! keysAtVerification.isEmpty() && keysAtVerification.get(0).equals(currentIdentity);
     }
 
+    /** Verified against all the keys the friend has now, not just the identity key.
+     *  A key substitution that only replaces the boxing key is caught by this check.
+     */
+    public boolean isVerifiedFor(List<PublicKeyHash> currentKeys) {
+        return isVerified && keysAtVerification.equals(currentKeys);
+    }
+
     @Override
     public CborObject toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();

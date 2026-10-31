@@ -10,6 +10,7 @@ import peergos.server.cli.CLI;
 import peergos.server.crypto.hash.ScryptJava;
 import peergos.server.login.*;
 import peergos.server.messages.*;
+import peergos.shared.messaging.*;
 import peergos.server.net.LocalApiAuth;
 import peergos.server.net.MountConfigHandler;
 import peergos.server.net.ProxyChooser;
@@ -168,6 +169,7 @@ public class Main extends Builder {
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
                     new Command.Arg("link-counts-sql-file", "The filename for the secret link counts datastore", true, "link-counts.sql"),
                     new Command.Arg("server-messages-sql-file", "The filename for the server messages datastore", true, "server-messages.sql"),
+                    new Command.Arg("ephemeral-signals", "Relay short lived chat signals (typing, presence, read receipts) between local users, in RAM only", false, "true"),
                     ARG_TRANSACTIONS_SQL_FILE,
                     QUOTA_UPLOAD_LIMIT_SECONDS,
                     GLOBAL_DOWNLOAD_BANDWIDTH_LIMIT,
@@ -694,6 +696,7 @@ public class Main extends Builder {
                     SocialNetworkProxy httpSocial = new HttpSocialNetwork(poster, poster);
                     SpaceUsageProxy httpUsage = new HttpSpaceUsage(poster, poster);
                     ServerMessager serverMessager = new ServerMessager.HTTP(poster);
+                    EphemeralSignals signals = new EphemeralSignals.HTTP(poster);
                     BatCave batCave = new HttpBatCave(poster, poster);
                     HttpInstanceAdmin admin = new LocalVersionInstanceAdmin(poster);
 
@@ -740,7 +743,7 @@ public class Main extends Builder {
                             MountConfig.disabled();
                     MountProperties mountProps = new MountProperties(mountConfig, peergosDir, getAppServerUrl(a));
                     UserService server = new UserService(withoutS3, offlineBats, crypto, offlineCorenode, offlineAccounts,
-                            httpSocial, pointerCache, admin, httpUsage, serverMessager, null, Optional.of(sync),
+                            httpSocial, pointerCache, admin, httpUsage, serverMessager, signals, null, Optional.of(sync),
                             Optional.of(new UserService.LocalAppProperties(peergosDir, getAppServerUrl(a))),
                             Optional.of(new MountConfigHandler(mountProps)));
 
@@ -1082,6 +1085,9 @@ public class Main extends Builder {
             ProxyingBatCave p2pBats = new ProxyingBatCave(nodeIds, core, batStore, new HttpBatCave(p2pHttpProxy, p2pHttpProxy));
             ServerMessageStore serverMessages = new ServerMessageStore(getDBConnector(a, "server-messages-sql-file", dbConnectionPool),
                     sqlCommands, core, p2pDht);
+            EphemeralSignals signals = a.getBoolean("ephemeral-signals", true) ?
+                    new RamEphemeralSignals(core, p2pDht, username -> userQuotas.getQuota(username) > 0) :
+                    new EphemeralSignals.Disabled();
             SyncRunner.ThreadBased syncer = new SyncRunner.ThreadBased(a, cachingStorage, p2mMutable, corePropagator, crypto);
 
             Path jsonSyncConfig = a.getPeergosDir().resolve(SyncConfigHandler.SYNC_CONFIG_FILENAME);
@@ -1106,10 +1112,10 @@ public class Main extends Builder {
                     "http://localhost:" + a.getInt("port"));
             Optional<UserService.LocalAppProperties> noConfigApi = Optional.empty();
             UserService localAPI = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount,
-                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.of(sync), noConfigApi,
+                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, signals, gc, Optional.of(sync), noConfigApi,
                     Optional.of(new MountConfigHandler(mountPropsDaemon)));
             UserService p2pAPI = new UserService(p2pInboundCachingStorage, p2pBats, crypto, corePropagator, verifyingAccount,
-                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.empty(), noConfigApi, Optional.empty());
+                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, new EphemeralSignals.Disabled(), gc, Optional.empty(), noConfigApi, Optional.empty());
             InetSocketAddress localAPIAddress = userAPIAddress;
             InetSocketAddress p2pAPIAddress = new InetSocketAddress("localhost", localP2PApi.getTCPPort());
 

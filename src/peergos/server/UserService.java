@@ -14,6 +14,7 @@ import com.sun.net.httpserver.*;
 import peergos.shared.*;
 import peergos.shared.corenode.*;
 import peergos.shared.io.ipfs.*;
+import peergos.shared.messaging.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
@@ -89,6 +90,7 @@ public class UserService {
     public final InstanceAdmin controller;
     public final SpaceUsage usage;
     public final ServerMessager serverMessages;
+    public final EphemeralSignals signals;
     public final GarbageCollector gc; // not exposed
     private final Optional<BlockCache> blockCache;
     private final Optional<SyncProperties> syncProps;
@@ -107,6 +109,7 @@ public class UserService {
                        InstanceAdmin controller,
                        SpaceUsage usage,
                        ServerMessager serverMessages,
+                       EphemeralSignals signals,
                        GarbageCollector gc,
                        Optional<SyncProperties> syncProps,
                        Optional<LocalAppProperties> localAppProps,
@@ -121,6 +124,7 @@ public class UserService {
         this.controller = controller;
         this.usage = usage;
         this.serverMessages = serverMessages;
+        this.signals = signals;
         this.gc = gc;
         this.blockCache = storage.getBlockCache();
         this.syncProps = syncProps;
@@ -289,6 +293,9 @@ public class UserService {
                 new SpaceHandler(this.usage, isPublicServer), basicAuth, local, host, nodeIds, false);
         addHandler(localhostServer, tlsServer, "/" + Constants.SERVER_MESSAGE_URL,
                 new ServerMessageHandler(this.serverMessages, coreNode, storage, isPublicServer),
+                basicAuth, local, host, nodeIds, false);
+        addHandler(localhostServer, tlsServer, "/" + Constants.EPHEMERAL_URL,
+                new EphemeralSignalHandler(this.signals, isPublicServer),
                 basicAuth, local, host, nodeIds, false);
         addHandler(localhostServer, tlsServer, "/" + Constants.PUBLIC_FILES_URL,
                 new PublicFileHandler(crypto.hasher, coreNode, mutable, storage),

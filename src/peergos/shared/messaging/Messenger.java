@@ -2,7 +2,9 @@ package peergos.shared.messaging;
 
 import jsinterop.annotations.*;
 import peergos.shared.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.api.*;
 import peergos.shared.display.*;
 import peergos.shared.messaging.messages.*;
 import peergos.shared.storage.auth.*;
@@ -36,6 +38,7 @@ public class Messenger {
     private final Crypto crypto;
     private final Hasher hasher;
     private final LRUCache<MessageRef, MessageEnvelope> cache = new LRUCache<>(1_000);
+    private final Map<String, PublicSigningKey> signalKeys = new HashMap<>();
 
     @JsConstructor
     public Messenger(UserContext context) {
@@ -219,14 +222,94 @@ public class Messenger {
         if (member == null)
             throw new IllegalStateException("No member in chat with that name!");
         RemoveMember msg = new RemoveMember(current.chatUuid, member.id);
-        if (! username.equals(context.username) && ! current.getAdmins().contains(context.username))
+        boolean removingOther = ! username.equals(context.username);
+        if (removingOther && ! current.getAdmins().contains(context.username))
             throw new IllegalStateException("Only admins can remove other members!");
-        return sendMessage(current, msg);
+        // a removed member still has the signals key, so replace it
+        return sendMessage(current, msg)
+                .thenCompose(c -> removingOther && ChatSignals.isEnabled(c) ?
+                        setGroupProperty(c, ChatSignals.KEY_PROPERTY, ChatSignals.newKey()) :
+                        Futures.of(c));
+    }
+
+    /** Give the chat a signals key if it doesn't have one yet, so its members can exchange typing,
+     *  presence and read receipts.
+     */
+    @JsMethod
+    public CompletableFuture<ChatController> enableSignals(ChatController current) {
+        if (ChatSignals.isEnabled(current))
+            return Futures.of(current);
+        return setGroupProperty(current, ChatSignals.KEY_PROPERTY, ChatSignals.newKey());
+    }
+
+    @JsMethod
+    public boolean hasSignals(ChatController current) {
+        return ChatSignals.isEnabled(current);
+    }
+
+    /** Send one of the {@link ChatSignals} types to the other members of the chat. */
+    @JsMethod
+    public CompletableFuture<Boolean> sendSignal(ChatController current, String type, String value) {
+        if (! ChatSignals.isEnabled(current))
+            return Futures.of(false);
+        return ChatSignals.send(current, type, value, context.username, context.signer, network.signals, hasher);
+    }
+
+    private long lastCacheExpiry = 0;
+
+    /** A member's "updated" signal drops our pointer cache, but at most every few seconds, so that a
+     *  member sending many of them can't make every other member's client refetch all the time.
+     */
+    private synchronized void expireCacheRateLimited() {
+        long now = System.currentTimeMillis();
+        if (now - lastCacheExpiry < 3_000)
+            return;
+        lastCacheExpiry = now;
+        network.mutable.expireCache();
+    }
+
+    /** Wait up to waitMillis for signals from the other members after the given position.
+     *
+     * @param since the "next" of the previous result, or "0"
+     * @return JSON {next: string, signals: [{author, type, value, time}]}
+     */
+    @JsMethod
+    public CompletableFuture<String> pollSignals(ChatController current, String since, int waitMillis) {
+        if (! ChatSignals.isEnabled(current)) {
+            Map<String, Object> none = new LinkedHashMap<>();
+            none.put("next", since);
+            none.put("signals", Collections.emptyList());
+            return Futures.of(JSONParser.toString(none));
+        }
+        long from = Long.parseLong(since);
+        long epoch = ChatSignals.epoch();
+        return ChatSignals.channel(current, epoch, hasher)
+                .thenCompose(channel -> network.signals.poll(context.username, channel, from, waitMillis, context.signer.secret))
+                .thenCompose(batch -> ChatSignals.open(current, batch.signals, signalKeys, network.dhtClient)
+                        .thenApply(received -> {
+                            // a member committed something new, which a cached pointer would hide for a while
+                            if (received.stream().anyMatch(r -> r.type.equals(ChatSignals.UPDATED)))
+                                expireCacheRateLimited();
+                            Map<String, Object> res = new LinkedHashMap<>();
+                            res.put("next", Long.toString(batch.next));
+                            // sticky signals don't carry over to a new day's channel, so clients send theirs again
+                            res.put("epoch", Long.toString(epoch));
+                            res.put("signals", received.stream()
+                                    .map(ChatSignals.Received::toJson)
+                                    .collect(Collectors.toList()));
+                            return JSONParser.toString(res);
+                        }));
     }
 
     @JsMethod
     public CompletableFuture<ChatController> sendMessage(ChatController current, Message message) {
-        return current.sendMessage(message);
+        return current.sendMessage(message)
+                .thenApply(updated -> {
+                    // let members who are online pull it now, rather than when they next poll; best effort
+                    if (ChatSignals.isEnabled(updated))
+                        sendSignal(updated, ChatSignals.UPDATED, "").exceptionally(t -> false);
+                    return updated;
+                });
     }
 
     @JsMethod

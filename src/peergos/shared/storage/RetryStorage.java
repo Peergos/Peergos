@@ -86,7 +86,9 @@ public class RetryStorage implements ContentAddressedStorage {
                             res.completeExceptionally(e);
                         } else if (e instanceof MajorRateLimitException) {
                             res.completeExceptionally(e);
-                        } else if (e.getMessage() != null && e.getMessage().contains("Champ+root+not+present")) {
+                        } else if (e.getMessage() != null && e.getMessage().replace('+', ' ').contains("Champ root not present")) {
+                            // the browser hands back the server's form encoded message, the java and android
+                            // posters decode it first: retrying a root the server doesn't have only stalls the caller
                             res.completeExceptionally(e);
                         } else if (isOffline(e)) {
                             // Nothing to reach: retrying for the two minutes the backoff adds up
