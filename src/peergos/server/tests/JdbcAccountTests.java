@@ -314,6 +314,83 @@ public class JdbcAccountTests {
         Assert.assertEquals("ok", attempt(username, reader, Optional.of(right), device));
     }
 
+    /** Without a valid code, the answer must not depend on whether the password was right; with one, a user who
+     *  mistyped the password is told so, rather than to try their code again. */
+    @Test
+    public void onlyAValidCodeIsToldThePasswordWasWrong() throws Exception {
+        String username = "alice";
+        PublicSigningKey reader = reader();
+        db.setLoginData(loginFor(username, reader)).join();
+        TimeBasedOneTimePasswordGenerator totp =
+                new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, TotpKey.ALGORITHM);
+        TotpKey key = db.addTotpFactor(username).join();
+        db.enableTotpFactor(username, key.credentialId, code(totp, key)).join();
+
+        PublicSigningKey wrongPassword = reader();
+        Assert.assertEquals(attempt(username, reader, Optional.of(new MultiFactorAuthResponse(key.credentialId,
+                Either.a(wrongCode(totp, key, 0)))), Optional.empty()),
+                attempt(username, wrongPassword, Optional.of(new MultiFactorAuthResponse(key.credentialId,
+                Either.a(wrongCode(totp, key, 1)))), Optional.empty()));
+        Assert.assertEquals("incorrect", attempt(username, wrongPassword, Optional.of(new MultiFactorAuthResponse(key.credentialId,
+                Either.a(code(totp, key)))), Optional.empty()));
+    }
+
+    /** A mount's credential id is kept in its config and named in error messages, so it alone, without the code,
+     *  must not tell a right password from a wrong one. */
+    @Test
+    public void aMountCredentialWithoutItsCodeSaysNothingOfThePassword() throws Exception {
+        String username = "alice";
+        PublicSigningKey reader = reader();
+        db.setLoginData(loginFor(username, reader)).join();
+        TimeBasedOneTimePasswordGenerator totp =
+                new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, TotpKey.ALGORITHM);
+        TotpKey user = db.addTotpFactor(username).join();
+        db.enableTotpFactor(username, user.credentialId, code(totp, user)).join();
+        TotpKey mount = db.addMountFactor(username, "a device").join();
+        db.enableMountFactor(username, mount.credentialId, code(totp, mount)).join();
+
+        Assert.assertEquals(attempt(username, reader, Optional.of(new MultiFactorAuthResponse(mount.credentialId,
+                Either.a(wrongCode(totp, mount, 0)))), Optional.empty()),
+                attempt(username, reader(), Optional.of(new MultiFactorAuthResponse(mount.credentialId,
+                Either.a(wrongCode(totp, mount, 1)))), Optional.empty()));
+    }
+
+    /** A mount signing in after the password changed is told the password is wrong, which is what makes it stop. */
+    @Test
+    public void aMountWithAnOldPasswordIsToldThePasswordIsWrong() throws Exception {
+        String username = "alice";
+        PublicSigningKey reader = reader();
+        db.setLoginData(loginFor(username, reader)).join();
+        TimeBasedOneTimePasswordGenerator totp =
+                new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, TotpKey.ALGORITHM);
+        TotpKey user = db.addTotpFactor(username).join();
+        db.enableTotpFactor(username, user.credentialId, code(totp, user)).join();
+        TotpKey mount = db.addMountFactor(username, "a device").join();
+        db.enableMountFactor(username, mount.credentialId, code(totp, mount)).join();
+
+        Assert.assertEquals("incorrect", attempt(username, reader(), Optional.of(new MultiFactorAuthResponse(mount.credentialId,
+                Either.a(code(totp, mount)))), Optional.empty()));
+    }
+
+    /** A backup code submitted with a wrong password is still there for the right one. */
+    @Test
+    public void aWrongPasswordDoesntUseUpABackupCode() throws Exception {
+        String username = "alice";
+        PublicSigningKey reader = reader();
+        db.setLoginData(loginFor(username, reader)).join();
+        TimeBasedOneTimePasswordGenerator totp =
+                new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, TotpKey.ALGORITHM);
+        TotpKey key = db.addTotpFactor(username).join();
+        db.enableTotpFactor(username, key.credentialId, code(totp, key)).join();
+        BackupCodes backup = db.generateBackupCodes(username).join();
+        MultiFactorAuthResponse first = new MultiFactorAuthResponse(backup.credentialId, Either.a(backup.codes.get(0)));
+
+        Assert.assertEquals("incorrect", attempt(username, reader(), Optional.of(first), Optional.empty()));
+        Assert.assertEquals("ok", attempt(username, reader, Optional.of(first), Optional.empty()));
+        // and used up by that login
+        Assert.assertTrue(attempt(username, reader, Optional.of(first), Optional.empty()).contains("Invalid backup code"));
+    }
+
     private static String wrongCode(TimeBasedOneTimePasswordGenerator totp, TotpKey key, int i) throws Exception {
         java.security.Key k = new SecretKeySpec(key.key, TotpKey.ALGORITHM);
         Set<String> valid = Set.of(totp.generateOneTimePasswordString(k, Instant.now()),
