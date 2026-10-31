@@ -81,6 +81,17 @@ public class CapUsageCacheTests {
         Assert.assertEquals("an old one goes", 50, usage.expectedUsage());
     }
 
+    /** A refusal gives the next writes the tolerance until the usage is read again, not for good. */
+    @Test
+    public void aReloadEndsTheToleranceOfARefusal() {
+        UserUsage usage = new UserUsage(90);
+        PublicKeyHash writer = key();
+        Assert.assertFalse(usage.reserve(writer, 20, 100, 50));
+        Assert.assertTrue("within the tolerance after a refusal", usage.reserve(writer, 20, 100, 50));
+        usage.reloadTotal(90, System.currentTimeMillis() - 60_000);
+        Assert.assertFalse("the quota alone once it has been read again", usage.reserve(key(), 20, 100, 50));
+    }
+
     /** Giving back a reservation a refusal already dropped doesn't go below nothing. */
     @Test
     public void aReleaseNeverGoesNegative() {

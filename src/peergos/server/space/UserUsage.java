@@ -39,9 +39,10 @@ public class UserUsage implements Cborable {
 
     /** The committed total read again. The bytes of writes still in flight are kept, except those of a writer
      *  that hasn't reserved since staleBefore: a write that never landed (refused, cancelled, its commit lost)
-     *  would otherwise hold its bytes for good. */
+     *  would otherwise hold its bytes for good. A refusal's tolerance ends here, as with any fresh read. */
     public synchronized void reloadTotal(long totalBytes, long staleBefore) {
         this.totalBytes = totalBytes;
+        errored = false;
         pendingSince.entrySet().removeIf(e -> {
             if (e.getValue() >= staleBefore)
                 return false;
