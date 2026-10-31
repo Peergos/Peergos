@@ -560,37 +560,36 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         }
         List<UserUsage> reserved = new ArrayList<>();
         reserved.add(usage);
-        for (PublicKeyHash cap : writerQuotas.getCaps(writer)) {
-            Optional<Long> capQuota = writerQuotas.getQuota(cap);
-            if (capQuota.isEmpty())
-                continue;
-            UserUsage capUsage = writerQuotas.getUsage(cap);
-            long capPending = capUsage.getPending(writer);
-            if (! capUsage.reserve(writer, size, capQuota.get(), USAGE_TOLERANCE)) {
-                release(reserved, writer, size);
-                LOG.info("Rejecting write to capped writing space " + cap);
-                // Don't reveal the usage of an enclosing capped space to someone who can only write to a nested one
-                throw new IllegalStateException("Storage quota reached for this shared folder! \n"
-                        + (cap.equals(writer) ? "Used " + capUsage.totalUsage() + " out of " + capQuota.get() + " bytes. " : "")
-                        + "Rejecting write of size " + (size + capPending) + ".");
+        try {
+            for (PublicKeyHash cap : writerQuotas.getCaps(writer)) {
+                Optional<Long> capQuota = writerQuotas.getQuota(cap);
+                if (capQuota.isEmpty())
+                    continue;
+                UserUsage capUsage = writerQuotas.getUsage(cap);
+                long capPending = capUsage.getPending(writer);
+                if (! capUsage.reserve(writer, size, capQuota.get(), USAGE_TOLERANCE)) {
+                    LOG.info("Rejecting write to capped writing space " + cap);
+                    // Don't reveal the usage of an enclosing capped space to someone who can only write to a nested one
+                    throw new IllegalStateException("Storage quota reached for this shared folder! \n"
+                            + (cap.equals(writer) ? "Used " + capUsage.totalUsage() + " out of " + capQuota.get() + " bytes. " : "")
+                            + "Rejecting write of size " + (size + capPending) + ".");
+                }
+                reserved.add(capUsage);
             }
-            reserved.add(capUsage);
-        }
-        SlidingWindowCounter writeLimit = writeLimiter.get(username);
-        if (writeLimit == null) {
-            writeLimit = new SlidingWindowCounter(quotaUploadLimitSeconds, quota);
-            writeLimiter.put(username, writeLimit);
-        }
-        if (! writeLimit.allowRequest(size)) {
-            release(reserved, writer, size);
-            throw new IllegalStateException("Upload bandwidth exceeded please try again tomorrow");
+            SlidingWindowCounter writeLimit = writeLimiter.get(username);
+            if (writeLimit == null) {
+                writeLimit = new SlidingWindowCounter(quotaUploadLimitSeconds, quota);
+                writeLimiter.put(username, writeLimit);
+            }
+            if (! writeLimit.allowRequest(size))
+                throw new IllegalStateException("Upload bandwidth exceeded please try again tomorrow");
+        } catch (RuntimeException e) {
+            // whatever refused, or failed, gives back what was reserved before it
+            for (UserUsage held : reserved)
+                held.releasePending(writer, size);
+            throw e;
         }
         return true;
-    }
-
-    private static void release(List<UserUsage> reserved, PublicKeyHash writer, int size) {
-        for (UserUsage usage : reserved)
-            usage.addPending(writer, -size);
     }
 
     /** Whether a commit may be applied, given the bytes it writes and the net change in stored bytes
@@ -652,20 +651,26 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         Object lock = healLocks.computeIfAbsent(owner, o -> new Object());
         synchronized (lock) {
             try {
+                String username = core.getUsername(owner).join();
+                if (! quotaAdmin.getLocalUsernames().contains(username))
+                    return false;
                 // The parent first: a writer registered without its edge would write under no cap. The
                 // parent has a pointer already, so the self heal finds it if the store is missing it.
+                String parentUser;
                 try {
-                    usageStore.getOwner(parent);
+                    parentUser = usageStore.getOwner(parent);
                 } catch (IllegalStateException absent) {
                     if (! registerMissedWriters(owner, parent))
                         return false;
+                    parentUser = usageStore.getOwner(parent);
                 }
+                // only the owner's own writers vouch for a writer in their space: another user's key, sent in a
+                // commit for this owner, must not register one here, whatever the rest of that commit does
+                if (! username.equals(parentUser))
+                    return false;
                 try {
                     usageStore.getOwner(writer);
                 } catch (IllegalStateException absent) {
-                    String username = core.getUsername(owner).join();
-                    if (! quotaAdmin.getLocalUsernames().contains(username))
-                        return false;
                     usageStore.addUserIfAbsent(username);
                     usageStore.addWriter(username, writer);
                 }

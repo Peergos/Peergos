@@ -9,6 +9,8 @@ public class UserUsage implements Cborable {
     private long totalBytes;
     private boolean errored;
     private Map<PublicKeyHash, Long> pending;
+    // when each writer last reserved, so reservations for writes that never land can expire
+    private final Map<PublicKeyHash, Long> pendingSince = new HashMap<>();
 
     public UserUsage(long totalBytes) {
         this.totalBytes = totalBytes;
@@ -20,6 +22,8 @@ public class UserUsage implements Cborable {
         this.totalBytes = totalBytes;
         this.pending = pending;
         this.errored = errored;
+        long now = System.currentTimeMillis();
+        pending.keySet().forEach(w -> pendingSince.put(w, now));
     }
 
     public long totalUsage() {
@@ -28,13 +32,22 @@ public class UserUsage implements Cborable {
 
     protected synchronized void confirmUsage(PublicKeyHash writer, long usageDelta) {
         pending.remove(writer);
+        pendingSince.remove(writer);
         totalBytes += usageDelta;
         errored = false;
     }
 
-    /** The committed total read again, with the bytes of writes still in flight kept. */
-    protected synchronized void reloadTotal(long totalBytes) {
+    /** The committed total read again. The bytes of writes still in flight are kept, except those of a writer
+     *  that hasn't reserved since staleBefore: a write that never landed (refused, cancelled, its commit lost)
+     *  would otherwise hold its bytes for good. */
+    public synchronized void reloadTotal(long totalBytes, long staleBefore) {
         this.totalBytes = totalBytes;
+        pendingSince.entrySet().removeIf(e -> {
+            if (e.getValue() >= staleBefore)
+                return false;
+            pending.remove(e.getKey());
+            return true;
+        });
     }
 
     /** Reserve the bytes of a write if it fits. The check and the reservation are one step, so two writes
@@ -46,6 +59,7 @@ public class UserUsage implements Cborable {
         long allowed = errored ? quota + tolerance : quota;
         if (expectedUsage() + size > allowed) {
             pending.remove(writer);
+            pendingSince.remove(writer);
             errored = true;
             return false;
         }
@@ -55,10 +69,23 @@ public class UserUsage implements Cborable {
 
     public synchronized void addPending(PublicKeyHash writer, long usageDelta) {
         pending.put(writer, pending.getOrDefault(writer, 0L) + usageDelta);
+        pendingSince.put(writer, System.currentTimeMillis());
+    }
+
+    /** Give back a reservation. A refusal in between may already have dropped this writer's bytes. */
+    public synchronized void releasePending(PublicKeyHash writer, long size) {
+        long left = pending.getOrDefault(writer, 0L) - size;
+        if (left > 0)
+            pending.put(writer, left);
+        else {
+            pending.remove(writer);
+            pendingSince.remove(writer);
+        }
     }
 
     protected synchronized void clearPending(PublicKeyHash writer) {
         pending.remove(writer);
+        pendingSince.remove(writer);
     }
 
     public synchronized long getPending(PublicKeyHash writer) {

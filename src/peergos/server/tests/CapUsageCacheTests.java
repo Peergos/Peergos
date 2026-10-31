@@ -55,4 +55,40 @@ public class CapUsageCacheTests {
         // refused once, the usage is errored and the tolerance applies
         Assert.assertTrue(usage.reserve(b, 200, 1000, 200));
     }
+
+    /** A writer's own commit that changes its owned keys has landed: its bytes in flight go from every cap. */
+    @Test
+    public void aWritersOwnCommitClearsItsBytesInFlight() throws Exception {
+        Connection db = new Sqlite.UncloseableConnection(Sqlite.build(":memory:"));
+        JdbcUsageStore store = new JdbcUsageStore(() -> db, new SqliteCommands());
+        WriterQuotas quotas = new WriterQuotas(store);
+        PublicKeyHash cap = key(), other = key();
+        quotas.getUsage(cap).addPending(cap, 300);
+        quotas.getUsage(cap).addPending(other, 200);
+        quotas.usageChanged(cap, 300, true);
+        Assert.assertEquals("the committing writer's bytes are cleared, the other's are kept", 200, quotas.getUsage(cap).expectedUsage());
+    }
+
+    /** Bytes reserved for a write that never lands expire, rather than holding a cap for good. */
+    @Test
+    public void staleReservationsExpire() {
+        UserUsage usage = new UserUsage(50);
+        PublicKeyHash writer = key();
+        usage.addPending(writer, 100);
+        usage.reloadTotal(50, System.currentTimeMillis() - 60_000);
+        Assert.assertEquals("a recent reservation is kept", 150, usage.expectedUsage());
+        usage.reloadTotal(50, System.currentTimeMillis() + 1);
+        Assert.assertEquals("an old one goes", 50, usage.expectedUsage());
+    }
+
+    /** Giving back a reservation a refusal already dropped doesn't go below nothing. */
+    @Test
+    public void aReleaseNeverGoesNegative() {
+        UserUsage usage = new UserUsage(0);
+        PublicKeyHash writer = key();
+        usage.addPending(writer, 100);
+        usage.releasePending(writer, 300);
+        Assert.assertEquals(0, usage.expectedUsage());
+        Assert.assertEquals(0, usage.getPending(writer));
+    }
 }

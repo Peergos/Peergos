@@ -243,10 +243,10 @@ public class BulkCommitStorage extends DelegatingStorage {
             if (updates.get(i).map(u -> u.original.isPresent()).orElse(true))
                 authorised.add(commit.writers.get(i).writer);
         List<PublicKeyHash> remaining = new ArrayList<>(newWriters);
-        // in the order they were proven, so each one's voucher is registered before it is
-        LinkedHashMap<PublicKeyHash, PublicKeyHash> provenHere = new LinkedHashMap<>();
+        // in the order they were proven, so each one's vouchers are registered before it is
+        LinkedHashMap<PublicKeyHash, List<PublicKeyHash>> provenHere = new LinkedHashMap<>();
         while (! remaining.isEmpty()) {
-            Map<PublicKeyHash, PublicKeyHash> ownedBy = new HashMap<>();
+            Map<PublicKeyHash, List<PublicKeyHash>> ownedBy = new HashMap<>();
             for (int i = 0; i < commit.writers.size(); i++) {
                 WriterCommit w = commit.writers.get(i);
                 if (! authorised.contains(w.writer))
@@ -257,7 +257,7 @@ public class BulkCommitStorage extends DelegatingStorage {
                         updates.get(i).map(u -> u.updated).orElse(MaybeMultihash.empty()),
                         (h, seq) -> ContentAddressedStorage.getWriterData(owner, h, seq, withCallBlocks),
                         withCallBlocks, hasher).join())
-                    ownedBy.putIfAbsent(owned, w.writer);
+                    ownedBy.computeIfAbsent(owned, k -> new ArrayList<>()).add(w.writer);
             }
             List<PublicKeyHash> vouched = remaining.stream()
                     .filter(ownedBy::containsKey)
@@ -270,7 +270,8 @@ public class BulkCommitStorage extends DelegatingStorage {
         }
         // A writer this call doesn't vouch for may still be provable from what is already committed,
         // which is exactly what the quota check's own self heal does, so leave those to it.
-        provenHere.forEach((newWriter, parent) -> registerWriter.apply(owner, parent, newWriter));
+        // every parent that names it, so each one's caps bound it
+        provenHere.forEach((newWriter, parents) -> parents.forEach(parent -> registerWriter.apply(owner, parent, newWriter)));
         return Futures.of(true);
     }
 
