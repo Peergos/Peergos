@@ -294,6 +294,73 @@ public class RestrictedCapsTests {
         Assert.assertFalse(isRestrictedFormat(fresh.getByPath(home.resolve("old")).join().get()));
     }
 
+    @Test(timeout = 120_000)
+    public void writableHiddenLinkToLegacyDirectory() {
+        UserContext owner = signIn(username("wl"));
+        Path home = PathUtil.get(owner.username);
+        CryptreeNode.setWriteLegacyFormat(true);
+        mkdir(owner, home, "old");
+        mkdir(owner, home.resolve("old"), "drop");
+        mkdir(owner, home.resolve("old/drop"), "inner");
+        byte[] a = randomData(Chunk.LEGACY_SIZE + 100);
+        upload(owner, home.resolve("old/drop"), "a.bin", a);
+        upload(owner, home.resolve("old/drop/inner"), "b.bin", randomData(100));
+        CryptreeNode.setWriteLegacyFormat(false);
+
+        String path = home.resolve("old/drop").toString();
+        LinkProperties link = owner.createSecretLink(List.of(path), List.of(path), List.of(path),
+                Optional.empty(), Optional.empty(), "", false).join();
+
+        UserContext fromLink = openLink(owner, link);
+        FileWrapper drop = fromLink.getByPath("/drop").join().get();
+        Assert.assertTrue(drop.isWritable());
+        PeergosNetworkUtils.checkFileContents(a, fromLink.getByPath("/drop/a.bin").join().get(), fromLink);
+        byte[] added = randomData(200);
+        upload(fromLink, PathUtil.get("/drop"), "added.txt", added);
+        UserContext fresh = signIn(owner.username);
+        PeergosNetworkUtils.checkFileContents(added, fresh.getByPath(home.resolve("old/drop/added.txt")).join().get(), fresh);
+    }
+
+    @Test(timeout = 120_000)
+    public void secondWritableHiddenLink() {
+        UserContext owner = signIn(username("w2"));
+        Path home = PathUtil.get(owner.username);
+        mkdir(owner, home, "work");
+        mkdir(owner, home.resolve("work"), "drop");
+        upload(owner, home.resolve("work/drop"), "a.txt", randomData(100));
+        String path = home.resolve("work/drop").toString();
+        LinkProperties first = owner.createSecretLink(List.of(path), List.of(path), List.of(path),
+                Optional.empty(), Optional.empty(), "", false).join();
+        upload(openLink(owner, first), PathUtil.get("/drop"), "via-link.txt", randomData(100));
+        LinkProperties second = owner.createSecretLink(List.of(path), List.of(path), List.of(path),
+                Optional.empty(), Optional.empty(), "", false).join();
+        Assert.assertTrue(openLink(owner, second).getByPath("/drop/via-link.txt").join().isPresent());
+        LinkProperties third = signIn(owner.username).createSecretLink(List.of(path), List.of(path), List.of(path),
+                Optional.empty(), Optional.empty(), "", false).join();
+        Assert.assertTrue(openLink(owner, third).getByPath("/drop/a.txt").join().isPresent());
+    }
+
+    @Test(timeout = 120_000)
+    public void writableLinkToSomethingWithSeveralLinks() {
+        UserContext owner = signIn(username("w3"));
+        Path home = PathUtil.get(owner.username);
+        mkdir(owner, home, "work");
+        mkdir(owner, home.resolve("work"), "drop");
+        upload(owner, home.resolve("work/drop"), "a.txt", randomData(100));
+        String path = home.resolve("work/drop").toString();
+        LinkProperties hidden = owner.createSecretLink(List.of(path), List.of(), List.of(path),
+                Optional.empty(), Optional.empty(), "", false).join();
+        LinkProperties visible = owner.createSecretLink(List.of(path), List.of(), List.of(),
+                Optional.empty(), Optional.empty(), "", false).join();
+        // making it writable moves it into its own writing space, which re-signs both links above
+        LinkProperties writable = owner.createSecretLink(List.of(path), List.of(path), List.of(path),
+                Optional.empty(), Optional.empty(), "", false).join();
+
+        Assert.assertTrue(openLink(owner, hidden).getByPath("/drop/a.txt").join().isPresent());
+        Assert.assertTrue(openLink(owner, visible).getByPath("/" + path + "/a.txt").join().isPresent());
+        Assert.assertTrue(openLink(owner, writable).getByPath("/drop").join().get().isWritable());
+    }
+
     @Test
     public void writableHiddenLinkToAFile() {
         UserContext owner = signIn(username("hw"));

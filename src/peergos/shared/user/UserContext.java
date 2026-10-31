@@ -1190,7 +1190,7 @@ public class UserContext {
             return adoptPending(toAdopt)
                     .thenCompose(x -> upgradeToRestrictedFormat(toUpgrade))
                     .thenCompose(upgraded -> writeSynchronizer.applyComplexComputation(signer.publicKeyHash, signer,
-                            (v, c) -> updateSecretLink(paths, writable, hidden, props, v, c)))
+                            (v, c) -> updateSecretLink(paths, writable, hidden, props, v, c).thenApply(this::identityOnly)))
                     .thenApply(p -> p.right);
         // an interrupted authorisation leaves an owned writer with no pointer, so clear any before
         // adding another. Once for the batch, not once per member.
@@ -1237,7 +1237,7 @@ public class UserContext {
                 Collections.emptySet() :
                 afterSplits.versions.keySet();
         return writeSynchronizer.applyComplexComputation(signer.publicKeyHash, signer,
-                (v, c) -> updateSecretLink(paths, writable, hidden, props, readAfresh(v, split), c));
+                (v, c) -> updateSecretLink(paths, writable, hidden, props, readAfresh(v, split), c).thenApply(this::identityOnly));
     }
 
     /** The write lock is on our identity key, so the state it hands back can still pin another
@@ -1288,9 +1288,14 @@ public class UserContext {
                                                     // rather than losing the link
                                                     .thenCompose(v3 -> recordLinkForEveryMember(withMembers.withExisting(Optional.of(p.right)),
                                                                     v2.mergeAndOverwriteWith(v3), c)
-                                                            .thenApply(v4 -> new Pair<>(new Snapshot(id, v3.get(id)),
+                                                            .thenApply(v4 -> new Pair<>(v2.mergeAndOverwriteWith(v3).mergeAndOverwriteWith(v4),
                                                                     withMembers.withExisting(Optional.of(p.right))))))), network.dhtClient));
                 });
+    }
+
+    /** The write lock on our identity key keeps the snapshot it is handed, so give it only that writer. */
+    private <V> Pair<Snapshot, V> identityOnly(Pair<Snapshot, V> res) {
+        return new Pair<>(new Snapshot(signer.publicKeyHash, res.left.get(signer.publicKeyHash)), res.right);
     }
 
     /** Re-sign one link of one file, keeping whatever membership it already has. */
