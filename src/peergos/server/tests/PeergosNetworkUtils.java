@@ -1951,6 +1951,89 @@ public class PeergosNetworkUtils {
         controllerA = msgA.sendMessage(controllerA, msg2).join();
     }
 
+    /** A member's message naming a file of ours outside the chat's media folders: merging it must not copy that
+     *  file into our copy of the chat, where the other members can read it. A real attachment still is copied. */
+    public static void chatAttachmentOutsideTheChat(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+
+        UserContext a = PeergosNetworkUtils.ensureSignedUp("a-" + generateUsername(random), password, network, crypto);
+
+        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password));
+        UserContext b = shareeUsers.get(0);
+
+        friendBetweenGroups(Arrays.asList(a), shareeUsers);
+
+        // a private file of b's, at a path as deep as an attachment's
+        List<String> folders = Arrays.asList("private", "one", "two", "three");
+        Path folder = PathUtil.get(b.username);
+        for (String name : folders) {
+            b.getByPath(folder).join().get().mkdir(name, b.network, false, b.mirrorBatId(), crypto).join();
+            folder = folder.resolve(name);
+        }
+        byte[] secret = "b's private data".getBytes();
+        b.getByPath(folder).join().get().uploadOrReplaceFile("secret.txt", AsyncReader.build(secret), secret.length,
+                b.network, crypto, () -> false, x -> {}).join();
+        String privatePath = "/" + folder.resolve("secret.txt");
+
+        Messenger msgA = new Messenger(a);
+        ChatController controllerA = msgA.createChat().join();
+        controllerA = msgA.invite(controllerA, Arrays.asList(b.username), Arrays.asList(b.signer.publicKeyHash)).join();
+        List<Pair<SharedItem, FileWrapper>> feed = b.getSocialFeed().join().update().join().getSharedFiles(0, 10).join();
+        FileWrapper chatSharedDir = feed.get(feed.size() - 1).right;
+
+        Messenger msgB = new Messenger(b);
+        ChatController controllerB = msgB.cloneLocallyAndJoin(chatSharedDir).join();
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
+
+        // one real attachment, and one naming b's private file
+        byte[] media = "Some media data".getBytes();
+        FileRef real = msgA.uploadMedia(controllerA, AsyncReader.build(media), "txt", media.length,
+                LocalDateTime.now(), x -> {}).join().right;
+        FileRef forged = new FileRef(privatePath, real.cap, real.contentHash);
+        List<Content> content = Arrays.asList(new Reference(real), new Reference(forged), new Text("Look at this"));
+        controllerA = msgA.sendMessage(controllerA, new ApplicationMessage(content)).join();
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
+
+        List<MessageEnvelope> messages = controllerB.getMessages(0, 50).join();
+        Assert.assertTrue("the message arrives", messages.get(messages.size() - 1).payload instanceof ApplicationMessage);
+
+        String bMedia = "/" + b.username + "/" + Messenger.MESSAGING_BASE_DIR + "/" + controllerB.chatUuid + "/shared/media";
+        Path realPath = PathUtil.get(real.path);
+        String realInChat = realPath.subpath(5, realPath.getNameCount()).toString();
+        Assert.assertTrue("a real attachment is copied", b.getByPath(bMedia + "/" + realInChat).join().isPresent());
+        Assert.assertTrue("b's own file is not copied into the chat", b.getByPath(bMedia + "/secret.txt").join().isEmpty());
+        Assert.assertTrue("nor can a read it there", a.getByPath(bMedia + "/secret.txt").join().isEmpty());
+
+        // a message naming b's own media for this chat, which is already where the copy would go
+        byte[] bData = "b's media".getBytes();
+        FileRef bOwn = msgB.uploadMedia(controllerB, AsyncReader.build(bData), "txt", bData.length,
+                LocalDateTime.now(), x -> {}).join().right;
+        controllerA = msgA.sendMessage(controllerA, new ApplicationMessage(List.of(new Reference(
+                new FileRef(bOwn.path, real.cap, real.contentHash))))).join();
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
+        controllerA = msgA.sendMessage(controllerA, ApplicationMessage.text("and after it")).join();
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
+        List<MessageEnvelope> later = controllerB.getMessages(0, 50).join();
+        MessageEnvelope last = later.get(later.size() - 1);
+        Assert.assertTrue("merges carry on past it", last.payload instanceof ApplicationMessage
+                && ((ApplicationMessage) last.payload).body.stream().anyMatch(c -> c.inlineText().contains("and after it")));
+
+        // a message naming an attachment of a's that isn't there, as one a has since deleted
+        String gonePath = real.path.substring(0, real.path.lastIndexOf('/')) + "/gone.txt";
+        controllerA = msgA.sendMessage(controllerA, new ApplicationMessage(List.of(new Reference(
+                new FileRef(gonePath, real.cap, real.contentHash))))).join();
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
+        Assert.assertFalse("a is still in the chat", controllerB.deletedMemberNames().contains(a.username));
+        controllerA = msgA.sendMessage(controllerA, ApplicationMessage.text("still here")).join();
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
+        List<MessageEnvelope> after = controllerB.getMessages(0, 50).join();
+        MessageEnvelope newest = after.get(after.size() - 1);
+        Assert.assertTrue("a's next message arrives", newest.payload instanceof ApplicationMessage
+                && ((ApplicationMessage) newest.payload).body.stream().anyMatch(c -> c.inlineText().contains("still here")));
+    }
+
     public static void deleteEmailApp(NetworkAccess network, Random random) {
         CryptreeNode.setMaxChildLinkPerBlob(10);
 
