@@ -1702,7 +1702,7 @@ public class UserContext {
                                             .thenApply(h -> new Pair<>(s, p.right.withExisting(h))));
                 })
                 // this becomes the identity lock's state, which mustn't pin other writers at these versions
-                .thenApply(p -> new Pair<>(new Snapshot(signer.publicKeyHash, p.left.get(signer.publicKeyHash)), p.right));
+                .thenApply(this::identityOnly);
     }
 
     private CompletableFuture<Optional<Multihash>> currentLinkHash(long label, Snapshot in) {
@@ -1762,9 +1762,14 @@ public class UserContext {
                                                     // rather than losing the link
                                                     .thenCompose(v3 -> recordLinkForEveryMember(withMembers.withExisting(Optional.of(p.right)),
                                                                     v2.mergeAndOverwriteWith(v3), c)
-                                                            .thenApply(v4 -> new Pair<>(v4,
+                                                            .thenApply(v4 -> new Pair<>(v2.mergeAndOverwriteWith(v3).mergeAndOverwriteWith(v4),
                                                                     withMembers.withExisting(Optional.of(p.right))))))), network.dhtClient));
                 });
+    }
+
+    /** The write lock on our identity key keeps the snapshot it is handed, so give it only that writer. */
+    private <V> Pair<Snapshot, V> identityOnly(Pair<Snapshot, V> res) {
+        return new Pair<>(new Snapshot(signer.publicKeyHash, res.left.get(signer.publicKeyHash)), res.right);
     }
 
     /** Re-sign one link of one file, keeping whatever membership it already has. */
@@ -1905,13 +1910,31 @@ public class UserContext {
                 .thenCompose(target -> target.isEmpty() ?
                         Futures.of(Collections.<AbsoluteCapability>emptyList()) :
                         target.get().decrypt(link.labelString(), props.linkPassword + props.userPassword, crypto))
-                .thenCompose(caps -> Futures.combineAllInOrder(caps.stream()
-                        .map(cap -> NetworkAccess.retrieveEntryPoint(new EntryPoint(cap, username), network)
-                                .thenApply(r -> Optional.of(new LinkMember(r.getPath(), cap.isWritable())))
-                                // a member that has since been deleted has no keys left to rotate
-                                .exceptionally(t -> Optional.empty()))
-                        .collect(Collectors.toList())))
+                .thenCompose(caps -> hiddenMemberLocations(props, in).thenCompose(hidden -> Futures.combineAllInOrder(caps.stream()
+                        .map(cap -> {
+                            // a restricted cap can't walk up to its path, so match it to the recorded member
+                            Optional<String> hiddenPath = hidden.stream()
+                                    .filter(h -> Arrays.equals(h.left, cap.getMapKey()))
+                                    .map(h -> h.right)
+                                    .findFirst();
+                            if (hiddenPath.isPresent())
+                                return Futures.of(Optional.of(new LinkMember(hiddenPath.get(), cap.isWritable(), true)));
+                            return NetworkAccess.retrieveEntryPoint(new EntryPoint(cap, username), network)
+                                    .thenApply(r -> Optional.of(new LinkMember(r.getPath(), cap.isWritable(), false)))
+                                    // a member that has since been deleted has no keys left to rotate
+                                    .exceptionally(t -> Optional.empty());
+                        })
+                        .collect(Collectors.toList()))))
                 .thenApply(members -> members.stream().flatMap(Optional::stream).collect(Collectors.toList()));
+    }
+
+    private CompletableFuture<List<Pair<byte[], String>>> hiddenMemberLocations(LinkProperties props, Snapshot in) {
+        return Futures.combineAllInOrder(props.members.stream()
+                        .filter(m -> m.hidden)
+                        .map(m -> getByPath(m.path, in)
+                                .thenApply(f -> f.map(file -> new Pair<>(file.getPointer().capability.getMapKey(), m.path))))
+                        .collect(Collectors.toList()))
+                .thenApply(found -> found.stream().flatMap(Optional::stream).collect(Collectors.toList()));
     }
 
     /**
