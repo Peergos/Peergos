@@ -17,7 +17,8 @@ public class CachingBlockMetadataStore implements BlockMetadataStore {
 
     private final BlockMetadataStore target;
     private final Map<Cid, BlockMetadata> cache;
-    private final Map<Pair<PublicKeyHash, Cid>, BlockMetadata> ownedCache;
+    /** A block's row has one owner, kept beside it here */
+    private final Map<Cid, Pair<PublicKeyHash, BlockMetadata>> ownedCache;
 
     public CachingBlockMetadataStore(BlockMetadataStore target, int cacheSize) {
         this.target = target;
@@ -54,7 +55,7 @@ public class CachingBlockMetadataStore implements BlockMetadataStore {
         return result;
     }
 
-    /** Owner scoped lookups are cached under the owner as well as the block, because the point of
+    /** Owner scoped lookups are cached with the owner, and only answer for that owner, because the point of
      *  scoping is that a row written under one owner must not answer for another.
      */
     @Override
@@ -62,15 +63,15 @@ public class CachingBlockMetadataStore implements BlockMetadataStore {
         Map<Cid, BlockMetadata> result = new HashMap<>();
         List<Cid> misses = new ArrayList<>();
         for (Cid block : blocks) {
-            BlockMetadata cached = ownedCache.get(new Pair<>(owner, block));
-            if (cached != null)
-                result.put(block, cached);
+            Pair<PublicKeyHash, BlockMetadata> cached = ownedCache.get(block);
+            if (cached != null && Objects.equals(cached.left, owner))
+                result.put(block, cached.right);
             else
                 misses.add(block);
         }
         if (! misses.isEmpty()) {
             Map<Cid, BlockMetadata> fromDb = target.getAll(owner, misses);
-            fromDb.forEach((block, meta) -> ownedCache.put(new Pair<>(owner, block), meta));
+            fromDb.forEach((block, meta) -> ownedCache.put(block, new Pair<>(owner, meta)));
             result.putAll(fromDb);
         }
         return result;
@@ -113,9 +114,7 @@ public class CachingBlockMetadataStore implements BlockMetadataStore {
     @Override
     public void remove(Cid block) {
         cache.remove(block);
-        synchronized (ownedCache) {
-            ownedCache.keySet().removeIf(k -> k.right.equals(block));
-        }
+        ownedCache.remove(block);
         target.remove(block);
     }
 
