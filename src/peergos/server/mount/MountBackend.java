@@ -13,8 +13,11 @@ public interface MountBackend {
 
     java.util.Optional<String> activeMountPoint();
 
-    /** A sign-in for a saved mount that failed, so whatever waits on it can stop waiting:
-     *  it happens on a thread of its own at start, where only the handler sees the error. */
+    /** Enabling the mount failed, at start or from the settings, so whatever waits on it can stop waiting: it
+     *  happens on a thread of its own, where only the handler sees the error.
+     *
+     * @param error what went wrong, which may be null
+     */
     default void enableFailed(String error) {
     }
 

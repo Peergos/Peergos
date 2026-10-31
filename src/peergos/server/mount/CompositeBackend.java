@@ -34,6 +34,12 @@ public class CompositeBackend implements MountBackend {
     }
 
     @Override
+    public void enableFailed(String error) {
+        for (MountBackend backend : backends)
+            backend.enableFailed(error);
+    }
+
+    @Override
     public void disable() {
         // one that throws must not leave the others running
         for (MountBackend backend : backends) {
