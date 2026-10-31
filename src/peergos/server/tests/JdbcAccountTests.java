@@ -336,6 +336,23 @@ public class JdbcAccountTests {
                 Either.a(wrongCode(totp, key, 1)))), Optional.empty()));
     }
 
+    /** A mount signing in after the password changed is told the password is wrong, which is what makes it stop. */
+    @Test
+    public void aMountWithAnOldPasswordIsToldThePasswordIsWrong() throws Exception {
+        String username = "alice";
+        PublicSigningKey reader = reader();
+        db.setLoginData(loginFor(username, reader)).join();
+        TimeBasedOneTimePasswordGenerator totp =
+                new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, TotpKey.ALGORITHM);
+        TotpKey user = db.addTotpFactor(username).join();
+        db.enableTotpFactor(username, user.credentialId, code(totp, user)).join();
+        TotpKey mount = db.addMountFactor(username, "a device").join();
+        db.enableMountFactor(username, mount.credentialId, code(totp, mount)).join();
+
+        Assert.assertEquals("incorrect", attempt(username, reader(), Optional.of(new MultiFactorAuthResponse(mount.credentialId,
+                Either.a(code(totp, mount)))), Optional.empty()));
+    }
+
     /** A backup code submitted with a wrong password is still there for the right one. */
     @Test
     public void aWrongPasswordDoesntUseUpABackupCode() throws Exception {

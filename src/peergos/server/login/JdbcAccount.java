@@ -381,6 +381,10 @@ public class JdbcAccount implements LoginCache {
             // Without the right password a code is neither checked nor used up. The answer is the one a wrong
             // code gets, so it says nothing about the code, nor whether it was the password that was wrong.
             throttle.checkMfaAttempt(username, device, credentialId, code);
+            // A mount's credential is never offered in a challenge, so only the mount holds its id: telling it the
+            // password was wrong reveals nothing to anyone else, and is how it knows to stop after a password change.
+            if (type == MultiFactorAuthMethod.Type.MOUNT)
+                return;
             throw invalidCode(type, credentialId);
         }
         throttle.reserveMfaAttempt(username, device, credentialId, code);
