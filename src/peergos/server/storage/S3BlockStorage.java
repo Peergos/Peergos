@@ -739,7 +739,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 throw new IllegalStateException("Number of sizes doesn't match number of signed hashes!");
             if (blockSizes.size() != batIds.size())
                 throw new IllegalStateException("Number of sizes doesn't match number of bats!");
-            ensureWriterIsOwnedBy(owner, writerHash);
             PublicSigningKey writer = getSigningKey(owner, writerHash).get().get();
             List<Pair<Cid, BlockMetadata>> blockProps = new ArrayList<>();
             for (int i=0; i < signedHashes.size(); i++) {
@@ -753,24 +752,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-    }
-
-    /** The owner decides where a block is stored and which metadata row it lands in, so a writer that
-     *  is not owned by the owner must not be able to write into their space. The writer is registered
-     *  by the quota check before this runs, including the self heal that proves ownership from the
-     *  owner's own key tree, so an unknown writer here is one that could not be proven.
-     */
-    private void ensureWriterIsOwnedBy(PublicKeyHash owner, PublicKeyHash writer) {
-        if (writer.equals(owner))
-            return;
-        PublicKeyHash registered;
-        try {
-            registered = usage.getOwnerKey(writer);
-        } catch (Exception e) {
-            throw new IllegalStateException("Unknown writer for this owner: " + writer);
-        }
-        if (! owner.equals(registered))
-            throw new IllegalStateException("Writer is not owned by this owner: " + writer);
     }
 
     /** The v2 auth call: one signature over the ordered hashes, instead of one signature per block.
@@ -789,7 +770,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 throw new IllegalStateException("Too many writes to auth!");
             if (! isRaw)
                 throw new IllegalStateException("Only raw blocks can be pre-authed for writes");
-            ensureWriterIsOwnedBy(owner, writerHash);
             PublicSigningKey writer = getSigningKey(owner, writerHash).get().get();
             byte[] expected = BlockWriteAuth.payload(owner, auth.hashes, hasher).join();
             byte[] signed = writer.unsignMessage(auth.signature).join();
