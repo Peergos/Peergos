@@ -59,6 +59,9 @@ public interface SymmetricKey extends Cborable
     @JsMethod
     SymmetricKey makeDirty();
 
+    /** A one way derivation of an independent key, for the given purpose. */
+    SymmetricKey derive(String label);
+
     @JsMethod
     static SymmetricKey fromByteArray(byte[] raw) {
         return fromCbor(CborObject.fromByteArray(raw));
