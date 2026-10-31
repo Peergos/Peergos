@@ -657,25 +657,23 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     public boolean registerNewWriter(PublicKeyHash owner, PublicKeyHash parent, PublicKeyHash writer) {
         Object lock = healLocks.computeIfAbsent(owner, o -> new Object());
         synchronized (lock) {
-            boolean registered = false;
             try {
-                usageStore.getOwner(writer);
-                registered = true;
-            } catch (IllegalStateException absent) {}
-            try {
-                if (! registered) {
-                    String username = core.getUsername(owner).join();
-                    if (! quotaAdmin.getLocalUsernames().contains(username))
-                        return false;
-                    usageStore.addUserIfAbsent(username);
-                    usageStore.addWriter(username, writer);
-                }
-                // the parent has a pointer already, so the self heal finds it if the store is missing it
+                // The parent first: a writer registered without its edge would write under no cap. The
+                // parent has a pointer already, so the self heal finds it if the store is missing it.
                 try {
                     usageStore.getOwner(parent);
                 } catch (IllegalStateException absent) {
                     if (! registerMissedWriters(owner, parent))
                         return false;
+                }
+                try {
+                    usageStore.getOwner(writer);
+                } catch (IllegalStateException absent) {
+                    String username = core.getUsername(owner).join();
+                    if (! quotaAdmin.getLocalUsernames().contains(username))
+                        return false;
+                    usageStore.addUserIfAbsent(username);
+                    usageStore.addWriter(username, writer);
                 }
                 usageStore.addOwnedKey(parent, writer);
                 return true;
