@@ -548,55 +548,49 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
 
         UserUsage usage = getUsage(username, usageStore);
 
-        long expectedUsage = usage.expectedUsage();
-        boolean errored = usage.isErrored();
-        if ((! errored && expectedUsage + size > quota) || (errored && expectedUsage + size > quota + USAGE_TOLERANCE)) {
-            long pending = usage.getPending(writer);
+        // Each check reserves the bytes as it passes, in one step, so two writes arriving together can't both
+        // fit where only one does. Whatever refuses later gives the reservations before it back.
+        long pending = usage.getPending(writer);
+        if (! usage.reserve(writer, size, quota, USAGE_TOLERANCE)) {
             usageStore.confirmUsage(username, writer, 0, true);
-            usage.confirmUsage(writer, 0);
-            usage.setErrored(true);
             LOG.info("Rejecting write for " + username);
             throw new IllegalStateException("Storage quota reached! \nUsed "
                     + usage.totalUsage() + " out of " + quota + " bytes. Rejecting write of size " + (size + pending) + ". \n" +
                     "Please delete some files or request more space.");
         }
-        List<PublicKeyHash> caps = writerQuotas.getCaps(writer);
-        for (PublicKeyHash cap : caps)
-            checkWriterQuota(cap, writer, size);
+        List<UserUsage> reserved = new ArrayList<>();
+        reserved.add(usage);
+        for (PublicKeyHash cap : writerQuotas.getCaps(writer)) {
+            Optional<Long> capQuota = writerQuotas.getQuota(cap);
+            if (capQuota.isEmpty())
+                continue;
+            UserUsage capUsage = writerQuotas.getUsage(cap);
+            long capPending = capUsage.getPending(writer);
+            if (! capUsage.reserve(writer, size, capQuota.get(), USAGE_TOLERANCE)) {
+                release(reserved, writer, size);
+                LOG.info("Rejecting write to capped writing space " + cap);
+                // Don't reveal the usage of an enclosing capped space to someone who can only write to a nested one
+                throw new IllegalStateException("Storage quota reached for this shared folder! \n"
+                        + (cap.equals(writer) ? "Used " + capUsage.totalUsage() + " out of " + capQuota.get() + " bytes. " : "")
+                        + "Rejecting write of size " + (size + capPending) + ".");
+            }
+            reserved.add(capUsage);
+        }
         SlidingWindowCounter writeLimit = writeLimiter.get(username);
         if (writeLimit == null) {
             writeLimit = new SlidingWindowCounter(quotaUploadLimitSeconds, quota);
             writeLimiter.put(username, writeLimit);
         }
-        if (! writeLimit.allowRequest(size))
+        if (! writeLimit.allowRequest(size)) {
+            release(reserved, writer, size);
             throw new IllegalStateException("Upload bandwidth exceeded please try again tomorrow");
-        try {
-            usage.addPending(writer, size);
-            for (PublicKeyHash cap : caps)
-                writerQuotas.getUsage(cap).addPending(writer, size);
-        } catch (Exception e) {
-            throw new IllegalStateException("Couldn't update pending usage for user " + username, e);
         }
         return true;
     }
 
-    private void checkWriterQuota(PublicKeyHash cap, PublicKeyHash writer, int size) {
-        Optional<Long> quota = writerQuotas.getQuota(cap);
-        if (quota.isEmpty())
-            return;
-        UserUsage usage = writerQuotas.getUsage(cap);
-        long expectedUsage = usage.expectedUsage();
-        boolean errored = usage.isErrored();
-        if ((! errored && expectedUsage + size > quota.get()) || (errored && expectedUsage + size > quota.get() + USAGE_TOLERANCE)) {
-            long pending = usage.getPending(writer);
-            usage.confirmUsage(writer, 0);
-            usage.setErrored(true);
-            LOG.info("Rejecting write to capped writing space " + cap);
-            // Don't reveal the usage of an enclosing capped space to someone who can only write to a nested one
-            throw new IllegalStateException("Storage quota reached for this shared folder! \n"
-                    + (cap.equals(writer) ? "Used " + usage.totalUsage() + " out of " + quota.get() + " bytes. " : "")
-                    + "Rejecting write of size " + (size + pending) + ".");
-        }
+    private static void release(List<UserUsage> reserved, PublicKeyHash writer, int size) {
+        for (UserUsage usage : reserved)
+            usage.addPending(writer, -size);
     }
 
     /** Whether a commit may be applied, given the bytes it writes and the net change in stored bytes

@@ -37,6 +37,22 @@ public class UserUsage implements Cborable {
         this.totalBytes = totalBytes;
     }
 
+    /** Reserve the bytes of a write if it fits. The check and the reservation are one step, so two writes
+     *  arriving together can't both fit where only one does.
+     *
+     * @return false if it doesn't fit: this writer's pending bytes are dropped and the usage marked errored
+     */
+    public synchronized boolean reserve(PublicKeyHash writer, long size, long quota, long tolerance) {
+        long allowed = errored ? quota + tolerance : quota;
+        if (expectedUsage() + size > allowed) {
+            pending.remove(writer);
+            errored = true;
+            return false;
+        }
+        addPending(writer, size);
+        return true;
+    }
+
     public synchronized void addPending(PublicKeyHash writer, long usageDelta) {
         pending.put(writer, pending.getOrDefault(writer, 0L) + usageDelta);
     }

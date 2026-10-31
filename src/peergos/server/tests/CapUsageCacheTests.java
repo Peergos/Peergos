@@ -42,4 +42,17 @@ public class CapUsageCacheTests {
         Assert.assertEquals("the bytes in flight are kept across the reload", 300, quotas.getUsage(cap).expectedUsage());
         Assert.assertSame("and stay on the same object, which the write in flight still holds", usage, quotas.getUsage(cap));
     }
+
+    /** Two writes that would each fit alone can't both be reserved where only one fits. */
+    @Test
+    public void aReservationIsOneStep() {
+        UserUsage usage = new UserUsage(700);
+        PublicKeyHash a = key(), b = key();
+        Assert.assertTrue(usage.reserve(a, 200, 1000, 0));
+        Assert.assertFalse(usage.reserve(b, 200, 1000, 0));
+        Assert.assertEquals("the refused write reserved nothing", 900, usage.expectedUsage());
+        Assert.assertEquals("the first reservation stands", 200, usage.getPending(a));
+        // refused once, the usage is errored and the tolerance applies
+        Assert.assertTrue(usage.reserve(b, 200, 1000, 200));
+    }
 }
