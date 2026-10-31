@@ -277,6 +277,34 @@ public class BufferedStorage extends DelegatingStorage {
         return put(writer, blocks, signatures, true, Optional.of(progressConsumer));
     }
 
+    /** Held for the commit like any other write. Signed per block, as a buffered block keeps its own signature. */
+    @Override
+    public CompletableFuture<List<Cid>> putBatch(PublicKeyHash owner,
+                                                 SigningPrivateKeyAndPublicHash signer,
+                                                 List<byte[]> blocks,
+                                                 TransactionId tid,
+                                                 Hasher hasher) {
+        return sign(signer, blocks, hasher)
+                .thenCompose(sigs -> put(signer.publicKeyHash, blocks, sigs, false, Optional.empty()));
+    }
+
+    @Override
+    public CompletableFuture<List<Cid>> putRawBatch(PublicKeyHash owner,
+                                                    SigningPrivateKeyAndPublicHash signer,
+                                                    List<byte[]> blocks,
+                                                    TransactionId tid,
+                                                    ProgressConsumer<Long> progress,
+                                                    Hasher hasher) {
+        return sign(signer, blocks, hasher)
+                .thenCompose(sigs -> put(signer.publicKeyHash, blocks, sigs, true, Optional.of(progress)));
+    }
+
+    private static CompletableFuture<List<byte[]>> sign(SigningPrivateKeyAndPublicHash signer, List<byte[]> blocks, Hasher hasher) {
+        return Futures.combineAllInOrder(blocks.stream()
+                .map(b -> hasher.sha256(b).thenCompose(h -> signer.secret.signMessage(h)))
+                .collect(Collectors.toList()));
+    }
+
     private CompletableFuture<List<Cid>> put(PublicKeyHash writer,
                                              List<byte[]> blocks,
                                              List<byte[]> signatures,
