@@ -361,6 +361,59 @@ public class RestrictedCapsTests {
         Assert.assertTrue(openLink(owner, writable).getByPath("/drop").join().get().isWritable());
     }
 
+    private void move(UserContext ctx, String from, String toDir) {
+        Path source = PathUtil.get(from);
+        ctx.getByPath(from).join().get()
+                .moveTo(ctx.getByPath(toDir).join().get(), ctx.getByPath(source.getParent()).join().get(),
+                        source, ctx, () -> Futures.of(true)).join();
+    }
+
+    @Test(timeout = 120_000)
+    public void movesThroughAHiddenFolderLink() {
+        UserContext owner = signIn(username("mv"));
+        Path home = PathUtil.get(owner.username);
+        mkdir(owner, home, "work");
+        mkdir(owner, home.resolve("work"), "drop");
+        mkdir(owner, home.resolve("work/drop"), "sub");
+        mkdir(owner, home.resolve("work/drop"), "nested");
+        byte[] big = randomData(Chunk.LEGACY_SIZE + 100);
+        byte[] inner = randomData(300);
+        upload(owner, home.resolve("work/drop"), "big.bin", big);
+        upload(owner, home.resolve("work/drop/nested"), "inner.txt", inner);
+        String path = home.resolve("work/drop").toString();
+        LinkProperties link = owner.createSecretLink(List.of(path), List.of(path), List.of(path),
+                Optional.empty(), Optional.empty(), "", false).join();
+
+        UserContext fromLink = openLink(owner, link);
+        move(fromLink, "/drop/big.bin", "/drop/sub");
+        move(fromLink, "/drop/nested", "/drop/sub");
+        move(fromLink, "/drop/sub/nested/inner.txt", "/drop");
+        fromLink.getByPath("/drop/inner.txt").join().get()
+                .copyTo(fromLink.getByPath("/drop/sub/nested").join().get(), fromLink).join();
+
+        UserContext again = openLink(owner, link);
+        Assert.assertTrue(again.getByPath("/drop/big.bin").join().isEmpty());
+        Assert.assertTrue(again.getByPath("/drop/nested").join().isEmpty());
+        PeergosNetworkUtils.checkFileContents(big, again.getByPath("/drop/sub/big.bin").join().get(), again);
+        PeergosNetworkUtils.checkFileContents(inner, again.getByPath("/drop/inner.txt").join().get(), again);
+        Assert.assertTrue(again.getByPath("/drop/sub/nested").join().get().isDirectory());
+        PeergosNetworkUtils.checkFileContents(inner, again.getByPath("/drop/sub/nested/inner.txt").join().get(), again);
+
+        // the owner sees them where they went, and can share them like anything else made through the link
+        UserContext fresh = signIn(owner.username);
+        FileWrapper moved = fresh.getByPath(home.resolve("work/drop/sub/big.bin")).join().get();
+        Assert.assertTrue(moved.isPending());
+        PeergosNetworkUtils.checkFileContents(big, moved, fresh);
+        PeergosNetworkUtils.checkFileContents(inner, fresh.getByPath(home.resolve("work/drop/inner.txt")).join().get(), fresh);
+        Assert.assertEquals(Set.of("big.bin", "nested"), fresh.getByPath(home.resolve("work/drop/sub")).join().get()
+                .getChildren(crypto.hasher, fresh.network).join().stream().map(FileWrapper::getName).collect(Collectors.toSet()));
+        String movedPath = home.resolve("work/drop/sub/big.bin").toString();
+        LinkProperties visible = fresh.createSecretLink(List.of(movedPath), List.of(), List.of(),
+                Optional.empty(), Optional.empty(), "", false).join();
+        Assert.assertEquals("/" + movedPath, openLink(owner, visible).getByPath("/" + movedPath).join().get()
+                .getPath(fresh.network).join());
+    }
+
     @Test
     public void writableHiddenLinkToAFile() {
         UserContext owner = signIn(username("hw"));
