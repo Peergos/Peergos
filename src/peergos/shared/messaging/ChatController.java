@@ -220,9 +220,11 @@ public class ChatController {
                         .thenApply(Optional::get),
                 t -> context.getByPath(PathUtil.get(mirrorUsername).resolve(sourcePath.subpath(1, sourcePath.getNameCount())).toString(), v)
                         .thenApply(Optional::get))
+                // A media file's name is unique, so one already there is this file, mirrored before or our own named
+                // back at us: skipped, or the merge would fail on it now and at every later merge of this chat.
                 .thenCompose(f -> f.getInputStream(f.version.get(f.writer()), context.network, context.crypto, x -> {})
                         .thenCompose(r -> dir.uploadFileSection(v, c, f.getName(), r, false, 0, f.getSize(),
-                                Optional.empty(), false, false, false, context.network, context.crypto, () -> false, x -> {},
+                                Optional.empty(), true, false, false, context.network, context.crypto, () -> false, x -> {},
                                 context.crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH), Optional.empty(),
                                 Optional.of(Bat.random(context.crypto.random)), dir.mirrorBatId())));
     }

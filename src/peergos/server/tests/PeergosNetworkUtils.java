@@ -2005,6 +2005,20 @@ public class PeergosNetworkUtils {
         Assert.assertTrue("a real attachment is copied", b.getByPath(bMedia + "/" + realInChat).join().isPresent());
         Assert.assertTrue("b's own file is not copied into the chat", b.getByPath(bMedia + "/secret.txt").join().isEmpty());
         Assert.assertTrue("nor can a read it there", a.getByPath(bMedia + "/secret.txt").join().isEmpty());
+
+        // a message naming b's own media for this chat, which is already where the copy would go
+        byte[] bData = "b's media".getBytes();
+        FileRef bOwn = msgB.uploadMedia(controllerB, AsyncReader.build(bData), "txt", bData.length,
+                LocalDateTime.now(), x -> {}).join().right;
+        controllerA = msgA.sendMessage(controllerA, new ApplicationMessage(List.of(new Reference(
+                new FileRef(bOwn.path, real.cap, real.contentHash))))).join();
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
+        controllerA = msgA.sendMessage(controllerA, ApplicationMessage.text("and after it")).join();
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
+        List<MessageEnvelope> later = controllerB.getMessages(0, 50).join();
+        MessageEnvelope last = later.get(later.size() - 1);
+        Assert.assertTrue("merges carry on past it", last.payload instanceof ApplicationMessage
+                && ((ApplicationMessage) last.payload).body.stream().anyMatch(c -> c.inlineText().contains("and after it")));
     }
 
     public static void deleteEmailApp(NetworkAccess network, Random random) {
