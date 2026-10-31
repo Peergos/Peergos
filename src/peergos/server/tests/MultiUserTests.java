@@ -1109,7 +1109,7 @@ public class MultiUserTests {
         AbsoluteCapability priorPointer = priorUnsharedView.get().getPointer().capability;
         CommittedWriterData cwd = network.synchronizer.getValue(priorPointer.owner, priorPointer.writer).join().get(priorPointer.writer);
         CryptreeNode priorFileAccess = network.getMetadata(cwd, priorPointer).get().get();
-        SymmetricKey priorMetaKey = priorFileAccess.getParentKey(priorPointer.rBaseKey);
+        SymmetricKey priorMetaKey = priorFileAccess.restrictedKey(priorPointer.rBaseKey);
 
         // unshare with a single user
         u1.unShareReadAccess(PathUtil.get(u1.username, filename), userToUnshareWith.username).join();

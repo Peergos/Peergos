@@ -33,10 +33,6 @@ public class LinkMember implements Cborable {
         this.hidden = hidden;
     }
 
-    public LinkMember(String path, boolean writable) {
-        this(path, writable, false);
-    }
-
     public static LinkMember build(String path, AbsoluteCapability cap, boolean hidden) {
         return new LinkMember(path, cap.isWritable(), hidden);
     }

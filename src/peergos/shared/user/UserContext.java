@@ -1026,7 +1026,7 @@ public class UserContext {
                         .mapToObj(i -> NetworkAccess.retrieveEntryPoint(new EntryPoint(caps.get(i), username), network)
                                 .thenApply(r -> {
                                     if (! r.file.isRestrictedKey())
-                                        return new LinkMember(r.getPath(), caps.get(i).isWritable());
+                                        return new LinkMember(r.getPath(), caps.get(i).isWritable(), false);
                                     // we can't walk up from a hidden member, so its path is the one we recorded
                                     String recorded = i < props.members.size() ? props.members.get(i).path : r.getPath();
                                     return new LinkMember(recorded, caps.get(i).isWritable(), true);

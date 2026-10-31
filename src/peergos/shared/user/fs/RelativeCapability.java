@@ -31,7 +31,6 @@ public class RelativeCapability implements Cborable {
     public final Optional<SymmetricLink> fullKeyLink;
     public final Optional<SealedKey> sealedFullKey;
 
-    @JsConstructor
     public RelativeCapability(Optional<PublicKeyHash> writer,
                               byte[] mapKey,
                               Optional<Bat> bat,
@@ -40,6 +39,7 @@ public class RelativeCapability implements Cborable {
         this(writer, mapKey, bat, rBaseKey, wBaseKeyLink, Optional.empty(), Optional.empty());
     }
 
+    @JsConstructor
     public RelativeCapability(Optional<PublicKeyHash> writer,
                               byte[] mapKey,
                               Optional<Bat> bat,
