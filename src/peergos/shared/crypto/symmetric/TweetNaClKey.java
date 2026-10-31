@@ -1,8 +1,10 @@
 package peergos.shared.crypto.symmetric;
 
 import peergos.shared.cbor.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 
+import java.nio.charset.*;
 import java.util.*;
 
 public class TweetNaClKey implements SymmetricKey
@@ -40,6 +42,11 @@ public class TweetNaClKey implements SymmetricKey
 
     public SymmetricKey makeDirty() {
         return new TweetNaClKey(secretKey, true, implementation, random);
+    }
+
+    public SymmetricKey derive(String label) {
+        byte[] info = ("peergos-" + label).getBytes(StandardCharsets.UTF_8);
+        return new TweetNaClKey(Hkdf.sha256(secretKey, new byte[0], info, KEY_BYTES), false, implementation, random);
     }
 
     public byte[] encrypt(byte[] data, byte[] nonce)
