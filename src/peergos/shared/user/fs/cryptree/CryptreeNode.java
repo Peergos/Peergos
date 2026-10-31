@@ -149,6 +149,9 @@ public class CryptreeNode implements Cborable {
         public FromParent(Optional<RelativeCapability> parentLink,
                           Optional<PaddedCipherText> encryptedParentLink,
                           FileProperties properties) {
+            // a plaintext parent link alongside the encrypted one would show restricted holders where they are
+            if (parentLink.isPresent() && encryptedParentLink.isPresent())
+                throw new IllegalStateException("A parent block can't have both a plaintext and an encrypted parent link");
             this.parentLink = parentLink;
             this.encryptedParentLink = encryptedParentLink;
             this.properties = properties;
