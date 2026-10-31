@@ -358,6 +358,67 @@ public class FileWrapper {
         });
     }
 
+    /** Whether we hold a restricted key, which can't reach anything above this. */
+    @JsMethod
+    public boolean isRestrictedKey() {
+        return pointer != null && pointer.fileAccess.isRestrictedKey(pointer.capability.rBaseKey);
+    }
+
+    /** Whether this was made through a restricted key, so it has a parent link, but not one that we can read. */
+    public boolean isPending() {
+        if (pointer == null || isRestrictedKey())
+            return false;
+        SymmetricKey key = pointer.capability.rBaseKey;
+        return pointer.fileAccess.hasParentLink(key) && pointer.fileAccess.getParentCapability(key).isEmpty();
+    }
+
+    /** Rewrite this, the link node in front of it if any, and everything below it, into the restricted format. */
+    public CompletableFuture<Boolean> upgradeToRestrictedFormat(NetworkAccess network, Crypto crypto) {
+        if (! isWritable())
+            return Futures.errored(new IllegalStateException("Couldn't hide the location of " + getName() + " without write access"));
+        return (linkPointer.isPresent() ?
+                upgradeChunks(linkPointer.get(), Optional.empty(), entryWriter, network, crypto) :
+                Futures.of(true))
+                .thenCompose(x -> upgradeChunks(pointer, props.streamSecret, entryWriter, network, crypto))
+                .thenCompose(x -> ! isDirectory() ?
+                        Futures.of(true) :
+                        getUpdated(network)
+                                .thenCompose(updated -> updated.getChildren(crypto.hasher, network))
+                                .thenCompose(children -> Futures.reduceAll(children, true,
+                                        (b, child) -> child.upgradeToRestrictedFormat(network, crypto), (a, b) -> b)));
+    }
+
+    private static CompletableFuture<Boolean> upgradeChunks(RetrievedCapability first,
+                                                            Optional<byte[]> streamSecret,
+                                                            Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                            NetworkAccess network,
+                                                            Crypto crypto) {
+        if (! (first.capability instanceof WritableAbsoluteCapability))
+            return Futures.errored(new IllegalStateException("Upgrading a node needs write access"));
+        WritableAbsoluteCapability cap = (WritableAbsoluteCapability) first.capability;
+        SigningPrivateKeyAndPublicHash signer = first.fileAccess.getSigner(cap.rBaseKey, cap.wBaseKey.get(), entryWriter);
+        return network.synchronizer.applyComplexUpdate(cap.owner, signer,
+                        (s, c) -> upgradeChunks(cap, signer, streamSecret, s, c, network, crypto))
+                .thenApply(s -> true);
+    }
+
+    private static CompletableFuture<Snapshot> upgradeChunks(WritableAbsoluteCapability cap,
+                                                             SigningPrivateKeyAndPublicHash signer,
+                                                             Optional<byte[]> streamSecret,
+                                                             Snapshot s,
+                                                             Committer c,
+                                                             NetworkAccess network,
+                                                             Crypto crypto) {
+        return network.getMetadata(s.get(cap.writer), cap).thenCompose(opt -> {
+            if (opt.isEmpty())
+                return Futures.of(s);
+            CryptreeNode chunk = opt.get();
+            return chunk.upgradeToRestrictedFormat(s, c, cap, signer, network, crypto)
+                    .thenCompose(s2 -> chunk.getNextChunkLocation(cap.rBaseKey, streamSecret, cap.getMapKey(), cap.bat, crypto.hasher)
+                            .thenCompose(next -> upgradeChunks(cap.withMapKey(next.left, next.right), signer, streamSecret, s2, c, network, crypto)));
+        });
+    }
+
     @JsMethod
     public boolean isUserRoot() {
         if (pointer == null)
@@ -588,6 +649,8 @@ public class FileWrapper {
             return CompletableFuture.completedFuture(new Pair<>(this, current));
         if (isDirectory()) {
             throw new IllegalStateException("Directories are never dirty (they are cleaned immediately)!");
+        } else if (isRestrictedKey() || isPending()) {
+            return Futures.errored(new IllegalStateException("The owner must open " + getName() + " before it can be changed"));
         } else {
             WritableAbsoluteCapability currentCap = writableFilePointer();
             boolean isLink = isLink();
@@ -767,7 +830,7 @@ public class FileWrapper {
                             monitor.accept(startChunkIndex * props.chunkSize);
                             FileUploader uploader = new FileUploader(txn.targetFilename(), data, startChunkIndex*(long)props.chunkSize,
                                     txn.size(), txn.baseKey, txn.dataKey, getLocation(), getPointer().capability.bat, getParentKey(),
-                                    monitor, props, hash, txn.getFirstLocation().getMapKey(), txn.firstBat, isCancelled);
+                                    monitor, props, hash, txn.getFirstLocation().getMapKey(), txn.firstBat, isCancelled, isRestrictedKey());
                             return uploader.uploadFrom(s, c, network, startChunkIndex.intValue(), txn.getFirstLocation().owner,
                                     signingPair(), mirrorBatId(), crypto.random, crypto.hasher);
                         })).thenApply(v -> new Pair<>(v, Optional.of(new NamedRelativeCapability(txn.targetFilename(), fromParent,
@@ -1578,9 +1641,14 @@ public class FileWrapper {
 
         Supplier<Location> legacyLocs = () -> new Location(getLocation().owner, getLocation().writer, crypto.random.randomBytes(32));
 
-        SymmetricKey parentParentKey = getPointer().getParentParentKey();
-        Location parentLocation = getPointer().getParentCap().getLocation(owner(), writer());
-        Optional<Bat> parentBat = getPointer().getParentCap().bat;
+        // a restricted writer can't read the parent link, only copy it, and nor can anyone else if it's pending
+        boolean restricted = isRestrictedKey() || isPending();
+        Optional<PaddedCipherText> encryptedParentLink = restricted ?
+                pointer.fileAccess.getEncryptedParentLink(pointer.capability.rBaseKey) :
+                Optional.empty();
+        SymmetricKey parentParentKey = restricted ? null : getPointer().getParentParentKey();
+        Location parentLocation = restricted ? null : getPointer().getParentCap().getLocation(owner(), writer());
+        Optional<Bat> parentBat = restricted ? Optional.empty() : getPointer().getParentCap().bat;
         WritableAbsoluteCapability ourCap = writableFilePointer();
         boolean updateTreeHash = inputStartIndex == 0 && endIndex >= props.size;
         HashTreeBuilder treeHasher = updateTreeHash ? new HashTreeBuilder(endIndex, props.chunkSize) : null;
@@ -1662,10 +1730,15 @@ public class FileWrapper {
                                                         props.thumbnail, props.streamSecret, Optional.empty(), props.chunkSize);
 
                                                 Optional<BatId> mirrorBat = mirrorBatId();
-                                                CompletableFuture<Snapshot> chunkUploaded = FileUploader.uploadChunk(version, committer, us.signingPair(),
-                                                        newProps, parentLocation, parentBat, parentParentKey, baseKey, located,
-                                                        nextChunkLocation, nextChunkBat, writerLink, mirrorBat,
-                                                        crypto.random, crypto.hasher, network, monitor);
+                                                CompletableFuture<Snapshot> chunkUploaded = restricted ?
+                                                        FileUploader.uploadRestrictedChunk(version, committer, us.signingPair(),
+                                                                newProps, encryptedParentLink, fileAccess.restrictedKey(baseKey), located,
+                                                                nextChunkLocation, nextChunkBat, writerLink, mirrorBat,
+                                                                crypto.random, crypto.hasher, network, monitor) :
+                                                        FileUploader.uploadChunk(version, committer, us.signingPair(),
+                                                                newProps, parentLocation, parentBat, parentParentKey, baseKey, located,
+                                                                nextChunkLocation, nextChunkBat, writerLink, mirrorBat,
+                                                                crypto.random, crypto.hasher, network, monitor);
 
                                                 return chunkUploaded.thenCompose(updatedBase -> {
                                                     //update indices to be relative to next chunk
@@ -1976,7 +2049,7 @@ public class FileWrapper {
 
                     FileUploader chunks = new FileUploader(filename, resetReader,
                             startIndex, endIndex, fileKey, dataKey, parentLocation, parentBat,
-                            dirParentKey, monitor, fileProps, hash, firstChunkMapKey, firstBat, isCancelled);
+                            dirParentKey, monitor, fileProps, hash, firstChunkMapKey, firstBat, isCancelled, isRestrictedKey());
 
                     SigningPrivateKeyAndPublicHash signer = signingPair();
                     WritableAbsoluteCapability fileWriteCap = new

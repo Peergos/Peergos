@@ -51,6 +51,13 @@ public class EntryPoint implements Cborable {
         });
     }
 
+    /** A member of a link that hides its location has no path to name its owner, so check the owner key itself. */
+    public CompletableFuture<Boolean> ownerOwnsWriter(NetworkAccess network) {
+        PublicKeyHash owner = pointer.owner;
+        return UserContext.getWriterData(network, owner, owner)
+                .thenCompose(wd -> wd.props.get().ownsKey(owner, pointer.writer, network.dhtClient, network.mutable, network.hasher));
+    }
+
     @Override
     @SuppressWarnings("unusable-by-js")
     public CborObject toCbor() {

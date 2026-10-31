@@ -937,7 +937,9 @@ public class UserContext {
         if (first.file.isDirectory())
             return path;
         int lastSlash = path.lastIndexOf('/');
-        return lastSlash <= 0 ? path : path.substring(0, lastSlash);
+        if (lastSlash < 0)
+            return path;
+        return lastSlash == 0 ? "/" : path.substring(0, lastSlash);
     }
 
     /** The mounted trie, and each member in the order the caps were given. */
@@ -948,15 +950,34 @@ public class UserContext {
                 .map(cap -> NetworkAccess.retrieveEntryPoint(new EntryPoint(cap, ""), network))
                 .collect(Collectors.toList());
         return Futures.reduceAll(retrieved, new Pair<>(currentRoot, (List<RetrievedEntryPoint>) new ArrayList<RetrievedEntryPoint>()),
-                (acc, f) -> f.thenCompose(r -> r.entry.isValid(r.getPath(), network)
-                        .thenApply(valid -> {
-                            if (! valid)
-                                throw new IllegalStateException("Invalid link!");
-                            List<RetrievedEntryPoint> members = new ArrayList<>(acc.right);
-                            members.add(r);
-                            return new Pair<>(acc.left.put(r.getPath(), r.entry), members);
-                        })),
+                (acc, f) -> f.thenCompose(r -> {
+                    // a member that hides its location is mounted at the top level under its own name
+                    RetrievedEntryPoint mounted = r.file.isRestrictedKey() ?
+                            new RetrievedEntryPoint(r.entry, freeTopLevelPath(r.file.getName(), acc.right), r.file) :
+                            r;
+                    return (r.file.isRestrictedKey() ? r.entry.ownerOwnsWriter(network) : r.entry.isValid(r.getPath(), network))
+                            .thenApply(valid -> {
+                                if (! valid)
+                                    throw new IllegalStateException("Invalid link!");
+                                List<RetrievedEntryPoint> members = new ArrayList<>(acc.right);
+                                members.add(mounted);
+                                return new Pair<>(acc.left.put(mounted.getPath(), mounted.entry), members);
+                            });
+                }),
                 (a, b) -> b);
+    }
+
+    private static String freeTopLevelPath(String name, List<RetrievedEntryPoint> mounted) {
+        Set<String> taken = mounted.stream()
+                .map(m -> m.getPath().split("/")[1])
+                .collect(Collectors.toSet());
+        if (! taken.contains(name))
+            return "/" + name;
+        for (int i = 2; ; i++) {
+            String candidate = name + " (" + i + ")";
+            if (! taken.contains(candidate))
+                return "/" + candidate;
+        }
     }
 
     /**
@@ -1001,9 +1022,15 @@ public class UserContext {
         return network.getSecretLink(link)
                 .thenCompose(retrieved -> retrieved.decryptFromPassword(link.labelString(),
                         props.linkPassword + props.userPassword, crypto))
-                .thenCompose(caps -> Futures.combineAllInOrder(caps.stream()
-                        .map(cap -> NetworkAccess.retrieveEntryPoint(new EntryPoint(cap, username), network)
-                                .thenApply(r -> new LinkMember(r.getPath(), cap.isWritable())))
+                .thenCompose(caps -> Futures.combineAllInOrder(IntStream.range(0, caps.size())
+                        .mapToObj(i -> NetworkAccess.retrieveEntryPoint(new EntryPoint(caps.get(i), username), network)
+                                .thenApply(r -> {
+                                    if (! r.file.isRestrictedKey())
+                                        return new LinkMember(r.getPath(), caps.get(i).isWritable());
+                                    // we can't walk up from a hidden member, so its path is the one we recorded
+                                    String recorded = i < props.members.size() ? props.members.get(i).path : r.getPath();
+                                    return new LinkMember(recorded, caps.get(i).isWritable(), true);
+                                }))
                         .collect(Collectors.toList())));
     }
 
@@ -1014,7 +1041,7 @@ public class UserContext {
      * the point, and the thing to say out loud in the UI before doing it.
      */
     @JsMethod
-    public CompletableFuture<LinkProperties> addToSecretLink(SecretLinkSummary link, String path, boolean writable) {
+    public CompletableFuture<LinkProperties> addToSecretLink(SecretLinkSummary link, String path, boolean writable, boolean hidden) {
         if (path == null || path.isEmpty())
             return Futures.errored(new IllegalStateException("No file given to add to this link."));
         List<String> paths = new ArrayList<>(Arrays.asList(link.paths()));
@@ -1023,10 +1050,13 @@ public class UserContext {
         List<String> writablePaths = link.props.members.isEmpty() ?
                 (link.props.isLinkWritable ? new ArrayList<>(paths) : new ArrayList<>()) :
                 link.props.members.stream().filter(m -> m.writable).map(m -> m.path).collect(Collectors.toList());
+        List<String> hiddenPaths = link.props.members.stream().filter(m -> m.hidden).map(m -> m.path).collect(Collectors.toList());
         paths.add(path);
         if (writable)
             writablePaths.add(path);
-        return setSecretLinkMembers(paths, writablePaths, link.props);
+        if (hidden)
+            hiddenPaths.add(path);
+        return setSecretLinkMembers(paths, writablePaths, hiddenPaths, link.props);
     }
 
     @JsMethod
@@ -1064,11 +1094,12 @@ public class UserContext {
     @JsMethod
     public CompletableFuture<LinkProperties> createSecretLinkTo(List<String> paths,
                                                                 List<String> writablePaths,
+                                                                List<String> hiddenPaths,
                                                                 Optional<LocalDateTime> expiry,
                                                                 String maxRetrievals,
                                                                 String userPassword,
                                                                 boolean open) {
-        return createSecretLink(paths, writablePaths, expiry,
+        return createSecretLink(paths, writablePaths, hiddenPaths, expiry,
                 maxRetrievals.isEmpty() ? Optional.empty() : Optional.of(Integer.parseInt(maxRetrievals)),
                 userPassword, open);
     }
@@ -1090,10 +1121,20 @@ public class UserContext {
                                                               Optional<Integer> maxRetrievals,
                                                               String userPassword,
                                                               boolean open) {
+        return createSecretLink(paths, writablePaths, Collections.emptyList(), expiry, maxRetrievals, userPassword, open);
+    }
+
+    public CompletableFuture<LinkProperties> createSecretLink(List<String> paths,
+                                                              List<String> writablePaths,
+                                                              List<String> hiddenPaths,
+                                                              Optional<LocalDateTime> expiry,
+                                                              Optional<Integer> maxRetrievals,
+                                                              String userPassword,
+                                                              boolean open) {
         SecretLink res = SecretLink.create(signer.publicKeyHash, crypto.random);
         LinkProperties props = LinkProperties.build(res.label, res.linkPassword, userPassword, maxRetrievals,
                 expiry, open, Optional.empty(), Collections.emptyList());
-        return setSecretLinkMembers(paths, writablePaths, props);
+        return setSecretLinkMembers(paths, writablePaths, hiddenPaths, props);
     }
 
     @JsMethod
@@ -1106,7 +1147,8 @@ public class UserContext {
         List<String> writable = props.members.isEmpty() ?
                 (props.isLinkWritable ? Collections.singletonList(filePath) : Collections.emptyList()) :
                 props.members.stream().filter(m -> m.writable).map(m -> m.path).collect(Collectors.toList());
-        return setSecretLinkMembers(paths, writable, props);
+        List<String> hidden = props.members.stream().filter(m -> m.hidden).map(m -> m.path).collect(Collectors.toList());
+        return setSecretLinkMembers(paths, writable, hidden, props);
     }
 
     /**
@@ -1118,10 +1160,21 @@ public class UserContext {
      * which rewrites keys and can fail. All of that preparation happens before the payload is
      * touched, so a failure part way through leaves the link exactly as it was rather than
      * partially grown.
+     *
+     * A hidden member is given as a restricted capability, which can't reach anything above it, so
+     * whoever opens the link can't see where it is. Anything it covers that was written before
+     * the restricted format is rewritten into it first, which also comes before the payload.
      */
+    public CompletableFuture<LinkProperties> setSecretLinkMembers(List<String> paths,
+                                                                  List<String> writablePaths,
+                                                                  LinkProperties props) {
+        return setSecretLinkMembers(paths, writablePaths, Collections.emptyList(), props);
+    }
+
     @JsMethod
     public CompletableFuture<LinkProperties> setSecretLinkMembers(List<String> paths,
                                                                   List<String> writablePaths,
+                                                                  List<String> hiddenPaths,
                                                                   LinkProperties props) {
         if (paths.isEmpty())
             return Futures.errored(new IllegalStateException("A secret link must contain at least one item!"));
@@ -1129,22 +1182,42 @@ public class UserContext {
             return Futures.errored(new IllegalStateException("A secret link can hold at most "
                     + MAX_LINK_MEMBERS + " items, not " + paths.size() + ". Share a folder instead."));
         Set<String> writable = new HashSet<>(writablePaths);
+        Set<String> hidden = new HashSet<>(hiddenPaths);
         List<String> needWritingSpace = paths.stream().filter(writable::contains).collect(Collectors.toList());
+        List<String> toUpgrade = paths.stream().filter(hidden::contains).collect(Collectors.toList());
+        List<String> toAdopt = paths.stream().filter(p -> ! hidden.contains(p)).collect(Collectors.toList());
         if (needWritingSpace.isEmpty())
-            return writeSynchronizer.applyComplexComputation(signer.publicKeyHash, signer,
-                            (v, c) -> updateSecretLink(paths, writable, props, v, c))
+            return adoptPending(toAdopt)
+                    .thenCompose(x -> upgradeToRestrictedFormat(toUpgrade))
+                    .thenCompose(upgraded -> writeSynchronizer.applyComplexComputation(signer.publicKeyHash, signer,
+                            (v, c) -> updateSecretLink(paths, writable, hidden, props, v, c)))
                     .thenApply(p -> p.right);
         // an interrupted authorisation leaves an owned writer with no pointer, so clear any before
         // adding another. Once for the batch, not once per member.
-        return removeOrphanedWriters()
-                .exceptionally(t -> {
-                    LOG.log(Level.WARNING, "Couldn't remove orphaned writers: " + t.getMessage(), t);
-                    return 0;
-                })
+        return adoptPending(toAdopt)
+                .thenCompose(x -> removeOrphanedWriters()
+                        .exceptionally(t -> {
+                            LOG.log(Level.WARNING, "Couldn't remove orphaned writers: " + t.getMessage(), t);
+                            return 0;
+                        }))
                 .thenCompose(removed -> Futures.reduceAll(needWritingSpace, (Snapshot) null,
                         (s, path) -> splitIntoOwnWritingSpace(PathUtil.get(path), s), (a, b) -> b))
-                .thenCompose(afterSplits -> commitMembers(paths, writable, props, afterSplits))
+                .thenCompose(afterSplits -> upgradeToRestrictedFormat(toUpgrade)
+                        .thenCompose(upgraded -> commitMembers(paths, writable, hidden, props, afterSplits)))
                 .thenApply(x -> x.right);
+    }
+
+    private CompletableFuture<Boolean> adoptPending(List<String> paths) {
+        return Futures.reduceAll(paths, true, (b, path) -> adoptPending(PathUtil.get(path)), (a, b) -> b);
+    }
+
+    /** Rewrite anything under these paths, and the link nodes in front of them, into the restricted format. */
+    private CompletableFuture<Boolean> upgradeToRestrictedFormat(List<String> paths) {
+        return Futures.reduceAll(paths, true,
+                (b, path) -> getByPath(path)
+                        .thenApply(opt -> opt.orElseThrow(() -> new IllegalStateException("Couldn't retrieve " + path)))
+                        .thenCompose(file -> file.upgradeToRestrictedFormat(network, crypto)),
+                (a, b) -> b);
     }
 
     /**
@@ -1157,13 +1230,14 @@ public class UserContext {
      */
     private CompletableFuture<Pair<Snapshot, LinkProperties>> commitMembers(List<String> paths,
                                                                             Set<String> writable,
+                                                                            Set<String> hidden,
                                                                             LinkProperties props,
                                                                             Snapshot afterSplits) {
         Set<PublicKeyHash> split = afterSplits == null ?
                 Collections.emptySet() :
                 afterSplits.versions.keySet();
         return writeSynchronizer.applyComplexComputation(signer.publicKeyHash, signer,
-                (v, c) -> updateSecretLink(paths, writable, props, readAfresh(v, split), c));
+                (v, c) -> updateSecretLink(paths, writable, hidden, props, readAfresh(v, split), c));
     }
 
     /** The write lock is on our identity key, so the state it hands back can still pin another
@@ -1188,13 +1262,14 @@ public class UserContext {
 
     private CompletableFuture<Pair<Snapshot, LinkProperties>> updateSecretLink(List<String> paths,
                                                                                Set<String> writablePaths,
+                                                                               Set<String> hiddenPaths,
                                                                                LinkProperties props,
                                                                                Snapshot v1,
                                                                                Committer c) {
         // put encrypted secret link in champ on identity, champ root must have mirror bat to make it private
         PublicKeyHash id = signer.publicKeyHash;
         return Futures.combineAllInOrder(paths.stream()
-                        .map(path -> capabilityForLink(path, writablePaths.contains(path), v1))
+                        .map(path -> capabilityForLink(path, writablePaths.contains(path), hiddenPaths.contains(path), v1))
                         .collect(Collectors.toList()))
                 .thenCompose(members -> {
                     List<AbsoluteCapability> caps = members.stream().map(m -> m.left).collect(Collectors.toList());
@@ -1226,12 +1301,14 @@ public class UserContext {
         Set<String> writable = props.members.isEmpty() ?
                 (props.isLinkWritable ? new HashSet<>(paths) : Collections.emptySet()) :
                 props.members.stream().filter(m -> m.writable).map(m -> m.path).collect(Collectors.toSet());
-        return updateSecretLink(paths, writable, props, v, c).thenApply(x -> x.left);
+        Set<String> hidden = props.members.stream().filter(m -> m.hidden).map(m -> m.path).collect(Collectors.toSet());
+        return updateSecretLink(paths, writable, hidden, props, v, c).thenApply(x -> x.left);
     }
 
     /** The capability a member contributes to a link, and what the owner records about it. */
     private CompletableFuture<Pair<AbsoluteCapability, LinkMember>> capabilityForLink(String path,
                                                                                       boolean writable,
+                                                                                      boolean hidden,
                                                                                       Snapshot v1) {
         return getByPath(path, v1)
                 .thenApply(opt -> opt.orElseThrow(() -> new IllegalStateException("Couldn't retrieve " + path)))
@@ -1240,16 +1317,17 @@ public class UserContext {
                             .map(parentWriter -> ! parentWriter.equals(file.writer())).orElse(false);
                     if (writable && ! differentWriter)
                         throw new IllegalStateException("To generate a writable secret link, the target must already be in a different writing space!");
-                    AbsoluteCapability cap = writable ?
+                    AbsoluteCapability full = writable ?
                             file.getLinkPointer().capability :
                             file.getPointer().capability.readOnly();
+                    AbsoluteCapability cap = hidden ? full.withBaseKey(full.rBaseKey.derive(CryptreeNode.RESTRICTED)) : full;
                     // A link carries one owner, and expiry, retrieval limits and revocation are all
                     // enforced against that owner's record. Someone else's file would resolve, since
                     // capabilities are self contained, but the wrong party would control it.
                     if (! cap.owner.equals(signer.publicKeyHash))
                         throw new IllegalStateException("A secret link can only contain your own files. "
                                 + path + " belongs to someone else - ask them for a link to it.");
-                    return new Pair<>(cap, LinkMember.build(path, cap));
+                    return new Pair<>(cap, LinkMember.build(path, cap, hidden));
                 });
     }
 
@@ -3155,9 +3233,39 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<Snapshot> shareReadAccessWith(Path path, Set<String> readersToAdd) {
-        return getUserRoot()
+        return adoptPending(path)
+                .thenCompose(x -> getUserRoot())
                 .thenCompose(home -> network.synchronizer.applyComplexUpdate(signer.publicKeyHash, home.signingPair(),
                         (s, c) -> shareReadAccessWith(path, readersToAdd, s, c)));
+    }
+
+    /**
+     * Something made through a restricted key has no parent link we can read, and whoever made it knows its keys.
+     * Before sharing anything at or below one, give it new keys and a real parent link, so the share shows where it
+     * is, and its maker can't use what they knew to reach anything above it.
+     */
+    public CompletableFuture<Boolean> adoptPending(Path path) {
+        if (path.getNameCount() < 2)
+            return Futures.of(true);
+        return getByPath(path.subpath(0, 1).toString())
+                .thenCompose(home -> adoptPending(home.get(), path.subpath(1, path.getNameCount())));
+    }
+
+    private CompletableFuture<Boolean> adoptPending(FileWrapper parent, Path remaining) {
+        return parent.getChild(remaining.getName(0).toString(), crypto.hasher, network)
+                .thenCompose(childOpt -> {
+                    if (childOpt.isEmpty())
+                        return Futures.of(true);
+                    FileWrapper child = childOpt.get();
+                    if (child.isPending())
+                        // rotating rewrites everything below with real parent links too
+                        return network.synchronizer.applyComplexUpdate(signer.publicKeyHash, parent.signingPair(),
+                                        (s, c) -> rotateAllKeys(child, parent, false, s, c))
+                                .thenApply(s -> true);
+                    if (remaining.getNameCount() == 1)
+                        return Futures.of(true);
+                    return adoptPending(child, remaining.subpath(1, remaining.getNameCount()));
+                });
     }
 
     public CompletableFuture<Snapshot> shareReadAccessWith(Path path, Set<String> readersToAdd, Snapshot s, Committer c) {
@@ -3212,7 +3320,8 @@ public class UserContext {
     @JsMethod
     public CompletableFuture<Snapshot> shareWriteAccessWith(Path fileToShare,
                                                             Set<String> writersToAdd) {
-        return getByPath(fileToShare.getParent())
+        return adoptPending(fileToShare)
+                .thenCompose(x -> getByPath(fileToShare.getParent()))
                 .thenCompose(parentOpt -> ! parentOpt.isPresent() ?
                                 Futures.errored(new IllegalStateException("Unable to read " + fileToShare.getParent())) :
                 parentOpt.get().getChild(fileToShare.getFileName().toString(), crypto.hasher, network)
