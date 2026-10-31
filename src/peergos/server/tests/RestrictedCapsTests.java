@@ -226,4 +226,213 @@ public class RestrictedCapsTests {
         FileWrapper shared = friendAgain.getByPath(home.resolve("a/b/c.bin")).join().get();
         Assert.assertEquals("/" + owner.username + "/a/b/c.bin", shared.getPath(friendAgain.network).join());
     }
+
+    private UserContext openLink(UserContext owner, LinkProperties link) {
+        return UserContext.fromSecretLinkV2(link.toLinkString(owner.signer.publicKeyHash), () -> Futures.of(""), network(), crypto).join();
+    }
+
+    private Set<String> topLevel(UserContext fromLink) {
+        return children(fromLink.getByPath("/").join().get(), fromLink.network).keySet();
+    }
+
+    @Test
+    public void hiddenLinkToAFile() {
+        UserContext owner = signIn(username("hl"));
+        Path home = PathUtil.get(owner.username);
+        mkdir(owner, home, "private-folder");
+        byte[] data = randomData(5000);
+        upload(owner, home.resolve("private-folder"), "photo.jpg", data);
+        String path = home.resolve("private-folder/photo.jpg").toString();
+        LinkProperties link = owner.createSecretLink(List.of(path), List.of(), List.of(path),
+                Optional.empty(), Optional.empty(), "", false).join();
+        Assert.assertTrue(link.members.get(0).hidden);
+
+        UserContext fromLink = openLink(owner, link);
+        Assert.assertEquals("/", fromLink.getEntryPath().join());
+        Assert.assertEquals(Set.of("photo.jpg"), topLevel(fromLink));
+        FileWrapper file = fromLink.getByPath("/photo.jpg").join().get();
+        Assert.assertTrue(file.isRestrictedKey());
+        Assert.assertEquals("/photo.jpg", file.getPath(fromLink.network).join());
+        Assert.assertTrue(file.retrieveParent(fromLink.network).join().isEmpty());
+        PeergosNetworkUtils.checkFileContents(data, file, fromLink);
+
+        List<LinkMember> members = owner.getSecretLinkMembers(link).join();
+        Assert.assertEquals(List.of(new LinkMember(path, false, true)), members);
+    }
+
+    @Test
+    public void hiddenLinkUpgradesLegacyData() {
+        UserContext owner = signIn(username("hu"));
+        Path home = PathUtil.get(owner.username);
+        CryptreeNode.setWriteLegacyFormat(true);
+        mkdir(owner, home, "old");
+        mkdir(owner, home.resolve("old"), "shared");
+        mkdir(owner, home.resolve("old/shared"), "inner");
+        byte[] a = randomData(Chunk.LEGACY_SIZE + 100);
+        byte[] b = randomData(100);
+        upload(owner, home.resolve("old/shared"), "a.bin", a);
+        upload(owner, home.resolve("old/shared/inner"), "b.bin", b);
+        CryptreeNode.setWriteLegacyFormat(false);
+
+        String path = home.resolve("old/shared").toString();
+        LinkProperties link = owner.createSecretLink(List.of(path), List.of(), List.of(path),
+                Optional.empty(), Optional.empty(), "", false).join();
+
+        UserContext fromLink = openLink(owner, link);
+        Assert.assertEquals("/shared", fromLink.getEntryPath().join());
+        PeergosNetworkUtils.checkFileContents(a, fromLink.getByPath("/shared/a.bin").join().get(), fromLink);
+        FileWrapper inner = fromLink.getByPath("/shared/inner/b.bin").join().get();
+        Assert.assertTrue(inner.isRestrictedKey());
+        PeergosNetworkUtils.checkFileContents(b, inner, fromLink);
+
+        // the owner still sees everything where it was
+        UserContext fresh = signIn(owner.username);
+        FileWrapper ownerView = fresh.getByPath(home.resolve("old/shared/inner/b.bin")).join().get();
+        Assert.assertTrue(isRestrictedFormat(ownerView));
+        Assert.assertEquals("/" + owner.username + "/old/shared/inner/b.bin", ownerView.getPath(fresh.network).join());
+        PeergosNetworkUtils.checkFileContents(a, fresh.getByPath(home.resolve("old/shared/a.bin")).join().get(), fresh);
+        Assert.assertFalse(isRestrictedFormat(fresh.getByPath(home.resolve("old")).join().get()));
+    }
+
+    @Test
+    public void writableHiddenLinkToAFile() {
+        UserContext owner = signIn(username("hw"));
+        Path home = PathUtil.get(owner.username);
+        mkdir(owner, home, "documents");
+        upload(owner, home.resolve("documents"), "notes.txt", randomData(300));
+        String path = home.resolve("documents/notes.txt").toString();
+        LinkProperties link = owner.createSecretLink(List.of(path), List.of(path), List.of(path),
+                Optional.empty(), Optional.empty(), "", false).join();
+
+        UserContext fromLink = openLink(owner, link);
+        FileWrapper file = fromLink.getByPath("/notes.txt").join().get();
+        Assert.assertTrue(file.isWritable());
+        Assert.assertTrue(file.isRestrictedKey());
+        byte[] edited = randomData(Chunk.LEGACY_SIZE + 2000);
+        file.overwriteFile(AsyncReader.build(edited), edited.length, fromLink.network, crypto, x -> {}).join();
+        byte[] shorter = randomData(1000);
+        fromLink.getByPath("/notes.txt").join().get()
+                .overwriteFile(AsyncReader.build(shorter), shorter.length, fromLink.network, crypto, x -> {}).join();
+
+        PeergosNetworkUtils.checkFileContents(shorter, openLink(owner, link).getByPath("/notes.txt").join().get(), fromLink);
+        UserContext fresh = signIn(owner.username);
+        FileWrapper ownerView = fresh.getByPath(path).join().get();
+        PeergosNetworkUtils.checkFileContents(shorter, ownerView, fresh);
+        Assert.assertEquals("/" + path, ownerView.getPath(fresh.network).join());
+    }
+
+    @Test
+    public void writableHiddenLinkToADirectory() {
+        UserContext owner = signIn(username("hd"));
+        UserContext friend = signIn(username("hf"));
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(friend));
+        Path home = PathUtil.get(owner.username);
+        mkdir(owner, home, "work");
+        mkdir(owner, home.resolve("work"), "drop");
+        byte[] existing = randomData(500);
+        upload(owner, home.resolve("work/drop"), "existing.txt", existing);
+        upload(owner, home.resolve("work/drop"), "doomed.txt", randomData(50));
+        String path = home.resolve("work/drop").toString();
+        LinkProperties link = owner.createSecretLink(List.of(path), List.of(path), List.of(path),
+                Optional.empty(), Optional.empty(), "", false).join();
+
+        UserContext fromLink = openLink(owner, link);
+        Assert.assertEquals(Set.of("drop"), topLevel(fromLink));
+        FileWrapper drop = fromLink.getByPath("/drop").join().get();
+        Assert.assertTrue(drop.isWritable());
+        Assert.assertTrue(drop.retrieveParent(fromLink.network).join().isEmpty());
+
+        byte[] added = randomData(Chunk.LEGACY_SIZE + 10);
+        drop = drop.uploadOrReplaceFile("added.bin", AsyncReader.build(added), added.length, fromLink.network, crypto, () -> false, x -> {}).join();
+        drop.mkdir("sub", fromLink.network, false, Optional.empty(), crypto).join();
+        byte[] nested = randomData(700);
+        fromLink.getByPath("/drop/sub").join().get()
+                .uploadOrReplaceFile("nested.txt", AsyncReader.build(nested), nested.length, fromLink.network, crypto, () -> false, x -> {}).join();
+        byte[] edited = randomData(800);
+        fromLink.getByPath("/drop/existing.txt").join().get()
+                .overwriteFile(AsyncReader.build(edited), edited.length, fromLink.network, crypto, x -> {}).join();
+        drop = fromLink.getByPath("/drop").join().get();
+        fromLink.getByPath("/drop/existing.txt").join().get().rename("renamed.txt", drop, PathUtil.get("/drop/existing.txt"), fromLink).join();
+        drop = fromLink.getByPath("/drop").join().get();
+        fromLink.getByPath("/drop/doomed.txt").join().get().remove(drop, PathUtil.get("/drop/doomed.txt"), fromLink).join();
+
+        // everything made through the link is readable by the link and only its own things are restricted
+        UserContext again = openLink(owner, link);
+        Assert.assertEquals(Set.of("added.bin", "sub", "renamed.txt"), children(again.getByPath("/drop").join().get(), again.network).keySet());
+        for (String name : List.of("/drop/added.bin", "/drop/sub", "/drop/sub/nested.txt", "/drop/renamed.txt")) {
+            FileWrapper f = again.getByPath(name).join().get();
+            Assert.assertTrue(name, f.isRestrictedKey());
+            Assert.assertTrue(name, f.retrieveParent(again.network).join().isEmpty());
+        }
+        PeergosNetworkUtils.checkFileContents(added, again.getByPath("/drop/added.bin").join().get(), again);
+        PeergosNetworkUtils.checkFileContents(nested, again.getByPath("/drop/sub/nested.txt").join().get(), again);
+        PeergosNetworkUtils.checkFileContents(edited, again.getByPath("/drop/renamed.txt").join().get(), again);
+
+        // the owner reads it all with full keys
+        UserContext fresh = signIn(owner.username);
+        Path drop2 = home.resolve("work/drop");
+        Assert.assertEquals(Set.of("added.bin", "sub", "renamed.txt"), children(fresh.getByPath(drop2).join().get(), fresh.network).keySet());
+        FileWrapper ownerAdded = fresh.getByPath(drop2.resolve("added.bin")).join().get();
+        Assert.assertFalse(ownerAdded.isRestrictedKey());
+        Assert.assertTrue(ownerAdded.isPending());
+        PeergosNetworkUtils.checkFileContents(added, ownerAdded, fresh);
+        PeergosNetworkUtils.checkFileContents(nested, fresh.getByPath(drop2.resolve("sub/nested.txt")).join().get(), fresh);
+        FileWrapper ownerRenamed = fresh.getByPath(drop2.resolve("renamed.txt")).join().get();
+        Assert.assertFalse(ownerRenamed.isPending());
+        Assert.assertEquals("/" + drop2 + "/renamed.txt", ownerRenamed.getPath(fresh.network).join());
+
+        // the owner can add to and change what the link made
+        byte[] ownerData = randomData(400);
+        upload(fresh, drop2.resolve("sub"), "from-owner.txt", ownerData);
+        fresh.getByPath(drop2.resolve("added.bin")).join().get()
+                .overwriteFile(AsyncReader.build(ownerData), ownerData.length, fresh.network, crypto, x -> {}).join();
+        PeergosNetworkUtils.checkFileContents(ownerData, openLink(owner, link).getByPath("/drop/sub/from-owner.txt").join().get(), again);
+        PeergosNetworkUtils.checkFileContents(ownerData, openLink(owner, link).getByPath("/drop/added.bin").join().get(), again);
+
+        // sharing something the link made gives it a real place first
+        fresh.shareReadAccessWith(drop2.resolve("sub/nested.txt"), Set.of(friend.username)).join();
+        UserContext afterShare = signIn(owner.username);
+        Assert.assertFalse(afterShare.getByPath(drop2.resolve("sub")).join().get().isPending());
+        FileWrapper adopted = afterShare.getByPath(drop2.resolve("sub/nested.txt")).join().get();
+        Assert.assertFalse(adopted.isPending());
+        Assert.assertEquals("/" + drop2 + "/sub/nested.txt", adopted.getPath(afterShare.network).join());
+        UserContext friendAgain = signIn(friend.username);
+        FileWrapper friendView = friendAgain.getByPath(drop2.resolve("sub/nested.txt")).join().get();
+        PeergosNetworkUtils.checkFileContents(nested, friendView, friendAgain);
+        Assert.assertEquals("/" + drop2 + "/sub/nested.txt", friendView.getPath(friendAgain.network).join());
+
+        // and the link still reads and writes it
+        UserContext last = openLink(owner, link);
+        PeergosNetworkUtils.checkFileContents(nested, last.getByPath("/drop/sub/nested.txt").join().get(), last);
+        last.getByPath("/drop/sub").join().get()
+                .uploadOrReplaceFile("later.txt", AsyncReader.build(nested), nested.length, last.network, crypto, () -> false, x -> {}).join();
+        PeergosNetworkUtils.checkFileContents(nested, signIn(owner.username).getByPath(drop2.resolve("sub/later.txt")).join().get(), last);
+    }
+
+    @Test
+    public void manyChildrenThroughARestrictedKey() {
+        UserContext owner = signIn(username("hm"));
+        Path home = PathUtil.get(owner.username);
+        mkdir(owner, home, "big");
+        String path = home.resolve("big").toString();
+        LinkProperties link = owner.createSecretLink(List.of(path), List.of(path), List.of(path),
+                Optional.empty(), Optional.empty(), "", false).join();
+        int max = CryptreeNode.getMaxChildLinksPerBlob();
+        CryptreeNode.setMaxChildLinkPerBlob(3);
+        try {
+            UserContext fromLink = openLink(owner, link);
+            for (int i = 0; i < 8; i++)
+                fromLink.getByPath("/big").join().get()
+                        .uploadOrReplaceFile("f" + i, AsyncReader.build(new byte[]{(byte) i}), 1, fromLink.network, crypto, () -> false, x -> {}).join();
+            Set<String> expected = IntStream.range(0, 8).mapToObj(i -> "f" + i).collect(Collectors.toSet());
+            UserContext again = openLink(owner, link);
+            Assert.assertEquals(expected, children(again.getByPath("/big").join().get(), again.network).keySet());
+            UserContext fresh = signIn(owner.username);
+            Assert.assertEquals(expected, children(fresh.getByPath(home.resolve("big")).join().get(), fresh.network).keySet());
+            upload(fresh, home.resolve("big"), "owners", new byte[]{1});
+            Assert.assertEquals(9, children(openLink(owner, link).getByPath("/big").join().get(), again.network).size());
+        } finally {
+            CryptreeNode.setMaxChildLinkPerBlob(max);
+        }
+    }
 }

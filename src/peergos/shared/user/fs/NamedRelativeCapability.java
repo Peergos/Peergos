@@ -72,7 +72,7 @@ public class NamedRelativeCapability implements Cborable {
     @Override
     public CborObject toCbor() {
         CborObject.CborMap cbor = cap.toCbor(); // This is to ensure binary compatibility for old code with new data
-        // w, m, a, k, l, f are taken
+        // w, m, a, k, l, f, g are taken
         addCbor("n", new CborObject.CborString(name.name), cbor);
         isDir.ifPresent(d -> addCbor("d", new CborObject.CborBoolean(d), cbor));
         mimetype.ifPresent(m -> addCbor("t", new CborObject.CborString(m), cbor));
