@@ -668,7 +668,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         // The bats in a block's metadata come from whoever wrote it, so this lookup is scoped to the
         // owner being read for: a row written under another owner must not be able to authorise here.
         // Legacy rows predating partitioning have a null owner and match no owner, so the scoping only
-        // applies once partitioning is complete; before that this is the pre-existing lookup.
+        // applies once partitioning is complete; before that the lookup is by block alone.
         if (partitionComplete && owner == null)
             return Futures.errored(new IllegalStateException("A read has to name the owner of its blocks"));
         List<Cid> hashes = blocks.stream().map(b -> b.hash).collect(Collectors.toList());
@@ -1515,8 +1515,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 .thenApply(m -> Optional.of(m.size));
     }
 
-    private CompletableFuture<Optional<Integer>> getSizeOnly(PublicKeyHash owner, Multihash hash) {
-        Optional<BlockMetadata> meta = blockMetadata.get((Cid) hash);
+    /** @param anyOwnersRow whether a row recorded under any owner will do for the size */
+    private CompletableFuture<Optional<Integer>> getSizeOnly(PublicKeyHash owner, Multihash hash, boolean anyOwnersRow) {
+        Optional<BlockMetadata> meta = anyOwnersRow ? blockMetadata.get((Cid) hash) : Optional.empty();
         if (meta.isPresent())
             return Futures.of(Optional.of(meta.get().size));
         Optional<byte[]> buffered = blockBuffer.get(owner, (Cid) hash).join();
@@ -1542,7 +1543,13 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             Map<String, List<String>> headRes = HttpUtil.head(headUrl);
             blockHeads.inc();
             blockSize.inc();
-            long size = Long.parseLong(headRes.get("Content-Length").get(0));
+            // header names are case insensitive, and not every server sends this one as S3 does
+            String length = headRes.entrySet().stream()
+                    .filter(e -> "Content-Length".equalsIgnoreCase(e.getKey()))
+                    .findFirst()
+                    .map(e -> e.getValue().get(0))
+                    .orElseThrow(() -> new IllegalStateException("No Content-Length for " + hash));
+            long size = Long.parseLong(length);
             return Futures.of(Optional.of((int)size));
         } catch (FileNotFoundException f) {
             LOG.warning("S3 404 error reading " + hash);
@@ -1774,7 +1781,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         String version = data.get().right;
         if (h.isRaw()) {
             // we should avoid this by populating the metadata store, as it means two S3 calls, a ranged GET and a HEAD
-            int size = getSizeOnly(owner, h).join().get();
+            int size = getSizeOnly(owner, h, anyOwnersRow).join().get();
             BlockMetadata meta = new BlockMetadata(size, Collections.emptyList(), Bat.getRawBlockBats(bloc));
             blockMetadata.put(owner, h, version, meta);
             return Futures.of(meta);
