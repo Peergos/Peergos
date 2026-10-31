@@ -3292,7 +3292,7 @@ public class UserContext {
                             .fromPair(originalCap.wBaseKey.get(), newSigner);
                     CryptreeNode newRoot = file.getPointer().fileAccess
                             .withWriterLink(originalCap.rBaseKey, signerLink)
-                            .withParentLink(file.getParentKey(), newParentLink);
+                            .withParentLink(originalCap.rBaseKey, newParentLink);
                     FileWrapper.MovedSubtree moved = new FileWrapper.MovedSubtree();
                     return IpfsTransaction.call(owner, tid -> network.uploadChunk(p.left, c, newRoot, owner,
                                             originalCap.getMapKey(), newSigner, tid)
@@ -3336,7 +3336,7 @@ public class UserContext {
                                     RelativeCapability toParent = child.getParentCapability(cap.rBaseKey)
                                             .orElseThrow(() -> new IllegalStateException("Nested writing space with no parent link!"))
                                             .withWritingKey(Optional.of(newParent.publicKeyHash));
-                                    CryptreeNode updated = child.withParentLink(child.getParentKey(cap.rBaseKey), toParent);
+                                    CryptreeNode updated = child.withParentLink(cap.rBaseKey, toParent);
                                     return network.uploadChunk(withChild, c, updated, owner, cap.getMapKey(), childSigner, tid)
                                             .thenCompose(v2 -> OwnerProof.build(childSigner, newParent.publicKeyHash)
                                                     .thenCompose(proof -> v2.get(newParent).props.get()

@@ -2649,8 +2649,8 @@ public class FileWrapper {
                                             target.getLocation().getMapKey(), target.writableFilePointer().bat, target.getParentKey(), Optional.empty());
                                     boolean renamed = ! newName.equals(getName());
                                     CryptreeNode newMetadata = renamed ?
-                                            pointer.fileAccess.withParentLinkAndProperties(getParentKey(), newParentLink, pointer.getProperties().withName(newName)) :
-                                            pointer.fileAccess.withParentLink(getParentKey(), newParentLink);
+                                            pointer.fileAccess.withParentLinkAndProperties(pointer.capability.rBaseKey, newParentLink, pointer.getProperties().withName(newName)) :
+                                            pointer.fileAccess.withParentLink(pointer.capability.rBaseKey, newParentLink);
                                     RelativeCapability ourNewcap = target.writableFilePointer().relativise(pointer.capability);
                                     return IpfsTransaction.call(owner(),
                                             tid -> target.getPath(net).thenCompose(newPath -> v.withWriter(owner(), target.writer(), net)
