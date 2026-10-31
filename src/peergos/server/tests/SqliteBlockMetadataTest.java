@@ -253,6 +253,36 @@ public class SqliteBlockMetadataTest {
                 store.getAll(victim, List.of(block)).isEmpty());
     }
 
+    /** The store ignores a second row for a block, so the cache mustn't answer with it either. */
+    @Test
+    public void aLaterPutDoesNotReplaceTheStoredRow() throws Exception {
+        Path dir = Files.createTempDirectory("peergos-block-metadata");
+        BlockMetadataStore store = new CachingBlockMetadataStore(buildStore(dir.resolve("meta.sql")), 1000);
+        PublicKeyHash victim = new PublicKeyHash(randomCid());
+        PublicKeyHash attacker = new PublicKeyHash(randomCid());
+
+        Cid block = randomCid();
+        store.put(victim, block, "alpha", new BlockMetadata(1024, Collections.emptyList(), Collections.emptyList()));
+        store.put(attacker, block, "beta", new BlockMetadata(1, Collections.emptyList(), Collections.emptyList()));
+
+        Assert.assertEquals(1024, store.get(block).get().size);
+        Assert.assertEquals(1024, store.getAll(victim, List.of(block)).get(block).size);
+    }
+
+    @Test
+    public void removeEvictsTheOwnerScopedCache() throws Exception {
+        Path dir = Files.createTempDirectory("peergos-block-metadata");
+        BlockMetadataStore store = new CachingBlockMetadataStore(buildStore(dir.resolve("meta.sql")), 1000);
+        PublicKeyHash owner = new PublicKeyHash(randomCid());
+
+        Cid block = randomCid();
+        store.put(owner, block, "alpha", new BlockMetadata(1024, Collections.emptyList(), Collections.emptyList()));
+        Assert.assertTrue(store.getAll(owner, List.of(block)).containsKey(block));
+
+        store.remove(block);
+        Assert.assertTrue(store.getAll(owner, List.of(block)).isEmpty());
+    }
+
     private static BlockMetadataStore buildStore(Path file) throws Exception {
         Connection conn = new Sqlite.UncloseableConnection(Sqlite.build(file.toString()));
         return new JdbcBlockMetadataStore(() -> conn, new SqliteCommands());

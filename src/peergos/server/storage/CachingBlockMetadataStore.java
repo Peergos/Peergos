@@ -96,22 +96,26 @@ public class CachingBlockMetadataStore implements BlockMetadataStore {
         target.setOwnerAndVersion(owner, block, version);
     }
 
+    /** What a caller puts isn't cached: the store keeps the first row for a block and ignores a later one, and a
+     *  cached later row - with bats of its writer's choosing - would answer for the block in its place. */
     @Override
     public void put(PublicKeyHash owner, Cid block, String version, BlockMetadata meta) {
         target.put(owner, block, version, meta);
-        cache.put(block, meta);
+        cache.remove(block);
     }
 
     @Override
     public void put(PublicKeyHash owner, List<Cid> blocks, List<byte[]> data) {
         target.put(owner, blocks, data);
-        for (int i=0; i < blocks.size(); i++)
-            cache.put(blocks.get(i), BlockMetadataStore.extractMetadata(blocks.get(i), data.get(i)));
+        blocks.forEach(cache::remove);
     }
 
     @Override
     public void remove(Cid block) {
         cache.remove(block);
+        synchronized (ownedCache) {
+            ownedCache.keySet().removeIf(k -> k.right.equals(block));
+        }
         target.remove(block);
     }
 

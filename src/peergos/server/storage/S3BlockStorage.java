@@ -669,6 +669,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         // owner being read for: a row written under another owner must not be able to authorise here.
         // Legacy rows predating partitioning have a null owner and match no owner, so the scoping only
         // applies once partitioning is complete; before that this is the pre-existing lookup.
+        if (partitionComplete && owner == null)
+            return Futures.errored(new IllegalStateException("A read has to name the owner of its blocks"));
         List<Cid> hashes = blocks.stream().map(b -> b.hash).collect(Collectors.toList());
         Map<Cid, BlockMetadata> allMeta = partitionComplete ?
                 blockMetadata.getAll(owner, hashes) :
@@ -676,8 +678,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         List<CompletableFuture<BlockMetadata>> auths = blocks.stream()
                 .map(b -> {
                     BlockMetadata meta = allMeta.get(b.hash);
+                    // a miss reads the owner's own block for its bats, never the lookup that ignores owners
                     CompletableFuture<BlockMetadata> metaFuture = meta != null ?
-                            Futures.of(meta) : getBlockMetadata(owner, b.hash);
+                            Futures.of(meta) :
+                            getBlockMetadata(owner, b.hash, peerIds, Optional.empty(), ! partitionComplete);
                     return metaFuture.thenCompose(m -> {
                         CompletableFuture<String> authFuture = b.bat
                                 .map(bat -> bat.bat.generateAuth(b.hash, id, 300, S3Request.currentDatetime(), bat.id, hasher)
@@ -1744,9 +1748,21 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                                              Cid h,
                                                              List<Multihash> peerIds,
                                                              Optional<BatWithId> bat) {
+        return getBlockMetadata(owner, h, peerIds, bat, true);
+    }
+
+    /**
+     * @param anyOwnersRow whether a row recorded under any owner will do; when not, the block is read from the
+     *                     owner's own storage and its metadata taken from the bytes
+     */
+    private CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner,
+                                                              Cid h,
+                                                              List<Multihash> peerIds,
+                                                              Optional<BatWithId> bat,
+                                                              boolean anyOwnersRow) {
         if (h.isIdentity())
             return Futures.of(new BlockMetadata(0, CborObject.getLinks(h, h.getHash()), Bat.getBlockBats(h, h.getHash())));
-        Optional<BlockMetadata> cached = blockMetadata.get(h);
+        Optional<BlockMetadata> cached = anyOwnersRow ? blockMetadata.get(h) : Optional.empty();
         if (cached.isPresent())
             return Futures.of(cached.get());
         Optional<Pair<byte[], String>> data = getRaw(peerIds, owner, h, h.isRaw() ?
