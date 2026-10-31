@@ -664,14 +664,24 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         if (! blocks.stream().allMatch(c -> c.hash.isRaw()))
             return Futures.errored(new IllegalStateException("Can only auth read for raw blocks, not cbor!"));
 
-        // bulk-fetch all metadata in a single query, then verify BATs concurrently
+        // bulk-fetch all metadata in a single query, then verify BATs concurrently.
+        // The bats in a block's metadata come from whoever wrote it, so this lookup is scoped to the
+        // owner being read for: a row written under another owner must not be able to authorise here.
+        // Legacy rows predating partitioning have a null owner and match no owner, so the scoping only
+        // applies once partitioning is complete; before that the lookup is by block alone.
+        if (partitionComplete && owner == null)
+            return Futures.errored(new IllegalStateException("A read has to name the owner of its blocks"));
         List<Cid> hashes = blocks.stream().map(b -> b.hash).collect(Collectors.toList());
-        Map<Cid, BlockMetadata> allMeta = blockMetadata.getAll(hashes);
+        Map<Cid, BlockMetadata> allMeta = partitionComplete ?
+                blockMetadata.getAll(owner, hashes) :
+                blockMetadata.getAll(hashes);
         List<CompletableFuture<BlockMetadata>> auths = blocks.stream()
                 .map(b -> {
                     BlockMetadata meta = allMeta.get(b.hash);
+                    // a miss reads the owner's own block for its bats, never the lookup that ignores owners
                     CompletableFuture<BlockMetadata> metaFuture = meta != null ?
-                            Futures.of(meta) : getBlockMetadata(owner, b.hash);
+                            Futures.of(meta) :
+                            getBlockMetadata(owner, b.hash, peerIds, Optional.empty(), ! partitionComplete);
                     return metaFuture.thenCompose(m -> {
                         CompletableFuture<String> authFuture = b.bat
                                 .map(bat -> bat.bat.generateAuth(b.hash, id, 300, S3Request.currentDatetime(), bat.id, hasher)
@@ -1505,8 +1515,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 .thenApply(m -> Optional.of(m.size));
     }
 
-    private CompletableFuture<Optional<Integer>> getSizeOnly(PublicKeyHash owner, Multihash hash) {
-        Optional<BlockMetadata> meta = blockMetadata.get((Cid) hash);
+    /** @param anyOwnersRow whether a row recorded under any owner will do for the size */
+    private CompletableFuture<Optional<Integer>> getSizeOnly(PublicKeyHash owner, Multihash hash, boolean anyOwnersRow) {
+        Optional<BlockMetadata> meta = anyOwnersRow ? blockMetadata.get((Cid) hash) : Optional.empty();
         if (meta.isPresent())
             return Futures.of(Optional.of(meta.get().size));
         Optional<byte[]> buffered = blockBuffer.get(owner, (Cid) hash).join();
@@ -1532,7 +1543,13 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             Map<String, List<String>> headRes = HttpUtil.head(headUrl);
             blockHeads.inc();
             blockSize.inc();
-            long size = Long.parseLong(headRes.get("Content-Length").get(0));
+            // header names are case insensitive, and not every server sends this one as S3 does
+            String length = headRes.entrySet().stream()
+                    .filter(e -> "Content-Length".equalsIgnoreCase(e.getKey()))
+                    .findFirst()
+                    .map(e -> e.getValue().get(0))
+                    .orElseThrow(() -> new IllegalStateException("No Content-Length for " + hash));
+            long size = Long.parseLong(length);
             return Futures.of(Optional.of((int)size));
         } catch (FileNotFoundException f) {
             LOG.warning("S3 404 error reading " + hash);
@@ -1738,9 +1755,21 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                                              Cid h,
                                                              List<Multihash> peerIds,
                                                              Optional<BatWithId> bat) {
+        return getBlockMetadata(owner, h, peerIds, bat, true);
+    }
+
+    /**
+     * @param anyOwnersRow whether a row recorded under any owner will do; when not, the block is read from the
+     *                     owner's own storage and its metadata taken from the bytes
+     */
+    private CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner,
+                                                              Cid h,
+                                                              List<Multihash> peerIds,
+                                                              Optional<BatWithId> bat,
+                                                              boolean anyOwnersRow) {
         if (h.isIdentity())
             return Futures.of(new BlockMetadata(0, CborObject.getLinks(h, h.getHash()), Bat.getBlockBats(h, h.getHash())));
-        Optional<BlockMetadata> cached = blockMetadata.get(h);
+        Optional<BlockMetadata> cached = anyOwnersRow ? blockMetadata.get(h) : Optional.empty();
         if (cached.isPresent())
             return Futures.of(cached.get());
         Optional<Pair<byte[], String>> data = getRaw(peerIds, owner, h, h.isRaw() ?
@@ -1752,7 +1781,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         String version = data.get().right;
         if (h.isRaw()) {
             // we should avoid this by populating the metadata store, as it means two S3 calls, a ranged GET and a HEAD
-            int size = getSizeOnly(owner, h).join().get();
+            int size = getSizeOnly(owner, h, anyOwnersRow).join().get();
             BlockMetadata meta = new BlockMetadata(size, Collections.emptyList(), Bat.getRawBlockBats(bloc));
             blockMetadata.put(owner, h, version, meta);
             return Futures.of(meta);

@@ -17,6 +17,18 @@ public interface BlockMetadataStore {
 
     Map<Cid, BlockMetadata> getAll(List<Cid> blocks);
 
+    /** The metadata for these blocks, but only where they are recorded under this owner.
+     *
+     *  Authorising a read has to use this rather than the owner blind lookup: the bats in a block's
+     *  metadata can be supplied by whoever wrote it, so a row written under one owner must never be
+     *  able to authorise a read under another. A miss is safe - the caller falls back to reading the
+     *  block itself and deriving its bats from the bytes.
+     *
+     *  Legacy rows predating partitioning have a null owner and match no owner, so callers gate this
+     *  on partitioning being complete.
+     */
+    Map<Cid, BlockMetadata> getAll(PublicKeyHash owner, List<Cid> blocks);
+
     /**
      *
      * @param block

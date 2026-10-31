@@ -10,9 +10,13 @@ import java.util.stream.*;
 public class RamBlockMetadataStore implements BlockMetadataStore {
 
     private final Map<Cid, BlockMetadata> store;
+    /** Which owner each block was written under, so an owner scoped lookup can mean something here
+     *  too rather than silently ignoring the owner. */
+    private final Map<Cid, PublicKeyHash> owners;
 
     public RamBlockMetadataStore() {
         this.store = new HashMap<>(50_000);
+        this.owners = new HashMap<>(50_000);
     }
 
     @Override
@@ -40,28 +44,41 @@ public class RamBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
+    public Map<Cid, BlockMetadata> getAll(PublicKeyHash owner, List<Cid> blocks) {
+        Map<Cid, BlockMetadata> res = new HashMap<>();
+        for (Cid block : blocks) {
+            if (Objects.equals(owner, owners.get(block)))
+                Optional.ofNullable(store.get(block)).ifPresent(m -> res.put(block, m));
+        }
+        return res;
+    }
+
+    @Override
     public Optional<PublicKeyHash> getOwner(Cid block) {
-        return Optional.empty();
+        return Optional.ofNullable(owners.get(block));
     }
 
     @Override
     public void setOwner(PublicKeyHash owner, Cid block) {
-
+        owners.put(block, owner);
     }
 
     @Override
     public void setOwnerAndVersion(PublicKeyHash owner, Cid block, String version) {
-
+        owners.put(block, owner);
     }
 
     @Override
     public void put(PublicKeyHash owner, Cid block, String version, BlockMetadata meta) {
         store.put(block, meta);
+        if (owner != null)
+            owners.put(block, owner);
     }
 
     @Override
     public void remove(Cid block) {
         store.remove(block);
+        owners.remove(block);
     }
 
     @Override
