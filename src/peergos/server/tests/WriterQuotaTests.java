@@ -285,7 +285,7 @@ public class WriterQuotaTests {
         }
     }
 
-    /** Per block signatures, which go through a client's write buffer where a batch signature would not. */
+    /** Per block signatures, as a client's own uploads carry. */
     private static java.util.concurrent.CompletableFuture<List<byte[]>> signed(SigningPrivateKeyAndPublicHash signer, List<byte[]> blocks) {
         return Futures.combineAllInOrder(blocks.stream()
                 .map(b -> crypto.hasher.sha256(b).thenCompose(h -> signer.secret.signMessage(h)))

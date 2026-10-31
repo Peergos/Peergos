@@ -670,6 +670,13 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     usageStore.addUserIfAbsent(username);
                     usageStore.addWriter(username, writer);
                 }
+                // the parent has a pointer already, so the self heal finds it if the store is missing it
+                try {
+                    usageStore.getOwner(parent);
+                } catch (IllegalStateException absent) {
+                    if (! registerMissedWriters(owner, parent))
+                        return false;
+                }
                 usageStore.addOwnedKey(parent, writer);
                 return true;
             } catch (Exception e) {
