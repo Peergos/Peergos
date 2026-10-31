@@ -15,10 +15,12 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
+import java.util.logging.*;
 import java.util.stream.*;
 
 public class ChatController {
     public static final String SHARED_CHAT_STATE = "peergos-chat-state.cbor";
+    private static final Logger LOG = Logger.getLogger(ChatController.class.getName());
     public static final String SHARED_MSG_LOG = "peergos-chat-messages.cborstream";
     public static final String SHARED_MSG_LOG_INDEX = "peergos-chat-messages.index.bin";
     public static final String PRIVATE_CHAT_STATE = "private-chat-state.cbor";
@@ -232,11 +234,30 @@ public class ChatController {
                 "media");
     }
 
+    /** Whether a path is a file in some member's media folder for this chat, which is where every attachment is
+     *  uploaded. The copy is made with our own access, so any other path would copy one of our own files, or one
+     *  shared with us, into the chat for its members to read. */
+    static boolean isChatMedia(Path source, Path mediaDir) {
+        if (source.getNameCount() <= 1 + mediaDir.getNameCount())
+            return false;
+        for (int i = 0; i < source.getNameCount(); i++) {
+            String part = source.getName(i).toString();
+            if (part.isEmpty() || part.equals(".") || part.equals(".."))
+                return false;
+        }
+        return source.subpath(1, 1 + mediaDir.getNameCount()).equals(mediaDir);
+    }
+
     private CompletableFuture<Snapshot> mirrorMedia(FileRef ref, ChatController chat, String currentMirrorUsername, Snapshot in, Committer committer) {
         if (currentMirrorUsername.equals(context.username))
             return Futures.of(in);
         Path mediaDir = getChatMediaDir(chat);
         Path sourcePath = PathUtil.get(ref.path);
+        if (! isChatMedia(sourcePath, mediaDir)) {
+            // skipped rather than failed, or one such message would stop every later merge of this chat
+            LOG.warning("Not copying a chat attachment from outside the chat's media folders");
+            return Futures.of(in);
+        }
         Path chatRelativePath = sourcePath.subpath(1 + mediaDir.getNameCount(), sourcePath.getNameCount());
         Path ourCopy = mediaDir.resolve(chatRelativePath);
         Path parent = ourCopy.getParent();
