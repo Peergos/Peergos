@@ -264,6 +264,27 @@ public class JdbcUsageStore implements UsageStore {
         }
     }
 
+    @Override
+    public void addOwnedKey(PublicKeyHash parent, PublicKeyHash owned) {
+        try (Connection conn = getConnection(true, false);
+             PreparedStatement insertOwned = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ", "INTO ownedkeys (parent_id, owned_id) VALUES(?, ?)"))) {
+            insertOwned.setInt(1, getWriterId(parent, conn));
+            insertOwned.setInt(2, getWriterId(owned, conn));
+            if (insertOwned.executeUpdate() == 0)
+                return;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+        for (UsageListener listener : listeners) {
+            try {
+                listener.usageChanged(owned, 0, true);
+            } catch (Exception e) {
+                LOG.log(Level.WARNING, "Usage listener failed for writer " + owned, e);
+            }
+        }
+    }
+
     private int getWriterId(PublicKeyHash writer, Connection conn) {
         try (PreparedStatement writerSelect = conn.prepareStatement("SELECT id FROM writers WHERE key_hash = ?;")) {
             writerSelect.setBytes(1, writer.toBytes());
@@ -617,7 +638,8 @@ public class JdbcUsageStore implements UsageStore {
                                  Connection conn) throws SQLException {
         try (PreparedStatement writerSelect = conn.prepareStatement("SELECT id FROM writers WHERE key_hash = ?;");
              PreparedStatement deleteOwned = conn.prepareStatement("DELETE FROM ownedkeys WHERE parent_id = ? AND owned_id = ?;");
-             PreparedStatement insertOwned = conn.prepareStatement("INSERT INTO ownedkeys (parent_id, owned_id) VALUES(?, ?);")) {
+             // a new writer's edge may already be in, recorded when the commit creating it was applied
+             PreparedStatement insertOwned = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ", "INTO ownedkeys (parent_id, owned_id) VALUES(?, ?)"))) {
             for (PublicKeyHash removed : removedOwnedKeys) {
                 writerSelect.setBytes(1, removed.toBytes());
                 ResultSet writerRes = writerSelect.executeQuery();

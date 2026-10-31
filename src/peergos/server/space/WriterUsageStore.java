@@ -20,6 +20,11 @@ public interface WriterUsageStore {
 
     void addWriter(String owner, PublicKeyHash writer);
 
+    /** Record that a registered writer owns another, ahead of the parent's pointer update that names it, so that
+     *  the caps over the parent bound the child's first writes. Does nothing if the edge is already there.
+     */
+    void addOwnedKey(PublicKeyHash parent, PublicKeyHash owned);
+
     /** Forget a writer that nothing owns any more, so it can't write again without proving it is owned */
     void removeWriter(PublicKeyHash writer);
 

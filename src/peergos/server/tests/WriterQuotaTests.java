@@ -4,10 +4,13 @@ import org.junit.*;
 import peergos.server.*;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.cbor.*;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
 import java.nio.file.*;
@@ -149,8 +152,10 @@ public class WriterQuotaTests {
         Assert.assertEquals(400 * KiB, read(owner, dir.resolve("file")).length);
     }
 
+    /** Revoking inside a folder over its cap moves the subfolder into a new writer, which adds metadata under the
+     *  cap: refused like any other growth, until the owner raises the cap. */
     @Test
-    public void canRevokeInsideAFullCappedFolder() {
+    public void revokingInsideAFullCappedFolderWaitsForRoom() {
         UserContext owner = signUp();
         UserContext outer = signUp();
         UserContext revoked = signUp();
@@ -163,12 +168,16 @@ public class WriterQuotaTests {
         awaitUsageUpdate();
         owner.setWriteShareQuota(dir, Optional.of(200L * KiB)).join();
 
+        assertRefusedForTheCap(() -> owner.unShareWriteAccessWith(inner, Set.of(revoked.username)).join());
+        Assert.assertEquals(400 * KiB, read(revoked, inner.resolve("file")).length);
+
+        owner.setWriteShareQuota(dir, Optional.of(1024L * KiB)).join();
         owner.unShareWriteAccessWith(inner, Set.of(revoked.username)).join();
         Assert.assertEquals(400 * KiB, read(owner, inner.resolve("file")).length);
     }
 
     @Test
-    public void canShareInsideAFullCappedFolder() {
+    public void sharingInsideAFullCappedFolderWaitsForRoom() {
         UserContext owner = signUp();
         UserContext outer = signUp();
         UserContext innerSharee = signUp();
@@ -180,9 +189,24 @@ public class WriterQuotaTests {
         awaitUsageUpdate();
         owner.setWriteShareQuota(dir, Optional.of(200L * KiB)).join();
 
-        // moving the folder into its own writing space copies it under a new key and frees the old copy
+        // moving the folder into its own writing space copies it under a new key and frees the old copy, which
+        // still leaves the capped space a little bigger than before
+        assertRefusedForTheCap(() -> owner.shareWriteAccessWith(inner, Set.of(innerSharee.username)).join());
+        Assert.assertTrue(innerSharee.getByPath(inner.resolve("file")).join().isEmpty());
+
+        owner.setWriteShareQuota(dir, Optional.of(1024L * KiB)).join();
         owner.shareWriteAccessWith(inner, Set.of(innerSharee.username)).join();
         Assert.assertEquals(400 * KiB, read(innerSharee, inner.resolve("file")).length);
+    }
+
+    private static void assertRefusedForTheCap(Runnable action) {
+        try {
+            action.run();
+            Assert.fail("Writer quota wasn't enforced");
+        } catch (Exception e) {
+            String message = peergos.shared.util.Exceptions.getRootCause(e).getMessage();
+            Assert.assertTrue(String.valueOf(message), message != null && message.contains("Storage quota reached"));
+        }
     }
 
     private static byte[] read(UserContext user, Path file) {
@@ -212,6 +236,60 @@ public class WriterQuotaTests {
         Assert.assertEquals(0, nestedView.used);
         Assert.assertTrue(nestedView.available.isPresent());
         Assert.assertTrue(nestedView.available.get() <= 424 * KiB);
+    }
+
+    /** A child writing space made in the same commit as the blocks written into it counts towards the cap of the
+     *  space that owns it from its first block, not only once the server has processed the parent's new pointer. */
+    @Test
+    public void aChildWritingSpaceMadeInTheSameCommitCountsTowardsTheCap() {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        Path dir = sharedDir(owner, "team", sharee);
+        owner.setWriteShareQuota(dir, Optional.of(256L * KiB)).join();
+
+        FileWrapper shared = sharee.getByPath(dir).join().get();
+        PublicKeyHash ownerKey = shared.owner();
+        SigningPrivateKeyAndPublicHash parent = shared.signingPair();
+        // buffered, as a browser's is, so the whole computation goes to the server as one bulk commit
+        NetworkAccess net = network.clear();
+        List<byte[]> blocks = new ArrayList<>();
+        // small enough to travel inline in the commit: larger ones are written ahead of it, which already
+        // fails for a writer the server doesn't know yet
+        for (int i = 0; i < 6; i++) {
+            byte[] block = new byte[90 * KiB];
+            random.nextBytes(block);
+            blocks.add(block);
+        }
+        try {
+            // the child's new root links the blocks, so they travel in the same call as the pointers that create it
+            net.synchronizer.applyComplexUpdate(ownerKey, parent, (s, committer) ->
+                    CryptreeNode.initAndAuthoriseSigner(ownerKey, parent, SigningKeyPair.random(crypto.random, crypto.signer), net, s, committer)
+                            .thenCompose(child -> IpfsTransaction.call(ownerKey,
+                                    tid -> signed(child.right, blocks).thenCompose(sigs -> net.dhtClient.putRaw(ownerKey,
+                                                    child.right.publicKeyHash, sigs, blocks, tid, x -> {}))
+                                            .thenCompose(raw -> {
+                                                byte[] links = new CborObject.CborList(raw.stream().map(CborObject.CborMerkleLink::new).toList()).serialize();
+                                                return signed(child.right, List.of(links)).thenCompose(sigs -> net.dhtClient.put(ownerKey,
+                                                        child.right.publicKeyHash, sigs, List.of(links), tid));
+                                            })
+                                            .thenCompose(links -> {
+                                                CommittedWriterData current = child.left.get(child.right);
+                                                return committer.commit(ownerKey, child.right, current.props.get().withChamp(links.get(0)), current, tid);
+                                            }),
+                                    net.dhtClient))).join();
+            Assert.fail("A new child writing space was written past its parent's cap");
+        } catch (Exception e) {
+            String message = peergos.shared.util.Exceptions.getRootCause(e).getMessage();
+            Assert.assertTrue(String.valueOf(message), message != null && message.contains("Storage quota reached"));
+        }
+    }
+
+    /** Per block signatures, which go through a client's write buffer where a batch signature would not. */
+    private static java.util.concurrent.CompletableFuture<List<byte[]>> signed(SigningPrivateKeyAndPublicHash signer, List<byte[]> blocks) {
+        return Futures.combineAllInOrder(blocks.stream()
+                .map(b -> crypto.hasher.sha256(b).thenCompose(h -> signer.secret.signMessage(h)))
+                .toList());
     }
 
     @Test

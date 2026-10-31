@@ -648,21 +648,29 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
      *  has already been checked, but it isn't in the committed pointers yet, so the self-heal below
      *  cannot find it and the write would be rejected.
      *
+     *  The edge from its parent is recorded too. Otherwise nothing ties the writer to the parent until the
+     *  parent's pointer update has been processed, and the commit's own blocks for it would be charged to
+     *  the owner alone, past any cap over the parent.
+     *
      * @return true if the writer is now registered
      */
-    public boolean registerNewWriter(PublicKeyHash owner, PublicKeyHash writer) {
+    public boolean registerNewWriter(PublicKeyHash owner, PublicKeyHash parent, PublicKeyHash writer) {
         Object lock = healLocks.computeIfAbsent(owner, o -> new Object());
         synchronized (lock) {
+            boolean registered = false;
             try {
                 usageStore.getOwner(writer);
-                return true;
+                registered = true;
             } catch (IllegalStateException absent) {}
             try {
-                String username = core.getUsername(owner).join();
-                if (! quotaAdmin.getLocalUsernames().contains(username))
-                    return false;
-                usageStore.addUserIfAbsent(username);
-                usageStore.addWriter(username, writer);
+                if (! registered) {
+                    String username = core.getUsername(owner).join();
+                    if (! quotaAdmin.getLocalUsernames().contains(username))
+                        return false;
+                    usageStore.addUserIfAbsent(username);
+                    usageStore.addWriter(username, writer);
+                }
+                usageStore.addOwnedKey(parent, writer);
                 return true;
             } catch (Exception e) {
                 LOG.log(Level.WARNING, "Couldn't register new writer " + writer + " of owner " + owner, e);
