@@ -6,6 +6,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 import peergos.shared.storage.auth.*;
+import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -24,6 +25,8 @@ public class RelativeCapability implements Cborable {
     public final Optional<Bat> bat; // Only absent on legacy data
     public final SymmetricKey rBaseKey;
     public final Optional<SymmetricLink> wBaseKeyLink;
+    // Only in child links of a restricted format directory, where rBaseKey is the child's restricted key
+    public final Optional<SymmetricLink> fullKeyLink;
 
     @JsConstructor
     public RelativeCapability(Optional<PublicKeyHash> writer,
@@ -31,6 +34,15 @@ public class RelativeCapability implements Cborable {
                               Optional<Bat> bat,
                               SymmetricKey rBaseKey,
                               Optional<SymmetricLink> wBaseKeyLink) {
+        this(writer, mapKey, bat, rBaseKey, wBaseKeyLink, Optional.empty());
+    }
+
+    public RelativeCapability(Optional<PublicKeyHash> writer,
+                              byte[] mapKey,
+                              Optional<Bat> bat,
+                              SymmetricKey rBaseKey,
+                              Optional<SymmetricLink> wBaseKeyLink,
+                              Optional<SymmetricLink> fullKeyLink) {
         this.writer = writer;
         if (mapKey.length != RelativeCapability.MAP_KEY_LENGTH)
             throw new IllegalStateException("Invalid map key length: " + mapKey.length);
@@ -38,6 +50,7 @@ public class RelativeCapability implements Cborable {
         this.bat = bat;
         this.rBaseKey = rBaseKey;
         this.wBaseKeyLink = wBaseKeyLink;
+        this.fullKeyLink = fullKeyLink;
     }
 
     @JsMethod
@@ -62,7 +75,23 @@ public class RelativeCapability implements Cborable {
     }
 
     public RelativeCapability withWritingKey(Optional<PublicKeyHash> writingKey) {
-        return new RelativeCapability(writingKey, mapKey, bat, rBaseKey, wBaseKeyLink);
+        return new RelativeCapability(writingKey, mapKey, bat, rBaseKey, wBaseKeyLink, fullKeyLink);
+    }
+
+    public RelativeCapability withBaseKey(SymmetricKey newBaseKey) {
+        return new RelativeCapability(writer, mapKey, bat, newBaseKey, wBaseKeyLink, fullKeyLink);
+    }
+
+    /** Replace our full key with the restricted key derived from it, and link to the full key from the parent's. */
+    public RelativeCapability wrapFullKey(SymmetricKey parentFullKey) {
+        return new RelativeCapability(writer, mapKey, bat, rBaseKey.derive(CryptreeNode.RESTRICTED), wBaseKeyLink,
+                Optional.of(SymmetricLink.fromPair(parentFullKey, rBaseKey)));
+    }
+
+    public RelativeCapability unwrapFullKey(SymmetricKey parentFullKey) {
+        return fullKeyLink
+                .map(link -> new RelativeCapability(writer, mapKey, bat, link.target(parentFullKey), wBaseKeyLink, Optional.empty()))
+                .orElse(this);
     }
 
     public static RelativeCapability buildSubsequentChunk(byte[] mapkey, Optional<Bat> bat, SymmetricKey baseKey) {
@@ -77,6 +106,7 @@ public class RelativeCapability implements Cborable {
         bat.ifPresent(b -> cbor.put("a", b));
         cbor.put("k", rBaseKey.toCbor());
         wBaseKeyLink.ifPresent(w -> cbor.put("l", w.toCbor()));
+        fullKeyLink.ifPresent(f -> cbor.put("f", f.toCbor()));
         return CborObject.CborMap.build(cbor);
     }
 
@@ -95,7 +125,8 @@ public class RelativeCapability implements Cborable {
         Optional<Bat> bat = map.getOptional("a", Bat::fromCbor);
         SymmetricKey baseKey = SymmetricKey.fromCbor(map.get("k"));
         Optional<SymmetricLink> writerLink = Optional.ofNullable(map.get("l")).map(SymmetricLink::fromCbor);
-        return new RelativeCapability(writer, mapKey, bat, baseKey, writerLink);
+        Optional<SymmetricLink> fullKeyLink = Optional.ofNullable(map.get("f")).map(SymmetricLink::fromCbor);
+        return new RelativeCapability(writer, mapKey, bat, baseKey, writerLink, fullKeyLink);
     }
 
     @Override
@@ -107,7 +138,8 @@ public class RelativeCapability implements Cborable {
                 Arrays.equals(mapKey, that.mapKey) &&
                 Objects.equals(bat, that.bat) &&
                 Objects.equals(rBaseKey, that.rBaseKey) &&
-                Objects.equals(wBaseKeyLink, that.wBaseKeyLink);
+                Objects.equals(wBaseKeyLink, that.wBaseKeyLink) &&
+                Objects.equals(fullKeyLink, that.fullKeyLink);
     }
 
     @Override

@@ -35,6 +35,10 @@ public class NamedRelativeCapability implements Cborable {
         this(new PathElement(name), cap, isDir, mimetype, created);
     }
 
+    public NamedRelativeCapability withCap(RelativeCapability newCap) {
+        return new NamedRelativeCapability(name, newCap, isDir, mimetype, created);
+    }
+
     public NamedAbsoluteCapability toAbsolute(AbsoluteCapability source) {
         return new NamedAbsoluteCapability(name, cap.toAbsolute(source), isDir, mimetype, created);
     }
@@ -68,7 +72,7 @@ public class NamedRelativeCapability implements Cborable {
     @Override
     public CborObject toCbor() {
         CborObject.CborMap cbor = cap.toCbor(); // This is to ensure binary compatibility for old code with new data
-        // w, m, a, k, l are taken
+        // w, m, a, k, l, f are taken
         addCbor("n", new CborObject.CborString(name.name), cbor);
         isDir.ifPresent(d -> addCbor("d", new CborObject.CborBoolean(d), cbor));
         mimetype.ifPresent(m -> addCbor("t", new CborObject.CborString(m), cbor));
