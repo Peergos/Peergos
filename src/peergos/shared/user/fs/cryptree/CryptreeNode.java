@@ -243,7 +243,7 @@ public class CryptreeNode implements Cborable {
     private FromBase getBaseBlock(SymmetricKey baseKey) {
         Opened o = open(baseKey);
         if (o.base.isEmpty())
-            throw new IllegalStateException("Couldn't decrypt base block");
+            throw new InvalidCipherTextException("Couldn't decrypt base block");
         return o.base.get();
     }
 
@@ -277,7 +277,7 @@ public class CryptreeNode implements Cborable {
                 return res;
             }
         }
-        throw new IllegalStateException("Couldn't decrypt parent block");
+        throw new InvalidCipherTextException("Couldn't decrypt parent block");
     }
 
     private FromParent getParentBlock(SymmetricKey parentKey) {
