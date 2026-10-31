@@ -314,9 +314,10 @@ public class JdbcAccountTests {
         Assert.assertEquals("ok", attempt(username, reader, Optional.of(right), device));
     }
 
-    /** Without the password, the answer must not depend on whether the code was right. */
+    /** Without a valid code, the answer must not depend on whether the password was right; with one, a user who
+     *  mistyped the password is told so, rather than to try their code again. */
     @Test
-    public void aWrongPasswordGetsTheSameAnswerWhateverTheCode() throws Exception {
+    public void onlyAValidCodeIsToldThePasswordWasWrong() throws Exception {
         String username = "alice";
         PublicSigningKey reader = reader();
         db.setLoginData(loginFor(username, reader)).join();
@@ -326,14 +327,32 @@ public class JdbcAccountTests {
         db.enableTotpFactor(username, key.credentialId, code(totp, key)).join();
 
         PublicSigningKey wrongPassword = reader();
-        String rightCode = attempt(username, wrongPassword, Optional.of(new MultiFactorAuthResponse(key.credentialId,
-                Either.a(code(totp, key)))), Optional.empty());
-        String wrongCode = attempt(username, wrongPassword, Optional.of(new MultiFactorAuthResponse(key.credentialId,
-                Either.a(wrongCode(totp, key, 0)))), Optional.empty());
-        Assert.assertEquals(wrongCode, rightCode);
-        // and the same as the right password with a wrong code, so it doesn't say which was wrong either
-        Assert.assertEquals(wrongCode, attempt(username, reader, Optional.of(new MultiFactorAuthResponse(key.credentialId,
+        Assert.assertEquals(attempt(username, reader, Optional.of(new MultiFactorAuthResponse(key.credentialId,
+                Either.a(wrongCode(totp, key, 0)))), Optional.empty()),
+                attempt(username, wrongPassword, Optional.of(new MultiFactorAuthResponse(key.credentialId,
                 Either.a(wrongCode(totp, key, 1)))), Optional.empty()));
+        Assert.assertEquals("incorrect", attempt(username, wrongPassword, Optional.of(new MultiFactorAuthResponse(key.credentialId,
+                Either.a(code(totp, key)))), Optional.empty()));
+    }
+
+    /** A mount's credential id is kept in its config and named in error messages, so it alone, without the code,
+     *  must not tell a right password from a wrong one. */
+    @Test
+    public void aMountCredentialWithoutItsCodeSaysNothingOfThePassword() throws Exception {
+        String username = "alice";
+        PublicSigningKey reader = reader();
+        db.setLoginData(loginFor(username, reader)).join();
+        TimeBasedOneTimePasswordGenerator totp =
+                new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, TotpKey.ALGORITHM);
+        TotpKey user = db.addTotpFactor(username).join();
+        db.enableTotpFactor(username, user.credentialId, code(totp, user)).join();
+        TotpKey mount = db.addMountFactor(username, "a device").join();
+        db.enableMountFactor(username, mount.credentialId, code(totp, mount)).join();
+
+        Assert.assertEquals(attempt(username, reader, Optional.of(new MultiFactorAuthResponse(mount.credentialId,
+                Either.a(wrongCode(totp, mount, 0)))), Optional.empty()),
+                attempt(username, reader(), Optional.of(new MultiFactorAuthResponse(mount.credentialId,
+                Either.a(wrongCode(totp, mount, 1)))), Optional.empty()));
     }
 
     /** A mount signing in after the password changed is told the password is wrong, which is what makes it stop. */
@@ -366,7 +385,7 @@ public class JdbcAccountTests {
         BackupCodes backup = db.generateBackupCodes(username).join();
         MultiFactorAuthResponse first = new MultiFactorAuthResponse(backup.credentialId, Either.a(backup.codes.get(0)));
 
-        Assert.assertTrue(attempt(username, reader(), Optional.of(first), Optional.empty()).contains("Invalid backup code"));
+        Assert.assertEquals("incorrect", attempt(username, reader(), Optional.of(first), Optional.empty()));
         Assert.assertEquals("ok", attempt(username, reader, Optional.of(first), Optional.empty()));
         // and used up by that login
         Assert.assertTrue(attempt(username, reader, Optional.of(first), Optional.empty()).contains("Invalid backup code"));
