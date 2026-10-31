@@ -800,10 +800,6 @@ public class UserContext {
     }
 
     /**
-     * @return "verified", "unverified", or "changed" if the friend's identity is no longer the one that was verified
-     */
-    @JsMethod
-    /**
      *
      * @param friendName
      * @return a pair of the friends keys used to generate the fingerprint, and the resulting fingerprint
