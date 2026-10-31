@@ -64,7 +64,8 @@ public class BufferedStorageTests {
         SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(
                 ContentAddressedStorage.hashKey(pair.publicSigningKey), pair.secretSigningKey);
         PublicKeyHash owner = signer.publicKeyHash;
-        TransactionId tid = new TransactionId("1");
+        // a transaction the storage behind has opened, so a write that reaches it is stored rather than refused
+        TransactionId tid = target.startTransaction(owner).join();
 
         byte[] raw = crypto.random.randomBytes(1024);
         byte[] cbor = new CborObject.CborString("a block").serialize();
