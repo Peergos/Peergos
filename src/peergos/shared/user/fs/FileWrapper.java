@@ -2842,7 +2842,7 @@ public class FileWrapper {
                     });
         }).thenCompose(x -> {
             Optional<BatId> targetMirrorBatId = target.mirrorBatId()
-                    .or(() -> target.owner().equals(context.signer.publicKeyHash) ?
+                    .or(() -> context.signer != null && target.owner().equals(context.signer.publicKeyHash) ?
                             context.mirrorBatId() :
                             Optional.empty());
 
@@ -2888,8 +2888,10 @@ public class FileWrapper {
                                     ? Futures.of(true) : preserveAccess.get())
                             .thenCompose(keepAccess -> {
                                 boolean differentParentWriter = !target.writer().equals(parent.writer());
+                                // a restricted key can't write where we now are, nor give the new folder our full key, so copy instead
+                                boolean restricted = isRestrictedKey() || target.isRestrictedKey() || parent.isRestrictedKey();
                                 // TODO optimise different parent writer case by correcting owned keys
-                                if (keepAccess && !differentParentWriter) {
+                                if (keepAccess && !differentParentWriter && !restricted) {
                                     // just update parent and child pointers, no need to re-upload, rotate keys etc.
                                     boolean differentWriter = !target.writer().equals(writer());
                                     boolean ourFile = context.signer != null && target.owner().equals(context.signer.publicKeyHash);
@@ -3078,7 +3080,7 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
     }
 
     Optional<BatId> targetMirrorBatId = target.mirrorBatId()
-            .or(() -> target.owner().equals(context.signer.publicKeyHash) ?
+            .or(() -> context.signer != null && target.owner().equals(context.signer.publicKeyHash) ?
                     context.mirrorBatId() :
                     Optional.empty());
     return context.network.synchronizer.applyComplexUpdate(target.owner(), target.signingPair(),
