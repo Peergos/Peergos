@@ -13,6 +13,14 @@ public interface MountBackend {
 
     java.util.Optional<String> activeMountPoint();
 
+    /** Enabling the mount failed, at start or from the settings, so whatever waits on it can stop waiting: it
+     *  happens on a thread of its own, where only the handler sees the error.
+     *
+     * @param error what went wrong, which may be null
+     */
+    default void enableFailed(String error) {
+    }
+
     /** Whether this platform can mount the drive, which is what the UI offers a switch for. */
     default boolean supportsDrive() {
         return true;
