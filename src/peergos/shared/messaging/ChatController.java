@@ -216,17 +216,26 @@ public class ChatController {
 
     private CompletableFuture<Snapshot> copyFile(FileWrapper dir, Path sourcePath, String mirrorUsername, Snapshot v, Committer c) {
         // Try copying file from source first, and then fallback to mirror we are currently merging
-        return Futures.asyncExceptionally(() -> context.getByPath(sourcePath.toString(), v)
-                        .thenApply(Optional::get),
-                t -> context.getByPath(PathUtil.get(mirrorUsername).resolve(sourcePath.subpath(1, sourcePath.getNameCount())).toString(), v)
-                        .thenApply(Optional::get))
-                // A media file's name is unique, so one already there is this file, mirrored before or our own named
-                // back at us: skipped, or the merge would fail on it now and at every later merge of this chat.
-                .thenCompose(f -> f.getInputStream(f.version.get(f.writer()), context.network, context.crypto, x -> {})
-                        .thenCompose(r -> dir.uploadFileSection(v, c, f.getName(), r, false, 0, f.getSize(),
-                                Optional.empty(), true, false, false, context.network, context.crypto, () -> false, x -> {},
-                                context.crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH), Optional.empty(),
-                                Optional.of(Bat.random(context.crypto.random)), dir.mirrorBatId())));
+        return Futures.asyncExceptionally(() -> context.getByPath(sourcePath.toString(), v),
+                        t -> Futures.of(Optional.<FileWrapper>empty()))
+                .thenCompose(source -> source.isPresent() ? Futures.of(source) :
+                        context.getByPath(PathUtil.get(mirrorUsername).resolve(sourcePath.subpath(1, sourcePath.getNameCount())).toString(), v))
+                .thenCompose(found -> {
+                    // An attachment found in neither place is skipped: failing here reads as the member's whole
+                    // mirror being gone, which removes them from the chat.
+                    if (found.isEmpty()) {
+                        LOG.warning("Not copying a chat attachment that is no longer there");
+                        return Futures.of(v);
+                    }
+                    FileWrapper f = found.get();
+                    // A media file's name is unique, so one already there is this file, mirrored before or our own
+                    // named back at us: skipped, or the merge would fail on it now and at every later merge of this chat.
+                    return f.getInputStream(f.version.get(f.writer()), context.network, context.crypto, x -> {})
+                            .thenCompose(r -> dir.uploadFileSection(v, c, f.getName(), r, false, 0, f.getSize(),
+                                    Optional.empty(), true, false, false, context.network, context.crypto, () -> false, x -> {},
+                                    context.crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH), Optional.empty(),
+                                    Optional.of(Bat.random(context.crypto.random)), dir.mirrorBatId()));
+                });
     }
 
     private Path getChatMediaDir(ChatController current) {

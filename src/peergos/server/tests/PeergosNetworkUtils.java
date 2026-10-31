@@ -2019,6 +2019,19 @@ public class PeergosNetworkUtils {
         MessageEnvelope last = later.get(later.size() - 1);
         Assert.assertTrue("merges carry on past it", last.payload instanceof ApplicationMessage
                 && ((ApplicationMessage) last.payload).body.stream().anyMatch(c -> c.inlineText().contains("and after it")));
+
+        // a message naming an attachment of a's that isn't there, as one a has since deleted
+        String gonePath = real.path.substring(0, real.path.lastIndexOf('/')) + "/gone.txt";
+        controllerA = msgA.sendMessage(controllerA, new ApplicationMessage(List.of(new Reference(
+                new FileRef(gonePath, real.cap, real.contentHash))))).join();
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
+        Assert.assertFalse("a is still in the chat", controllerB.deletedMemberNames().contains(a.username));
+        controllerA = msgA.sendMessage(controllerA, ApplicationMessage.text("still here")).join();
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
+        List<MessageEnvelope> after = controllerB.getMessages(0, 50).join();
+        MessageEnvelope newest = after.get(after.size() - 1);
+        Assert.assertTrue("a's next message arrives", newest.payload instanceof ApplicationMessage
+                && ((ApplicationMessage) newest.payload).body.stream().anyMatch(c -> c.inlineText().contains("still here")));
     }
 
     public static void deleteEmailApp(NetworkAccess network, Random random) {
