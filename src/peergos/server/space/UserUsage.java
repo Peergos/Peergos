@@ -32,7 +32,12 @@ public class UserUsage implements Cborable {
         errored = false;
     }
 
-    protected synchronized void addPending(PublicKeyHash writer, long usageDelta) {
+    /** The committed total read again, with the bytes of writes still in flight kept. */
+    protected synchronized void reloadTotal(long totalBytes) {
+        this.totalBytes = totalBytes;
+    }
+
+    public synchronized void addPending(PublicKeyHash writer, long usageDelta) {
         pending.put(writer, pending.getOrDefault(writer, 0L) + usageDelta);
     }
 
@@ -44,7 +49,7 @@ public class UserUsage implements Cborable {
         return pending.getOrDefault(writer, 0L);
     }
 
-    protected synchronized long expectedUsage() {
+    public synchronized long expectedUsage() {
         return totalBytes + pending.values().stream().mapToLong(x -> x).sum();
     }
 

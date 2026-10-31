@@ -116,20 +116,29 @@ public class WriterQuotas implements WriterUsageStore.UsageListener {
         Timed<UserUsage> current = capUsage.get(cap);
         if (current != null && current.isFresh(now, RELOAD_MILLIS))
             return current.value;
-        UserUsage loaded = new UserUsage(store.getSubtreeUsage(cap));
-        capUsage.put(cap, new Timed<>(loaded, now));
-        return loaded;
+        long committed = store.getSubtreeUsage(cap);
+        if (current == null) {
+            UserUsage loaded = new UserUsage(committed);
+            capUsage.put(cap, new Timed<>(loaded, now));
+            return loaded;
+        }
+        // The same object, with its total read again: the bytes of writes in flight stay with it. Judged
+        // against the committed total alone, each of a burst of writes would fit where together they do not.
+        current.value.reloadTotal(committed);
+        capUsage.put(cap, new Timed<>(current.value, now));
+        return current.value;
     }
 
     @Override
     public void usageChanged(PublicKeyHash writer, long delta, boolean ownedKeysChanged) {
         if (ownedKeysChanged) {
-            // the writer may have left one capped subtree and joined another
+            // the writer may have left one capped subtree and joined another, so every cap's total is read again
+            // at its next use; the writes in flight under it are kept
             synchronized (ancestors) {
                 ancestors.clear();
                 ancestorsGeneration++;
             }
-            capUsage.clear();
+            capUsage.replaceAll((cap, cached) -> new Timed<>(cached.value, 0));
             return;
         }
         if (capUsage.isEmpty())
