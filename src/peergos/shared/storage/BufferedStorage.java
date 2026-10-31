@@ -277,15 +277,14 @@ public class BufferedStorage extends DelegatingStorage {
         return put(writer, blocks, signatures, true, Optional.of(progressConsumer));
     }
 
-    /** Held for the commit like any other write. Signed per block, as a buffered block keeps its own signature. */
+    /** Held for the commit like any other write, unsigned as the single put with a signer is: the commit signs. */
     @Override
     public CompletableFuture<List<Cid>> putBatch(PublicKeyHash owner,
                                                  SigningPrivateKeyAndPublicHash signer,
                                                  List<byte[]> blocks,
                                                  TransactionId tid,
                                                  Hasher hasher) {
-        return sign(signer, blocks, hasher)
-                .thenCompose(sigs -> put(signer.publicKeyHash, blocks, sigs, false, Optional.empty()));
+        return put(signer.publicKeyHash, blocks, unsigned(blocks.size()), false, Optional.empty());
     }
 
     @Override
@@ -295,14 +294,11 @@ public class BufferedStorage extends DelegatingStorage {
                                                     TransactionId tid,
                                                     ProgressConsumer<Long> progress,
                                                     Hasher hasher) {
-        return sign(signer, blocks, hasher)
-                .thenCompose(sigs -> put(signer.publicKeyHash, blocks, sigs, true, Optional.of(progress)));
+        return put(signer.publicKeyHash, blocks, unsigned(blocks.size()), true, Optional.of(progress));
     }
 
-    private static CompletableFuture<List<byte[]>> sign(SigningPrivateKeyAndPublicHash signer, List<byte[]> blocks, Hasher hasher) {
-        return Futures.combineAllInOrder(blocks.stream()
-                .map(b -> hasher.sha256(b).thenCompose(h -> signer.secret.signMessage(h)))
-                .collect(Collectors.toList()));
+    private static List<byte[]> unsigned(int count) {
+        return Collections.nCopies(count, new byte[0]);
     }
 
     private CompletableFuture<List<Cid>> put(PublicKeyHash writer,
