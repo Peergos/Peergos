@@ -1,5 +1,6 @@
 package peergos.shared.social;
 
+import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
@@ -13,6 +14,7 @@ import java.util.concurrent.*;
  *  the identity's current key (remove-pki §8). The link id is signed in, so a bundle for one link can't answer a
  *  lookup for another.
  */
+@JsType
 public class FriendLinkBundle implements Cborable {
     public static final int LINK_ID_BYTES = 16;
     public static final int MAX_NAME_LENGTH = 64;
@@ -20,9 +22,11 @@ public class FriendLinkBundle implements Cborable {
     public final PublicKeyHash identity;
     public final byte[] linkId;
     public final PublicBoxingKey boxer;
+    @JsIgnore
     public final Optional<LocalDateTime> expiry;
     public final String suggestedName;
 
+    @JsIgnore
     public FriendLinkBundle(PublicKeyHash identity, byte[] linkId, PublicBoxingKey boxer, Optional<LocalDateTime> expiry, String suggestedName) {
         if (linkId.length != LINK_ID_BYTES)
             throw new IllegalStateException("Invalid friend link id");
@@ -35,10 +39,12 @@ public class FriendLinkBundle implements Cborable {
         this.suggestedName = suggestedName;
     }
 
+    @JsIgnore
     public boolean isExpired(LocalDateTime nowUtc) {
         return expiry.isPresent() && expiry.get().isBefore(nowUtc);
     }
 
+    @JsIgnore
     public CompletableFuture<Signed> sign(SecretSigningKey signer) {
         byte[] body = serialize();
         return Signing.sign(signer, Signing.FRIEND_LINK_BUNDLE, body)
@@ -46,6 +52,7 @@ public class FriendLinkBundle implements Cborable {
     }
 
     @Override
+    @JsIgnore
     public CborObject toCbor() {
         SortedMap<String, Cborable> m = new TreeMap<>();
         m.put("i", identity);
@@ -56,6 +63,7 @@ public class FriendLinkBundle implements Cborable {
         return CborObject.CborMap.build(m);
     }
 
+    @JsIgnore
     public static FriendLinkBundle fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Invalid cbor for FriendLinkBundle: " + cbor);

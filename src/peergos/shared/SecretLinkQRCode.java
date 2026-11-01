@@ -32,6 +32,7 @@ public class SecretLinkQRCode {
             return new SecretLinkQRCode(link);
     }
 
+    @JsMethod
     public static String decodeFromPixels(int[] pixels, int width, int height) {
         // This source doesn't handle rotations or dilations
         RGBLuminanceSource source = new RGBLuminanceSource(width, height, pixels);
