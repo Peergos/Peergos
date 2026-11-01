@@ -2,6 +2,7 @@ package peergos.shared.user.fs;
 
 import peergos.shared.*;
 import peergos.shared.cbor.*;
+import peergos.shared.social.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
@@ -24,6 +25,8 @@ public class CapabilityStore {
     public static final String CAPABILITY_CACHE_DIR = ".capabilitycache";
     private static final String READ_SHARING_FILE_NAME = "sharing.r";
     private static final String EDIT_SHARING_FILE_NAME = "sharing.w";
+    // the introductions of the owners of what is reshared here (remove-pki §9)
+    private static final String INTRODUCTIONS_FILE_NAME = "introductions";
 
     public static CompletableFuture<Snapshot> addReadOnlySharingLinkTo(FileWrapper sharedDir,
                                                                        AbsoluteCapability capability,
@@ -61,6 +64,43 @@ public class CapabilityStore {
                             false, network, crypto, () -> false, x -> {}, crypto.random.randomBytes(32),
                             Optional.empty(), Optional.of(Bat.random(crypto.random)), sharedDir.mirrorBatId());
                 });
+    }
+
+    /** Adds an owner's introduction beside what of theirs is shared here, once per owner. */
+    public static CompletableFuture<Snapshot> addIntroductionTo(FileWrapper sharedDir,
+                                                                FriendLink introduction,
+                                                                Snapshot s,
+                                                                Committer c,
+                                                                NetworkAccess network,
+                                                                Crypto crypto) {
+        return sharedDir.getUpdated(s, network)
+                .thenCompose(dir -> readIntroductions(dir, network, crypto).thenCompose(existing -> {
+                    if (introduction.equals(existing.get(introduction.identity)))
+                        return Futures.of(s);
+                    return dir.getChild(INTRODUCTIONS_FILE_NAME, crypto.hasher, network).thenCompose(file -> {
+                        byte[] raw = introduction.serialize();
+                        long startIndex = file.map(f -> f.getSize()).orElse(0L);
+                        return dir.uploadFileSection(s, c, INTRODUCTIONS_FILE_NAME,
+                                new AsyncReader.ArrayBacked(raw), false, startIndex, startIndex + raw.length,
+                                Optional.empty(), false, true, false, network, crypto, () -> false, x -> {},
+                                crypto.random.randomBytes(32), Optional.empty(), Optional.of(Bat.random(crypto.random)),
+                                dir.mirrorBatId());
+                    });
+                }));
+    }
+
+    /** The introductions in a shared directory, by owner, the latest for each. */
+    public static CompletableFuture<Map<PublicKeyHash, FriendLink>> readIntroductions(FileWrapper sharedDir,
+                                                                                     NetworkAccess network,
+                                                                                     Crypto crypto) {
+        return sharedDir.getChild(INTRODUCTIONS_FILE_NAME, crypto.hasher, network).thenCompose(file -> {
+            if (file.isEmpty())
+                return Futures.of(Collections.<PublicKeyHash, FriendLink>emptyMap());
+            Map<PublicKeyHash, FriendLink> res = new HashMap<>();
+            return file.get().getInputStream(network, crypto, x -> {})
+                    .thenCompose(reader -> reader.parseStream(FriendLink::fromCbor, l -> res.put(l.identity, l), file.get().getSize()))
+                    .thenApply(x -> res);
+        });
     }
 
     /**

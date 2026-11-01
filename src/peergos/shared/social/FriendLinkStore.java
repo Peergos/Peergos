@@ -22,7 +22,9 @@ public class FriendLinkStore implements Cborable {
         /** Made by the user to hand out */
         LINK,
         /** Made when sending a request, for the reply and then as the back-channel from that contact */
-        REPLY
+        REPLY,
+        /** Given to a contact to pass on with anything of ours they share, so its recipients can ask us (remove-pki §9) */
+        INTRODUCTION
     }
 
     @JsType
@@ -164,14 +166,39 @@ public class FriendLinkStore implements Cborable {
 
     public final Map<ByteArrayWrapper, Entry> links;
     public final Map<PublicKeyHash, BackChannel> backChannels;
+    // contacts' introductions, to pass on with anything of theirs we share
+    public final Map<PublicKeyHash, FriendLink> introductions;
+    public final boolean introductionsOff;
 
-    public FriendLinkStore(Map<ByteArrayWrapper, Entry> links, Map<PublicKeyHash, BackChannel> backChannels) {
+    public FriendLinkStore(Map<ByteArrayWrapper, Entry> links,
+                           Map<PublicKeyHash, BackChannel> backChannels,
+                           Map<PublicKeyHash, FriendLink> introductions,
+                           boolean introductionsOff) {
         this.links = Collections.unmodifiableMap(links);
         this.backChannels = Collections.unmodifiableMap(backChannels);
+        this.introductions = Collections.unmodifiableMap(introductions);
+        this.introductionsOff = introductionsOff;
     }
 
     public static FriendLinkStore empty() {
-        return new FriendLinkStore(Collections.emptyMap(), Collections.emptyMap());
+        return new FriendLinkStore(Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(), false);
+    }
+
+    public FriendLinkStore withIntroductionFrom(PublicKeyHash contact, FriendLink introduction) {
+        Map<PublicKeyHash, FriendLink> updated = new HashMap<>(introductions);
+        updated.put(contact, introduction);
+        return new FriendLinkStore(links, backChannels, updated, introductionsOff);
+    }
+
+    public FriendLinkStore withIntroductionsOff(boolean off) {
+        return new FriendLinkStore(links, backChannels, introductions, off);
+    }
+
+    /** The introduction we gave a contact to pass on. */
+    public Optional<Entry> introductionFor(PublicKeyHash contact) {
+        return links.values().stream()
+                .filter(e -> e.kind == Kind.INTRODUCTION && e.peer.equals(Optional.of(contact)))
+                .findFirst();
     }
 
     public Optional<BackChannel> backChannel(PublicKeyHash contact) {
@@ -181,7 +208,7 @@ public class FriendLinkStore implements Cborable {
     public FriendLinkStore withBackChannel(PublicKeyHash contact, BackChannel channel) {
         Map<PublicKeyHash, BackChannel> updated = new HashMap<>(backChannels);
         updated.put(contact, channel);
-        return new FriendLinkStore(links, updated);
+        return new FriendLinkStore(links, updated, introductions, introductionsOff);
     }
 
     /** Our reply link for a contact, which their requests and replies arrive on. */
@@ -198,13 +225,13 @@ public class FriendLinkStore implements Cborable {
     public FriendLinkStore with(Entry e) {
         Map<ByteArrayWrapper, Entry> updated = new HashMap<>(links);
         updated.put(new ByteArrayWrapper(e.linkId), e);
-        return new FriendLinkStore(updated, backChannels);
+        return new FriendLinkStore(updated, backChannels, introductions, introductionsOff);
     }
 
     public FriendLinkStore without(byte[] linkId) {
         Map<ByteArrayWrapper, Entry> updated = new HashMap<>(links);
         updated.remove(new ByteArrayWrapper(linkId));
-        return new FriendLinkStore(updated, backChannels);
+        return new FriendLinkStore(updated, backChannels, introductions, introductionsOff);
     }
 
     public List<Entry> ofKind(Kind kind) {
@@ -224,6 +251,12 @@ public class FriendLinkStore implements Cborable {
                 .sorted(Comparator.comparing(e -> e.getKey().toString()))
                 .map(e -> new CborObject.CborList(Arrays.asList(e.getKey(), e.getValue())))
                 .collect(Collectors.toList())));
+        m.put("i", new CborObject.CborList(introductions.entrySet().stream()
+                .sorted(Comparator.comparing(e -> e.getKey().toString()))
+                .map(e -> new CborObject.CborList(Arrays.asList(e.getKey(), e.getValue())))
+                .collect(Collectors.toList())));
+        if (introductionsOff)
+            m.put("o", new CborObject.CborBoolean(true));
         return CborObject.CborMap.build(m);
     }
 
@@ -235,6 +268,10 @@ public class FriendLinkStore implements Cborable {
         Map<PublicKeyHash, BackChannel> backChannels = new HashMap<>();
         for (CborObject.CborList pair : m.getList("c", c -> (CborObject.CborList) c))
             backChannels.put(PublicKeyHash.fromCbor(pair.value.get(0)), BackChannel.fromCbor(pair.value.get(1)));
-        return new FriendLinkStore(links, backChannels);
+        Map<PublicKeyHash, FriendLink> introductions = new HashMap<>();
+        if (m.containsKey("i"))
+            for (CborObject.CborList pair : m.getList("i", c -> (CborObject.CborList) c))
+                introductions.put(PublicKeyHash.fromCbor(pair.value.get(0)), FriendLink.fromCbor(pair.value.get(1)));
+        return new FriendLinkStore(links, backChannels, introductions, m.getBoolean("o", false));
     }
 }

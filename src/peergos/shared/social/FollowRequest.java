@@ -138,8 +138,20 @@ public class FollowRequest implements Cborable {
         public final PublicBoxingKey replyBoxer;
         public final byte[] replyLink;
         public final String suggestedName;
+        // the sender's introduction, for the recipient to pass on with anything of the sender's they share
+        public final Optional<FriendLink> introduction;
 
         public Linked(PublicKeyHash target, Optional<byte[]> targetLink, PublicKeyHash from, PublicBoxingKey replyBoxer, byte[] replyLink, String suggestedName) {
+            this(target, targetLink, from, replyBoxer, replyLink, suggestedName, Optional.empty());
+        }
+
+        public Linked(PublicKeyHash target,
+                      Optional<byte[]> targetLink,
+                      PublicKeyHash from,
+                      PublicBoxingKey replyBoxer,
+                      byte[] replyLink,
+                      String suggestedName,
+                      Optional<FriendLink> introduction) {
             if (targetLink.map(l -> l.length != FriendLinkBundle.LINK_ID_BYTES).orElse(false) || replyLink.length != FriendLinkBundle.LINK_ID_BYTES)
                 throw new IllegalStateException("Invalid friend link id");
             if (suggestedName.length() > FriendLinkBundle.MAX_NAME_LENGTH)
@@ -150,6 +162,7 @@ public class FollowRequest implements Cborable {
             this.replyBoxer = replyBoxer;
             this.replyLink = replyLink;
             this.suggestedName = suggestedName;
+            this.introduction = introduction;
         }
 
         @Override
@@ -161,6 +174,7 @@ public class FollowRequest implements Cborable {
             m.put("rb", replyBoxer);
             m.put("rl", new CborObject.CborByteArray(replyLink));
             m.put("n", new CborObject.CborString(suggestedName));
+            introduction.ifPresent(i -> m.put("in", i));
             return CborObject.CborMap.build(m);
         }
 
@@ -171,7 +185,8 @@ public class FollowRequest implements Cborable {
                     m.get("f", PublicKeyHash::fromCbor),
                     m.get("rb", PublicBoxingKey::fromCbor),
                     m.getByteArray("rl"),
-                    m.getString("n"));
+                    m.getString("n"),
+                    m.getOptional("in", FriendLink::fromCbor));
         }
     }
 }
