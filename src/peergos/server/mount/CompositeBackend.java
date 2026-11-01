@@ -34,6 +34,18 @@ public class CompositeBackend implements MountBackend {
     }
 
     @Override
+    public void enableFailed(String error) {
+        // as for disable: one that throws must not keep the others from hearing it
+        for (MountBackend backend : backends) {
+            try {
+                backend.enableFailed(error);
+            } catch (RuntimeException e) {
+                LOG.log(Level.WARNING, "Failed to tell " + backend.getClass().getSimpleName() + " its enable failed", e);
+            }
+        }
+    }
+
+    @Override
     public void disable() {
         // one that throws must not leave the others running
         for (MountBackend backend : backends) {

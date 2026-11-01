@@ -136,6 +136,7 @@ public class MountConfigHandler implements HttpHandler {
                 catch (Exception e) {
                     LOG.log(Level.WARNING, "Failed to restore WebDAV mount on startup", e);
                     mountError.set(e.getMessage());
+                    backend.enableFailed(e.getMessage());
                 }
             });
         }
@@ -542,6 +543,7 @@ public class MountConfigHandler implements HttpHandler {
                     catch (Exception e) {
                         LOG.log(Level.WARNING, "Failed to enable WebDAV mount", e);
                         mountError.set(e.getMessage());
+                        backend.enableFailed(e.getMessage());
                     }
                 });
                 exchange.sendResponseHeaders(200, 0);
