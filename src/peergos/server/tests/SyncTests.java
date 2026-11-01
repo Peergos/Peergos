@@ -160,6 +160,79 @@ public class SyncTests {
                 null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
     }
 
+    /** Local storage that can't hold one name, as a phone's can't hold a ':'. It finds out once the copy is staged,
+     *  when the file is created under its name, so there is a staged copy to clean up. */
+    private static class OneNameUnholdable extends LocalFileSystem {
+        private final String unholdable;
+
+        OneNameUnholdable(Path root, String unholdable) {
+            super(root, crypto.hasher);
+            this.unholdable = unholdable;
+        }
+
+        @Override
+        protected void completeCopy(Path p, List<Pair<Long, Long>> ranges, long size) throws IOException {
+            if (p.getFileName().toString().equals(unholdable))
+                throw new UnrepresentableNameException("Couldn't create " + unholdable);
+            super.completeCopy(p, ranges, size);
+        }
+    }
+
+    /** A file the local storage can't hold is skipped, and the copy started for it is given up: left recorded, it was
+     *  resumed at the start of the next pass, failed again, and stopped every pass after it. */
+    @Test
+    public void aSkippedNameIsNotResumedNextPass() throws Exception {
+        Path local = Files.createTempDirectory("peergos-sync");
+        Path remote = Files.createTempDirectory("peergos-sync");
+        Files.writeString(remote.resolve("unholdable.txt"), "skipped");
+        Files.writeString(remote.resolve("plain.txt"), "synced");
+        SyncState state = new JdbcTreeState(":memory:");
+        List<String> log = new ArrayList<>();
+        DirectorySync.syncDir(new OneNameUnholdable(local, "unholdable.txt"), new LocalFileSystem(remote, crypto.hasher), true, true,
+                null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, log::add);
+        Assert.assertTrue(log.toString(), log.stream().anyMatch(m -> m.contains("skipped unholdable.txt")));
+        Assert.assertTrue(state.getInProgressCopies().isEmpty());
+        Path staging = local.resolve(LocalFileSystem.PARTIAL_COPIES_DIR);
+        if (Files.isDirectory(staging))
+            try (Stream<Path> staged = Files.list(staging)) {
+                Assert.assertEquals("the staged copy is thrown away", 0, staged.count());
+            }
+
+        Files.writeString(remote.resolve("later.txt"), "added after");
+        DirectorySync.syncDir(new OneNameUnholdable(local, "unholdable.txt"), new LocalFileSystem(remote, crypto.hasher), true, true,
+                null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+        Assert.assertEquals("added after", Files.readString(local.resolve("later.txt")));
+        Assert.assertFalse(Files.exists(local.resolve("unholdable.txt")));
+    }
+
+    /** A copy left recorded by a pass that stopped part way through it, for a name the storage turns out not to hold,
+     *  is given up when the next pass resumes it, and that pass carries on. */
+    @Test
+    public void anInterruptedCopyOfAnUnholdableNameIsGivenUp() throws Exception {
+        Path local = Files.createTempDirectory("peergos-sync");
+        Path remote = Files.createTempDirectory("peergos-sync");
+        Files.writeString(remote.resolve("unholdable.txt"), "skipped");
+        SyncState state = new JdbcTreeState(":memory:");
+        LocalFileSystem stopping = new LocalFileSystem(local, crypto.hasher) {
+            @Override
+            protected void completeCopy(Path p, List<Pair<Long, Long>> ranges, long size) {
+                throw new IllegalStateException("stopped");
+            }
+        };
+        try {
+            DirectorySync.syncDir(stopping, new LocalFileSystem(remote, crypto.hasher), true, true,
+                    null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+            Assert.fail("the pass should have stopped");
+        } catch (Exception expected) {}
+        Assert.assertFalse(state.getInProgressCopies().isEmpty());
+
+        Files.writeString(remote.resolve("later.txt"), "added after");
+        DirectorySync.syncDir(new OneNameUnholdable(local, "unholdable.txt"), new LocalFileSystem(remote, crypto.hasher), true, true,
+                null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+        Assert.assertEquals("added after", Files.readString(local.resolve("later.txt")));
+        Assert.assertTrue(state.getInProgressCopies().isEmpty());
+    }
+
     @Test
     public void ignoredDeletesAreOnlyLoggedOnce() throws Exception {
         Path base1 = Files.createTempDirectory("peergos-sync");
