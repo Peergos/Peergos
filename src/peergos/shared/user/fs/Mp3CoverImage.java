@@ -316,6 +316,24 @@ public class Mp3CoverImage {
         protected boolean useFrameUnsynchronisation() {
             return unsynchronisation;
         }
+
+        @Override
+        protected ID3v2Frame createFrame(byte[] bytes, int currentOffset) throws InvalidDataException {
+            return new ID3v24Frame(bytes, currentOffset);
+        }
+    }
+
+    private static class ID3v24Frame extends ID3v2Frame {
+
+        public ID3v24Frame(byte[] buffer, int offset) throws InvalidDataException {
+            super(buffer, offset);
+        }
+
+        // ID3v2.4 frame sizes are synchsafe, unlike 2.3's plain integers
+        @Override
+        protected void unpackDataLength(byte[] buffer, int offset) {
+            dataLength = unpackSynchsafeInteger(buffer[offset + 4], buffer[offset + 5], buffer[offset + 6], buffer[offset + 7]);
+        }
     }
 
     private static abstract class AbstractID3v2FrameData {
