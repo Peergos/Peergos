@@ -68,7 +68,7 @@ public class SocialHandler implements HttpHandler {
                     break;
                 case "removeFollowRequest":
                     AggregatedMetrics.REMOVE_FOLLOW_REQUEST_COUNTER.inc();
-                    byte[] signedFollowRequest = Serialize.readFully(din, 4096);
+                    byte[] signedFollowRequest = Serialize.readFully(din, BlindFollowRequest.MAX_SIGNED_SIZE);
                     boolean isRemoved = social.removeFollowRequest(owner, signedFollowRequest).get();
                     dout.writeBoolean(isRemoved);
                     break;

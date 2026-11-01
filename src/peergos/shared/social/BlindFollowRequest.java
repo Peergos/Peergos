@@ -18,6 +18,8 @@ public class BlindFollowRequest implements Cborable {
     public static final int LINKED_PADDING = 24 * 1024;
     public static final int LEGACY_PADDING = 512;
     public static final int MAX_SIZE = 32 * 1024;
+    // a request signed by its recipient to remove it, with room for a SPHINCS+ signature
+    public static final int MAX_SIGNED_SIZE = MAX_SIZE + 20 * 1024;
 
     public final PublicBoxingKey dummySource;
     public final PaddedAsymmetricCipherText followRequest;
