@@ -245,6 +245,11 @@ public class MultiUserTests {
     }
 
     @Test
+    public void chatAttachmentOutsideTheChat() {
+        PeergosNetworkUtils.chatAttachmentOutsideTheChat(network, random);
+    }
+
+    @Test
     public void concurrentChatMerges() {
         PeergosNetworkUtils.concurrentChatMerges(network, random);
     }
