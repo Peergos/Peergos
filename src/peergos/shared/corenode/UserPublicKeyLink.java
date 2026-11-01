@@ -218,6 +218,22 @@ public class UserPublicKeyLink implements Cborable {
                                                                    List<UserPublicKeyLink> existing,
                                                                    List<UserPublicKeyLink> updated,
                                                                    ContentAddressedStorage ipfs) {
+        return merge(username, existing, updated, ipfs, false);
+    }
+
+    /** A merge of chains read back, as validHistoricalChain checks them. */
+    public static CompletableFuture<List<UserPublicKeyLink>> mergeHistorical(String username,
+                                                                             List<UserPublicKeyLink> existing,
+                                                                             List<UserPublicKeyLink> updated,
+                                                                             ContentAddressedStorage ipfs) {
+        return merge(username, existing, updated, ipfs, true);
+    }
+
+    private static CompletableFuture<List<UserPublicKeyLink>> merge(String username,
+                                                                    List<UserPublicKeyLink> existing,
+                                                                    List<UserPublicKeyLink> updated,
+                                                                    ContentAddressedStorage ipfs,
+                                                                    boolean historical) {
         if (updated.isEmpty())
             return Futures.errored(new IllegalStateException("Empty claim chain!"));
         if (updated.equals(existing))
@@ -226,7 +242,7 @@ public class UserPublicKeyLink implements Cborable {
         if (updated.get(updated.size() - 1).getKeyChangeProof().isPresent())
             return Futures.errored(new IllegalStateException("Final link in claim chain has a key change proof!"));
         if (existing.isEmpty())
-            return validChain(updated, username, ipfs)
+            return validChain(updated, username, ipfs, historical)
                     .thenApply(valid -> {
                         if (! valid)
                             throw new IllegalStateException("Invalid claim chain for " + username);
@@ -265,7 +281,7 @@ public class UserPublicKeyLink implements Cborable {
                 existing.subList(0, existing.size() - 1).stream(),
                 tail.stream())
                 .collect(Collectors.toList());
-        return validChain(result, username, ipfs)
+        return validChain(result, username, ipfs, historical)
                 .thenApply(valid -> {
                     if (! valid)
                         throw new IllegalStateException("Invalid key chain merge!");
@@ -274,9 +290,20 @@ public class UserPublicKeyLink implements Cborable {
     }
 
     public static CompletableFuture<Boolean> validChain(List<UserPublicKeyLink> chain, String username, ContentAddressedStorage ipfs) {
+        return validChain(chain, username, ipfs, false);
+    }
+
+    /** A chain read back, rather than written, may also have been signed by the key in an owner's hash before the
+     *  identity rotated away from it in the routing log. A write must be signed by the current key, so a thief with
+     *  the old key can't change the chain. */
+    public static CompletableFuture<Boolean> validHistoricalChain(List<UserPublicKeyLink> chain, String username, ContentAddressedStorage ipfs) {
+        return validChain(chain, username, ipfs, true);
+    }
+
+    private static CompletableFuture<Boolean> validChain(List<UserPublicKeyLink> chain, String username, ContentAddressedStorage ipfs, boolean historical) {
         List<CompletableFuture<Boolean>> validities = new ArrayList<>();
         for (int i=0; i < chain.size()-1; i++)
-            validities.add(validLink(chain.get(i), chain.get(i + 1).owner, username, ipfs));
+            validities.add(validLink(chain.get(i), chain.get(i + 1).owner, username, ipfs, historical));
 
         // last claim must have storage providers, earlier ones must be empty
         for (int i=0; i < chain.size(); i++) {
@@ -297,36 +324,62 @@ public class UserPublicKeyLink implements Cborable {
                     if (!valid)
                         return CompletableFuture.completedFuture(false);
                     UserPublicKeyLink last = chain.get(chain.size() - 1);
-                    return validClaim(last, username, ipfs);
+                    return validClaim(last, username, ipfs, historical);
                 });
+    }
+
+    private static CompletableFuture<List<PublicSigningKey>> ownerKeys(PublicKeyHash owner, ContentAddressedStorage ipfs, boolean historical) {
+        return ipfs.getSigningKey(owner, owner).thenCompose(current -> {
+            List<PublicSigningKey> keys = new ArrayList<>();
+            current.ifPresent(keys::add);
+            if (! historical)
+                return Futures.of(keys);
+            return ipfs.getInlineSigningKey(owner, owner).thenApply(inline -> {
+                inline.filter(k -> ! keys.contains(k)).ifPresent(keys::add);
+                return keys;
+            });
+        });
+    }
+
+    private static CompletableFuture<Boolean> anyVerifies(List<PublicSigningKey> keys, Function<PublicSigningKey, CompletableFuture<Boolean>> check) {
+        if (keys.isEmpty())
+            return Futures.of(false);
+        return Futures.asyncExceptionally(() -> check.apply(keys.get(0)), t -> Futures.of(false))
+                .thenCompose(valid -> valid ? Futures.of(true) : anyVerifies(keys.subList(1, keys.size()), check));
     }
 
     static CompletableFuture<Boolean> validLink(UserPublicKeyLink from,
                                                 PublicKeyHash target,
                                                 String username,
                                                 ContentAddressedStorage ipfs) {
-        return validClaim(from, username, ipfs).thenCompose(valid -> {
+        return validLink(from, target, username, ipfs, false);
+    }
+
+    private static CompletableFuture<Boolean> validLink(UserPublicKeyLink from,
+                                                        PublicKeyHash target,
+                                                        String username,
+                                                        ContentAddressedStorage ipfs,
+                                                        boolean historical) {
+        return validClaim(from, username, ipfs, historical).thenCompose(valid -> {
             if (!valid)
                 return CompletableFuture.completedFuture(false);
 
             Optional<byte[]> keyChangeProof = from.getKeyChangeProof();
             if (!keyChangeProof.isPresent())
                 return CompletableFuture.completedFuture(false);
-            return ipfs.getSigningKey(from.owner, from.owner).thenCompose(ownerKeyOpt -> {
-                if (!ownerKeyOpt.isPresent())
-                    return Futures.of(false);
-                return ownerKeyOpt.get().unsignMessage(keyChangeProof.get()).thenApply(unsigned -> {
-                    PublicKeyHash targetKey = PublicKeyHash.fromCbor(CborObject.fromByteArray(unsigned));
-                    if (!Arrays.equals(targetKey.serialize(), target.serialize()))
-                        return false;
-
-                    return true;
-                });
-            });
+            return ownerKeys(from.owner, ipfs, historical).thenCompose(keys -> anyVerifies(keys,
+                    key -> key.unsignMessage(keyChangeProof.get()).thenApply(unsigned -> {
+                        PublicKeyHash targetKey = PublicKeyHash.fromCbor(CborObject.fromByteArray(unsigned));
+                        return Arrays.equals(targetKey.serialize(), target.serialize());
+                    })));
         });
     }
 
     static CompletableFuture<Boolean> validClaim(UserPublicKeyLink from, String username, ContentAddressedStorage ipfs) {
+        return validClaim(from, username, ipfs, false);
+    }
+
+    private static CompletableFuture<Boolean> validClaim(UserPublicKeyLink from, String username, ContentAddressedStorage ipfs, boolean historical) {
         if (username.contains(" ") || username.contains("\t") || username.contains("\n"))
             return CompletableFuture.completedFuture(false);
         if (username.length() > MAX_USERNAME_SIZE)
@@ -335,17 +388,15 @@ public class UserPublicKeyLink implements Cborable {
             return CompletableFuture.completedFuture(false);
         if (from.claim.storageProviders.size() > 1)
             return CompletableFuture.completedFuture(false);
-        return ipfs.getSigningKey(from.owner, from.owner).thenCompose(ownerKeyOpt -> {
-            if (!ownerKeyOpt.isPresent())
-                return Futures.of(false);
-            try {
-                return Claim.deserialize(from.claim.signedContents, ownerKeyOpt.get())
-                        .thenApply(decoded -> from.claim.equals(decoded));
-            } catch (Exception e) {
-                e.printStackTrace();
-                return Futures.of(false);
-            }
-        });
+        return ownerKeys(from.owner, ipfs, historical).thenCompose(keys -> anyVerifies(keys,
+                key -> {
+                    try {
+                        return Claim.deserialize(from.claim.signedContents, key)
+                                .thenApply(decoded -> from.claim.equals(decoded));
+                    } catch (IOException e) {
+                        return Futures.of(false);
+                    }
+                }));
     }
 
     public static boolean isExpiredClaim(UserPublicKeyLink from) {
