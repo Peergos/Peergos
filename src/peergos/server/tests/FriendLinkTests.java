@@ -197,12 +197,12 @@ public class FriendLinkTests {
         byte[] replyLink = crypto.random.randomBytes(FriendLinkBundle.LINK_ID_BYTES);
         FollowRequest unsigned = new FollowRequest(Optional.of(new EntryPoint(AbsoluteCapability.createNull(), bob.username)), Optional.empty());
 
-        FollowRequest.Linked claimingBob = new FollowRequest.Linked(alice.signer.publicKeyHash, link.linkId,
+        FollowRequest.Linked claimingBob = new FollowRequest.Linked(alice.signer.publicKeyHash, Optional.of(link.linkId),
                 bob.signer.publicKeyHash, reply.publicBoxingKey, replyLink, bob.username);
         FollowRequest forged = unsigned.sign(claimingBob, carol.signer.secret).join();
         send(carol, alice, bundle.boxer, forged, link.linkId);
 
-        FollowRequest.Linked forOtherLink = new FollowRequest.Linked(alice.signer.publicKeyHash, other.linkId,
+        FollowRequest.Linked forOtherLink = new FollowRequest.Linked(alice.signer.publicKeyHash, Optional.of(other.linkId),
                 carol.signer.publicKeyHash, reply.publicBoxingKey, replyLink, carol.username);
         FollowRequest carols = new FollowRequest(Optional.of(new EntryPoint(AbsoluteCapability.createNull(), carol.username)), Optional.empty())
                 .sign(forOtherLink, carol.signer.secret).join();
@@ -239,6 +239,41 @@ public class FriendLinkTests {
         Assert.assertTrue(alice.getFollowRequests().join().isEmpty());
         Assert.assertTrue(alice.getSocialState().join().getFriends().contains(bob.username));
         Assert.assertTrue(bob.getSocialState().join().getFriends().contains(alice.username));
+    }
+
+    @Test
+    public void legacyFriendsSwapBackChannelsOnceOffered() {
+        UserContext alice = signUp("foa");
+        UserContext bob = signUp("fob");
+        UserContext carol = signUp("foc");
+        PeergosNetworkUtils.friendBetweenGroups(Arrays.asList(alice), Arrays.asList(bob));
+        Assert.assertTrue(alice.getFriendLinkStore().join().backChannels.isEmpty());
+
+        Assert.assertEquals(Integer.valueOf(1), alice.offerBackChannels().join());
+        Assert.assertEquals("an offer is made once", Integer.valueOf(0), alice.offerBackChannels().join());
+        Assert.assertTrue("an offer asks nothing", bob.processFollowRequests().join().isEmpty());
+        Assert.assertTrue(bob.getFollowRequests().join().isEmpty());
+        FriendLinkStore.BackChannel toAlice = bob.getFriendLinkStore().join().backChannel(alice.signer.publicKeyHash).get();
+        Assert.assertArrayEquals(alice.getFriendLinkStore().join().replyLinkFor(bob.signer.publicKeyHash).get().linkId, toAlice.linkId);
+
+        Assert.assertEquals("Bob's offer goes back over Alice's back-channel", Integer.valueOf(1), bob.offerBackChannels().join());
+        List<BlindFollowRequest> waiting = alice.getFollowRequests().join();
+        Assert.assertArrayEquals(toAlice.linkId, waiting.get(0).linkId.get());
+        Assert.assertTrue(alice.processFollowRequests().join().isEmpty());
+        Assert.assertTrue(alice.getFriendLinkStore().join().backChannel(bob.signer.publicKeyHash).isPresent());
+
+        Assert.assertEquals("a stranger isn't a contact, so gets no offer", Integer.valueOf(0), carol.offerBackChannels().join());
+        FollowRequest offer = FollowRequest.backChannelOffer(carol.username);
+        FollowRequest.Linked header = new FollowRequest.Linked(alice.signer.publicKeyHash, Optional.empty(),
+                carol.signer.publicKeyHash, BoxingKeyPair.randomCurve25519(crypto.random, crypto.boxer).publicBoxingKey,
+                crypto.random.randomBytes(FriendLinkBundle.LINK_ID_BYTES), carol.username);
+        PublicBoxingKey legacy = carol.getPublicKeys(alice.username).join().get().right;
+        byte[] blind = BlindFollowRequest.build(legacy, offer.sign(header, carol.signer.secret).join(), crypto).join().serialize();
+        Assert.assertTrue(carol.network.social.sendFollowRequest(alice.signer.publicKeyHash, blind).join());
+        Assert.assertTrue(alice.processFollowRequests().join().isEmpty());
+        Assert.assertTrue("an offer from a stranger is dropped and not kept",
+                alice.getFriendLinkStore().join().backChannel(carol.signer.publicKeyHash).isEmpty());
+        Assert.assertTrue(alice.getFollowRequests().join().isEmpty());
     }
 
     /** Bob asks through a link of Alice's, and she accepts and follows back. */

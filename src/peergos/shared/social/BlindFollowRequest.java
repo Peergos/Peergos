@@ -13,7 +13,7 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
 public class BlindFollowRequest implements Cborable {
-    /** Every request sent to a friend link pads to one size, big enough for a request signed with SPHINCS+, so its
+    /** Every signed request, which is any sent to a friend link, pads to one size, big enough for a request signed with SPHINCS+, so its
      *  size doesn't reveal the sender's scheme (remove-pki §8). */
     public static final int LINKED_PADDING = 24 * 1024;
     public static final int LEGACY_PADDING = 512;
@@ -68,7 +68,7 @@ public class BlindFollowRequest implements Cborable {
                 BoxingKeyPair.randomHybrid(crypto) :
                 Futures.of(BoxingKeyPair.randomCurve25519(crypto.random, crypto.boxer)))
                 .thenCompose(tmp -> PaddedAsymmetricCipherText.build(tmp.secretBoxingKey, targetBoxer, request,
-                                linkId.isPresent() ? LINKED_PADDING : LEGACY_PADDING)
+                                linkId.isPresent() || request.linked.isPresent() ? LINKED_PADDING : LEGACY_PADDING)
                         .thenApply(cipher -> new BlindFollowRequest(tmp.publicBoxingKey, cipher, linkId)));
     }
 }
