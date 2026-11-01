@@ -3,6 +3,7 @@ package peergos.shared.social;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Multihash;
 
+import java.util.*;
 import java.util.concurrent.*;
 
 public interface SocialNetworkProxy extends SocialNetwork {
@@ -30,4 +31,6 @@ public interface SocialNetworkProxy extends SocialNetwork {
      * @return
      */
     CompletableFuture<Boolean> removeFollowRequest(Multihash targetServerId, PublicKeyHash owner, byte[] data);
+
+    CompletableFuture<Optional<FriendLinkBundle.Signed>> getFriendLinkBundle(Multihash targetServerId, PublicKeyHash owner, byte[] linkId);
 }

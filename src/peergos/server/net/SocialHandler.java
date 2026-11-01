@@ -56,7 +56,7 @@ public class SocialHandler implements HttpHandler {
             switch (method) {
                 case "followRequest":
                     AggregatedMetrics.FOLLOW_REQUEST_COUNTER.inc();
-                    byte[] encryptedCap = Serialize.readFully(din, 4096);
+                    byte[] encryptedCap = Serialize.readFully(din, BlindFollowRequest.MAX_SIZE);
                     boolean followRequested = social.sendFollowRequest(owner, encryptedCap).get();
                     dout.writeBoolean(followRequested);
                     break;
@@ -71,6 +71,10 @@ public class SocialHandler implements HttpHandler {
                     byte[] signedFollowRequest = Serialize.readFully(din, 4096);
                     boolean isRemoved = social.removeFollowRequest(owner, signedFollowRequest).get();
                     dout.writeBoolean(isRemoved);
+                    break;
+                case "getFriendLinkBundle":
+                    byte[] linkId = ArrayOps.hexToBytes(last.apply("link"));
+                    dout.write(SocialNetwork.serializeBundle(social.getFriendLinkBundle(owner, linkId).get()));
                     break;
                 default:
                     throw new IOException("Unknown method "+ method);

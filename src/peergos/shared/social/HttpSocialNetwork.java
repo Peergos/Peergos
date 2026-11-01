@@ -9,6 +9,7 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
+import java.util.*;
 import java.util.concurrent.*;
 
 public class HttpSocialNetwork implements SocialNetworkProxy {
@@ -95,6 +96,22 @@ public class HttpSocialNetwork implements SocialNetworkProxy {
                 throw new RuntimeException(e);
             }
         });
+    }
+
+    @Override
+    public CompletableFuture<Optional<FriendLinkBundle.Signed>> getFriendLinkBundle(PublicKeyHash owner, byte[] linkId) {
+        return getFriendLinkBundle("", direct, owner, linkId);
+    }
+
+    @Override
+    public CompletableFuture<Optional<FriendLinkBundle.Signed>> getFriendLinkBundle(Multihash targetServerId, PublicKeyHash owner, byte[] linkId) {
+        return getFriendLinkBundle(getProxyUrlPrefix(targetServerId), p2p, owner, linkId);
+    }
+
+    private CompletableFuture<Optional<FriendLinkBundle.Signed>> getFriendLinkBundle(String urlPrefix, HttpPoster poster, PublicKeyHash owner, byte[] linkId) {
+        return poster.get(urlPrefix + Constants.SOCIAL_URL + "getFriendLinkBundle?owner=" + encode(owner.toString())
+                + "&link=" + ArrayOps.bytesToHex(linkId))
+                .thenApply(SocialNetwork::parseBundle);
     }
 
     private static String encode(String component) {

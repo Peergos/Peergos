@@ -63,6 +63,8 @@ public class UserContext {
     public static final String ENTRY_POINTS_FROM_FRIENDS_FILENAME = ".from-friends.cborstream";
     public static final String ENTRY_POINTS_FROM_FRIENDS_GROUPS_FILENAME = ".groups-from-friends.cborstream";
     public static final String SOCIAL_STATE_FILENAME = ".social-state.cbor";
+    public static final String FRIEND_LINKS_FILENAME = ".friend-links.cbor";
+    public static final String FRIEND_LINK_UNAVAILABLE = "This friend link is no longer available";
     private static final String REMOVING_FOLLOWER_PREFIX = ".removing-";
     // historical name: it has always held who we have unfollowed
     public static final String UNFOLLOWED_USERNAMES_FILE = ".blocked-usernames.txt";
@@ -2607,6 +2609,146 @@ public class UserContext {
                                     });
                         }));
         pendingSocialStateChanges = next;
+        return next;
+    }
+
+    @JsMethod
+    public CompletableFuture<FriendLink> createFriendLink(String label, Optional<LocalDateTime> expiry, int maxUses) {
+        return createFriendLink(FriendLinkStore.Kind.LINK, label, expiry, maxUses > 0 ? Optional.of(maxUses) : Optional.empty(), Optional.empty())
+                .thenCompose(e -> friendLink(e.linkId));
+    }
+
+    private CompletableFuture<FriendLinkStore.Entry> createFriendLink(FriendLinkStore.Kind kind,
+                                                                     String label,
+                                                                     Optional<LocalDateTime> expiry,
+                                                                     Optional<Integer> maxUses,
+                                                                     Optional<PublicKeyHash> peer) {
+        byte[] linkId = crypto.random.randomBytes(FriendLinkBundle.LINK_ID_BYTES);
+        return BoxingKeyPair.randomHybrid(crypto).thenCompose(boxer -> {
+            FriendLinkStore.Entry e = new FriendLinkStore.Entry(linkId, boxer, kind, label,
+                    LocalDateTime.now(ZoneOffset.UTC), expiry, maxUses, 0, peer);
+            // keep the keypair before publishing, so a request sent the moment the link is live can be read
+            return changeFriendLinkStore(store -> store.with(e))
+                    .thenCompose(x -> publishFriendLink(e))
+                    .thenApply(x -> e);
+        });
+    }
+
+    private CompletableFuture<Snapshot> publishFriendLink(FriendLinkStore.Entry e) {
+        FriendLinkBundle bundle = new FriendLinkBundle(signer.publicKeyHash, e.linkId, e.boxer.publicBoxingKey, e.expiry, username);
+        return bundle.sign(signer.secret)
+                .thenCompose(signed -> writeSynchronizer.applyUpdate(signer.publicKeyHash, signer,
+                        (wd, tid) -> wd.putFriendLink(signer, signed, mirrorBat, tid, network.dhtClient, network.hasher)));
+    }
+
+    /** The link to hand out, with a hint of where this user's server is, for a server whose log doesn't hold us yet. */
+    public CompletableFuture<FriendLink> friendLink(byte[] linkId) {
+        return serverHint()
+                .thenApply(Optional::of)
+                .exceptionally(t -> Optional.empty())
+                .thenApply(hint -> new FriendLink(signer.publicKeyHash, linkId, hint));
+    }
+
+    @JsMethod
+    public CompletableFuture<String> getFriendLinkString(FriendLinkStore.Entry e) {
+        return friendLink(e.linkId).thenApply(FriendLink::toLink);
+    }
+
+    @JsMethod
+    public CompletableFuture<List<FriendLinkStore.Entry>> getFriendLinks() {
+        return getFriendLinkStore().thenApply(store -> store.ofKind(FriendLinkStore.Kind.LINK));
+    }
+
+    /** Stops the server serving the link or accepting requests to it, then forgets its keypair. */
+    @JsMethod
+    public CompletableFuture<Boolean> revokeFriendLink(FriendLinkStore.Entry e) {
+        return revokeFriendLink(e.linkId);
+    }
+
+    private CompletableFuture<Boolean> revokeFriendLink(byte[] linkId) {
+        return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer,
+                        (wd, tid) -> wd.removeFriendLink(signer, linkId, mirrorBat, tid, network.dhtClient, network.hasher))
+                .thenCompose(x -> changeFriendLinkStore(store -> store.without(linkId)))
+                .thenApply(x -> true);
+    }
+
+    /** The bundle a friend link names, verified before anything of it is shown: signed by the identity's current key,
+     *  for this link id, and not expired (remove-pki §8). The hint is only tried when the bundle can't be had without it.
+     */
+    @JsMethod
+    public CompletableFuture<FriendLinkBundle> fetchFriendLink(String link) {
+        FriendLink parsed = FriendLink.fromLink(link);
+        if (parsed.identity.equals(signer.publicKeyHash))
+            return Futures.errored(new IllegalStateException("This is your own friend link"));
+        return Futures.asyncExceptionally(
+                () -> network.social.getFriendLinkBundle(parsed.identity, parsed.linkId)
+                        .thenApply(res -> res.orElseThrow(() -> new IllegalStateException(FRIEND_LINK_UNAVAILABLE))),
+                t -> parsed.hint.isEmpty() ?
+                        Futures.errored(t) :
+                        addHint(parsed.hint.get(), Optional.of(parsed.identity))
+                                .exceptionally(e -> Collections.emptyList())
+                                .thenCompose(x -> network.social.getFriendLinkBundle(parsed.identity, parsed.linkId))
+                                .thenApply(res -> res.orElseThrow(() -> new IllegalStateException(FRIEND_LINK_UNAVAILABLE))))
+                .thenCompose(signed -> verifyFriendLinkBundle(parsed, signed, network));
+    }
+
+    public static CompletableFuture<FriendLinkBundle> verifyFriendLinkBundle(FriendLink link,
+                                                                             FriendLinkBundle.Signed signed,
+                                                                             NetworkAccess network) {
+        FriendLinkBundle bundle = signed.bundle;
+        if (! bundle.identity.equals(link.identity) || ! Arrays.equals(bundle.linkId, link.linkId))
+            return Futures.errored(new IllegalStateException("The friend link's bundle is for a different link"));
+        if (bundle.isExpired(LocalDateTime.now(ZoneOffset.UTC)))
+            return Futures.errored(new IllegalStateException(FRIEND_LINK_UNAVAILABLE));
+        return network.dhtClient.getSigningKey(link.identity, link.identity)
+                .thenCompose(key -> key.isEmpty() ?
+                        Futures.of(false) :
+                        signed.isSignedBy(key.get()))
+                .thenApply(valid -> {
+                    if (! valid)
+                        throw new IllegalStateException("The friend link's bundle isn't signed by its identity's current key");
+                    return bundle;
+                });
+    }
+
+    private CompletableFuture<FriendLinkStore> getFriendLinkStore() {
+        return getUserRoot()
+                .thenCompose(home -> home.getChild(FRIEND_LINKS_FILENAME, crypto.hasher, network))
+                .thenCompose(fileOpt -> fileOpt.isEmpty() ?
+                        Futures.of(FriendLinkStore.empty()) :
+                        fileOpt.get().getInputStream(network, crypto, x -> {})
+                                .thenCompose(reader -> Serialize.parse(reader, fileOpt.get().getSize(), FriendLinkStore::fromCbor)));
+    }
+
+    // read, change and write back, one after another, so concurrent changes don't lose each other
+    private CompletableFuture<FriendLinkStore> friendLinkChanges = Futures.of(FriendLinkStore.empty());
+
+    private synchronized CompletableFuture<FriendLinkStore> changeFriendLinkStore(Function<FriendLinkStore, FriendLinkStore> change) {
+        CompletableFuture<FriendLinkStore> next = friendLinkChanges
+                .exceptionally(t -> null)
+                .thenCompose(x -> getUserRoot())
+                .thenCompose(home -> home.getChild(FRIEND_LINKS_FILENAME, crypto.hasher, network)
+                        .thenCompose(fileOpt -> {
+                            if (fileOpt.isEmpty()) {
+                                FriendLinkStore updated = change.apply(FriendLinkStore.empty());
+                                byte[] raw = updated.serialize();
+                                return home.uploadFileSection(FRIEND_LINKS_FILENAME, AsyncReader.build(raw), true, 0, raw.length,
+                                                Optional.empty(), true, network, crypto, () -> false, y -> {},
+                                                crypto.random.randomBytes(32), Optional.empty(), Optional.of(Bat.random(crypto.random)),
+                                                mirrorBatId())
+                                        .thenApply(y -> updated);
+                            }
+                            FileWrapper file = fileOpt.get();
+                            return file.getInputStream(network, crypto, y -> {})
+                                    .thenCompose(reader -> Serialize.parse(reader, file.getSize(), FriendLinkStore::fromCbor))
+                                    .thenCompose(current -> {
+                                        FriendLinkStore updated = change.apply(current);
+                                        byte[] raw = updated.serialize();
+                                        return file.overwriteFile(AsyncReader.build(raw), raw.length, network, crypto, y -> {})
+                                                .thenApply(y -> updated);
+                                    });
+                        }));
+        friendLinkChanges = next;
         return next;
     }
 

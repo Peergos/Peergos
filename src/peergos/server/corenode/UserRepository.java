@@ -45,6 +45,12 @@ public class UserRepository implements SocialNetwork, MutablePointers {
         return store.addFollowRequest(target, encryptedPermission);
     }
 
+    /** Bundles are answered by FriendLinkSocialNetwork, which can read each user's friend link champ. */
+    @Override
+    public CompletableFuture<Optional<FriendLinkBundle.Signed>> getFriendLinkBundle(PublicKeyHash owner, byte[] linkId) {
+        return Futures.of(Optional.empty());
+    }
+
     @Override
     public CompletableFuture<Boolean> removeFollowRequest(PublicKeyHash owner, byte[] data) {
         return ipfs.getSigningKey(owner, owner).thenCompose(signerOpt -> {
