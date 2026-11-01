@@ -12,6 +12,7 @@ import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
+import peergos.shared.social.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
@@ -46,6 +47,8 @@ public class WriterData implements Cborable {
     public final Optional<Multihash> tree;
     // This is the root of a private champ containing encrypted secret links (present on identity keys)
     public final Optional<Multihash> secretLinks;
+    // The root of a champ of signed friend link bundles, keyed by the hash of each live link id (present on identity keys)
+    public final Optional<Multihash> friendLinks;
 
     /**
      *
@@ -65,6 +68,19 @@ public class WriterData implements Cborable {
                       Optional<UserStaticData> staticData,
                       Optional<Multihash> tree,
                       Optional<Multihash> secretLinks) {
+        this(controller, generationAlgorithm, publicData, followRequestReceiver, ownedKeys, namedOwnedKeys, staticData, tree, secretLinks, Optional.empty());
+    }
+
+    public WriterData(PublicKeyHash controller,
+                      Optional<SecretGenerationAlgorithm> generationAlgorithm,
+                      Optional<Multihash> publicData,
+                      Optional<PublicKeyHash> followRequestReceiver,
+                      Optional<Multihash> ownedKeys,
+                      Map<String, OwnerProof> namedOwnedKeys,
+                      Optional<UserStaticData> staticData,
+                      Optional<Multihash> tree,
+                      Optional<Multihash> secretLinks,
+                      Optional<Multihash> friendLinks) {
         this.controller = controller;
         this.generationAlgorithm = generationAlgorithm;
         this.publicData = publicData;
@@ -74,26 +90,27 @@ public class WriterData implements Cborable {
         this.staticData = staticData;
         this.tree = tree;
         this.secretLinks = secretLinks;
+        this.friendLinks = friendLinks;
     }
 
     public WriterData withChamp(Multihash treeRoot) {
-        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, ownedKeys, namedOwnedKeys, staticData, Optional.of(treeRoot), secretLinks);
+        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, ownedKeys, namedOwnedKeys, staticData, Optional.of(treeRoot), secretLinks, friendLinks);
     }
 
     public WriterData withBoxer(Optional<PublicKeyHash> followRequestReceiver) {
-        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, ownedKeys, namedOwnedKeys, staticData, tree, secretLinks);
+        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, ownedKeys, namedOwnedKeys, staticData, tree, secretLinks, friendLinks);
     }
 
     public WriterData withPublicRoot(Multihash publicChampRoot) {
-        return new WriterData(controller, generationAlgorithm, Optional.of(publicChampRoot), followRequestReceiver, ownedKeys, namedOwnedKeys, staticData, tree, secretLinks);
+        return new WriterData(controller, generationAlgorithm, Optional.of(publicChampRoot), followRequestReceiver, ownedKeys, namedOwnedKeys, staticData, tree, secretLinks, friendLinks);
     }
 
     public WriterData withOwnedRoot(Multihash ownedRoot) {
-        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, Optional.of(ownedRoot), namedOwnedKeys, staticData, tree, secretLinks);
+        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, Optional.of(ownedRoot), namedOwnedKeys, staticData, tree, secretLinks, friendLinks);
     }
 
     public WriterData withAlgorithm(SecretGenerationAlgorithm newAlg) {
-        return new WriterData(controller, Optional.of(newAlg), publicData, followRequestReceiver, ownedKeys, namedOwnedKeys, staticData, tree, secretLinks);
+        return new WriterData(controller, Optional.of(newAlg), publicData, followRequestReceiver, ownedKeys, namedOwnedKeys, staticData, tree, secretLinks, friendLinks);
     }
 
     public CompletableFuture<WriterData> addOwnedKey(PublicKeyHash owner,
@@ -108,7 +125,7 @@ public class WriterData implements Cborable {
                         getOwnedKeyChamp(owner, ipfs, hasher))
                         .thenCompose(champ -> champ.add(owner, signer, newOwned, hasher, tid))
                         .thenApply(newRoot -> new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver,
-                                Optional.of(newRoot), namedOwnedKeys, staticData, tree, secretLinks)), ipfs);
+                                Optional.of(newRoot), namedOwnedKeys, staticData, tree, secretLinks, friendLinks)), ipfs);
     }
 
     public CompletableFuture<Pair<WriterData, Cid>> addLink(SigningPrivateKeyAndPublicHash owner,
@@ -125,7 +142,7 @@ public class WriterData implements Cborable {
                 getSecretLinkChamp(owner.publicKeyHash, mirrorBat, ipfs, hasher))
                 .thenCompose(champ -> champ.add(owner, label, value, existing, mirrorBat.map(BatWithId::id), hasher, tid))
                 .thenApply(newLinksRoot -> new Pair<>(new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver,
-                        ownedKeys, namedOwnedKeys, staticData, tree, Optional.of(newLinksRoot.left)), newLinksRoot.right));
+                        ownedKeys, namedOwnedKeys, staticData, tree, Optional.of(newLinksRoot.left), friendLinks), newLinksRoot.right));
     }
 
     public CompletableFuture<WriterData> removeLink(SigningPrivateKeyAndPublicHash owner,
@@ -139,7 +156,43 @@ public class WriterData implements Cborable {
         return getSecretLinkChamp(owner.publicKeyHash, mirrorBat, ipfs, hasher)
                 .thenCompose(champ -> champ.remove(owner.publicKeyHash, owner, label, mirrorBat.map(BatWithId::id), tid))
                 .thenApply(newLinksRoot -> new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver,
-                        ownedKeys, namedOwnedKeys, staticData, tree, Optional.of(newLinksRoot)));
+                        ownedKeys, namedOwnedKeys, staticData, tree, Optional.of(newLinksRoot), friendLinks));
+    }
+
+    public CompletableFuture<WriterData> putFriendLink(SigningPrivateKeyAndPublicHash owner,
+                                                       FriendLinkBundle.Signed bundle,
+                                                       Optional<BatWithId> mirrorBat,
+                                                       TransactionId tid,
+                                                       ContentAddressedStorage ipfs,
+                                                       Hasher hasher) {
+        return (friendLinks.isEmpty() ?
+                FriendLinkChamp.createEmpty(owner.publicKeyHash, owner, mirrorBat.map(BatWithId::id), ipfs, hasher, tid)
+                        .thenCompose(root -> FriendLinkChamp.build(owner.publicKeyHash, root, mirrorBat, ipfs, hasher)) :
+                getFriendLinkChamp(owner.publicKeyHash, mirrorBat, ipfs, hasher))
+                .thenCompose(champ -> champ.put(owner, bundle, mirrorBat.map(BatWithId::id), tid))
+                .thenApply(newRoot -> withFriendLinks(Optional.of(newRoot)));
+    }
+
+    public CompletableFuture<WriterData> removeFriendLink(SigningPrivateKeyAndPublicHash owner,
+                                                          byte[] linkId,
+                                                          Optional<BatWithId> mirrorBat,
+                                                          TransactionId tid,
+                                                          ContentAddressedStorage ipfs,
+                                                          Hasher hasher) {
+        if (friendLinks.isEmpty())
+            return Futures.of(this);
+        return getFriendLinkChamp(owner.publicKeyHash, mirrorBat, ipfs, hasher)
+                .thenCompose(champ -> champ.remove(owner, linkId, mirrorBat.map(BatWithId::id), tid))
+                .thenApply(newRoot -> withFriendLinks(Optional.of(newRoot)));
+    }
+
+    public CompletableFuture<FriendLinkChamp> getFriendLinkChamp(PublicKeyHash owner, Optional<BatWithId> mirrorBat, ContentAddressedStorage ipfs, Hasher hasher) {
+        return friendLinks.map(root -> FriendLinkChamp.build(owner, (Cid)root, mirrorBat, ipfs, hasher))
+                .orElseThrow(() -> new IllegalStateException("Friend link champ absent!"));
+    }
+
+    public WriterData withFriendLinks(Optional<Multihash> friendLinks) {
+        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, ownedKeys, namedOwnedKeys, staticData, tree, secretLinks, friendLinks);
     }
 
     public CompletableFuture<Snapshot> addOwnedKeyAndCommit(PublicKeyHash owner,
@@ -153,7 +206,7 @@ public class WriterData implements Cborable {
         return getOwnedKeyChamp(owner, network.dhtClient, network.hasher)
                 .thenCompose(champ -> champ.add(owner, signer, newOwned, network.hasher, tid)
                         .thenApply(newRoot -> new WriterData(controller, generationAlgorithm, publicData,
-                                followRequestReceiver, Optional.of(newRoot), namedOwnedKeys, staticData, tree, secretLinks)))
+                                followRequestReceiver, Optional.of(newRoot), namedOwnedKeys, staticData, tree, secretLinks, friendLinks)))
                 .thenCompose(wd -> c.commit(owner, signer, wd, new CommittedWriterData(currentHash,this, currentSequence), tid));
     }
 
@@ -167,7 +220,7 @@ public class WriterData implements Cborable {
                 .thenCompose(champ -> IpfsTransaction.call(owner,
                         tid -> champ.remove(owner, signer, ownedKey, tid), ipfs)
                         .thenApply(newRoot -> new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver,
-                                Optional.of(newRoot), namedOwnedKeys, staticData, tree, secretLinks)));
+                                Optional.of(newRoot), namedOwnedKeys, staticData, tree, secretLinks, friendLinks)));
     }
 
     public CompletableFuture<Boolean> ownsKey(PublicKeyHash identityKey,
@@ -244,11 +297,11 @@ public class WriterData implements Cborable {
     public WriterData addNamedKey(String name, OwnerProof newNamedKey) {
         Map<String, OwnerProof> updated = new TreeMap<>(namedOwnedKeys);
         updated.put(name, newNamedKey);
-        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, ownedKeys, updated, staticData, tree, secretLinks);
+        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, ownedKeys, updated, staticData, tree, secretLinks, friendLinks);
     }
 
     public WriterData withStaticData(Optional<UserStaticData> entryPoints) {
-        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, ownedKeys, namedOwnedKeys, entryPoints, tree, secretLinks);
+        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, ownedKeys, namedOwnedKeys, entryPoints, tree, secretLinks, friendLinks);
     }
 
     public static CompletableFuture<WriterData> createEmpty(PublicKeyHash owner,
@@ -342,7 +395,8 @@ public class WriterData implements Cborable {
                                                     newNamedOwnedKeys,
                                                     Optional.empty(),
                                                     tree,
-                                        secretLinks);
+                                                    secretLinks,
+                                                    friendLinks);
                                             return getOwnedKeyChamp(oldSigner.publicKeyHash, network.dhtClient, network.hasher)
                                                     .thenCompose(okChamp -> okChamp.applyToAllMappings(oldSigner.publicKeyHash, base, (nwd, p) ->
                                                             p.left.equals(signer.publicKeyHash) ? Futures.of(nwd) :
@@ -442,6 +496,7 @@ public class WriterData implements Cborable {
         staticData.ifPresent(sd -> result.put("static", sd.toCbor()));
         tree.ifPresent(tree -> result.put("tree", new CborObject.CborMerkleLink(tree)));
         secretLinks.ifPresent(links -> result.put("links", new CborObject.CborMerkleLink(links)));
+        friendLinks.ifPresent(links -> result.put("friend-links", new CborObject.CborMerkleLink(links)));
         return CborObject.CborMap.build(result);
     }
 
@@ -464,7 +519,8 @@ public class WriterData implements Cborable {
         Optional<UserStaticData> staticData = m.getOptional("static", UserStaticData::fromCbor);
         Optional<Multihash> tree = m.getOptional("tree", val -> ((CborObject.CborMerkleLink)val).target);
         Optional<Multihash> secretLinks = m.getOptional("links", val -> ((CborObject.CborMerkleLink)val).target);
-        return new WriterData(controller, algo, publicData, followRequestReceiver, owned, named, staticData, tree, secretLinks);
+        Optional<Multihash> friendLinks = m.getOptional("friend-links", val -> ((CborObject.CborMerkleLink)val).target);
+        return new WriterData(controller, algo, publicData, followRequestReceiver, owned, named, staticData, tree, secretLinks, friendLinks);
     }
 
     public static CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash owner,
@@ -496,11 +552,11 @@ public class WriterData implements Cborable {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         WriterData that = (WriterData) o;
-        return Objects.equals(controller, that.controller) && Objects.equals(generationAlgorithm, that.generationAlgorithm) && Objects.equals(publicData, that.publicData) && Objects.equals(followRequestReceiver, that.followRequestReceiver) && Objects.equals(ownedKeys, that.ownedKeys) && Objects.equals(namedOwnedKeys, that.namedOwnedKeys) && Objects.equals(staticData, that.staticData) && Objects.equals(tree, that.tree) && Objects.equals(secretLinks, that.secretLinks);
+        return Objects.equals(controller, that.controller) && Objects.equals(generationAlgorithm, that.generationAlgorithm) && Objects.equals(publicData, that.publicData) && Objects.equals(followRequestReceiver, that.followRequestReceiver) && Objects.equals(ownedKeys, that.ownedKeys) && Objects.equals(namedOwnedKeys, that.namedOwnedKeys) && Objects.equals(staticData, that.staticData) && Objects.equals(tree, that.tree) && Objects.equals(secretLinks, that.secretLinks) && Objects.equals(friendLinks, that.friendLinks);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(controller, generationAlgorithm, publicData, followRequestReceiver, ownedKeys, namedOwnedKeys, staticData, tree, secretLinks);
+        return Objects.hash(controller, generationAlgorithm, publicData, followRequestReceiver, ownedKeys, namedOwnedKeys, staticData, tree, secretLinks, friendLinks);
     }
 }

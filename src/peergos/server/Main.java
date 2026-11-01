@@ -44,6 +44,7 @@ import peergos.shared.io.ipfs.api.JSONParser;
 import peergos.shared.login.OfflineAccountStore;
 import peergos.shared.login.mfa.*;
 import peergos.shared.mutable.*;
+import peergos.server.social.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
@@ -1069,7 +1070,9 @@ public class Main extends Builder {
 
             SocialNetworkProxy httpSocial = new HttpSocialNetwork(p2pHttpProxy, p2pHttpProxy);
 
-            SocialNetwork local = UserRepository.build(localStorage, rawSocial, hasher);
+            FriendLinkSocialNetwork local = new FriendLinkSocialNetwork(UserRepository.build(localStorage, rawSocial, hasher),
+                    localPointers, localStorage, batStore, hasher);
+            local.setPki(core);
             SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeIds, core, local, httpSocial);
 
             Set<String> adminUsernames = Arrays.asList(a.getArg("admin-usernames", "").split(","))

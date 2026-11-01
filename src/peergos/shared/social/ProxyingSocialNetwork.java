@@ -47,4 +47,13 @@ public class ProxyingSocialNetwork implements SocialNetwork {
                 () -> local.removeFollowRequest(owner, signedRequest),
                 targetServer -> p2p.removeFollowRequest(targetServer, owner, signedRequest));
     }
+
+    @Override
+    public CompletableFuture<Optional<FriendLinkBundle.Signed>> getFriendLinkBundle(PublicKeyHash owner, byte[] linkId) {
+        return Proxy.redirectCall(core,
+                serverIds,
+                owner,
+                () -> local.getFriendLinkBundle(owner, linkId),
+                targetServer -> p2p.getFriendLinkBundle(targetServer, owner, linkId));
+    }
 }

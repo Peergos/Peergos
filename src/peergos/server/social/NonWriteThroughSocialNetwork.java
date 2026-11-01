@@ -65,6 +65,11 @@ public class NonWriteThroughSocialNetwork implements SocialNetwork {
     }
 
     @Override
+    public CompletableFuture<Optional<FriendLinkBundle.Signed>> getFriendLinkBundle(PublicKeyHash owner, byte[] linkId) {
+        return source.getFriendLinkBundle(owner, linkId);
+    }
+
+    @Override
     public CompletableFuture<Boolean> removeFollowRequest(PublicKeyHash owner, byte[] signedEncryptedPermission) {
         try {
             PublicSigningKey signer = ipfs.getSigningKey(owner, owner).join().get();
