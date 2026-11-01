@@ -17,6 +17,8 @@ public class Signing {
     public static final String SERVER_INCEPTION = "peergos/routing/v1/server-inception";
     public static final String SERVER_ROTATION = "peergos/routing/v1/server-rotation";
     public static final String SERVER_ADDRESSES = "peergos/routing/v1/server-addresses";
+    public static final String FRIEND_LINK_BUNDLE = "peergos/social/v1/friend-link-bundle";
+    public static final String FOLLOW_REQUEST = "peergos/social/v1/follow-request";
 
     public static byte[] message(String context, byte[] body) {
         byte[] res = new byte[context.length() + 1 + body.length];
