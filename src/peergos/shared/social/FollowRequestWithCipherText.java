@@ -16,7 +16,7 @@ public class FollowRequestWithCipherText {
     }
 
     public FollowRequestWithCipherText withEntryPoint(EntryPoint updated) {
-        return new FollowRequestWithCipherText(new FollowRequest(Optional.of(updated), req.key), cipher);
+        return new FollowRequestWithCipherText(req.withEntry(updated), cipher);
     }
 
     @JsMethod

@@ -3,6 +3,7 @@ package peergos.shared.social;
 import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.util.*;
 
@@ -14,6 +15,8 @@ import java.util.stream.*;
  *  (remove-pki §8). Use counts live here, not on the server, since a blind request doesn't say who sent it.
  */
 public class FriendLinkStore implements Cborable {
+
+    public static final int MAX_SEEN = 128;
 
     public enum Kind {
         /** Made by the user to hand out */
@@ -38,6 +41,9 @@ public class FriendLinkStore implements Cborable {
         // the identity a reply link was made for
         @JsIgnore
         public final Optional<PublicKeyHash> peer;
+        // hashes of the requests counted as uses, the latest MAX_SEEN, so a request still waiting isn't counted twice
+        @JsIgnore
+        public final List<ByteArrayWrapper> seen;
 
         @JsIgnore
         public Entry(byte[] linkId,
@@ -48,7 +54,8 @@ public class FriendLinkStore implements Cborable {
                      Optional<LocalDateTime> expiry,
                      Optional<Integer> maxUses,
                      int uses,
-                     Optional<PublicKeyHash> peer) {
+                     Optional<PublicKeyHash> peer,
+                     List<ByteArrayWrapper> seen) {
             this.linkId = linkId;
             this.boxer = boxer;
             this.kind = kind;
@@ -58,6 +65,7 @@ public class FriendLinkStore implements Cborable {
             this.maxUses = maxUses;
             this.uses = uses;
             this.peer = peer;
+            this.seen = Collections.unmodifiableList(seen);
         }
 
         public String id() {
@@ -77,8 +85,17 @@ public class FriendLinkStore implements Cborable {
         }
 
         @JsIgnore
-        public Entry used() {
-            return new Entry(linkId, boxer, kind, label, created, expiry, maxUses, uses + 1, peer);
+        public boolean hasSeen(byte[] requestHash) {
+            return seen.contains(new ByteArrayWrapper(requestHash));
+        }
+
+        @JsIgnore
+        public Entry use(byte[] requestHash) {
+            List<ByteArrayWrapper> updated = new ArrayList<>(seen);
+            updated.add(new ByteArrayWrapper(requestHash));
+            if (updated.size() > MAX_SEEN)
+                updated = updated.subList(updated.size() - MAX_SEEN, updated.size());
+            return new Entry(linkId, boxer, kind, label, created, expiry, maxUses, uses + 1, peer, updated);
         }
 
         @Override
@@ -94,6 +111,9 @@ public class FriendLinkStore implements Cborable {
             maxUses.ifPresent(u -> m.put("m", new CborObject.CborLong(u)));
             m.put("u", new CborObject.CborLong(uses));
             peer.ifPresent(p -> m.put("p", p));
+            m.put("s", new CborObject.CborList(seen.stream()
+                    .map(h -> new CborObject.CborByteArray(h.data))
+                    .collect(Collectors.toList())));
             return CborObject.CborMap.build(m);
         }
 
@@ -108,18 +128,62 @@ public class FriendLinkStore implements Cborable {
                     m.getOptionalLong("x").map(s -> LocalDateTime.ofEpochSecond(s, 0, ZoneOffset.UTC)),
                     m.getOptionalLong("m").map(Long::intValue),
                     (int) m.getLong("u"),
-                    m.getOptional("p", PublicKeyHash::fromCbor));
+                    m.getOptional("p", PublicKeyHash::fromCbor),
+                    m.getList("s", c -> new ByteArrayWrapper(((CborObject.CborByteArray) c).value)));
+        }
+    }
+
+    /** Where to send anything to a contact: the link and key from their last signed request or reply to us. */
+    public static class BackChannel implements Cborable {
+        public final byte[] linkId;
+        public final PublicBoxingKey boxer;
+
+        public BackChannel(byte[] linkId, PublicBoxingKey boxer) {
+            this.linkId = linkId;
+            this.boxer = boxer;
+        }
+
+        @Override
+        public CborObject toCbor() {
+            SortedMap<String, Cborable> m = new TreeMap<>();
+            m.put("l", new CborObject.CborByteArray(linkId));
+            m.put("b", boxer);
+            return CborObject.CborMap.build(m);
+        }
+
+        public static BackChannel fromCbor(Cborable cbor) {
+            CborObject.CborMap m = (CborObject.CborMap) cbor;
+            return new BackChannel(m.getByteArray("l"), m.get("b", PublicBoxingKey::fromCbor));
         }
     }
 
     public final Map<ByteArrayWrapper, Entry> links;
+    public final Map<PublicKeyHash, BackChannel> backChannels;
 
-    public FriendLinkStore(Map<ByteArrayWrapper, Entry> links) {
+    public FriendLinkStore(Map<ByteArrayWrapper, Entry> links, Map<PublicKeyHash, BackChannel> backChannels) {
         this.links = Collections.unmodifiableMap(links);
+        this.backChannels = Collections.unmodifiableMap(backChannels);
     }
 
     public static FriendLinkStore empty() {
-        return new FriendLinkStore(Collections.emptyMap());
+        return new FriendLinkStore(Collections.emptyMap(), Collections.emptyMap());
+    }
+
+    public Optional<BackChannel> backChannel(PublicKeyHash contact) {
+        return Optional.ofNullable(backChannels.get(contact));
+    }
+
+    public FriendLinkStore withBackChannel(PublicKeyHash contact, BackChannel channel) {
+        Map<PublicKeyHash, BackChannel> updated = new HashMap<>(backChannels);
+        updated.put(contact, channel);
+        return new FriendLinkStore(links, updated);
+    }
+
+    /** Our reply link for a contact, which their requests and replies arrive on. */
+    public Optional<Entry> replyLinkFor(PublicKeyHash contact) {
+        return links.values().stream()
+                .filter(e -> e.kind == Kind.REPLY && e.peer.equals(Optional.of(contact)))
+                .findFirst();
     }
 
     public Optional<Entry> get(byte[] linkId) {
@@ -129,13 +193,13 @@ public class FriendLinkStore implements Cborable {
     public FriendLinkStore with(Entry e) {
         Map<ByteArrayWrapper, Entry> updated = new HashMap<>(links);
         updated.put(new ByteArrayWrapper(e.linkId), e);
-        return new FriendLinkStore(updated);
+        return new FriendLinkStore(updated, backChannels);
     }
 
     public FriendLinkStore without(byte[] linkId) {
         Map<ByteArrayWrapper, Entry> updated = new HashMap<>(links);
         updated.remove(new ByteArrayWrapper(linkId));
-        return new FriendLinkStore(updated);
+        return new FriendLinkStore(updated, backChannels);
     }
 
     public List<Entry> ofKind(Kind kind) {
@@ -147,17 +211,25 @@ public class FriendLinkStore implements Cborable {
 
     @Override
     public CborObject toCbor() {
-        return new CborObject.CborList(links.values().stream()
+        SortedMap<String, Cborable> m = new TreeMap<>();
+        m.put("l", new CborObject.CborList(links.values().stream()
                 .sorted(Comparator.comparing(e -> ArrayOps.bytesToHex(e.linkId)))
-                .collect(Collectors.toList()));
+                .collect(Collectors.toList())));
+        m.put("c", new CborObject.CborList(backChannels.entrySet().stream()
+                .sorted(Comparator.comparing(e -> e.getKey().toString()))
+                .map(e -> new CborObject.CborList(Arrays.asList(e.getKey(), e.getValue())))
+                .collect(Collectors.toList())));
+        return CborObject.CborMap.build(m);
     }
 
     public static FriendLinkStore fromCbor(Cborable cbor) {
+        CborObject.CborMap m = (CborObject.CborMap) cbor;
         Map<ByteArrayWrapper, Entry> links = new HashMap<>();
-        for (Cborable c : ((CborObject.CborList) cbor).value) {
-            Entry e = Entry.fromCbor(c);
+        for (Entry e : m.getList("l", Entry::fromCbor))
             links.put(new ByteArrayWrapper(e.linkId), e);
-        }
-        return new FriendLinkStore(links);
+        Map<PublicKeyHash, BackChannel> backChannels = new HashMap<>();
+        for (CborObject.CborList pair : m.getList("c", c -> (CborObject.CborList) c))
+            backChannels.put(PublicKeyHash.fromCbor(pair.value.get(0)), BackChannel.fromCbor(pair.value.get(1)));
+        return new FriendLinkStore(links, backChannels);
     }
 }
