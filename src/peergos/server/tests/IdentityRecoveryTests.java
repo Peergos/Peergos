@@ -11,6 +11,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.mutable.*;
 import peergos.shared.routing.*;
+import peergos.shared.social.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.storage.*;
@@ -148,6 +149,29 @@ public class IdentityRecoveryTests {
         Assert.assertFalse("the old identity key no longer signs for the identity", net.mutable.setPointer(owner, owner, byThief).join());
         byte[] byOwner = recovered.signer.secret.signMessage(cas.serialize()).join();
         Assert.assertTrue("the same update signed by the new key is taken", net.mutable.setPointer(owner, owner, byOwner).join());
+    }
+
+    @Test
+    public void friendLinksVerifyAgainstTheNewKeyAfterRecovery() throws Exception {
+        String username = "relink" + (System.currentTimeMillis() % 100_000);
+        String recoveryKey = "abandon-ability-able-about-above-absent-absorb";
+        UserContext user = UserContext.signUp(username, "password", "", Builder.buildLocalJavaNetworkAccess(port).join(), crypto).join();
+        Assert.assertTrue(user.commitRecoveryKey(recoveryKey).join());
+        FriendLink link = user.createFriendLink("", Optional.empty(), 0).join();
+
+        FriendLinkBundle.Signed before = user.network.social.getFriendLinkBundle(link.identity, link.linkId).join().get();
+        UserContext recovered = UserContext.recoverAccount(username, recoveryKey, "new-password", "zoo-zone-zero-youth-young-you-yellow",
+                Builder.buildLocalJavaNetworkAccess(port).join(), crypto, s -> {}).join();
+        FriendLinkBundle.Signed after = recovered.network.social.getFriendLinkBundle(link.identity, link.linkId).join().get();
+        PublicSigningKey current = recovered.network.dhtClient.getSigningKey(link.identity, link.identity).join().get();
+        Assert.assertFalse(before.isSignedBy(current).join());
+        Assert.assertTrue("recovery signs the bundle again with the new key", after.isSignedBy(current).join());
+        Assert.assertTrue("signing again with nothing changed is harmless", recovered.resignFriendLinks().join());
+        UserContext bob = UserContext.signUp("relinkb" + (System.currentTimeMillis() % 100_000), "password", "",
+                Builder.buildLocalJavaNetworkAccess(port).join(), crypto).join();
+        FriendLinkBundle bundle = bob.fetchFriendLink(link.toLink()).join();
+        Assert.assertEquals(user.signer.publicKeyHash, bundle.identity);
+        Assert.assertTrue(bob.sendFollowRequestToLink(link.toLink()).join());
     }
 
     private static String failure(Runnable r) {
