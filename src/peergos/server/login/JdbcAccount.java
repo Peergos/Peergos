@@ -381,8 +381,10 @@ public class JdbcAccount implements LoginCache {
             throttle.reserveMfaAttempt(username, device, credentialId, code);
         else
             throttle.checkMfaAttempt(username, device, credentialId, code);
+        // The code is checked with a wrong password too, so only someone holding a valid one is told it was the
+        // password that was wrong. A backup code is only used up by a login it lets in.
         if (type == MultiFactorAuthMethod.Type.BACKUP_CODES)
-            validateBackupCode(username, credentialId, code);
+            validateBackupCode(username, credentialId, code, passwordCorrect);
         else
             validateTotpCode(username, credentialId, code);
         if (passwordCorrect)
@@ -650,10 +652,10 @@ public class JdbcAccount implements LoginCache {
         return m.getList("h", c -> ((CborObject.CborByteArray) c).value);
     }
 
-    /** Check a backup code and burn it. The remaining codes are written back with a compare and
-     *  set on the old value, so two concurrent logins can't both redeem the same code.
+    /** Check a backup code and, if it is to be used up, burn it. The remaining codes are written back with a
+     *  compare and set on the old value, so two concurrent logins can't both redeem the same code.
      */
-    private void validateBackupCode(String username, byte[] credentialId, String code) {
+    private void validateBackupCode(String username, byte[] credentialId, String code, boolean useUp) {
         byte[] hash = hashBackupCode(code);
         for (int attempt = 0; attempt < 2; attempt++) {
             byte[] current = getMfa(username, credentialId);
@@ -663,6 +665,8 @@ public class JdbcAccount implements LoginCache {
                     .collect(Collectors.toList());
             if (remaining.size() == unused.size())
                 throw new IllegalStateException("Invalid backup code for credId " + ArrayOps.bytesToHex(credentialId));
+            if (! useUp)
+                return;
             if (burnBackupCode(username, credentialId, current, remaining))
                 return;
         }
