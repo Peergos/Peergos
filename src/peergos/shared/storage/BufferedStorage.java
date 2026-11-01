@@ -305,6 +305,8 @@ public class BufferedStorage extends DelegatingStorage {
                                                                        Hasher h,
                                                                        ProgressConsumer<Long> monitor,
                                                                        double spaceIncreaseFactor) {
+        if (hashes.stream().noneMatch(c -> buffered(c) != null))
+            return target.downloadFragments(owner, hashes, bats, h, monitor, spaceIncreaseFactor);
         return NetworkAccess.downloadFragments(owner, hashes, bats, this, h, monitor, spaceIncreaseFactor);
     }
 
