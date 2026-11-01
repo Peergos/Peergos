@@ -7,6 +7,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.routing.*;
 import peergos.shared.user.*;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -22,6 +23,8 @@ public class FollowRequest implements Cborable {
 
     public final Optional<EntryPoint> entry;
     public final Optional<SymmetricKey> key;
+    // only offers the sender's reply link to an existing contact, and asks nothing
+    public final boolean backChannelOnly;
     @JsIgnore
     public final Optional<Linked> linked;
     // the signed body and its signature, for a request sent to a link
@@ -29,19 +32,32 @@ public class FollowRequest implements Cborable {
 
     @JsIgnore
     public FollowRequest(Optional<EntryPoint> entry, Optional<SymmetricKey> key) {
-        this(entry, key, Optional.empty(), Optional.empty());
+        this(entry, key, false, Optional.empty(), Optional.empty());
     }
 
-    private FollowRequest(Optional<EntryPoint> entry, Optional<SymmetricKey> key, Optional<Linked> linked, Optional<Pair<byte[], byte[]>> signed) {
+    private FollowRequest(Optional<EntryPoint> entry,
+                          Optional<SymmetricKey> key,
+                          boolean backChannelOnly,
+                          Optional<Linked> linked,
+                          Optional<Pair<byte[], byte[]>> signed) {
         this.entry = entry;
         this.key = key;
+        this.backChannelOnly = backChannelOnly;
         this.linked = linked;
         this.signed = signed;
     }
 
+    /** An offer of a reply link to an existing contact. Its entry is null, so a client that predates friend links
+     *  reads it as a reply to nothing and discards it. */
+    @JsIgnore
+    public static FollowRequest backChannelOffer(String fromUsername) {
+        return new FollowRequest(Optional.of(new EntryPoint(AbsoluteCapability.createNull(), fromUsername)), Optional.empty(),
+                true, Optional.empty(), Optional.empty());
+    }
+
     @JsIgnore
     public FollowRequest withEntry(EntryPoint updated) {
-        return new FollowRequest(Optional.of(updated), key, linked, signed);
+        return new FollowRequest(Optional.of(updated), key, backChannelOnly, linked, signed);
     }
 
     public boolean isAccepted() {
@@ -54,9 +70,9 @@ public class FollowRequest implements Cborable {
 
     @JsIgnore
     public CompletableFuture<FollowRequest> sign(Linked header, SecretSigningKey signer) {
-        byte[] body = body(entry, key, header).serialize();
+        byte[] body = body(entry, key, backChannelOnly, header).serialize();
         return Signing.sign(signer, Signing.FOLLOW_REQUEST, body)
-                .thenApply(sig -> new FollowRequest(entry, key, Optional.of(header), Optional.of(new Pair<>(body, sig))));
+                .thenApply(sig -> new FollowRequest(entry, key, backChannelOnly, Optional.of(header), Optional.of(new Pair<>(body, sig))));
     }
 
     @JsIgnore
@@ -66,10 +82,12 @@ public class FollowRequest implements Cborable {
         return Signing.verify(key, Signing.FOLLOW_REQUEST, signed.get().left, signed.get().right);
     }
 
-    private static CborObject.CborMap body(Optional<EntryPoint> entry, Optional<SymmetricKey> key, Linked header) {
+    private static CborObject.CborMap body(Optional<EntryPoint> entry, Optional<SymmetricKey> key, boolean backChannelOnly, Linked header) {
         SortedMap<String, Cborable> m = new TreeMap<>();
         entry.ifPresent(e -> m.put("e", e.toCbor()));
         key.ifPresent(k -> m.put("k", k.toCbor()));
+        if (backChannelOnly)
+            m.put("o", new CborObject.CborBoolean(true));
         m.put("h", header);
         return CborObject.CborMap.build(m);
     }
@@ -80,10 +98,9 @@ public class FollowRequest implements Cborable {
         if (signed.isPresent()) {
             result.put("b", new CborObject.CborByteArray(signed.get().left));
             result.put("s", new CborObject.CborByteArray(signed.get().right));
-            return CborObject.CborMap.build(result);
-        }
-        if (linked.isPresent())
+        } else if (linked.isPresent() || backChannelOnly)
             throw new IllegalStateException("A request to a friend link must be signed");
+        // a client that predates friend links reads only these
         entry.ifPresent(e -> result.put("e", e.toCbor()));
         key.ifPresent(k -> result.put("k", k.toCbor()));
         return CborObject.CborMap.build(result);
@@ -99,6 +116,7 @@ public class FollowRequest implements Cborable {
             CborObject.CborMap b = (CborObject.CborMap) CborObject.fromByteArray(body);
             return new FollowRequest(b.getOptional("e", EntryPoint::fromCbor),
                     b.getOptional("k", SymmetricKey::fromCbor),
+                    b.getBoolean("o", false),
                     Optional.of(b.get("h", Linked::fromCbor)),
                     Optional.of(new Pair<>(body, m.getByteArray("s"))));
         }
@@ -114,14 +132,15 @@ public class FollowRequest implements Cborable {
      *  for anything it sends the sender later. */
     public static class Linked implements Cborable {
         public final PublicKeyHash target;
-        public final byte[] targetLink;
+        // absent on an offer sent to a contact's legacy receiver
+        public final Optional<byte[]> targetLink;
         public final PublicKeyHash from;
         public final PublicBoxingKey replyBoxer;
         public final byte[] replyLink;
         public final String suggestedName;
 
-        public Linked(PublicKeyHash target, byte[] targetLink, PublicKeyHash from, PublicBoxingKey replyBoxer, byte[] replyLink, String suggestedName) {
-            if (targetLink.length != FriendLinkBundle.LINK_ID_BYTES || replyLink.length != FriendLinkBundle.LINK_ID_BYTES)
+        public Linked(PublicKeyHash target, Optional<byte[]> targetLink, PublicKeyHash from, PublicBoxingKey replyBoxer, byte[] replyLink, String suggestedName) {
+            if (targetLink.map(l -> l.length != FriendLinkBundle.LINK_ID_BYTES).orElse(false) || replyLink.length != FriendLinkBundle.LINK_ID_BYTES)
                 throw new IllegalStateException("Invalid friend link id");
             if (suggestedName.length() > FriendLinkBundle.MAX_NAME_LENGTH)
                 throw new IllegalStateException("Suggested name too long");
@@ -137,7 +156,7 @@ public class FollowRequest implements Cborable {
         public CborObject toCbor() {
             SortedMap<String, Cborable> m = new TreeMap<>();
             m.put("t", target);
-            m.put("tl", new CborObject.CborByteArray(targetLink));
+            targetLink.ifPresent(l -> m.put("tl", new CborObject.CborByteArray(l)));
             m.put("f", from);
             m.put("rb", replyBoxer);
             m.put("rl", new CborObject.CborByteArray(replyLink));
@@ -148,7 +167,7 @@ public class FollowRequest implements Cborable {
         public static Linked fromCbor(Cborable cbor) {
             CborObject.CborMap m = (CborObject.CborMap) cbor;
             return new Linked(m.get("t", PublicKeyHash::fromCbor),
-                    m.getByteArray("tl"),
+                    m.getOptionalByteArray("tl"),
                     m.get("f", PublicKeyHash::fromCbor),
                     m.get("rb", PublicBoxingKey::fromCbor),
                     m.getByteArray("rl"),
