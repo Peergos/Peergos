@@ -56,7 +56,7 @@ public class TofuKeyStore implements Cborable {
      * @return if there was any change
      */
     public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> tail, ContentAddressedStorage ipfs) {
-        return UserPublicKeyLink.validChain(tail, username, ipfs)
+        return UserPublicKeyLink.validHistoricalChain(tail, username, ipfs)
                 .thenCompose(valid -> {
                     if (!valid)
                         throw new IllegalStateException("Trying to update with invalid keychain!");
@@ -81,7 +81,7 @@ public class TofuKeyStore implements Cborable {
                             expired.remove(username);
                         }
                     }
-                    mergedFuture = UserPublicKeyLink.merge(username, existing, tail, ipfs);
+                    mergedFuture = UserPublicKeyLink.mergeHistorical(username, existing, tail, ipfs);
 
                     // lookups of different users complete on different threads
                     return mergedFuture.thenApply(merged -> {
