@@ -12,6 +12,7 @@ import peergos.shared.routing.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
+import peergos.shared.user.fs.*;
 
 import java.time.*;
 import java.util.*;
@@ -131,6 +132,128 @@ public class FriendLinkTests {
         byte[] legacy = BlindFollowRequest.build(bundle.boxer, req, crypto).join().serialize();
         Assert.assertTrue("requests without a link still reach followRequestReceiver until the PKI is retired",
                 bob.network.social.sendFollowRequest(target, legacy).join());
+    }
+
+    @Test
+    public void friendsThroughALinkAndTheBackChannelsItLeaves() {
+        UserContext alice = signUp("fma");
+        UserContext bob = signUp("fmb");
+        FriendLink link = alice.createFriendLink("", Optional.empty(), 0).join();
+        Assert.assertTrue(bob.sendFollowRequestToLink(link.toLink()).join());
+
+        List<BlindFollowRequest> waiting = alice.getFollowRequests().join();
+        Assert.assertEquals(1, waiting.size());
+        Assert.assertArrayEquals("it went to the link, not the legacy receiver", link.linkId, waiting.get(0).linkId.get());
+        List<FollowRequestWithCipherText> requests = alice.processFollowRequests().join();
+        Assert.assertEquals(1, requests.size());
+        FollowRequest request = requests.get(0).req;
+        Assert.assertEquals(bob.signer.publicKeyHash, request.linked.get().from);
+        Assert.assertEquals(bob.username, request.entry.get().ownerName);
+        Assert.assertTrue(alice.sendReplyFollowRequest(requests.get(0), true, true).join());
+
+        bob.processFollowRequests().join();
+        Assert.assertTrue(alice.getFollowing().join().contains(bob.username));
+        Assert.assertTrue(alice.getFollowerNames().join().contains(bob.username));
+        Assert.assertTrue(bob.getFollowing().join().contains(alice.username));
+        Assert.assertTrue(bob.getFollowerNames().join().contains(alice.username));
+
+        FriendLinkStore bobs = bob.getFriendLinkStore().join();
+        FriendLinkStore alices = alice.getFriendLinkStore().join();
+        FriendLinkStore.BackChannel toAlice = bobs.backChannel(alice.signer.publicKeyHash).get();
+        FriendLinkStore.BackChannel toBob = alices.backChannel(bob.signer.publicKeyHash).get();
+        Assert.assertArrayEquals(alices.replyLinkFor(bob.signer.publicKeyHash).get().linkId, toAlice.linkId);
+        Assert.assertArrayEquals(bobs.replyLinkFor(alice.signer.publicKeyHash).get().linkId, toBob.linkId);
+        Assert.assertEquals("the link counted one use", 1, alice.getFriendLinks().join().get(0).uses);
+    }
+
+    @Test
+    public void aSingleUseLinkTakesOneRequestAndThenStops() {
+        UserContext alice = signUp("fsa");
+        UserContext bob = signUp("fsb");
+        UserContext carol = signUp("fsc");
+        FriendLink link = alice.createFriendLink("once", Optional.empty(), 1).join();
+        Assert.assertTrue(bob.sendFollowRequestToLink(link.toLink()).join());
+        Assert.assertTrue("the server can't tell a second use from the first",
+                carol.sendFollowRequestToLink(link.toLink()).join());
+
+        List<FollowRequestWithCipherText> requests = alice.processFollowRequests().join();
+        Assert.assertEquals(1, requests.size());
+        Assert.assertEquals(1, alice.getFollowRequests().join().size());
+        Assert.assertEquals("the request still waiting is counted once", 1, alice.processFollowRequests().join().size());
+        Assert.assertTrue(alice.getFriendLinks().join().get(0).isUsedUp());
+        Assert.assertTrue("a used up link is taken off the server",
+                failed(() -> carol.fetchFriendLink(link.toLink()).join()));
+    }
+
+    @Test
+    public void aForgedOrReplayedRequestIsDropped() {
+        UserContext alice = signUp("ffa");
+        UserContext bob = signUp("ffb");
+        UserContext carol = signUp("ffc");
+        FriendLink link = alice.createFriendLink("", Optional.empty(), 0).join();
+        FriendLink other = alice.createFriendLink("", Optional.empty(), 0).join();
+        FriendLinkBundle bundle = carol.fetchFriendLink(link.toLink()).join();
+        BoxingKeyPair reply = BoxingKeyPair.randomCurve25519(crypto.random, crypto.boxer);
+        byte[] replyLink = crypto.random.randomBytes(FriendLinkBundle.LINK_ID_BYTES);
+        FollowRequest unsigned = new FollowRequest(Optional.of(new EntryPoint(AbsoluteCapability.createNull(), bob.username)), Optional.empty());
+
+        FollowRequest.Linked claimingBob = new FollowRequest.Linked(alice.signer.publicKeyHash, link.linkId,
+                bob.signer.publicKeyHash, reply.publicBoxingKey, replyLink, bob.username);
+        FollowRequest forged = unsigned.sign(claimingBob, carol.signer.secret).join();
+        send(carol, alice, bundle.boxer, forged, link.linkId);
+
+        FollowRequest.Linked forOtherLink = new FollowRequest.Linked(alice.signer.publicKeyHash, other.linkId,
+                carol.signer.publicKeyHash, reply.publicBoxingKey, replyLink, carol.username);
+        FollowRequest carols = new FollowRequest(Optional.of(new EntryPoint(AbsoluteCapability.createNull(), carol.username)), Optional.empty())
+                .sign(forOtherLink, carol.signer.secret).join();
+        send(carol, alice, bundle.boxer, carols, link.linkId);
+
+        Assert.assertEquals(2, alice.getFollowRequests().join().size());
+        Assert.assertTrue(alice.processFollowRequests().join().isEmpty());
+        Assert.assertTrue("dropped requests are removed from the server", alice.getFollowRequests().join().isEmpty());
+    }
+
+    @Test
+    public void askingAgainLaterGoesOverTheBackChannel() {
+        UserContext alice = signUp("fga");
+        UserContext bob = signUp("fgb");
+        linkFriends(alice, bob);
+        alice.block(bob.username).join();
+        alice.unblock(bob.username).join();
+        alice.followAgain(bob.username).join();
+
+        Assert.assertTrue(alice.sendInitialFollowRequest(bob.username).join());
+        List<BlindFollowRequest> waiting = bob.getFollowRequests().join();
+        Assert.assertEquals(1, waiting.size());
+        Assert.assertArrayEquals(bob.getFriendLinkStore().join().replyLinkFor(alice.signer.publicKeyHash).get().linkId,
+                waiting.get(0).linkId.get());
+        // Bob still counts Alice as a friend, so his reply reaffirms it rather than asking him
+        for (FollowRequestWithCipherText request : bob.processFollowRequests().join())
+            Assert.assertTrue(bob.sendReplyFollowRequest(request, true, true).join());
+        List<BlindFollowRequest> replies = alice.getFollowRequests().join();
+        Assert.assertEquals(1, replies.size());
+        Assert.assertArrayEquals("the reply came back on Alice's reply link for Bob",
+                alice.getFriendLinkStore().join().replyLinkFor(bob.signer.publicKeyHash).get().linkId,
+                replies.get(0).linkId.get());
+        alice.processFollowRequests().join();
+        Assert.assertTrue(alice.getFollowRequests().join().isEmpty());
+        Assert.assertTrue(alice.getSocialState().join().getFriends().contains(bob.username));
+        Assert.assertTrue(bob.getSocialState().join().getFriends().contains(alice.username));
+    }
+
+    /** Bob asks through a link of Alice's, and she accepts and follows back. */
+    private static void linkFriends(UserContext alice, UserContext bob) {
+        FriendLink link = alice.createFriendLink("", Optional.empty(), 0).join();
+        Assert.assertTrue(bob.sendFollowRequestToLink(link.toLink()).join());
+        List<FollowRequestWithCipherText> requests = alice.processFollowRequests().join();
+        Assert.assertEquals(1, requests.size());
+        Assert.assertTrue(alice.sendReplyFollowRequest(requests.get(0), true, true).join());
+        bob.processFollowRequests().join();
+    }
+
+    private static void send(UserContext from, UserContext to, PublicBoxingKey boxer, FollowRequest req, byte[] linkId) {
+        byte[] blind = BlindFollowRequest.build(boxer, req, Optional.of(linkId), crypto).join().serialize();
+        Assert.assertTrue(from.network.social.sendFollowRequest(to.signer.publicKeyHash, blind).join());
     }
 
     private static boolean failed(Runnable r) {

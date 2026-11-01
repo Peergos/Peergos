@@ -2626,7 +2626,7 @@ public class UserContext {
         byte[] linkId = crypto.random.randomBytes(FriendLinkBundle.LINK_ID_BYTES);
         return BoxingKeyPair.randomHybrid(crypto).thenCompose(boxer -> {
             FriendLinkStore.Entry e = new FriendLinkStore.Entry(linkId, boxer, kind, label,
-                    LocalDateTime.now(ZoneOffset.UTC), expiry, maxUses, 0, peer);
+                    LocalDateTime.now(ZoneOffset.UTC), expiry, maxUses, 0, peer, Collections.emptyList());
             // keep the keypair before publishing, so a request sent the moment the link is live can be read
             return changeFriendLinkStore(store -> store.with(e))
                     .thenCompose(x -> publishFriendLink(e))
@@ -2711,7 +2711,7 @@ public class UserContext {
                 });
     }
 
-    private CompletableFuture<FriendLinkStore> getFriendLinkStore() {
+    public CompletableFuture<FriendLinkStore> getFriendLinkStore() {
         return getUserRoot()
                 .thenCompose(home -> home.getChild(FRIEND_LINKS_FILENAME, crypto.hasher, network))
                 .thenCompose(fileOpt -> fileOpt.isEmpty() ?
@@ -2814,10 +2814,9 @@ public class UserContext {
             EntryPoint entry = new EntryPoint(AbsoluteCapability.createNull(), username);
             FollowRequest reply = new FollowRequest(Optional.of(entry), Optional.empty());
 
-            return getPublicKeys(initialRequest.entry.get().ownerName).thenCompose(pair -> {
-                PublicBoxingKey targetUser = pair.get().right;
-
-                return blindAndSendFollowRequest(initialRequest.entry.get().pointer.owner, targetUser, reply)
+            return channelFor(initialRequestAndRaw).thenCompose(channel -> {
+                return rememberBackChannel(initialRequest)
+                        .thenCompose(x -> sendOn(channel, reply))
                         .thenCompose(b ->
                                 // remove pending follow request from them
                                 signer.secret.signMessage(initialRequestAndRaw.cipher.serialize())
@@ -2871,11 +2870,9 @@ public class UserContext {
                             .thenCompose(friendsUidOpt -> shareReadAccessWith(PathUtil.get(username,
                                     SHARED_DIR_NAME, friendsUidOpt.get()), Collections.singleton(theirUsername))): // put them in our friends group
                     Futures.of(null))
-                    .thenCompose(x -> getPublicKeys(initialRequest.entry.get().ownerName))
-                    .thenCompose(pair -> {
-                        PublicBoxingKey targetUser = pair.get().right;
-                        return blindAndSendFollowRequest(initialRequest.entry.get().pointer.owner, targetUser, reply);
-                    });
+                    .thenCompose(x -> rememberBackChannel(initialRequest))
+                    .thenCompose(x -> channelFor(initialRequestAndRaw))
+                    .thenCompose(channel -> sendOn(channel, reply));
         }).thenCompose(b -> {
             if (reciprocate)
                 // following them back undoes having unfollowed them, otherwise we still wouldn't see them
@@ -2898,8 +2895,9 @@ public class UserContext {
         EntryPoint theirs = request.req.entry.get();
         EntryPoint ours = new EntryPoint(ourDirForThem.getPointer().capability.readOnly(), username);
         FollowRequest reply = new FollowRequest(Optional.of(ours), Optional.of(theirs.pointer.rBaseKey));
-        return getPublicKeys(theirs.ownerName)
-                .thenCompose(keys -> blindAndSendFollowRequest(theirs.pointer.owner, keys.get().right, reply))
+        return rememberBackChannel(request.req)
+                .thenCompose(x -> channelFor(request))
+                .thenCompose(channel -> sendOn(channel, reply))
                 .thenCompose(b -> signer.secret.signMessage(request.cipher.serialize()))
                 .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed));
     }
@@ -2918,19 +2916,108 @@ public class UserContext {
                 .thenCompose(blindRequest -> network.social.sendFollowRequest(targetIdentity, blindRequest.serialize()));
     }
 
+    /** Where to send a request or reply: a contact's friend link or back-channel, or, until the PKI is retired, their
+     *  legacy followRequestReceiver (remove-pki §8). */
+    private static class Channel {
+        final PublicKeyHash identity;
+        final String name;
+        final PublicBoxingKey boxer;
+        final Optional<byte[]> linkId;
+
+        Channel(PublicKeyHash identity, String name, PublicBoxingKey boxer, Optional<byte[]> linkId) {
+            this.identity = identity;
+            this.name = name;
+            this.boxer = boxer;
+            this.linkId = linkId;
+        }
+    }
+
+    private CompletableFuture<Channel> channelTo(String targetUsername) {
+        return network.coreNode.getPublicKeyHash(targetUsername).thenCompose(id -> {
+            if (id.isEmpty())
+                return Futures.errored(new Exception("User " + targetUsername + " does not exist!"));
+            return getFriendLinkStore().thenCompose(store -> store.backChannel(id.get())
+                    .map(bc -> Futures.of(new Channel(id.get(), targetUsername, bc.boxer, Optional.of(bc.linkId))))
+                    .orElseGet(() -> getPublicKeys(targetUsername).thenApply(keys -> {
+                        if (keys.isEmpty())
+                            throw new IllegalStateException("User " + targetUsername + " does not exist!");
+                        return new Channel(keys.get().left, targetUsername, keys.get().right, Optional.empty());
+                    })));
+        });
+    }
+
+    /** A request to a link names the link to answer on; a legacy one is answered on the sender's legacy receiver. */
+    private CompletableFuture<Channel> channelFor(FollowRequestWithCipherText request) {
+        String theirName = request.req.entry.get().ownerName;
+        return request.req.linked
+                .map(h -> Futures.of(new Channel(h.from, theirName, h.replyBoxer, Optional.of(h.replyLink))))
+                .orElseGet(() -> channelTo(theirName));
+    }
+
+    private CompletableFuture<Boolean> sendOn(Channel channel, FollowRequest req) {
+        if (channel.linkId.isEmpty())
+            return blindAndSendFollowRequest(channel.identity, channel.boxer, req);
+        return replyLinkFor(channel.identity, channel.name)
+                .thenCompose(ours -> req.sign(new FollowRequest.Linked(channel.identity, channel.linkId.get(),
+                        signer.publicKeyHash, ours.boxer.publicBoxingKey, ours.linkId, username), signer.secret))
+                .thenCompose(signed -> BlindFollowRequest.build(channel.boxer, signed, channel.linkId, crypto))
+                .thenCompose(blind -> network.social.sendFollowRequest(channel.identity, blind.serialize()));
+    }
+
     /** A request that reached them but whose response was lost is harmless to resend, whereas rolling back
      *  our pending state for it would leave their reply unrecognised. */
-    private CompletableFuture<Boolean> blindAndSendFollowRequest(PublicKeyHash targetIdentity,
-                                                                 PublicBoxingKey targetBoxer,
-                                                                 FollowRequest req,
-                                                                 int attempts) {
-        return Futures.asyncExceptionally(() -> blindAndSendFollowRequest(targetIdentity, targetBoxer, req),
+    private CompletableFuture<Boolean> sendOn(Channel channel, FollowRequest req, int attempts) {
+        return Futures.asyncExceptionally(() -> sendOn(channel, req),
                 t -> attempts <= 1 ?
                         Futures.errored(t) :
-                        blindAndSendFollowRequest(targetIdentity, targetBoxer, req, attempts - 1));
+                        sendOn(channel, req, attempts - 1));
+    }
+
+    /** Our reply link for a contact, made the first time we send them anything on a link. It is where their requests
+     *  and replies to us arrive from then on. */
+    private CompletableFuture<FriendLinkStore.Entry> replyLinkFor(PublicKeyHash contact, String label) {
+        return getFriendLinkStore().thenCompose(store -> store.replyLinkFor(contact)
+                .map(Futures::of)
+                .orElseGet(() -> createFriendLink(FriendLinkStore.Kind.REPLY, label, Optional.empty(), Optional.empty(), Optional.of(contact))));
+    }
+
+    private CompletableFuture<Boolean> rememberBackChannel(FollowRequest req) {
+        if (req.linked.isEmpty())
+            return Futures.of(true);
+        FollowRequest.Linked h = req.linked.get();
+        return changeFriendLinkStore(store -> store.withBackChannel(h.from, new FriendLinkStore.BackChannel(h.replyLink, h.replyBoxer)))
+                .thenApply(x -> true);
+    }
+
+    /** Ask the owner of a friend link to be friends. The link's bundle is verified first, and the request is signed and
+     *  sent to the link, carrying our reply link (remove-pki §8). */
+    @JsMethod
+    public CompletableFuture<Boolean> sendFollowRequestToLink(String link) {
+        return fetchFriendLink(link)
+                .thenCompose(bundle -> usernameOf(bundle.identity)
+                        .thenCompose(name -> name.equals(username) ?
+                                Futures.<Boolean>errored(new IllegalStateException("This is your own friend link")) :
+                                sendFollowRequest(name, SymmetricKey.random(),
+                                        Optional.of(new Channel(bundle.identity, name, bundle.boxer, Optional.of(bundle.linkId))))));
+    }
+
+    /** Sharing directories are still named by username until petnames replace them, so take an identity's username
+     *  from the PKI, and only if it names that identity back. */
+    private CompletableFuture<String> usernameOf(PublicKeyHash identity) {
+        return network.coreNode.getUsername(identity)
+                .thenCompose(name -> network.coreNode.getPublicKeyHash(name)
+                        .thenApply(id -> {
+                            if (! id.equals(Optional.of(identity)))
+                                throw new IllegalStateException("No username for " + identity);
+                            return name;
+                        }));
     }
 
     public CompletableFuture<Boolean> sendFollowRequest(String targetUsername, SymmetricKey requestedKey) {
+        return sendFollowRequest(targetUsername, requestedKey, Optional.empty());
+    }
+
+    private CompletableFuture<Boolean> sendFollowRequest(String targetUsername, SymmetricKey requestedKey, Optional<Channel> givenChannel) {
         return getSharingFolder().thenCompose(sharing -> {
             // following someone who doesn't follow us, e.g. after they removed us, is when a request asks them to
             // follow back
@@ -2945,12 +3032,7 @@ public class UserContext {
                                 getUnfollowed().thenCompose(unfollowed -> unfollowed.contains(targetUsername) ?
                                         followAgain(targetUsername) :
                                         Futures.of(true)))
-                        .thenCompose(x -> getPublicKeys(targetUsername)).thenCompose(targetUserOpt -> {
-                    if (! targetUserOpt.isPresent()) {
-                        return Futures.errored(new Exception("User " + targetUsername + " does not exist!"));
-                    }
-                    PublicBoxingKey targetUser = targetUserOpt.get().right;
-                    PublicKeyHash targetSigner = targetUserOpt.get().left;
+                        .thenCompose(x -> givenChannel.map(Futures::of).orElseGet(() -> channelTo(targetUsername))).thenCompose(channel -> {
                     // Record the pending request before sending it, otherwise their reply can't be recognised.
                     // If anything fails, roll back what this call added so the UI lets the user try again.
                     return sharing.hasChild(targetUsername, crypto.hasher, network)
@@ -2962,7 +3044,7 @@ public class UserContext {
                                                     EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(), username);
                                                     FollowRequest followReq = new FollowRequest(Optional.of(entry), Optional.ofNullable(requestedKey));
                                                     return changePendingSocialState(current -> current.withPending(targetUsername))
-                                                            .<Boolean>thenCompose(x -> blindAndSendFollowRequest(targetSigner, targetUser, followReq, 3));
+                                                            .<Boolean>thenCompose(x -> sendOn(channel, followReq, 3));
                                                 }),
                                         // an earlier request to them may still be answered, so leave its state alone
                                         t -> (wasPending ? Futures.of(true) : rollbackFollowRequest(targetUsername, ! dirExisted))
@@ -3741,12 +3823,11 @@ public class UserContext {
     private CompletableFuture<List<FollowRequestWithCipherText>> processFollowRequests(List<BlindFollowRequest> all) {
         return getSharingFolder().thenCompose(sharing ->
                 getFollowerRoots(false).thenCompose(followerRoots -> getPendingOutgoingFollowRequests()
-                        .thenCompose(pendingOut -> getBlocked().thenCompose(blocked -> Futures.combineAllInOrder(all.stream()
-                                        .map(b -> b.followRequest.decrypt(boxer.secretBoxingKey, b.dummySource, FollowRequest::fromCbor)
-                                                .thenApply(decrypted -> Optional.of(new FollowRequestWithCipherText(decrypted, b)))
-                                                .exceptionally(t -> Optional.empty()))
+                        .thenCompose(pendingOut -> getBlocked().thenCompose(blocked -> getFriendLinkStore().thenCompose(links -> Futures.combineAllInOrder(all.stream()
+                                        .map(b -> openFollowRequest(b, links))
                                         .collect(Collectors.toList()))
                                 .thenApply(opts -> opts.stream().flatMap(Optional::stream).collect(Collectors.toList()))
+                                .thenCompose(opened -> countLinkUses(opened, links))
                                 .thenCompose(withDecrypted -> (withDecrypted.stream()
                                         .allMatch(p -> pendingOut.pendingOutgoingFollowRequests.contains(p.req.entry.get().ownerName)) ?
                                         Futures.of(Collections.<String>emptySet()) : // only needed for requests which aren't replies
@@ -3867,13 +3948,119 @@ public class UserContext {
                                             (b, p) -> reaffirmFollowRequest(p, followerRoots.get(p.req.entry.get().ownerName))
                                                     .exceptionally(t -> false),
                                             (a, b) -> a))
+                                    .thenCompose(x -> Futures.reduceAll(latestReplies.values(), true,
+                                            (b, p) -> rememberBackChannel(p.req).exceptionally(t -> false),
+                                            (a, b) -> a))
                                     .thenCompose(x -> Futures.reduceAll(latestReplies.values(), entrie, mozart, (a, b) -> a))
                                     .thenApply(newRoot -> {
                                         entrie = newRoot;
                                         return new ArrayList<>(initial.values());
                                     });
-                        }))))
+                        })))))
                 ));
+    }
+
+    /** Decrypts a request with the keypair of the link it was sent to, or the legacy receiver's if it names none. One
+     *  sent to a link must be signed by its sender, for us and that link, and from the identity owning what it shares,
+     *  or it is dropped (remove-pki §8). */
+    private CompletableFuture<Optional<FollowRequestWithCipherText>> openFollowRequest(BlindFollowRequest b, FriendLinkStore links) {
+        if (b.linkId.isEmpty())
+            return b.followRequest.decrypt(boxer.secretBoxingKey, b.dummySource, FollowRequest::fromCbor)
+                    .thenApply(decrypted -> decrypted.linked.isPresent() ?
+                            Optional.<FollowRequestWithCipherText>empty() :
+                            Optional.of(new FollowRequestWithCipherText(decrypted, b)))
+                    .exceptionally(t -> Optional.empty());
+        Optional<FriendLinkStore.Entry> link = links.get(b.linkId.get());
+        if (link.isEmpty())
+            return discardFollowRequest(b).thenApply(x -> Optional.empty());
+        return b.followRequest.decrypt(link.get().boxer.secretBoxingKey, b.dummySource, FollowRequest::fromCbor)
+                .thenCompose(decrypted -> isValidLinked(decrypted, b.linkId.get(), link.get())
+                        .thenApply(valid -> valid ? Optional.of(new FollowRequestWithCipherText(decrypted, b)) : Optional.<FollowRequestWithCipherText>empty()))
+                .exceptionally(t -> Optional.empty())
+                .thenCompose(res -> res.isPresent() ?
+                        Futures.of(res) :
+                        discardFollowRequest(b).thenApply(x -> Optional.empty()));
+    }
+
+    private CompletableFuture<Boolean> isValidLinked(FollowRequest req, byte[] linkId, FriendLinkStore.Entry link) {
+        if (req.linked.isEmpty() || req.entry.isEmpty())
+            return Futures.of(false);
+        FollowRequest.Linked h = req.linked.get();
+        if (! h.target.equals(signer.publicKeyHash) || ! Arrays.equals(h.targetLink, linkId))
+            return Futures.of(false);
+        if (link.kind == FriendLinkStore.Kind.REPLY && ! link.peer.equals(Optional.of(h.from)))
+            return Futures.of(false);
+        EntryPoint entry = req.entry.get();
+        if (! entry.pointer.isNull() && ! entry.pointer.owner.equals(h.from))
+            return Futures.of(false);
+        return network.dhtClient.getSigningKey(h.from, h.from)
+                .thenCompose(key -> key.isEmpty() ? Futures.of(false) : req.isSignedBy(key.get()))
+                .thenCompose(signed -> ! signed ?
+                        Futures.of(false) :
+                        network.coreNode.getPublicKeyHash(entry.ownerName).thenApply(id -> id.equals(Optional.of(h.from))));
+    }
+
+    private CompletableFuture<Boolean> discardFollowRequest(BlindFollowRequest b) {
+        return signer.secret.signMessage(b.serialize())
+                .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed))
+                .exceptionally(t -> false);
+    }
+
+    /** Each new request to a link the user made counts as a use. Uses are counted here, since the server can't tell
+     *  who sent a blind request. A request beyond a link's uses is dropped, and a used up link is taken off the server,
+     *  keeping its keypair for the requests still waiting. */
+    private CompletableFuture<List<FollowRequestWithCipherText>> countLinkUses(List<FollowRequestWithCipherText> opened, FriendLinkStore links) {
+        List<FollowRequestWithCipherText> toLinks = opened.stream()
+                .filter(p -> p.cipher.linkId.isPresent())
+                .filter(p -> links.get(p.cipher.linkId.get()).map(e -> e.kind == FriendLinkStore.Kind.LINK).orElse(false))
+                .collect(Collectors.toList());
+        if (toLinks.isEmpty())
+            return Futures.of(opened);
+        return Futures.combineAllInOrder(toLinks.stream()
+                        .map(p -> crypto.hasher.sha256(p.cipher.serialize()).thenApply(h -> new Pair<>(p, h)))
+                        .collect(Collectors.toList()))
+                .thenCompose(hashed -> {
+                    Map<ByteArrayWrapper, FriendLinkStore.Entry> current = new HashMap<>(links.links);
+                    List<Pair<byte[], byte[]>> newUses = new ArrayList<>();
+                    Set<FollowRequestWithCipherText> dropped = new HashSet<>();
+                    for (Pair<FollowRequestWithCipherText, byte[]> p : hashed) {
+                        ByteArrayWrapper id = new ByteArrayWrapper(p.left.cipher.linkId.get());
+                        FriendLinkStore.Entry link = current.get(id);
+                        if (link.hasSeen(p.right))
+                            continue;
+                        if (link.isUsedUp()) {
+                            dropped.add(p.left);
+                            continue;
+                        }
+                        current.put(id, link.use(p.right));
+                        newUses.add(new Pair<>(id.data, p.right));
+                    }
+                    List<byte[]> nowUsedUp = newUses.stream()
+                            .map(u -> u.left)
+                            .distinct()
+                            .filter(id -> current.get(new ByteArrayWrapper(id)).isUsedUp())
+                            .collect(Collectors.toList());
+                    return (newUses.isEmpty() ?
+                            Futures.of(links) :
+                            changeFriendLinkStore(store -> {
+                                FriendLinkStore updated = store;
+                                for (Pair<byte[], byte[]> use : newUses) {
+                                    Optional<FriendLinkStore.Entry> e = updated.get(use.left);
+                                    if (e.isPresent() && ! e.get().hasSeen(use.right))
+                                        updated = updated.with(e.get().use(use.right));
+                                }
+                                return updated;
+                            }))
+                            .thenCompose(x -> Futures.reduceAll(nowUsedUp, true,
+                                    (b, id) -> writeSynchronizer.applyUpdate(signer.publicKeyHash, signer,
+                                                    (wd, tid) -> wd.removeFriendLink(signer, id, mirrorBat, tid, network.dhtClient, network.hasher))
+                                            .thenApply(y -> true),
+                                    (a, b) -> a))
+                            .thenCompose(x -> Futures.reduceAll(dropped, true, (b, p) -> discardFollowRequest(p.cipher), (a, b) -> a))
+                            .thenApply(x -> opened.stream()
+                                    .filter(p -> ! dropped.contains(p))
+                                    .collect(Collectors.toList()));
+                });
     }
 
     /** Anything owned or shared by someone we have blocked is hidden. */
