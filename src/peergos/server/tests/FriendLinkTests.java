@@ -13,6 +13,7 @@ import peergos.shared.social.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.util.*;
 
 import java.time.*;
 import java.util.*;
@@ -274,6 +275,51 @@ public class FriendLinkTests {
         Assert.assertTrue("an offer from a stranger is dropped and not kept",
                 alice.getFriendLinkStore().join().backChannel(carol.signer.publicKeyHash).isEmpty());
         Assert.assertTrue(alice.getFollowRequests().join().isEmpty());
+    }
+
+    @Test
+    public void anIntroductionTravelsWithAReshareAndLabelsTheRequest() {
+        UserContext alice = signUp("fia");
+        UserContext bob = signUp("fib");
+        UserContext carol = signUp("fic");
+        linkFriends(carol, bob);
+        Assert.assertTrue("Bob gave Carol his introduction",
+                carol.getFriendLinkStore().join().introductions.containsKey(bob.signer.publicKeyHash));
+        PeergosNetworkUtils.friendBetweenGroups(Arrays.asList(alice), Arrays.asList(carol));
+
+        String filename = "from-bob.txt";
+        byte[] data = "hello".getBytes();
+        bob.getUserRoot().join().uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
+                bob.network, crypto, () -> false, x -> {}).join();
+        bob.shareReadAccessWith(PathUtil.get(bob.username, filename), Collections.singleton(carol.username)).join();
+        UserContext freshCarol = login(carol);
+        Assert.assertTrue(freshCarol.getByPath(bob.username + "/" + filename).join().isPresent());
+        freshCarol.shareReadAccessWith(PathUtil.get(bob.username, filename), Collections.singleton(alice.username)).join();
+
+        UserContext freshAlice = login(alice);
+        SocialFeed feed = freshAlice.getSocialFeed().join().update().join();
+        SharedItem item = feed.getShared(0, feed.getFeedSize() + 1, crypto, freshAlice.network).join().stream()
+                .filter(i -> i.owner.equals(bob.username))
+                .findFirst().get();
+        String intro = freshAlice.getIntroduction(item).join();
+        Assert.assertNotNull("Carol passed on Bob's introduction", intro);
+        Assert.assertEquals(bob.signer.publicKeyHash, FriendLink.fromLink(intro).identity);
+
+        Assert.assertTrue(freshAlice.sendFollowRequestToLink(intro).join());
+        List<FollowRequestWithCipherText> requests = bob.processFollowRequests().join();
+        Assert.assertEquals(1, requests.size());
+        Assert.assertEquals(alice.username, requests.get(0).req.entry.get().ownerName);
+        Assert.assertEquals("Bob sees who introduced Alice, from his own link store", carol.username, requests.get(0).getIntroducer());
+
+        Assert.assertTrue(bob.getIntroductionsEnabled().join());
+        Assert.assertTrue(bob.setIntroductionsEnabled(false).join());
+        Assert.assertFalse(bob.getIntroductionsEnabled().join());
+        Assert.assertTrue("turning introductions off revokes them", failed(() -> freshAlice.fetchFriendLink(intro).join()));
+        Assert.assertTrue(bob.getFriendLinkStore().join().ofKind(FriendLinkStore.Kind.INTRODUCTION).isEmpty());
+    }
+
+    private static UserContext login(UserContext c) {
+        return UserContext.signIn(c.username, "password", UserTests::noMfa, Builder.buildLocalJavaNetworkAccess(port).join(), crypto).join();
     }
 
     /** Bob asks through a link of Alice's, and she accepts and follows back. */
