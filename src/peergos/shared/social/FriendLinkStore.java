@@ -72,8 +72,13 @@ public class FriendLinkStore implements Cborable {
             return ArrayOps.bytesToHex(linkId);
         }
 
-        public LocalDateTime getExpiry() {
-            return expiry.orElse(null);
+        public double getCreatedMillis() {
+            return created.toEpochSecond(ZoneOffset.UTC) * 1000.0;
+        }
+
+        /** 0 for a link that doesn't expire */
+        public double getExpiryMillis() {
+            return expiry.map(e -> e.toEpochSecond(ZoneOffset.UTC) * 1000.0).orElse(0.0);
         }
 
         public int getMaxUses() {

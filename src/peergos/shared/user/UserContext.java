@@ -4134,10 +4134,12 @@ public class UserContext {
                         current.put(id, link.use(p.right));
                         newUses.add(new Pair<>(id.data, p.right));
                     }
+                    // wrapped to compare, since a byte array can't be hashed in the browser
                     List<byte[]> nowUsedUp = newUses.stream()
-                            .map(u -> u.left)
+                            .map(u -> new ByteArrayWrapper(u.left))
                             .distinct()
-                            .filter(id -> current.get(new ByteArrayWrapper(id)).isUsedUp())
+                            .filter(id -> current.get(id).isUsedUp())
+                            .map(id -> id.data)
                             .collect(Collectors.toList());
                     return (newUses.isEmpty() ?
                             Futures.of(links) :
