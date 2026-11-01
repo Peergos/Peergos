@@ -81,6 +81,28 @@ public class FriendSourcedTrieNode implements TrieNode {
         return cache.getCapsFrom(ownerName, sharedDir, groups, current, s,network);
     }
 
+    /** The introductions this friend passed on with what they reshared to us, directly or to a group of theirs we are
+     *  in, by owner (remove-pki §9). */
+    public CompletableFuture<Map<PublicKeyHash, FriendLink>> getIntroductions(NetworkAccess network) {
+        List<EntryPoint> dirs;
+        synchronized (this) {
+            dirs = new ArrayList<>(groups);
+        }
+        dirs.add(0, sharedDir);
+        return Futures.combineAllInOrder(dirs.stream()
+                        .map(e -> network.retrieveEntryPoint(e)
+                                .thenCompose(dir -> dir.isEmpty() ?
+                                        Futures.of(Collections.<PublicKeyHash, FriendLink>emptyMap()) :
+                                        CapabilityStore.readIntroductions(dir.get(), network, crypto))
+                                .exceptionally(t -> Collections.emptyMap()))
+                        .collect(Collectors.toList()))
+                .thenApply(all -> {
+                    Map<PublicKeyHash, FriendLink> res = new HashMap<>();
+                    all.forEach(res::putAll);
+                    return res;
+                });
+    }
+
     private CompletableFuture<Optional<FileWrapper>> getFriendRoot(NetworkAccess network) {
         return NetworkAccess.getLatestEntryPoint(sharedDir, network)
                 .thenCompose(sharedDir -> {

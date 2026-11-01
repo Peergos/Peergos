@@ -2292,6 +2292,23 @@ public class UserContext {
                         .collect(Collectors.toMap(e -> e.getFileProperties().name, e -> e)));
     }
 
+    /** The introduction the sharer passed on with this item of someone else's, to ask its owner to be friends, or
+     *  null if there is none (remove-pki §9). */
+    @JsMethod
+    public CompletableFuture<String> getIntroduction(SharedItem item) {
+        PublicKeyHash owner = item.cap.owner;
+        if (owner.equals(signer.publicKeyHash) || item.sharer.equals(username) || item.owner.equals(item.sharer))
+            return Futures.of(null);
+        return getFollowingNodes()
+                .thenCompose(nodes -> nodes.stream()
+                        .filter(n -> n.ownerName.equals(item.sharer))
+                        .findFirst()
+                        .map(n -> n.getIntroductions(network))
+                        .orElse(Futures.of(Collections.emptyMap())))
+                .thenApply(intros -> Optional.ofNullable(intros.get(owner)).map(FriendLink::toLink).orElse(null))
+                .exceptionally(t -> null);
+    }
+
     public CompletableFuture<Set<FriendSourcedTrieNode>> getFollowingNodes() {
         return Futures.of(entrie.getChildNodes()
                 .stream()
@@ -2990,15 +3007,19 @@ public class UserContext {
 
     /** Signs a request, naming our reply link for them, and sends it on the channel. */
     private CompletableFuture<Boolean> sendSigned(Channel channel, FollowRequest req) {
+        // a full rejection gives them nothing of ours to pass on
+        boolean rejection = ! req.backChannelOnly && req.key.isEmpty() && req.entry.map(e -> e.pointer.isNull()).orElse(true);
         return replyLinkFor(channel.identity, channel.name)
-                .thenCompose(ours -> req.sign(new FollowRequest.Linked(channel.identity, channel.linkId,
-                        signer.publicKeyHash, ours.boxer.publicBoxingKey, ours.linkId, username), signer.secret))
+                .thenCompose(ours -> (rejection ? Futures.of(Optional.<FriendLink>empty()) : introductionFor(channel.identity, channel.name))
+                        .thenCompose(intro -> req.sign(new FollowRequest.Linked(channel.identity, channel.linkId,
+                                signer.publicKeyHash, ours.boxer.publicBoxingKey, ours.linkId, username, intro), signer.secret)))
                 .thenCompose(signed -> BlindFollowRequest.build(channel.boxer, signed, channel.linkId, crypto))
                 .thenCompose(blind -> network.social.sendFollowRequest(channel.identity, blind.serialize()));
     }
 
-    /** Gives each contact we have never sent anything signed a reply link of ours, over their back-channel if they
-     *  gave us one, or else their legacy receiver, so everything after goes over friend links. A contact on a server
+    /** Gives each contact we have never sent anything signed a reply link of ours, and our introduction unless they
+     *  are turned off, over their back-channel if they gave us one, or else their legacy receiver, so everything after
+     *  goes over friend links. A contact on a server
      *  that predates friend links can't take an offer, and is offered again next time. Until the PKI is retired.
      *
      * @return how many contacts were offered one
@@ -3013,7 +3034,8 @@ public class UserContext {
                     contacts.remove(username);
                     return Futures.reduceAll(contacts, 0,
                             (n, name) -> network.coreNode.getPublicKeyHash(name)
-                                    .thenCompose(id -> id.isEmpty() || store.replyLinkFor(id.get()).isPresent() ?
+                                    .thenCompose(id -> id.isEmpty() || (store.replyLinkFor(id.get()).isPresent() &&
+                                            (store.introductionsOff || store.introductionFor(id.get()).isPresent())) ?
                                             Futures.of(n) :
                                             channelTo(name)
                                                     .thenCompose(channel -> sendSigned(channel, FollowRequest.backChannelOffer(username)))
@@ -3044,8 +3066,44 @@ public class UserContext {
         if (req.linked.isEmpty())
             return Futures.of(true);
         FollowRequest.Linked h = req.linked.get();
-        return changeFriendLinkStore(store -> store.withBackChannel(h.from, new FriendLinkStore.BackChannel(h.replyLink, h.replyBoxer)))
-                .thenApply(x -> true);
+        Optional<FriendLink> intro = h.introduction.filter(i -> i.identity.equals(h.from));
+        return changeFriendLinkStore(store -> {
+            FriendLinkStore updated = store.withBackChannel(h.from, new FriendLinkStore.BackChannel(h.replyLink, h.replyBoxer));
+            return intro.map(i -> updated.withIntroductionFrom(h.from, i)).orElse(updated);
+        }).thenApply(x -> true);
+    }
+
+    /** Our introduction for a contact to pass on, made the first time we send them anything signed, unless the user
+     *  has turned introductions off (remove-pki §9). */
+    private CompletableFuture<Optional<FriendLink>> introductionFor(PublicKeyHash contact, String contactName) {
+        return getFriendLinkStore().thenCompose(store -> {
+            if (store.introductionsOff)
+                return Futures.of(Optional.<FriendLink>empty());
+            return store.introductionFor(contact)
+                    .map(Futures::of)
+                    .orElseGet(() -> createFriendLink(FriendLinkStore.Kind.INTRODUCTION, contactName, Optional.empty(),
+                            Optional.empty(), Optional.of(contact)))
+                    .thenCompose(e -> friendLink(e.linkId))
+                    .thenApply(Optional::of);
+        });
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> getIntroductionsEnabled() {
+        return getFriendLinkStore().thenApply(store -> ! store.introductionsOff);
+    }
+
+    /** Turning introductions off revokes every one given out; turning them back on gives each contact a new one. */
+    @JsMethod
+    public CompletableFuture<Boolean> setIntroductionsEnabled(boolean enabled) {
+        if (enabled)
+            return changeFriendLinkStore(store -> store.withIntroductionsOff(false))
+                    .thenCompose(x -> offerBackChannels())
+                    .thenApply(x -> true);
+        return changeFriendLinkStore(store -> store.withIntroductionsOff(true))
+                .thenCompose(store -> Futures.reduceAll(store.ofKind(FriendLinkStore.Kind.INTRODUCTION), true,
+                        (b, e) -> revokeFriendLink(e.linkId),
+                        (a, b) -> a && b));
     }
 
     /** Ask the owner of a friend link to be friends. The link's bundle is verified first, and the request is signed and
@@ -3571,14 +3629,25 @@ public class UserContext {
                                                             Snapshot in,
                                                             Committer c) {
         ensureAllowedToShare(file, username, false);
-        BiFunction<FileWrapper, FileWrapper, CompletableFuture<Snapshot>> sharingFunction = (sharedDir, fileWrapper) ->
-                CapabilityStore.addReadOnlySharingLinkTo(sharedDir, fileWrapper.getPointer().capability,
-                        c, network, crypto);
-        return Futures.reduceAll(readersToAdd,
-                in,
-                (s, username) -> shareAccessWith(file, username, sharingFunction, s),
-                (a, b) -> a.mergeAndOverwriteWith(b))
-                .thenCompose(result -> updatedSharedWithCache(file, p, readersToAdd, SharedWithCache.Access.READ, result, c));
+        // resharing someone else's file passes on their introduction with it, if they gave us one (remove-pki §9)
+        PublicKeyHash owner = file.owner();
+        CompletableFuture<Optional<FriendLink>> introduction = owner.equals(signer.publicKeyHash) ?
+                Futures.of(Optional.empty()) :
+                getFriendLinkStore()
+                        .thenApply(store -> Optional.ofNullable(store.introductions.get(owner)))
+                        .exceptionally(t -> Optional.empty());
+        return introduction.thenCompose(intro -> {
+            BiFunction<FileWrapper, FileWrapper, CompletableFuture<Snapshot>> sharingFunction = (sharedDir, fileWrapper) ->
+                    CapabilityStore.addReadOnlySharingLinkTo(sharedDir, fileWrapper.getPointer().capability,
+                                    c, network, crypto)
+                            .thenCompose(s2 -> intro.isEmpty() ?
+                                    Futures.of(s2) :
+                                    CapabilityStore.addIntroductionTo(sharedDir, intro.get(), s2, c, network, crypto));
+            return Futures.reduceAll(readersToAdd,
+                    in,
+                    (s, username) -> shareAccessWith(file, username, sharingFunction, s),
+                    (a, b) -> a.mergeAndOverwriteWith(b));
+        }).thenCompose(result -> updatedSharedWithCache(file, p, readersToAdd, SharedWithCache.Access.READ, result, c));
     }
 
     @JsMethod
@@ -4036,9 +4105,12 @@ public class UserContext {
         Optional<FriendLinkStore.Entry> link = links.get(b.linkId.get());
         if (link.isEmpty())
             return discardFollowRequest(b).thenApply(x -> Optional.empty());
+        Optional<String> introducedBy = link.get().kind == FriendLinkStore.Kind.INTRODUCTION ?
+                Optional.of(link.get().label) :
+                Optional.empty();
         return b.followRequest.decrypt(link.get().boxer.secretBoxingKey, b.dummySource, FollowRequest::fromCbor)
                 .thenCompose(decrypted -> isValidLinked(decrypted, b.linkId, link)
-                        .thenApply(valid -> valid ? Optional.of(new FollowRequestWithCipherText(decrypted, b)) : Optional.<FollowRequestWithCipherText>empty()))
+                        .thenApply(valid -> valid ? Optional.of(new FollowRequestWithCipherText(decrypted, b, introducedBy)) : Optional.<FollowRequestWithCipherText>empty()))
                 .exceptionally(t -> Optional.empty())
                 .thenCompose(res -> res.isPresent() ?
                         Futures.of(res) :
@@ -4111,7 +4183,7 @@ public class UserContext {
     private CompletableFuture<List<FollowRequestWithCipherText>> countLinkUses(List<FollowRequestWithCipherText> opened, FriendLinkStore links) {
         List<FollowRequestWithCipherText> toLinks = opened.stream()
                 .filter(p -> p.cipher.linkId.isPresent())
-                .filter(p -> links.get(p.cipher.linkId.get()).map(e -> e.kind == FriendLinkStore.Kind.LINK).orElse(false))
+                .filter(p -> links.get(p.cipher.linkId.get()).map(e -> e.kind != FriendLinkStore.Kind.REPLY).orElse(false))
                 .collect(Collectors.toList());
         if (toLinks.isEmpty())
             return Futures.of(opened);
