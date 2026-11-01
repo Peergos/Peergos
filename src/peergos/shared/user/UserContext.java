@@ -2637,8 +2637,37 @@ public class UserContext {
     private CompletableFuture<Snapshot> publishFriendLink(FriendLinkStore.Entry e) {
         FriendLinkBundle bundle = new FriendLinkBundle(signer.publicKeyHash, e.linkId, e.boxer.publicBoxingKey, e.expiry, username);
         return bundle.sign(signer.secret)
-                .thenCompose(signed -> writeSynchronizer.applyUpdate(signer.publicKeyHash, signer,
+                .thenCompose(signed -> changeWriterData(
                         (wd, tid) -> wd.putFriendLink(signer, signed, mirrorBat, tid, network.dhtClient, network.hasher)));
+    }
+
+    /** Changes this user's WriterData, committing only if it changed, since a buffered commit of the same data fails. */
+    private CompletableFuture<Snapshot> changeWriterData(BiFunction<WriterData, TransactionId, CompletableFuture<WriterData>> change) {
+        PublicKeyHash id = signer.publicKeyHash;
+        return writeSynchronizer.applyComplexUpdate(id, signer, (in, c) -> in.withWriter(id, id, network)
+                .thenCompose(v -> IpfsTransaction.call(id, tid -> {
+                    WriterData initial = v.get(id).props.get();
+                    return change.apply(initial, tid)
+                            .thenCompose(wd -> wd.equals(initial) ? Futures.of(v) : c.commit(id, signer, wd, v.get(id), tid))
+                            .thenApply(res -> v.mergeAndOverwriteWith(res));
+                }, network.dhtClient)));
+    }
+
+    /** After a rotation every bundle is signed by a key that no longer verifies, so sign each again with the current
+     *  key, into a new champ holding only the links this user keeps: any bundle a thief added is gone. */
+    public CompletableFuture<Boolean> resignFriendLinks() {
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        return getFriendLinkStore().thenCompose(store -> Futures.combineAllInOrder(store.links.values().stream()
+                        .filter(e -> ! (e.kind == FriendLinkStore.Kind.LINK && e.isUsedUp()))
+                        .filter(e -> e.expiry.isEmpty() || ! e.expiry.get().isBefore(now))
+                        .map(e -> new FriendLinkBundle(signer.publicKeyHash, e.linkId, e.boxer.publicBoxingKey, e.expiry, username)
+                                .sign(signer.secret))
+                        .collect(Collectors.toList())))
+                .thenCompose(bundles -> changeWriterData(
+                        (wd, tid) -> Futures.reduceAll(bundles, wd.withFriendLinks(Optional.empty()),
+                                (current, bundle) -> current.putFriendLink(signer, bundle, mirrorBat, tid, network.dhtClient, network.hasher),
+                                (a, b) -> b)))
+                .thenApply(x -> true);
     }
 
     /** The link to hand out, with a hint of where this user's server is, for a server whose log doesn't hold us yet. */
@@ -2666,8 +2695,7 @@ public class UserContext {
     }
 
     private CompletableFuture<Boolean> revokeFriendLink(byte[] linkId) {
-        return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer,
-                        (wd, tid) -> wd.removeFriendLink(signer, linkId, mirrorBat, tid, network.dhtClient, network.hasher))
+        return changeWriterData((wd, tid) -> wd.removeFriendLink(signer, linkId, mirrorBat, tid, network.dhtClient, network.hasher))
                 .thenCompose(x -> changeFriendLinkStore(store -> store.without(linkId)))
                 .thenApply(x -> true);
     }
@@ -4070,8 +4098,7 @@ public class UserContext {
                                 return updated;
                             }))
                             .thenCompose(x -> Futures.reduceAll(nowUsedUp, true,
-                                    (b, id) -> writeSynchronizer.applyUpdate(signer.publicKeyHash, signer,
-                                                    (wd, tid) -> wd.removeFriendLink(signer, id, mirrorBat, tid, network.dhtClient, network.hasher))
+                                    (b, id) -> changeWriterData((wd, tid) -> wd.removeFriendLink(signer, id, mirrorBat, tid, network.dhtClient, network.hasher))
                                             .thenApply(y -> true),
                                     (a, b) -> a))
                             .thenCompose(x -> Futures.reduceAll(dropped, true, (b, p) -> discardFollowRequest(p.cipher), (a, b) -> a))
@@ -5135,6 +5162,14 @@ public class UserContext {
             progress.accept("Logging in");
             return signIn(username, newPassword, req -> Futures.errored(new IllegalStateException("No second factor after recovery")),
                     false, false, network.clear(), crypto, progress);
+        }).thenCompose(context -> {
+            progress.accept("Signing your friend links again");
+            return context.resignFriendLinks()
+                    .exceptionally(t -> {
+                        LOG.log(Level.WARNING, "Couldn't sign the friend links again after recovery", t);
+                        return false;
+                    })
+                    .thenApply(x -> context);
         });
     }
 
