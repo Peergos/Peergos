@@ -417,16 +417,26 @@ public class CryptreeNode implements Cborable {
         Opened o = open(baseKey);
         switch (o.access) {
             case FULL:
-                try {
-                    return o.base.get().fromFullKey.get().target(baseKey);
-                } catch (Exception e) {
-                    // a further chunk added through a restricted key, which couldn't link from the full key
-                    return o.base.get().parentOrData;
-                }
+                // a further chunk added through a restricted key couldn't link from the full key
+                return verifiedParentKey(baseKey).orElse(o.base.get().parentOrData);
             case LEGACY:
             case RESTRICTED: return o.base.get().parentOrData;
             default: return baseKey; // we don't have read access to this folder, so we must just have the parent key already
         }
+    }
+
+    /** A directory's parent key P, if it links from the full key. Anyone with the restricted key can write one that doesn't. */
+    private Optional<SymmetricKey> verifiedParentKey(SymmetricKey baseKey) {
+        try {
+            return Optional.of(getBaseBlock(baseKey).fromFullKey.get().target(baseKey));
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
+    /** Whether we hold a directory's full key, but its parent key wasn't linked from it, so a restricted key holder chose it. */
+    public boolean hasUnverifiedParentKey(SymmetricKey baseKey) {
+        return isDirectory && open(baseKey).access == Access.FULL && verifiedParentKey(baseKey).isEmpty();
     }
 
     public SymmetricKey getDataKey(SymmetricKey baseKey) {
@@ -772,6 +782,8 @@ public class CryptreeNode implements Cborable {
         OpenedParent parent = openParent(parentKey);
         FromParent newParentBlock;
         if (access == Access.FULL) {
+            if (hasUnverifiedParentKey(baseKey))
+                throw new IllegalStateException("This folder's parent key wasn't linked from its full key. Copy it instead.");
             SymmetricKey parentLinkKey = isDirectory ? parentKey : baseKey;
             newParentBlock = new FromParent(Optional.empty(),
                     Optional.of(PaddedCipherText.build(parentLinkKey, newParentLink, META_DATA_PADDING_BLOCKSIZE)), newProps);
@@ -1502,7 +1514,7 @@ public class CryptreeNode implements Cborable {
         if (block.parentLink.isPresent() || block.encryptedParentLink.isEmpty())
             return block.parentLink;
         Optional<SymmetricKey> parentLinkKey = access == Access.FULL ?
-                Optional.of(isDirectory ? parentKey : baseKey) :
+                (isDirectory ? verifiedParentKey(baseKey) : Optional.of(baseKey)) :
                 access == Access.PARENT ?
                         Optional.of(baseKey) :
                         Optional.empty();
