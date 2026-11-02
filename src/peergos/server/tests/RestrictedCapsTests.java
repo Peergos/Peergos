@@ -456,6 +456,46 @@ public class RestrictedCapsTests {
         Assert.assertNotEquals(ownKey, ownSeenByMaker.getPointer().capability.rBaseKey);
     }
 
+    private static void assertRefused(Runnable r) {
+        try {
+            r.run();
+        } catch (Exception e) {
+            return;
+        }
+        Assert.fail("expected the move to be refused");
+    }
+
+    @Test(timeout = 120_000)
+    public void cantMoveAFolderMadeThroughALinkIntoItself() {
+        UserContext owner = signIn(username("md"));
+        Path home = PathUtil.get(owner.username);
+        mkdir(owner, home, "work");
+        mkdir(owner, home.resolve("work"), "drop");
+        String path = home.resolve("work/drop").toString();
+        LinkProperties link = owner.createSecretLink(List.of(path), List.of(path), List.of(path),
+                Optional.empty(), Optional.empty(), "", false).join();
+
+        UserContext fromLink = openLink(owner, link);
+        fromLink.getByPath("/drop").join().get().mkdir("made", fromLink.network, false, Optional.empty(), crypto).join();
+        fromLink.getByPath("/drop/made").join().get().mkdir("by-link", fromLink.network, false, Optional.empty(), crypto).join();
+        byte[] keep = randomData(100);
+        fromLink.getByPath("/drop/made").join().get()
+                .uploadOrReplaceFile("keep.txt", AsyncReader.build(keep), keep.length, fromLink.network, crypto, () -> false, x -> {}).join();
+        Path drop = home.resolve("work/drop");
+        mkdir(owner, drop.resolve("made"), "by-owner");
+
+        UserContext fresh = signIn(owner.username);
+        for (String into : List.of("by-owner", "by-link"))
+            assertRefused(() -> move(fresh, drop + "/made", drop + "/made/" + into));
+        UserContext linkAgain = openLink(owner, link);
+        assertRefused(() -> move(linkAgain, "/drop/made", "/drop/made/by-owner"));
+
+        UserContext after = signIn(owner.username);
+        Assert.assertEquals(Set.of("made"), children(after.getByPath(drop).join().get(), after.network).keySet());
+        Assert.assertEquals(Set.of("by-owner", "by-link", "keep.txt"), children(after.getByPath(drop.resolve("made")).join().get(), after.network).keySet());
+        PeergosNetworkUtils.checkFileContents(keep, after.getByPath(drop.resolve("made/keep.txt")).join().get(), after);
+    }
+
     @Test
     public void writableHiddenLinkToAFile() {
         UserContext owner = signIn(username("hw"));
