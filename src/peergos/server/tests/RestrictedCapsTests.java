@@ -4,6 +4,8 @@ import org.junit.*;
 import peergos.server.*;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.cbor.*;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
@@ -494,6 +496,67 @@ public class RestrictedCapsTests {
         Assert.assertEquals(Set.of("made"), children(after.getByPath(drop).join().get(), after.network).keySet());
         Assert.assertEquals(Set.of("by-owner", "by-link", "keep.txt"), children(after.getByPath(drop.resolve("made")).join().get(), after.network).keySet());
         PeergosNetworkUtils.checkFileContents(keep, after.getByPath(drop.resolve("made/keep.txt")).join().get(), after);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> T field(CryptreeNode node, String name) {
+        try {
+            java.lang.reflect.Field f = CryptreeNode.class.getDeclaredField(name);
+            f.setAccessible(true);
+            return (T) f.get(node);
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /** What a malicious client holding a folder's restricted and write keys can do: replace x, and drop the parent link. */
+    private static void forgeParentKey(FileWrapper dir, UserContext ctx) {
+        CryptreeNode node = dir.getPointer().fileAccess;
+        SymmetricKey r = dir.getPointer().capability.rBaseKey;
+        SymmetricKey pPrime = node.getParentKey(r);
+        CborObject.CborMap base = ((PaddedCipherText) field(node, "fromBaseKey")).decrypt(r, c -> (CborObject.CborMap) c);
+        base.put("x", SymmetricLink.fromPair(SymmetricKey.random(), SymmetricKey.random()).toCbor());
+        CborObject.CborMap parent = ((PaddedCipherText) field(node, "fromParentKey")).decrypt(pPrime, c -> (CborObject.CborMap) c);
+        Map<String, Cborable> withoutLink = new TreeMap<>();
+        for (String k : parent.keySet())
+            if (! k.equals("q"))
+                withoutLink.put(k, parent.get(k));
+        CryptreeNode forged = new CryptreeNode(node.committedHash(), true, node.bats, PaddedCipherText.build(r, base, 64),
+                field(node, "childrenOrData"), PaddedCipherText.build(pPrime, CborObject.CborMap.build(withoutLink), 64));
+        WritableAbsoluteCapability cap = dir.writableFilePointer();
+        SigningPrivateKeyAndPublicHash signer = dir.signingPair();
+        ctx.network.synchronizer.applyComplexUpdate(cap.owner, signer, (v, c) -> IpfsTransaction.call(cap.owner,
+                tid -> forged.commit(v, c, cap, signer, ctx.network, tid), ctx.network.dhtClient)).join();
+    }
+
+    @Test(timeout = 120_000)
+    public void aForgedParentKeyIsntWrittenUnder() {
+        UserContext owner = signIn(username("fp"));
+        Path home = PathUtil.get(owner.username);
+        mkdir(owner, home, "work");
+        mkdir(owner, home.resolve("work"), "drop");
+        mkdir(owner, home.resolve("work/drop"), "sub");
+        mkdir(owner, home.resolve("work/drop"), "other");
+        byte[] data = randomData(200);
+        upload(owner, home.resolve("work/drop/sub"), "in.txt", data);
+        String path = home.resolve("work/drop").toString();
+        LinkProperties link = owner.createSecretLink(List.of(path), List.of(path), List.of(path),
+                Optional.empty(), Optional.empty(), "", false).join();
+
+        UserContext fromLink = openLink(owner, link);
+        forgeParentKey(fromLink.getByPath("/drop/sub").join().get(), fromLink);
+
+        UserContext fresh = signIn(owner.username);
+        Path drop = home.resolve("work/drop");
+        Assert.assertTrue(fresh.getByPath(drop.resolve("sub")).join().get().isPending());
+        move(fresh, drop + "/sub", drop + "/other");
+
+        UserContext after = signIn(owner.username);
+        PeergosNetworkUtils.checkFileContents(data, after.getByPath(drop.resolve("other/sub/in.txt")).join().get(), after);
+        FileWrapper seenByLink = openLink(owner, link).getByPath("/drop/other/sub").join().get();
+        CryptreeNode node = seenByLink.getPointer().fileAccess;
+        SymmetricKey pPrime = node.getParentKey(seenByLink.getPointer().capability.rBaseKey);
+        Assert.assertTrue(node.getParentCapability(pPrime).isEmpty());
     }
 
     @Test

@@ -369,6 +369,8 @@ public class FileWrapper {
         if (pointer == null || isRestrictedKey())
             return false;
         SymmetricKey key = pointer.capability.rBaseKey;
+        if (pointer.fileAccess.hasUnverifiedParentKey(key))
+            return true;
         return pointer.fileAccess.hasParentLink(key) && pointer.fileAccess.getParentCapability(key).isEmpty();
     }
 
