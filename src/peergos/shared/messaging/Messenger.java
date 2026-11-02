@@ -5,6 +5,7 @@ import peergos.shared.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.display.*;
 import peergos.shared.messaging.messages.*;
+import peergos.shared.social.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -107,7 +108,79 @@ public class Messenger {
         Path chatSharedDir = getChatSharedDir(chat.chatUuid);
         return chat.invite(usernames, identities)
                 .thenCompose(res -> context.shareReadAccessWith(chatSharedDir, new HashSet<>(usernames))
+                        .thenCompose(x -> passOnIntroductions(res))
                         .thenApply(x -> res));
+    }
+
+    /** Whoever we invite reads our shared directory, so we put there the introductions we hold for the chat's other
+     *  members (remove-pki §9). Old clients ignore the file. */
+    private CompletableFuture<Boolean> passOnIntroductions(ChatController chat) {
+        Set<PublicKeyHash> members = chat.getMemberNames().stream()
+                .filter(n -> ! n.equals(context.username))
+                .map(n -> chat.getMember(n).identity)
+                .collect(Collectors.toSet());
+        return context.getFriendLinkStore()
+                .thenApply(store -> members.stream()
+                        .flatMap(id -> Optional.ofNullable(store.introductions.get(id)).stream())
+                        .collect(Collectors.toList()))
+                .thenCompose(intros -> intros.isEmpty() ?
+                        Futures.of(true) :
+                        context.getByPath(getChatSharedDir(chat.chatUuid))
+                                .thenApply(Optional::get)
+                                .thenCompose(dir -> network.synchronizer.applyComplexUpdate(dir.owner(), dir.signingPair(),
+                                        (s, c) -> Futures.reduceAll(intros, s,
+                                                (v, intro) -> CapabilityStore.addIntroductionTo(dir, intro, v, c, network, crypto),
+                                                (x, y) -> y)))
+                                .thenApply(x -> true))
+                .exceptionally(t -> false);
+    }
+
+    /** Who could introduce us to each member of a chat we don't follow, by member. */
+    @JsMethod
+    public CompletableFuture<Map<String, String>> getIntroducers(ChatController chat) {
+        return getIntroductions(chat).thenApply(intros -> intros.entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().left)));
+    }
+
+    /** Ask a member of a chat to be friends, through the introduction another member passed on. The link itself never
+     *  leaves here, so an app can offer this without being able to send requests of its own. */
+    @JsMethod
+    public CompletableFuture<Boolean> requestViaIntroduction(ChatController chat, String member) {
+        return getIntroductions(chat).thenCompose(intros -> intros.containsKey(member) ?
+                context.sendFollowRequestToLink(intros.get(member).right.toLink()) :
+                Futures.errored(new IllegalStateException("No introduction to " + member)));
+    }
+
+    /** For each member of a chat we neither follow nor are, the introduction another member passed on, and who
+     *  passed it on, to ask them to be friends through it. */
+    public CompletableFuture<Map<String, Pair<String, FriendLink>>> getIntroductions(ChatController chat) {
+        return context.getFollowing().thenCompose(following -> {
+            Map<PublicKeyHash, String> strangers = chat.getMemberNames().stream()
+                    .filter(n -> ! n.equals(context.username) && ! following.contains(n))
+                    .collect(Collectors.toMap(n -> chat.getMember(n).identity, n -> n));
+            List<String> introducers = chat.getMemberNames().stream()
+                    .filter(following::contains)
+                    .sorted()
+                    .collect(Collectors.toList());
+            if (strangers.isEmpty())
+                return Futures.of(Collections.<String, Pair<String, FriendLink>>emptyMap());
+            return Futures.combineAllInOrder(introducers.stream()
+                            .map(n -> context.getByPath(getChatPath(n, chat.chatUuid).resolve("shared"))
+                                    .thenCompose(dir -> dir.isEmpty() ?
+                                            Futures.of(Collections.<PublicKeyHash, FriendLink>emptyMap()) :
+                                            CapabilityStore.readIntroductions(dir.get(), network, crypto))
+                                    .exceptionally(t -> Collections.emptyMap())
+                                    .thenApply(intros -> new Pair<>(n, intros)))
+                            .collect(Collectors.toList()))
+                    .thenApply(all -> {
+                        Map<String, Pair<String, FriendLink>> res = new TreeMap<>();
+                        for (Pair<String, Map<PublicKeyHash, FriendLink>> p : all)
+                            for (Map.Entry<PublicKeyHash, FriendLink> e : p.right.entrySet())
+                                if (strangers.containsKey(e.getKey()))
+                                    res.putIfAbsent(strangers.get(e.getKey()), new Pair<>(p.left, e.getValue()));
+                        return res;
+                    });
+        });
     }
 
     /** Copy a chat to our space to join it.

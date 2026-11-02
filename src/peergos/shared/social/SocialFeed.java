@@ -206,7 +206,7 @@ public class SocialFeed {
         return Futures.combineAllInOrder(comments.stream().map(t -> t.middle.getInputStream(network, crypto, x -> {})
                 .thenCompose(reader -> crypto.hasher.hashFromStream(reader, t.middle.getSize())
                         .thenApply(h -> new FileRef(t.left.path, t.left.cap, h))))
-                .collect(Collectors.toList())).thenCompose(refs ->
+                .collect(Collectors.toList())).thenCompose(refs -> introductionsFor(refs).thenCompose(intros ->
                 context.getByPath(parentPath, v).thenCompose(fopt -> {
                     if (fopt.isEmpty())
                         return Futures.of(v);
@@ -215,6 +215,9 @@ public class SocialFeed {
                     return Serialize.parse(fopt.get(), SocialPost::fromCbor, network, crypto)
                             .thenCompose(parent -> {
                                 SocialPost withComments = parent.addComments(refs);
+                                // a public post would hand the commenters' introductions to anyone (remove-pki §9)
+                                if (parent.shareTo != SocialPost.Resharing.Public)
+                                    withComments = withComments.addIntroductions(intros);
                                 byte[] raw = withComments.serialize();
                                 return fopt.get().getUpdated(v, network)
                                         .thenCompose(updated -> updated.overwriteFile(AsyncReader.build(raw), raw.length, network, crypto, x -> {}, v, c))
@@ -223,7 +226,17 @@ public class SocialFeed {
                                             return x;
                                         });
                             });
-                }));
+                })));
+    }
+
+    private CompletableFuture<List<FriendLink>> introductionsFor(List<FileRef> comments) {
+        return context.getFriendLinkStore()
+                .thenApply(store -> comments.stream()
+                        .map(r -> r.cap.owner)
+                        .distinct()
+                        .flatMap(owner -> Optional.ofNullable(store.introductions.get(owner)).stream())
+                        .collect(Collectors.toList()))
+                .exceptionally(t -> Collections.emptyList());
     }
 
     private synchronized CompletableFuture<Boolean> commit() {

@@ -7,7 +7,9 @@ import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.display.*;
 import peergos.shared.io.ipfs.*;
+import peergos.shared.messaging.*;
 import peergos.shared.routing.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
@@ -15,6 +17,7 @@ import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
+import java.nio.file.*;
 import java.time.*;
 import java.util.*;
 
@@ -316,6 +319,82 @@ public class FriendLinkTests {
         Assert.assertFalse(bob.getIntroductionsEnabled().join());
         Assert.assertTrue("turning introductions off revokes them", failed(() -> freshAlice.fetchFriendLink(intro).join()));
         Assert.assertTrue(bob.getFriendLinkStore().join().ofKind(FriendLinkStore.Kind.INTRODUCTION).isEmpty());
+    }
+
+    @Test
+    public void anIntroductionTravelsWithACommentOnAFriendsPost() {
+        UserContext alice = signUp("fja");
+        UserContext bob = signUp("fjb");
+        UserContext carol = signUp("fjc");
+        linkFriends(carol, bob);
+        PeergosNetworkUtils.friendBetweenGroups(Arrays.asList(alice), Arrays.asList(carol));
+
+        SocialPost post = SocialPost.createInitialPost(carol.username, Arrays.asList(new Text("hi")), SocialPost.Resharing.Friends);
+        Pair<Path, FileWrapper> posted = carol.getSocialFeed().join().createNewPost(post).join();
+        carol.shareReadAccessWith(posted.left, Set.of(carol.getGroupUid(SocialState.FRIENDS_GROUP_NAME).join().get())).join();
+
+        UserContext freshBob = login(bob);
+        SocialFeed bobsFeed = freshBob.getSocialFeed().join().update().join();
+        Pair<SharedItem, FileWrapper> received = bobsFeed.getSharedFiles(0, bobsFeed.getFeedSize() + 1).join().stream()
+                .filter(f -> f.left.owner.equals(carol.username) && f.left.path.contains("/.posts/"))
+                .findFirst().get();
+        SocialPost comment = SocialPost.createComment(new FileRef(received.left.path, received.left.cap, post.contentHash(crypto.hasher).join()),
+                SocialPost.Resharing.Friends, bob.username, Arrays.asList(new Text("hello from bob")));
+        Pair<Path, FileWrapper> commented = bobsFeed.createNewPost(comment).join();
+        freshBob.shareReadAccessWith(commented.left, Set.of(freshBob.getGroupUid(SocialState.FRIENDS_GROUP_NAME).join().get())).join();
+        login(carol).getSocialFeed().join().update().join();
+
+        UserContext freshAlice = login(alice);
+        SocialFeed alicesFeed = freshAlice.getSocialFeed().join().update().join();
+        FileWrapper postFile = alicesFeed.getSharedFiles(0, alicesFeed.getFeedSize() + 1).join().stream()
+                .filter(f -> f.left.owner.equals(carol.username) && f.right.getFileProperties().isSocialPost())
+                .findFirst().get().right;
+        SocialPost withComments = Serialize.parse(postFile, SocialPost::fromCbor, freshAlice.network, crypto).join();
+        Assert.assertEquals(1, withComments.comments.size());
+        Assert.assertEquals("the introductions leave the post's hash alone", post.contentHash(crypto.hasher).join(),
+                withComments.contentHash(crypto.hasher).join());
+        String intro = withComments.getIntroduction(withComments.comments.get(0));
+        Assert.assertNotNull("Carol passed on Bob's introduction with his comment", intro);
+        Assert.assertEquals(bob.signer.publicKeyHash, FriendLink.fromLink(intro).identity);
+
+        Assert.assertTrue(freshAlice.sendFollowRequestToLink(intro).join());
+        List<FollowRequestWithCipherText> requests = bob.processFollowRequests().join();
+        Assert.assertEquals(1, requests.size());
+        Assert.assertEquals(carol.username, requests.get(0).getIntroducer());
+    }
+
+    @Test
+    public void anIntroductionTravelsWithAChatInvite() {
+        UserContext alice = signUp("fka");
+        UserContext bob = signUp("fkb");
+        UserContext carol = signUp("fkc");
+        linkFriends(carol, bob);
+        PeergosNetworkUtils.friendBetweenGroups(Arrays.asList(alice), Arrays.asList(carol));
+
+        Messenger carols = new Messenger(carol);
+        ChatController chat = carols.createChat().join();
+        chat = carols.invite(chat, Arrays.asList(bob.username), Arrays.asList(bob.signer.publicKeyHash)).join();
+        UserContext freshBob = login(bob);
+        List<Pair<SharedItem, FileWrapper>> bobsFeed = freshBob.getSocialFeed().join().update().join().getSharedFiles(0, 20).join();
+        new Messenger(freshBob).cloneLocallyAndJoin(bobsFeed.stream().filter(f -> f.left.path.contains("/.messaging/")).findFirst().get().right).join();
+        chat = carols.mergeMessages(chat, bob.username).join();
+        carols.invite(chat, Arrays.asList(alice.username), Arrays.asList(alice.signer.publicKeyHash)).join();
+
+        UserContext freshAlice = login(alice);
+        List<Pair<SharedItem, FileWrapper>> feed = freshAlice.getSocialFeed().join().update().join().getSharedFiles(0, 20).join();
+        Messenger alices = new Messenger(freshAlice);
+        ChatController joined = alices.cloneLocallyAndJoin(feed.stream().filter(f -> f.left.path.contains("/.messaging/")).findFirst().get().right).join();
+        Assert.assertTrue(joined.getMemberNames().contains(bob.username));
+
+        Map<String, Pair<String, FriendLink>> intros = alices.getIntroductions(joined).join();
+        Assert.assertEquals("only the stranger, introduced by the member who passed it on", Set.of(bob.username), intros.keySet());
+        Assert.assertEquals(carol.username, intros.get(bob.username).left);
+
+        Assert.assertEquals(Map.of(bob.username, carol.username), alices.getIntroducers(joined).join());
+        Assert.assertTrue(alices.requestViaIntroduction(joined, bob.username).join());
+        List<FollowRequestWithCipherText> requests = bob.processFollowRequests().join();
+        Assert.assertEquals(1, requests.size());
+        Assert.assertEquals(carol.username, requests.get(0).getIntroducer());
     }
 
     private static UserContext login(UserContext c) {
