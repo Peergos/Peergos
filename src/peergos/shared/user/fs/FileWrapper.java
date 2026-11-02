@@ -372,6 +372,14 @@ public class FileWrapper {
         return pointer.fileAccess.hasParentLink(key) && pointer.fileAccess.getParentCapability(key).isEmpty();
     }
 
+    /** Whether this, or a folder above it, was made through a restricted key, so its maker may know our full key. */
+    public CompletableFuture<Boolean> isPendingOrBelowPending(NetworkAccess network) {
+        if (isPending())
+            return Futures.of(true);
+        return retrieveParent(network)
+                .thenCompose(p -> p.isEmpty() || p.get().isRoot() ? Futures.of(false) : p.get().isPendingOrBelowPending(network));
+    }
+
     /** Rewrite this, the link node in front of it if any, and everything below it, into the restricted format. */
     public CompletableFuture<Boolean> upgradeToRestrictedFormat(NetworkAccess network, Crypto crypto) {
         if (! isWritable())
@@ -2713,8 +2721,16 @@ public class FileWrapper {
                                 boolean differentParentWriter = !target.writer().equals(parent.writer());
                                 // a restricted key can't write where we now are, nor give the new folder our full key, so copy instead
                                 boolean restricted = isRestrictedKey() || target.isRestrictedKey() || parent.isRestrictedKey();
+                                if (! keepAccess || differentParentWriter || restricted)
+                                    return Futures.of(false);
+                                // whoever made a pending node knows its keys, so re-pointing would show them where we now are
+                                return (isPending() ? Futures.of(true) : parent.isPendingOrBelowPending(net))
+                                        .thenCompose(srcPending -> srcPending ? Futures.of(true) : target.isPendingOrBelowPending(net))
+                                        .thenApply(pending -> ! pending);
+                            })
+                            .thenCompose(repoint -> {
                                 // TODO optimise different parent writer case by correcting owned keys
-                                if (keepAccess && !differentParentWriter && !restricted) {
+                                if (repoint) {
                                     // just update parent and child pointers, no need to re-upload, rotate keys etc.
                                     boolean differentWriter = !target.writer().equals(writer());
                                     boolean ourFile = context.signer != null && target.owner().equals(context.signer.publicKeyHash);
