@@ -151,7 +151,8 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 WriterUsage writerUsage = tmpUsage;
                 Logging.LOG().info("Checking for updates from user: " + writerUsage.owner + ", writer key: " + writerKey);
 
-                PublicKeyHash owner = writerKey; //NB: owner is a dummy value
+                // the identity key the ownership chains lead to; the pointer and block reads don't need it
+                PublicKeyHash owner = core.getPublicKeyHash(writerUsage.owner).join().orElse(writerKey);
                 MaybeMultihash rootHash = mutable.getPointerTarget(owner, writerKey, dht).join().updated;
                 boolean isChanged = ! writerUsage.target().equals(rootHash);
                 if (isChanged) {
@@ -556,6 +557,19 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         return usage;
     }
 
+    // Writers registered for commits still creating them, each with the pointer update its commit carries for
+    // it, if any: no other may land until the commit does, or a write it let in would be forgotten with it.
+    private final Map<PublicKeyHash, Optional<byte[]>> provisional = new ConcurrentHashMap<>();
+
+    /** Whether a writer may set this pointer: a provisional writer only the one its commit carries, otherwise the
+     *  owner's identity or a key the owner still owns. */
+    public boolean isOwnedWriter(PublicKeyHash owner, SignedPointerUpdate update) {
+        Optional<byte[]> allowed = provisional.get(update.writer);
+        if (allowed != null)
+            return allowed.map(signed -> Arrays.equals(signed, update.signed)).orElse(false);
+        return isOwnedWriter(owner, update.writer);
+    }
+
     /** Whether a writer may update its pointer: the owner's identity, or a key the owner still owns */
     public boolean isOwnedWriter(PublicKeyHash owner, PublicKeyHash writer) {
         if (writer.equals(owner))
@@ -697,12 +711,21 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
      *  parent's pointer update has been processed, and the commit's own blocks for it would be charged to
      *  the owner alone, past any cap over the parent.
      *
+     *  Until the commit lands the writer is provisional: it may set only the pointer the commit carries for it, as
+     *  another write it let in would be forgotten with the commit if that is refused.
+     *
+     * @param ownUpdate the pointer update the commit carries for the writer, if any
      * @return what takes the registration back if the commit is refused, leaving alone what a committed parent
      *         names: a writer it made or linked would otherwise stay registered, and write outside every cap once
      *         its parent is gone
      */
-    public Runnable registerNewWriter(PublicKeyHash owner, PublicKeyHash parent, PublicKeyHash writer) {
-        Runnable nothing = () -> {};
+    public BulkCommitStorage.Registration registerNewWriter(PublicKeyHash owner, PublicKeyHash parent, PublicKeyHash writer) {
+        return registerNewWriter(owner, parent, writer, Optional.empty());
+    }
+
+    public BulkCommitStorage.Registration registerNewWriter(PublicKeyHash owner, PublicKeyHash parent, PublicKeyHash writer,
+                                                             Optional<SignedPointerUpdate> ownUpdate) {
+        BulkCommitStorage.Registration nothing = registration(() -> {}, () -> {});
         Object lock = healLocks.computeIfAbsent(owner, o -> new Object());
         synchronized (lock) {
             boolean writerAdded = false;
@@ -730,6 +753,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 } catch (IllegalStateException absent) {
                     usageStore.addUserIfAbsent(username);
                     usageStore.addWriter(username, writer);
+                    provisional.put(writer, ownUpdate.map(u -> u.signed));
                     writerUser = username;
                     writerAdded = true;
                 }
@@ -743,9 +767,14 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 // registered it and whatever its own pointer says: it would write under no cap. Under the
                 // registration lock, so no registration comes in between; an edge recorded as a pointer lands
                 // can, and is recorded again when the queue reaches that parent's update.
-                return () -> {
+                return registration(() -> {
+                    if (newWriter)
+                        provisional.remove(writer);
+                }, () -> {
                     synchronized (lock) {
                         try {
+                            if (newWriter)
+                                provisional.remove(writer);
                             if (edgeAdded && ! namesWriter(owner, parent, writer))
                                 usageStore.removeOwnedKey(parent, writer);
                             if ((newWriter || edgeAdded) && usageStore.getParents(writer).isEmpty())
@@ -754,12 +783,13 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                             LOG.log(Level.WARNING, "Couldn't take back new writer " + writer + " of owner " + owner, e);
                         }
                     }
-                };
+                });
             } catch (Exception e) {
                 LOG.log(Level.WARNING, "Couldn't register new writer " + writer + " of owner " + owner, e);
                 // nothing half done stays: a writer added here without its edge would write under no cap
                 if (writerAdded) {
                     try {
+                        provisional.remove(writer);
                         usageStore.removeWriter(writer);
                     } catch (Exception f) {
                         LOG.log(Level.WARNING, "Couldn't take back new writer " + writer + " of owner " + owner, f);
@@ -768,6 +798,20 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 return nothing;
             }
         }
+    }
+
+    private static BulkCommitStorage.Registration registration(Runnable landed, Runnable undo) {
+        return new BulkCommitStorage.Registration() {
+            @Override
+            public void landed() {
+                landed.run();
+            }
+
+            @Override
+            public void undo() {
+                undo.run();
+            }
+        };
     }
 
     /** Forget a writer that a refused commit registered or linked and that nothing owns now, with its bytes in

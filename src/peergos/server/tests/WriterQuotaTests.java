@@ -5,6 +5,7 @@ import peergos.server.*;
 import peergos.server.space.SpaceCheckingKeyFilter;
 import peergos.server.space.UsageStore;
 import peergos.server.space.WriterQuotas;
+import peergos.server.storage.BulkCommitStorage;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
@@ -420,7 +421,7 @@ public class WriterQuotaTests {
     }
 
     @Test
-    public void aRefusedCommitLeavesAWriterAnotherCommitLanded() throws Exception {
+    public void aWriterACommitIsStillCreatingIsMadeByNoOther() throws Exception {
         UserContext owner = signUp();
         UserContext sharee = signUp();
         PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
@@ -431,19 +432,27 @@ public class WriterQuotaTests {
         SigningPrivateKeyAndPublicHash parent = shared.signingPair();
         SigningKeyPair pair = SigningKeyPair.random(crypto.random, crypto.signer);
 
-        // two commits create the same child, a retry say: the first registers it and is still writing its blocks
-        Runnable takeBackFirst = quotaFilter().registerNewWriter(ownerKey, parent.publicKeyHash,
+        // a commit creating the child registers it and is still writing its blocks: until it lands, no other commit
+        // lands the child, a retry say, or what that wrote would be forgotten with the first if it is refused
+        BulkCommitStorage.Registration creating = quotaFilter().registerNewWriter(ownerKey, parent.publicKeyHash,
                 ContentAddressedStorage.hashKey(pair.publicSigningKey));
-        // the second lands
         NetworkAccess net = network.clear();
+        try {
+            net.synchronizer.applyComplexUpdate(ownerKey, parent, (s, committer) ->
+                    CryptreeNode.initAndAuthoriseSigner(ownerKey, parent, pair, net, s, committer).thenApply(made -> made.left)).join();
+            Assert.fail("A second commit made a child another commit is still creating");
+        } catch (Exception refused) {
+            String message = String.valueOf(peergos.shared.util.Exceptions.getRootCause(refused).getMessage());
+            Assert.assertTrue(message, message.contains("not allowed to write"));
+        }
+        // the first is refused and takes its registration back; the child can be made as usual, under the cap
+        creating.undo();
+        NetworkAccess again = network.clear();
         SigningPrivateKeyAndPublicHash[] child = new SigningPrivateKeyAndPublicHash[1];
-        net.synchronizer.applyComplexUpdate(ownerKey, parent, (s, committer) ->
-                CryptreeNode.initAndAuthoriseSigner(ownerKey, parent, pair, net, s, committer)
+        again.synchronizer.applyComplexUpdate(ownerKey, parent, (s, committer) ->
+                CryptreeNode.initAndAuthoriseSigner(ownerKey, parent, pair, again, s, committer)
                         .thenApply(made -> { child[0] = made.right; return made.left; })).join();
         awaitUsageUpdate();
-        // then the first is refused, and takes back what it registered, which is in use now
-        takeBackFirst.run();
-
         assertRefusedForTheCap(() -> fillWriter(ownerKey, child[0]));
     }
 
@@ -488,7 +497,7 @@ public class WriterQuotaTests {
     }
 
     @Test
-    public void aRefusedCommitTakesBackAWriterWhoseOwnPointerLandedMeanwhile() throws Exception {
+    public void aWriterACommitIsStillCreatingSetsNoPointerOfItsOwn() throws Exception {
         UserContext owner = signUp();
         UserContext sharee = signUp();
         PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
@@ -499,18 +508,13 @@ public class WriterQuotaTests {
         SigningPrivateKeyAndPublicHash parent = shared.signingPair();
         SigningPrivateKeyAndPublicHash child = newKeyUnder(ownerKey, parent);
 
-        // a commit creating the child registers it, and while it writes its blocks, another request lands the child's
-        // own first pointer, which its registration lets through
-        Runnable takeBack = quotaFilter().registerNewWriter(ownerKey, parent.publicKeyHash, child.publicKeyHash);
-        write(ownerKey, child, 2, 90 * KiB);
-        awaitUsageUpdate();
-        long counted = owner.getSpaceUsage(false).join();
-        // the first commit is refused: the parent never named the child, so its pointer doesn't keep it, and what it
-        // wrote is counted no more
-        takeBack.run();
-        assertCannotCommit(child, ownerKey, "a key whose own pointer landed while the commit making it was refused");
-        long after = owner.getSpaceUsage(false).join();
-        Assert.assertTrue("The forgotten writer's 180 KiB are still counted: " + after + " of " + counted, after <= counted - 150 * KiB);
+        // a commit creating the child registers it and is still writing its blocks: the child may set only the pointer
+        // that commit carries, or a write of its own let in now would be forgotten with the commit if it is refused
+        BulkCommitStorage.Registration creating = quotaFilter().registerNewWriter(ownerKey, parent.publicKeyHash, child.publicKeyHash);
+        assertCannotCommit(child, ownerKey, "a key the commit creating it hasn't landed");
+        // the commit is refused and takes its registration back
+        creating.undo();
+        assertCannotCommit(child, ownerKey, "a key whose creating commit was refused");
     }
 
     @Test
@@ -524,10 +528,10 @@ public class WriterQuotaTests {
         SigningPrivateKeyAndPublicHash child = newKeyUnder(ownerKey, first.signingPair());
 
         // as a commit naming the child under both is registered, and then refused
-        Runnable underFirst = quotaFilter().registerNewWriter(ownerKey, first.signingPair().publicKeyHash, child.publicKeyHash);
-        Runnable underSecond = quotaFilter().registerNewWriter(ownerKey, second.signingPair().publicKeyHash, child.publicKeyHash);
-        underFirst.run();
-        underSecond.run();
+        BulkCommitStorage.Registration underFirst = quotaFilter().registerNewWriter(ownerKey, first.signingPair().publicKeyHash, child.publicKeyHash);
+        BulkCommitStorage.Registration underSecond = quotaFilter().registerNewWriter(ownerKey, second.signingPair().publicKeyHash, child.publicKeyHash);
+        underFirst.undo();
+        underSecond.undo();
         assertCannotCommit(child, ownerKey, "a key a refused commit named under two parents");
     }
 

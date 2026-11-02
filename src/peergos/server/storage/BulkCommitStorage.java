@@ -28,6 +28,18 @@ import java.util.stream.*;
  */
 public class BulkCommitStorage extends DelegatingStorage {
 
+    /** A writer registered for a commit that is creating it, provisionally: until the commit lands it may set
+     *  only the pointer that commit carries for it, and if the commit is refused the registration is taken back. */
+    public interface Registration {
+        void landed();
+
+        void undo();
+    }
+
+    public interface WriterRegistrar {
+        Registration register(PublicKeyHash owner, PublicKeyHash parent, PublicKeyHash writer, Optional<SignedPointerUpdate> ownUpdate);
+    }
+
     /** Whether a commit may be applied, given the bytes a writer writes and, if that alone would be
      *  refused, the net change in stored bytes each writer's pointer update in the commit will cause. */
     public interface CommitQuota {
@@ -38,14 +50,14 @@ public class BulkCommitStorage extends DelegatingStorage {
     private final DeletableContentAddressedStorage unfiltered;
     private final MutablePointers pointers;
     private final Hasher hasher;
-    private final TriFunction<PublicKeyHash, PublicKeyHash, PublicKeyHash, Runnable> registerWriter;
+    private final WriterRegistrar registerWriter;
     private final CommitQuota quota;
 
     public BulkCommitStorage(ContentAddressedStorage target,
                              DeletableContentAddressedStorage unfiltered,
                              MutablePointers pointers,
                              Hasher hasher,
-                             TriFunction<PublicKeyHash, PublicKeyHash, PublicKeyHash, Runnable> registerWriter,
+                             WriterRegistrar registerWriter,
                              CommitQuota quota) {
         super(target);
         this.target = target;
@@ -84,7 +96,7 @@ public class BulkCommitStorage extends DelegatingStorage {
                         .thenCompose(updates -> verifyBlockLists(owner, commit, hashes)
                                 .thenCompose(x -> verify(owner, commit, hashes, updates))
                                 .thenCompose(inCall -> {
-                                    List<Runnable> undo = registerNewWriters(owner, commit, updates, inCall);
+                                    List<Registration> registered = registerNewWriters(owner, commit, updates, inCall);
                                     boolean[] landed = {false};
                                     // from a future, as a refusal is thrown before the transaction's future exists
                                     return Futures.of(true).thenCompose(x -> withTransaction(owner, commit.tid, commit.hasPointerUpdate(),
@@ -106,13 +118,14 @@ public class BulkCommitStorage extends DelegatingStorage {
                                                                     if (! set)
                                                                         throw new IllegalStateException("Pointers changed since this commit was checked; nothing was applied");
                                                                     landed[0] = true;
+                                                                    registered.forEach(Registration::landed);
                                                                     return written;
                                                                 });
                                                     })))
                                             // a commit refused before its pointers landed takes back the writers it registered
                                             .whenComplete((written, refused) -> {
                                                 if (refused != null && ! landed[0])
-                                                    undo.forEach(Runnable::run);
+                                                    registered.forEach(Registration::undo);
                                             });
                                 })));
     }
@@ -240,10 +253,10 @@ public class BulkCommitStorage extends DelegatingStorage {
      *  signed WriterData names it as an owned key - which is what lets a parent and the child it creates
      *  commit together, rather than the child's blocks having to wait for the parent's pointer to land.
      */
-    private List<Runnable> registerNewWriters(PublicKeyHash owner,
-                                              BulkCommit commit,
-                                              List<Optional<PointerUpdate>> updates,
-                                              Map<Cid, byte[]> cborInCall) {
+    private List<Registration> registerNewWriters(PublicKeyHash owner,
+                                                  BulkCommit commit,
+                                                  List<Optional<PointerUpdate>> updates,
+                                                  Map<Cid, byte[]> cborInCall) {
         List<PublicKeyHash> newWriters = new ArrayList<>();
         for (int i = 0; i < commit.writers.size(); i++)
             if (updates.get(i).map(u -> ! u.original.isPresent()).orElse(false))
@@ -288,9 +301,15 @@ public class BulkCommitStorage extends DelegatingStorage {
         // A writer this call doesn't vouch for may still be provable from what is already committed,
         // which is exactly what the quota check's own self heal does, so leave those to it. A writer this
         // call does vouch for is linked under every parent that names it, so each one's caps bound it.
-        List<Runnable> undo = new ArrayList<>();
-        provenHere.forEach((newWriter, parents) -> parents.forEach(parent -> undo.add(registerWriter.apply(owner, parent, newWriter))));
-        return undo;
+        List<Registration> registered = new ArrayList<>();
+        provenHere.forEach((newWriter, parents) -> {
+            Optional<SignedPointerUpdate> own = commit.writers.stream()
+                    .filter(w -> w.writer.equals(newWriter))
+                    .findFirst()
+                    .flatMap(w -> w.pointer);
+            parents.forEach(parent -> registered.add(registerWriter.register(owner, parent, newWriter, own)));
+        });
+        return registered;
     }
 
     /** A view of the store with this call's blocks in it, for reading a graph the call is only proposing. */

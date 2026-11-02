@@ -77,8 +77,12 @@ public class WriterQuotas implements WriterUsageStore.UsageListener {
         synchronized (quotas) {
             quotas.put(writer, new Timed<>(quota, System.currentTimeMillis()));
         }
-        // the same object, read again at its next use: the writes in flight under the cap stay reserved
-        capUsage.computeIfPresent(writer, (cap, cached) -> new Timed<>(cached.value, 0));
+        // the same object, read again at its next use: the writes in flight under the cap stay reserved. A cap
+        // removed goes with its object
+        if (quota.isEmpty())
+            capUsage.remove(writer);
+        else
+            capUsage.computeIfPresent(writer, (cap, cached) -> new Timed<>(cached.value, 0));
     }
 
     private List<PublicKeyHash> getAncestors(PublicKeyHash writer) {
