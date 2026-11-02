@@ -15,6 +15,7 @@ import peergos.shared.util.*;
 
 import java.nio.file.*;
 import java.util.*;
+import java.util.function.*;
 import java.util.stream.*;
 
 public class RestrictedCapsTests {
@@ -509,24 +510,83 @@ public class RestrictedCapsTests {
         }
     }
 
-    /** What a malicious client holding a folder's restricted and write keys can do: replace x, and drop the parent link. */
-    private static void forgeParentKey(FileWrapper dir, UserContext ctx) {
-        CryptreeNode node = dir.getPointer().fileAccess;
-        SymmetricKey r = dir.getPointer().capability.rBaseKey;
-        SymmetricKey pPrime = node.getParentKey(r);
-        CborObject.CborMap base = ((PaddedCipherText) field(node, "fromBaseKey")).decrypt(r, c -> (CborObject.CborMap) c);
-        base.put("x", SymmetricLink.fromPair(SymmetricKey.random(), SymmetricKey.random()).toCbor());
-        CborObject.CborMap parent = ((PaddedCipherText) field(node, "fromParentKey")).decrypt(pPrime, c -> (CborObject.CborMap) c);
-        Map<String, Cborable> withoutLink = new TreeMap<>();
-        for (String k : parent.keySet())
-            if (! k.equals("q"))
-                withoutLink.put(k, parent.get(k));
-        CryptreeNode forged = new CryptreeNode(node.committedHash(), true, node.bats, PaddedCipherText.build(r, base, 64),
-                field(node, "childrenOrData"), PaddedCipherText.build(pPrime, CborObject.CborMap.build(withoutLink), 64));
-        WritableAbsoluteCapability cap = dir.writableFilePointer();
-        SigningPrivateKeyAndPublicHash signer = dir.signingPair();
+    /** What a malicious client holding restricted and write keys can do: rewrite the base and parent blocks. */
+    private static void rewrite(FileWrapper f, UserContext ctx,
+                                Consumer<CborObject.CborMap> base,
+                                Function<CborObject.CborMap, Map<String, Cborable>> parent) {
+        CryptreeNode node = f.getPointer().fileAccess;
+        SymmetricKey r = f.getPointer().capability.rBaseKey;
+        SymmetricKey parentKey = node.getParentKey(r);
+        CborObject.CborMap baseBlock = ((PaddedCipherText) field(node, "fromBaseKey")).decrypt(r, c -> (CborObject.CborMap) c);
+        base.accept(baseBlock);
+        CborObject.CborMap parentBlock = ((PaddedCipherText) field(node, "fromParentKey")).decrypt(parentKey, c -> (CborObject.CborMap) c);
+        CryptreeNode forged = new CryptreeNode(node.committedHash(), f.isDirectory(), node.bats, PaddedCipherText.build(r, baseBlock, 64),
+                field(node, "childrenOrData"), PaddedCipherText.build(parentKey, CborObject.CborMap.build(parent.apply(parentBlock)), 16));
+        WritableAbsoluteCapability cap = f.writableFilePointer();
+        SigningPrivateKeyAndPublicHash signer = f.signingPair();
         ctx.network.synchronizer.applyComplexUpdate(cap.owner, signer, (v, c) -> IpfsTransaction.call(cap.owner,
                 tid -> forged.commit(v, c, cap, signer, ctx.network, tid), ctx.network.dhtClient)).join();
+    }
+
+    private static Map<String, Cborable> withParentLinks(CborObject.CborMap parent, Optional<RelativeCapability> p, boolean keepQ) {
+        Map<String, Cborable> res = new TreeMap<>();
+        for (String k : parent.keySet())
+            if (keepQ || ! k.equals("q"))
+                res.put(k, parent.get(k));
+        p.ifPresent(link -> res.put("p", link));
+        return res;
+    }
+
+    private static void forgeParentKey(FileWrapper dir, UserContext ctx) {
+        rewrite(dir, ctx, base -> base.put("x", SymmetricLink.fromPair(SymmetricKey.random(), SymmetricKey.random()).toCbor()),
+                parent -> withParentLinks(parent, Optional.empty(), false));
+    }
+
+    private static void forgeParentLink(FileWrapper f, FileWrapper fakeParent, boolean keepQ, UserContext ctx) {
+        AbsoluteCapability to = fakeParent.getPointer().capability;
+        RelativeCapability p = new RelativeCapability(Optional.empty(), to.getMapKey(), to.bat, to.rBaseKey, Optional.empty());
+        rewrite(f, ctx, base -> {}, parent -> withParentLinks(parent, Optional.of(p), keepQ));
+    }
+
+    @Test(timeout = 120_000)
+    public void aForgedPlaintextParentLinkIsIgnored() {
+        UserContext owner = signIn(username("pl"));
+        Path home = PathUtil.get(owner.username);
+        mkdir(owner, home, "work");
+        mkdir(owner, home.resolve("work"), "drop");
+        mkdir(owner, home.resolve("work/drop"), "sub");
+        mkdir(owner, home.resolve("work/drop"), "both");
+        mkdir(owner, home.resolve("work/drop"), "above");
+        byte[] data = randomData(200);
+        upload(owner, home.resolve("work/drop"), "existing.txt", data);
+        upload(owner, home.resolve("work/drop/above"), "child.txt", data);
+        String path = home.resolve("work/drop").toString();
+        LinkProperties link = owner.createSecretLink(List.of(path), List.of(path), List.of(path),
+                Optional.empty(), Optional.empty(), "", false).join();
+
+        UserContext fromLink = openLink(owner, link);
+        FileWrapper fake = fromLink.getByPath("/drop/sub").join().get();
+        forgeParentLink(fromLink.getByPath("/drop/existing.txt").join().get(), fake, false, fromLink);
+        forgeParentLink(fromLink.getByPath("/drop/both").join().get(), fake, true, fromLink);
+        forgeParentLink(fromLink.getByPath("/drop/above").join().get(), fake, false, fromLink);
+
+        UserContext fresh = signIn(owner.username);
+        Path drop = home.resolve("work/drop");
+        FileWrapper file = fresh.getByPath(drop.resolve("existing.txt")).join().get();
+        Assert.assertTrue(file.isPending());
+        Assert.assertTrue(file.retrieveParent(fresh.network).join().isEmpty());
+        PeergosNetworkUtils.checkFileContents(data, file, fresh);
+
+        // a plaintext link alongside the real one doesn't stop the owner reading it, and the real one wins
+        FileWrapper both = fresh.getByPath(drop.resolve("both")).join().get();
+        Assert.assertFalse(both.isPending());
+        Assert.assertEquals("/" + drop + "/both", both.getPath(fresh.network).join());
+
+        // nor is it followed when walking up from below
+        FileWrapper child = fresh.getByPath(drop.resolve("above/child.txt")).join().get();
+        FileWrapper above = child.retrieveParent(fresh.network).join().get();
+        Assert.assertEquals("above", above.getName());
+        Assert.assertTrue(above.retrieveParent(fresh.network).join().isEmpty());
     }
 
     @Test(timeout = 120_000)

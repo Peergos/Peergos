@@ -175,8 +175,11 @@ public class CryptreeNode implements Cborable {
                 throw new IllegalStateException("Incorrect cbor for FromParent: " + cbor);
 
             CborObject.CborMap m = (CborObject.CborMap) cbor;
-            Optional<RelativeCapability> parentLink = m.getOptional("p", RelativeCapability::fromCbor);
             Optional<PaddedCipherText> q = m.getOptional("q", PaddedCipherText::fromCbor);
+            // only a legacy node has p, and they never have q, so p with q was forged and must not lock out the owner
+            Optional<RelativeCapability> parentLink = q.isPresent() ?
+                    Optional.empty() :
+                    m.getOptional("p", RelativeCapability::fromCbor);
             FileProperties properties = m.get("s", FileProperties::fromCbor);
             return new FromParent(parentLink, q, properties);
         }
@@ -284,6 +287,15 @@ public class CryptreeNode implements Cborable {
 
     private FromParent getParentBlock(SymmetricKey parentKey) {
         return openParent(parentKey).block;
+    }
+
+    /** In the restricted format only the encrypted parent link counts, and a plaintext one was forged. */
+    private boolean onlyEncryptedParentLink(SymmetricKey baseKey) {
+        Access access = open(baseKey).access;
+        if (access != Access.PARENT)
+            return isRestrictedFormat(baseKey);
+        // a parent key opens a restricted format directory's parent block through a key derived from it
+        return ! openParent(baseKey).key.equals(baseKey);
     }
 
     public static class DirAndChildren {
@@ -1511,8 +1523,8 @@ public class CryptreeNode implements Cborable {
         Access access = open(baseKey).access;
         SymmetricKey parentKey = getParentKey(baseKey);
         FromParent block = getParentBlock(parentKey);
-        if (block.parentLink.isPresent() || block.encryptedParentLink.isEmpty())
-            return block.parentLink;
+        if (block.encryptedParentLink.isEmpty())
+            return onlyEncryptedParentLink(baseKey) ? Optional.empty() : block.parentLink;
         Optional<SymmetricKey> parentLinkKey = access == Access.FULL ?
                 (isDirectory ? verifiedParentKey(baseKey) : Optional.of(baseKey)) :
                 access == Access.PARENT ?
