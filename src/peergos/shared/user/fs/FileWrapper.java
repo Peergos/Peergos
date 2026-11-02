@@ -380,6 +380,27 @@ public class FileWrapper {
                 .thenCompose(p -> p.isEmpty() || p.get().isRoot() ? Futures.of(false) : p.get().isPendingOrBelowPending(network));
     }
 
+    /** Whether this is at dirLocation or below it. Paths can't tell, as they stop where a parent link can't be read. */
+    private CompletableFuture<Boolean> isWithin(Location dirLocation, FileWrapper dir, Hasher hasher, NetworkAccess network) {
+        if (getLocation().equals(dirLocation))
+            return Futures.of(true);
+        if (isRestrictedKey() || isPending())
+            return dir.hasDescendantAt(getLocation(), hasher, network);
+        return retrieveParent(network)
+                .thenCompose(p -> p.isEmpty() ? Futures.of(false) : p.get().isWithin(dirLocation, dir, hasher, network));
+    }
+
+    private CompletableFuture<Boolean> hasDescendantAt(Location loc, Hasher hasher, NetworkAccess network) {
+        if (! isDirectory())
+            return Futures.of(false);
+        return getChildren(hasher, network)
+                .thenCompose(children -> Futures.reduceAll(children, false,
+                        (found, child) -> found || child.getLocation().equals(loc) ?
+                                Futures.of(true) :
+                                child.hasDescendantAt(loc, hasher, network),
+                        (a, b) -> a || b));
+    }
+
     /** Rewrite this, the link node in front of it if any, and everything below it, into the restricted format. */
     public CompletableFuture<Boolean> upgradeToRestrictedFormat(NetworkAccess network, Crypto crypto) {
         if (! isWritable())
@@ -2664,10 +2685,10 @@ public class FileWrapper {
             return true;
         }).thenCompose(x -> {
             // ensure we aren't trying to move a folder to a descendant folder, which will result in data loss!
-            return target.getPath(context.network).thenApply(targetPath -> {
-                        List<String> targetNames = Arrays.asList(TrieNode.canonicalise(targetPath).split("/"));
-                        List<String> ourNames = PathUtil.components(ourPath);
-                        if (targetNames.size() >= ourNames.size() && targetNames.subList(0, ourNames.size()).equals(ourNames))
+            if (! isDirectory())
+                return Futures.of(true);
+            return target.isWithin(getLocation(), this, context.crypto.hasher, context.network).thenApply(within -> {
+                        if (within)
                             throw new IllegalStateException("You cannot move a folder to a descendant folder");
                         return true;
                     });
