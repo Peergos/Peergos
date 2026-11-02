@@ -414,6 +414,48 @@ public class RestrictedCapsTests {
                 .getPath(fresh.network).join());
     }
 
+    @Test(timeout = 120_000)
+    public void ownerMovesDontShowALinkWhereThingsGo() {
+        UserContext owner = signIn(username("om"));
+        Path home = PathUtil.get(owner.username);
+        mkdir(owner, home, "work");
+        mkdir(owner, home.resolve("work"), "drop");
+        mkdir(owner, home.resolve("work/drop"), "sub");
+        byte[] own = randomData(300);
+        upload(owner, home.resolve("work/drop"), "own.txt", own);
+        String path = home.resolve("work/drop").toString();
+        LinkProperties link = owner.createSecretLink(List.of(path), List.of(path), List.of(path),
+                Optional.empty(), Optional.empty(), "", false).join();
+
+        UserContext fromLink = openLink(owner, link);
+        byte[] up = randomData(200);
+        fromLink.getByPath("/drop").join().get()
+                .uploadOrReplaceFile("up.bin", AsyncReader.build(up), up.length, fromLink.network, crypto, () -> false, x -> {}).join();
+        fromLink.getByPath("/drop").join().get().mkdir("made", fromLink.network, false, Optional.empty(), crypto).join();
+
+        // whoever made these chose their full keys, which are the ones the owner reads them with
+        UserContext fresh = signIn(owner.username);
+        Path drop = home.resolve("work/drop");
+        AbsoluteCapability uploadersCap = fresh.getByPath(drop.resolve("up.bin")).join().get().getPointer().capability.readOnly();
+        AbsoluteCapability madeCap = fresh.getByPath(drop.resolve("made")).join().get().getPointer().capability.readOnly();
+        SymmetricKey ownKey = fresh.getByPath(drop.resolve("own.txt")).join().get().getPointer().capability.rBaseKey;
+        move(fresh, drop + "/up.bin", drop + "/sub");
+        move(fresh, drop + "/own.txt", drop + "/made");
+
+        UserContext after = signIn(owner.username);
+        FileWrapper moved = after.getByPath(drop.resolve("sub/up.bin")).join().get();
+        PeergosNetworkUtils.checkFileContents(up, moved, after);
+        Assert.assertFalse(moved.isPending());
+        Assert.assertEquals("/" + drop + "/sub/up.bin", moved.getPath(after.network).join());
+        Optional<FileWrapper> withUploadersKey = after.network.getFile(uploadersCap, owner.username).join();
+        Assert.assertTrue(withUploadersKey.isEmpty() || withUploadersKey.get().retrieveParent(after.network).join().isEmpty());
+
+        PeergosNetworkUtils.checkFileContents(own, after.getByPath(drop.resolve("made/own.txt")).join().get(), after);
+        FileWrapper madeByLink = after.network.getFile(madeCap, owner.username).join().get();
+        FileWrapper ownSeenByMaker = madeByLink.getChild("own.txt", crypto.hasher, after.network).join().get();
+        Assert.assertNotEquals(ownKey, ownSeenByMaker.getPointer().capability.rBaseKey);
+    }
+
     @Test
     public void writableHiddenLinkToAFile() {
         UserContext owner = signIn(username("hw"));
