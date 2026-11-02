@@ -276,7 +276,7 @@ public class JdbcUsageStore implements UsageStore {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
         }
-        ownedKeysChanged(owned);
+        edgeChanged(owned);
         return true;
     }
 
@@ -294,7 +294,17 @@ public class JdbcUsageStore implements UsageStore {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
         }
-        ownedKeysChanged(owned);
+        edgeChanged(owned);
+    }
+
+    private void edgeChanged(PublicKeyHash owned) {
+        for (UsageListener listener : listeners) {
+            try {
+                listener.edgeChanged(owned);
+            } catch (Exception e) {
+                LOG.log(Level.WARNING, "Usage listener failed for writer " + owned, e);
+            }
+        }
     }
 
     private void ownedKeysChanged(PublicKeyHash owned) {
@@ -420,14 +430,23 @@ public class JdbcUsageStore implements UsageStore {
         try (PreparedStatement search = conn.prepareStatement(
                 "SELECT parent_id FROM ownedkeys WHERE owned_id = ?;")) {
             PublicKeyHash current = writer;
-            while (true) {
+            // a key named under itself, or a cycle of them, ends the walk as a key with no parent does
+            Set<PublicKeyHash> seen = new HashSet<>();
+            while (seen.add(current)) {
                 int writerId = getWriterId(current, conn);
                 search.setInt(1, writerId);
                 ResultSet resultSet = search.executeQuery();
-                if (!resultSet.next())
+                PublicKeyHash next = null;
+                while (next == null && resultSet.next()) {
+                    PublicKeyHash parent = getWriter(resultSet.getInt(1), conn);
+                    if (! seen.contains(parent))
+                        next = parent;
+                }
+                if (next == null)
                     return current;
-                current = getWriter(resultSet.getInt(1), conn);
+                current = next;
             }
+            return current;
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);

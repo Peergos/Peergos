@@ -77,7 +77,8 @@ public class WriterQuotas implements WriterUsageStore.UsageListener {
         synchronized (quotas) {
             quotas.put(writer, new Timed<>(quota, System.currentTimeMillis()));
         }
-        capUsage.remove(writer);
+        // the same object, read again at its next use: the writes in flight under the cap stay reserved
+        capUsage.computeIfPresent(writer, (cap, cached) -> new Timed<>(cached.value, 0));
     }
 
     private List<PublicKeyHash> getAncestors(PublicKeyHash writer) {
@@ -133,15 +134,10 @@ public class WriterQuotas implements WriterUsageStore.UsageListener {
     @Override
     public void usageChanged(PublicKeyHash writer, long delta, boolean ownedKeysChanged) {
         if (ownedKeysChanged) {
-            // the writer may have left one capped subtree and joined another, so every cap's total is read again
-            // at its next use. This writer's reservations go: its writes have landed by now, or it is being linked,
-            // unlinked or removed, with little if any of its writing still in flight. Other writers' are kept
+            // This writer's pointer update has landed, or it has been removed, so its reservations go; other
+            // writers' are kept
             capUsage.values().forEach(cached -> cached.value.clearPending(writer));
-            synchronized (ancestors) {
-                ancestors.clear();
-                ancestorsGeneration++;
-            }
-            capUsage.replaceAll((cap, cached) -> new Timed<>(cached.value, 0));
+            edgeChanged(writer);
             return;
         }
         if (capUsage.isEmpty())
@@ -151,5 +147,16 @@ public class WriterQuotas implements WriterUsageStore.UsageListener {
             if (current != null)
                 current.value.confirmUsage(writer, delta);
         }
+    }
+
+    @Override
+    public void edgeChanged(PublicKeyHash owned) {
+        // the writer may have left one capped subtree and joined another, so every cap's total is read again at its
+        // next use; its writes in flight stay reserved where they are until they land
+        synchronized (ancestors) {
+            ancestors.clear();
+            ancestorsGeneration++;
+        }
+        capUsage.replaceAll((cap, cached) -> new Timed<>(cached.value, 0));
     }
 }

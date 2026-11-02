@@ -13,10 +13,15 @@ public interface WriterUsageStore {
         void usageChanged(PublicKeyHash writer, long delta, boolean ownedKeysChanged);
 
         default void writerQuotaChanged(PublicKeyHash writer, Optional<Long> quota) {}
+
+        /** An edge to this writer was added or removed on its own, ahead of or in place of its parent's update */
+        default void edgeChanged(PublicKeyHash owned) {
+            usageChanged(owned, 0, true);
+        }
     }
 
-    /** The listener is called after each successful updateWriterUsageAtomically, each change to a writer quota, and
-     *  each edge added or removed and writer removed outside those */
+    /** The listener is called after each successful updateWriterUsageAtomically, each change to a writer quota, each
+     *  writer removed, and (edgeChanged) each edge added or removed outside those */
     void addUsageListener(UsageListener listener);
 
     void addWriter(String owner, PublicKeyHash writer);

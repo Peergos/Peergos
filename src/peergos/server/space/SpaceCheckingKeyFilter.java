@@ -162,7 +162,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                             (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht), dht, hasher).join();
                     for (PublicKeyHash key : directOwnedKeys)
                         store.addWriter(writerUsage.owner, key);
-                    Set<PublicKeyHash> ownedHere = ownKeys(store, writerUsage.owner, directOwnedKeys);
+                    Set<PublicKeyHash> ownedHere = ownKeys(store, writerUsage.owner, writerKey, directOwnedKeys);
                     List<PublicKeyHash> newOwnedKeys = ownedHere.stream()
                             .filter(key -> !writerUsage.ownedKeys().contains(key))
                             .collect(Collectors.toList());
@@ -266,17 +266,36 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
             usageStore.addWriter(owner, owned);
         // linked now rather than when the queue gets to it, so a child's first writes already count under its
         // parent's caps
-        for (PublicKeyHash owned : ownKeys(usageStore, owner, updatedOwned))
+        for (PublicKeyHash owned : ownKeys(usageStore, owner, event.writer, updatedOwned))
             usageStore.addOwnedKey(event.writer, owned);
     }
 
-    /** The keys a writer names that are its owner's own. A key of another user's, named with an owner proof it
-     *  signed, stays theirs: an edge to it would keep it registered after its owner revokes it, and count their
-     *  data under this user's caps. */
-    private static Set<PublicKeyHash> ownKeys(UsageStore state, String username, Set<PublicKeyHash> named) {
+    /** The keys a writer names that are its owner's own, other than itself. A key of another user's, named with an
+     *  owner proof it signed, stays theirs: an edge to it would keep it registered after its owner revokes it, and
+     *  count their data under this user's caps. A key named under itself owns nothing more for it. */
+    private static Set<PublicKeyHash> ownKeys(UsageStore state, String username, PublicKeyHash writer, Set<PublicKeyHash> named) {
         return named.stream()
-                .filter(key -> username.equals(state.getOwner(key)))
+                .filter(key -> ! key.equals(writer) && username.equals(state.getOwner(key)))
                 .collect(Collectors.toSet());
+    }
+
+    /** Whether a writer is still owned other than through the edge from this parent: by a chain of edges up to the
+     *  owner's identity, through writers of the same user. A key named under itself, or under keys it names in
+     *  turn, has no such chain, nor has one named by another user's writer. */
+    private static boolean ownedOtherwise(UsageStore state, PublicKeyHash owner, PublicKeyHash writer, PublicKeyHash parent) {
+        String username = state.getOwner(writer);
+        Set<PublicKeyHash> seen = new HashSet<>(List.of(writer));
+        Deque<PublicKeyHash> toVisit = new ArrayDeque<>(state.getParents(writer));
+        toVisit.remove(parent);
+        while (! toVisit.isEmpty()) {
+            PublicKeyHash current = toVisit.poll();
+            if (! seen.add(current) || ! username.equals(state.getOwner(current)))
+                continue;
+            if (current.equals(owner))
+                return true;
+            toVisit.addAll(state.getParents(current));
+        }
+        return false;
     }
 
     private void processMutablePointerEvent(MutableEvent event) {
@@ -345,7 +364,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 for (PublicKeyHash owned : updatedOwned) {
                     state.addWriter(current.owner, owned);
                 }
-                Set<PublicKeyHash> ownedHere = ownKeys(state, current.owner, updatedOwned);
+                Set<PublicKeyHash> ownedHere = ownKeys(state, current.owner, writer, updatedOwned);
                 // What the replaced root named. A child's edge can be recorded ahead of its parent's update, so the
                 // store's edges alone don't say which children this update adds or drops.
                 Set<PublicKeyHash> namedBefore = DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, current.target(),
@@ -400,13 +419,10 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                                                 Hasher hasher) {
         for (PublicKeyHash ownedKey : removed) {
             try {
-                // a key that has been moved to another parent is still in use, not orphaned; another user's writer
-                // is no parent of it, whatever edge an older version recorded
-                Set<PublicKeyHash> otherParents = new HashSet<>(state.getParents(ownedKey));
-                otherParents.remove(parent);
-                String keyOwner = state.getOwner(ownedKey);
-                otherParents.removeIf(other -> ! keyOwner.equals(state.getOwner(other)));
-                if (! otherParents.isEmpty())
+                // a key that has been moved to another parent is still in use, not orphaned, as long as that parent
+                // is owned in turn: not by another user's writer, nor by the key itself, whatever edges an older
+                // version recorded
+                if (ownedOtherwise(state, owner, ownedKey, parent))
                     continue;
                 MaybeMultihash currentTarget = mutable.getPointerTarget(owner, ownedKey, dht).get().updated;
                 processMutablePointerEvent(state, owner, ownedKey, currentTarget, MaybeMultihash.empty(), mutable, quotaAdmin, dht, hasher);
@@ -706,7 +722,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 }
                 // only the owner's own writers vouch for a writer in their space: another user's key, sent in a
                 // commit for this owner, must not register one here, whatever the rest of that commit does
-                if (! username.equals(parentUser))
+                if (! username.equals(parentUser) || parent.equals(writer))
                     return nothing;
                 String writerUser;
                 try {
@@ -724,8 +740,9 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 boolean newWriter = writerAdded;
                 // A commit made alongside this one may have landed the same writer under this parent meanwhile, and
                 // what a committed parent names stays. A writer left with no parent goes, whichever commit
-                // registered it and whatever its own pointer says: it would write under no cap. Under the lock, so
-                // no registration comes in between.
+                // registered it and whatever its own pointer says: it would write under no cap. Under the
+                // registration lock, so no registration comes in between; an edge recorded as a pointer lands
+                // can, and is recorded again when the queue reaches that parent's update.
                 return () -> {
                     synchronized (lock) {
                         try {

@@ -4,6 +4,7 @@ import org.junit.*;
 import peergos.server.*;
 import peergos.server.space.SpaceCheckingKeyFilter;
 import peergos.server.space.UsageStore;
+import peergos.server.space.WriterQuotas;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
@@ -361,6 +362,22 @@ public class WriterQuotaTests {
         return (UsageStore) store.get(quotaFilter());
     }
 
+    private static WriterQuotas writerQuotas() throws Exception {
+        java.lang.reflect.Field quotas = SpaceCheckingKeyFilter.class.getDeclaredField("writerQuotas");
+        quotas.setAccessible(true);
+        return (WriterQuotas) quotas.get(quotaFilter());
+    }
+
+    /** Names a key as owned by a parent, both writers of the owner, in a commit the parent signs */
+    private void linkUnderOwner(PublicKeyHash owner, SigningPrivateKeyAndPublicHash key, SigningPrivateKeyAndPublicHash parent) {
+        NetworkAccess net = network.clear();
+        OwnerProof proof = OwnerProof.build(key, parent.publicKeyHash).join();
+        IpfsTransaction.call(owner, tid -> net.synchronizer.applyComplexUpdate(owner, parent, (s, committer) -> {
+            CommittedWriterData current = s.get(parent);
+            return current.props.get().addOwnedKeyAndCommit(owner, parent, proof, current.hash, current.sequence, net, committer, tid);
+        }), net.dhtClient).join();
+    }
+
     /** A new key, its public key stored under the parent as a client stores one it is about to make a writer */
     private SigningPrivateKeyAndPublicHash newKeyUnder(PublicKeyHash owner, SigningPrivateKeyAndPublicHash parent) {
         NetworkAccess net = network.clear();
@@ -485,14 +502,15 @@ public class WriterQuotaTests {
         // a commit creating the child registers it, and while it writes its blocks, another request lands the child's
         // own first pointer, which its registration lets through
         Runnable takeBack = quotaFilter().registerNewWriter(ownerKey, parent.publicKeyHash, child.publicKeyHash);
-        NetworkAccess net = network.clear();
-        IpfsTransaction.call(ownerKey, tid -> net.synchronizer.applyComplexUpdate(ownerKey, child, (s, committer) ->
-                        WriterData.createEmpty(ownerKey, child, net.dhtClient, crypto.hasher, tid)
-                                .thenCompose(wd -> committer.commit(ownerKey, child, wd, new CommittedWriterData(MaybeMultihash.empty(), Optional.empty(), Optional.empty()), tid))),
-                net.dhtClient).join();
-        // the first commit is refused: the parent never named the child, so its pointer doesn't keep it
+        write(ownerKey, child, 2, 90 * KiB);
+        awaitUsageUpdate();
+        long counted = owner.getSpaceUsage(false).join();
+        // the first commit is refused: the parent never named the child, so its pointer doesn't keep it, and what it
+        // wrote is counted no more
         takeBack.run();
         assertCannotCommit(child, ownerKey, "a key whose own pointer landed while the commit making it was refused");
+        long after = owner.getSpaceUsage(false).join();
+        Assert.assertTrue("The forgotten writer's 180 KiB are still counted: " + after + " of " + counted, after <= counted - 150 * KiB);
     }
 
     @Test
@@ -528,6 +546,89 @@ public class WriterQuotaTests {
         owner.unShareWriteAccessWith(dir, Set.of(sharee.username)).join();
         awaitUsageUpdate();
         assertCannotCommit(shared.signingPair(), shared.owner(), "a revoked key another user's writer had an edge to");
+    }
+
+    @Test
+    public void aKeyNamedUnderItselfDoesntOutliveItsRevocation() throws Exception {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        Path dir = sharedDir(owner, "team", sharee);
+        FileWrapper shared = sharee.getByPath(dir).join().get();
+        linkUnderOwner(shared.owner(), shared.signingPair(), shared.signingPair());
+        awaitUsageUpdate();
+        // and the edge an older version recorded for that
+        usageStore().addOwnedKey(shared.signingPair().publicKeyHash, shared.signingPair().publicKeyHash);
+
+        owner.unShareWriteAccessWith(dir, Set.of(sharee.username)).join();
+        awaitUsageUpdate();
+        assertCannotCommit(shared.signingPair(), shared.owner(), "a revoked key named under itself");
+        // nor does walking up from it to its owner go round for ever
+        java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+            try {
+                return usageStore().getAllTargets(owner.username);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }).get(30, java.util.concurrent.TimeUnit.SECONDS);
+    }
+
+    @Test
+    public void revokedKeysNamedUnderEachOtherDontKeepEachOther() {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        Path a = sharedDir(owner, "a", sharee);
+        Path b = sharedDir(owner, "b", sharee);
+        FileWrapper af = sharee.getByPath(a).join().get();
+        FileWrapper bf = sharee.getByPath(b).join().get();
+        linkUnderOwner(af.owner(), af.signingPair(), bf.signingPair());
+        linkUnderOwner(af.owner(), bf.signingPair(), af.signingPair());
+        awaitUsageUpdate();
+
+        owner.unShareWriteAccessWith(a, Set.of(sharee.username)).join();
+        awaitUsageUpdate();
+        owner.unShareWriteAccessWith(b, Set.of(sharee.username)).join();
+        awaitUsageUpdate();
+        assertCannotCommit(af.signingPair(), af.owner(), "a revoked key named under another revoked key it names");
+        assertCannotCommit(bf.signingPair(), af.owner(), "a revoked key named under another revoked key it names");
+    }
+
+    @Test
+    public void aRefusedCommitLeavesTheWritesInFlightReserved() throws Exception {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        Path dir = sharedDir(owner, "team", sharee);
+        FileWrapper other = sharee.getByPath(sharedDir(owner, "other", sharee)).join().get();
+        owner.setWriteShareQuota(dir, Optional.of(1024L * KiB)).join();
+        awaitUsageUpdate();
+        FileWrapper shared = sharee.getByPath(dir).join().get();
+        PublicKeyHash ownerKey = shared.owner();
+        SigningPrivateKeyAndPublicHash capped = shared.signingPair();
+        SigningPrivateKeyAndPublicHash elsewhere = other.signingPair();
+
+        // 900 KiB in flight under the cap, as a bulk commit reserves it before writing its blocks
+        SpaceCheckingKeyFilter filter = quotaFilter();
+        Assert.assertTrue(filter.allowWrite(ownerKey, capped.publicKeyHash, 900 * KiB));
+        // a commit names the capped writer under another writer and claims to create it, which its pointer refutes
+        NetworkAccess net = network.clear();
+        try {
+            net.synchronizer.applyComplexUpdate(ownerKey, elsewhere, (s, committer) -> IpfsTransaction.call(ownerKey, tid -> {
+                CommittedWriterData current = s.get(elsewhere);
+                return OwnerProof.build(capped, elsewhere.publicKeyHash)
+                        .thenCompose(proof -> current.props.get().addOwnedKeyAndCommit(ownerKey, elsewhere, proof, current.hash, current.sequence, net, committer, tid))
+                        .thenCompose(named -> WriterData.createEmpty(ownerKey, capped, net.dhtClient, crypto.hasher, tid)
+                                .thenCompose(wd -> committer.commit(ownerKey, capped, wd, new CommittedWriterData(MaybeMultihash.empty(), Optional.empty(), Optional.empty()), tid))
+                                .thenApply(named::mergeAndOverwriteWith));
+            }, net.dhtClient)).join();
+            Assert.fail("A commit creating a writer that has a pointer already landed");
+        } catch (Exception refused) {}
+
+        // the write in flight is still reserved, so a second as large doesn't fit beside it
+        long expected = writerQuotas().getUsage(capped.publicKeyHash).expectedUsage();
+        Assert.assertTrue("The write in flight is no longer reserved: " + expected, expected >= 900 * KiB);
+        assertRefusedForTheCap(() -> filter.allowWrite(ownerKey, capped.publicKeyHash, 900 * KiB));
     }
 
     @Test
