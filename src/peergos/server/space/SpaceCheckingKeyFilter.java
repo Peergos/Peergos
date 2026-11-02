@@ -767,6 +767,56 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     }
 
     public boolean allowWrite(PublicKeyHash owner, PublicKeyHash writer, int size) {
+        reserve(owner, writer, size);
+        return true;
+    }
+
+    /** A write ahead of the pointer update that will name its blocks: reserved until that update lands or is refused */
+    public boolean allowWrite(PublicKeyHash owner, PublicKeyHash writer, int size, TransactionId tid) {
+        reservedAhead(tid, reserve(owner, writer, size));
+        return true;
+    }
+
+    // Reservations of blocks written ahead of the pointer update naming them, by transaction. Bounded: a
+    // transaction no update ever follows loses its entry, and its reservations expire on their own.
+    private final Map<String, List<Runnable>> reservedAhead = new LinkedHashMap<String, List<Runnable>>() {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, List<Runnable>> eldest) {
+            return size() > 10_000;
+        }
+    };
+
+    public void reservedAhead(TransactionId tid, Runnable release) {
+        synchronized (reservedAhead) {
+            reservedAhead.computeIfAbsent(tid.id, t -> new ArrayList<>()).add(release);
+        }
+    }
+
+    /** The transaction's pointer update has landed: what was reserved ahead is confirmed when it is processed */
+    public void namedAhead(TransactionId tid) {
+        synchronized (reservedAhead) {
+            reservedAhead.remove(tid.id);
+        }
+    }
+
+    /** The transaction's pointer update was refused: the blocks written ahead of it are not named, and their bytes
+     *  are given back. A retry that names them after all is counted when its update is processed. */
+    public void refusedAhead(TransactionId tid) {
+        List<Runnable> releases;
+        synchronized (reservedAhead) {
+            releases = reservedAhead.remove(tid.id);
+        }
+        if (releases != null)
+            releases.forEach(Runnable::run);
+    }
+
+    /** Reserve the bytes of a write that is about to be made, if it fits in the owner's quota and every cap over
+     *  the writer, or refuse it.
+     *
+     * @return what gives the reservation back, for a write that is then refused or lost; one that lands is
+     *         confirmed when its pointer update is processed
+     */
+    private Runnable reserve(PublicKeyHash owner, PublicKeyHash writer, int size) {
         String username;
         try {
             username = usageStore.getOwner(writer);
@@ -785,9 +835,10 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         UserUsage usage = getUsage(username, usageStore);
 
         // Each check reserves the bytes as it passes, in one step, so two writes arriving together can't both
-        // fit where only one does. Whatever refuses later gives the reservations before it back. For the user's
-        // own quota that holds until a write is refused: from then on each check reads the committed total
-        // afresh (getUsage), until a processed commit clears the flag.
+        // fit where only one does. Whatever refuses later gives the reservations before it back; a refusal
+        // leaves other writes in flight reserved. For the user's own quota that holds until a write is refused:
+        // from then on each check reads the committed total afresh (getUsage), until a processed commit clears
+        // the flag.
         long pending = usage.getPending(writer);
         if (! usage.reserve(writer, size, quota, USAGE_TOLERANCE)) {
             usageStore.confirmUsage(username, writer, 0, true);
@@ -827,7 +878,10 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 held.releasePending(writer, size);
             throw e;
         }
-        return true;
+        return () -> {
+            for (UserUsage held : reserved)
+                held.releasePending(writer, size);
+        };
     }
 
     /** Whether a commit may be applied, given the bytes it writes and the net change in stored bytes
@@ -838,11 +892,12 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
      *  blocks and its pointer updates together, so the net effect is knowable before anything is
      *  applied, and one that brings the user back within quota is let through.
      *
-     * @param delta computes the change in stored bytes, only called when the write would be rejected
+     * @param deltas computes the change in stored bytes, only called when the write would be rejected
+     * @return what gives back the bytes reserved for it, if the commit is refused after all
      */
-    public boolean allowCommit(PublicKeyHash owner, PublicKeyHash writer, int written, Supplier<Map<PublicKeyHash, Long>> deltas) {
+    public Runnable allowCommit(PublicKeyHash owner, PublicKeyHash writer, int written, Supplier<Map<PublicKeyHash, Long>> deltas) {
         try {
-            return allowWrite(owner, writer, written);
+            return reserve(owner, writer, written);
         } catch (IllegalStateException e) {
             String message = e.getMessage();
             // a rate limit is not something a delete should be able to step around
@@ -871,7 +926,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     throw e;
             }
             LOG.info("Allowing a commit for " + username + " over quota: it frees " + (-change) + " bytes");
-            return true;
+            return () -> {};
         }
     }
 

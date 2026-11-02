@@ -762,6 +762,11 @@ public class WriterQuotaTests {
 
     /** Blocks into a writer's own space in one buffered commit, over what it has, or as its first write */
     private void write(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, int count, int size) {
+        write(owner, writer, count, size, false);
+    }
+
+    /** The same, or claiming the writer has nothing yet when it has, which refuses the commit after its blocks are checked */
+    private void write(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, int count, int size, boolean staleStart) {
         NetworkAccess net = network.clear();
         List<byte[]> blocks = new ArrayList<>();
         for (int i = 0; i < count; i++) {
@@ -778,7 +783,7 @@ public class WriterQuotaTests {
                                     writer.publicKeyHash, sigs, List.of(links), tid));
                         })
                         .thenCompose(links -> {
-                            CommittedWriterData current = s.contains(writer.publicKeyHash) ? s.get(writer)
+                            CommittedWriterData current = s.contains(writer.publicKeyHash) && ! staleStart ? s.get(writer)
                                     : new CommittedWriterData(MaybeMultihash.empty(), Optional.empty(), Optional.empty());
                             return (current.props.isPresent() ? Futures.of(current.props.get())
                                     : WriterData.createEmpty(owner, writer, net.dhtClient, crypto.hasher, tid))
@@ -1488,6 +1493,46 @@ public class WriterQuotaTests {
         long expected = writerQuotas().getUsage(capped.publicKeyHash).expectedUsage();
         Assert.assertTrue("The write in flight is no longer reserved: " + expected, expected >= 900 * KiB);
         assertRefusedForTheCap(() -> filter.allowWrite(ownerKey, capped.publicKeyHash, 900 * KiB));
+    }
+
+    @Test
+    public void aRefusedWriteLeavesTheWritersOtherWritesInFlightReserved() throws Exception {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        Path dir = sharedDir(owner, "team", sharee);
+        owner.setWriteShareQuota(dir, Optional.of(1024L * KiB)).join();
+        awaitUsageUpdate();
+        FileWrapper shared = sharee.getByPath(dir).join().get();
+        PublicKeyHash ownerKey = shared.owner();
+        PublicKeyHash capped = shared.signingPair().publicKeyHash;
+        SpaceCheckingKeyFilter filter = quotaFilter();
+
+        // 900 KiB in flight under the cap; a second as large doesn't fit, and its refusal leaves the first reserved
+        Assert.assertTrue(filter.allowWrite(ownerKey, capped, 900 * KiB));
+        assertRefusedForTheCap(() -> filter.allowWrite(ownerKey, capped, 900 * KiB));
+        long expected = writerQuotas().getUsage(capped).expectedUsage();
+        Assert.assertTrue("The refusal dropped the write in flight: " + expected, expected >= 900 * KiB);
+    }
+
+    @Test
+    public void aRefusedCommitGivesBackWhatItReserved() {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        Path dir = sharedDir(owner, "team", sharee);
+        owner.setWriteShareQuota(dir, Optional.of(1024L * KiB)).join();
+        awaitUsageUpdate();
+        FileWrapper shared = sharee.getByPath(dir).join().get();
+
+        // a 600 KiB commit passes the cap, its blocks going ahead of its pointer update, and is then refused, its start
+        // being stale: what it reserved goes back as its transaction closes
+        try {
+            write(shared.owner(), shared.signingPair(), 6, 100 * KiB, true);
+            Assert.fail("A commit over a stale start landed");
+        } catch (Exception refused) {}
+        // so another 600 KiB fits under the 1 MiB cap
+        upload(sharee, dir, "fits", 600 * KiB);
     }
 
     @Test

@@ -52,15 +52,14 @@ public class UserUsage implements Cborable {
     }
 
     /** Reserve the bytes of a write if it fits. The check and the reservation are one step, so two writes
-     *  arriving together can't both fit where only one does.
+     *  arriving together can't both fit where only one does. A write that doesn't fit reserves nothing, and
+     *  the writer's other writes in flight keep what they reserved: each gives its own back if it fails.
      *
-     * @return false if it doesn't fit: this writer's pending bytes are dropped and the usage marked errored
+     * @return false if it doesn't fit: the usage is marked errored
      */
     public synchronized boolean reserve(PublicKeyHash writer, long size, long quota, long tolerance) {
         long allowed = errored ? quota + tolerance : quota;
         if (expectedUsage() + size > allowed) {
-            pending.remove(writer);
-            pendingSince.remove(writer);
             errored = true;
             return false;
         }
@@ -73,7 +72,7 @@ public class UserUsage implements Cborable {
         pendingSince.put(writer, System.currentTimeMillis());
     }
 
-    /** Give back a reservation. A refusal in between may already have dropped this writer's bytes. */
+    /** Give back a reservation, or what is left of it after a reload dropped a stale one. */
     public synchronized void releasePending(PublicKeyHash writer, long size) {
         long left = pending.getOrDefault(writer, 0L) - size;
         if (left > 0)

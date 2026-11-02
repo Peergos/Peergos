@@ -41,9 +41,18 @@ public class BulkCommitStorage extends DelegatingStorage {
     }
 
     /** Whether a commit may be applied, given the bytes a writer writes and, if that alone would be
-     *  refused, the net change in stored bytes each writer's pointer update in the commit will cause. */
+     *  refused, the net change in stored bytes each writer's pointer update in the commit will cause.
+     *  Refuses by throwing; otherwise returns what gives back the bytes it reserved, for a commit refused
+     *  or lost after all. Blocks written ahead of the pointer update that names them are reserved under
+     *  their transaction until that update lands or is refused. */
     public interface CommitQuota {
-        boolean allow(PublicKeyHash owner, PublicKeyHash writer, int written, Supplier<Map<PublicKeyHash, Long>> deltas);
+        Runnable allow(PublicKeyHash owner, PublicKeyHash writer, int written, Supplier<Map<PublicKeyHash, Long>> deltas);
+
+        default void reservedAhead(TransactionId tid, Runnable release) {}
+
+        default void namedAhead(TransactionId tid) {}
+
+        default void refusedAhead(TransactionId tid) {}
     }
 
     private final ContentAddressedStorage target;
@@ -91,24 +100,27 @@ public class BulkCommitStorage extends DelegatingStorage {
         int named = commit.blockCount() + commit.writers.stream().mapToInt(w -> w.preWritten.size()).sum();
         if (named > ContentAddressedStorage.MAX_BULK_COMMIT_BLOCKS)
             throw new IllegalStateException("Too many blocks in one commit: " + named);
-        return hashBlocks(commit)
+        boolean[] landed = {false};
+        CompletableFuture<List<Cid>> res = hashBlocks(commit)
                 .thenCompose(hashes -> updates(owner, commit)
                         .thenCompose(updates -> verifyBlockLists(owner, commit, hashes)
                                 .thenCompose(x -> verify(owner, commit, hashes, updates))
                                 .thenCompose(inCall -> {
                                     List<Registration> registered = registerNewWriters(owner, commit, updates, inCall);
-                                    boolean[] landed = {false};
+                                    List<Runnable> releases = new ArrayList<>();
                                     // from a future, as a refusal is thrown before the transaction's future exists
                                     return Futures.of(true).thenCompose(x -> withTransaction(owner, commit.tid, commit.hasPointerUpdate(),
                                             // the transaction has to outlive the pointer update, or the blocks
                                             // it holds are collectable in the window before they are reachable
-                                            tid -> writeBlocks(owner, commit, updates, inCall, tid)
+                                            tid -> writeBlocks(owner, commit, updates, inCall, tid, releases)
                                                     .thenCompose(written -> {
                                                         List<SignedPointerUpdate> signed = commit.writers.stream()
                                                                 .flatMap(w -> w.pointer.stream())
                                                                 .collect(Collectors.toList());
                                                         if (signed.isEmpty()) {
                                                             landed[0] = true;
+                                                            // reachable only once a later commit in this transaction names them
+                                                            releases.forEach(r -> quota.reservedAhead(tid, r));
                                                             return Futures.of(written);
                                                         }
                                                         return pointers.setPointers(owner, signed)
@@ -116,6 +128,8 @@ public class BulkCommitStorage extends DelegatingStorage {
                                                                     if (set) {
                                                                         landed[0] = true;
                                                                         registered.forEach(Registration::landed);
+                                                                        // what came ahead in this transaction is named now, and confirmed when the pointers are processed
+                                                                        quota.namedAhead(tid);
                                                                         return Futures.of(written);
                                                                     }
                                                                     // the pointers moved after they were checked and none was set: the commit
@@ -128,13 +142,24 @@ public class BulkCommitStorage extends DelegatingStorage {
                                                                 });
                                                     })))
                                             // a commit refused before its pointers landed takes back the writers it registered, the
-                                            // last first: a writer named under two parents stays provisional until its first edge goes
+                                            // last first: a writer named under two parents stays provisional until its first edge goes;
+                                            // and it gives back the bytes it reserved
                                             .whenComplete((written, refused) -> {
-                                                if (refused != null && ! landed[0])
+                                                if (refused != null && ! landed[0]) {
                                                     for (int i = registered.size() - 1; i >= 0; i--)
                                                         registered.get(i).undo();
+                                                    releases.forEach(Runnable::run);
+                                                }
                                             });
                                 })));
+        if (commit.tid.isEmpty() || ! commit.hasPointerUpdate())
+            return res;
+        // however it was refused, before its pointers landed, the blocks written ahead of it in its transaction
+        // are not named by it, and their bytes are given back
+        return res.whenComplete((written, refused) -> {
+            if (refused != null && ! landed[0])
+                quota.refusedAhead(commit.tid.get());
+        });
     }
 
     /** Apply a batch signed block write for an owner whose home server we are.
@@ -458,11 +483,13 @@ public class BulkCommitStorage extends DelegatingStorage {
                         .thenCompose(res -> target.closeTransaction(owner, tid).thenApply(x -> res)));
     }
 
+    /** @param releases takes what gives back each writer's reservation */
     private CompletableFuture<List<Cid>> writeBlocks(PublicKeyHash owner,
                                                      BulkCommit commit,
                                                      List<Optional<PointerUpdate>> updates,
                                                      Map<Cid, byte[]> cborInCall,
-                                                     TransactionId tid) {
+                                                     TransactionId tid,
+                                                     List<Runnable> releases) {
         List<Cid> written = new ArrayList<>();
         List<Integer> indices = IntStream.range(0, commit.writers.size()).boxed().collect(Collectors.toList());
         // A rotation writes a subtree under a new key and deletes it under the old one in the same commit, so only
@@ -485,8 +512,7 @@ public class BulkCommitStorage extends DelegatingStorage {
                             // leaves a user who is over quota unable to get back under. Charge it
                             // against what the commit will actually leave stored.
                             int size = w.inlineSize();
-                            if (! quota.allow(owner, w.writer, size, allDeltas))
-                                throw new IllegalStateException("Key not allowed to write to this server: " + w.writer);
+                            releases.add(quota.allow(owner, w.writer, size, allDeltas));
                             return writeBlocks(owner, w, tid).thenApply(cids -> {
                                 written.addAll(cids);
                                 return done;
