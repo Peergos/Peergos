@@ -34,6 +34,19 @@ public class SocialPost implements Cborable {
     public final List<SocialPost> previousVersions;
     // this is excluded from hash calculation when replying
     public final List<FileRef> comments;
+    // the commenters' introductions, by identity, also excluded from the hash (remove-pki §9)
+    public final Map<PublicKeyHash, FriendLink> introductions;
+
+    @JsIgnore
+    public SocialPost(String author,
+                      List<? extends Content> body,
+                      LocalDateTime postTime,
+                      Resharing shareTo,
+                      Optional<FileRef> parent,
+                      List<SocialPost> previousVersions,
+                      List<FileRef> comments) {
+        this(author, body, postTime, shareTo, parent, previousVersions, comments, Collections.emptyMap());
+    }
 
     @JsConstructor
     public SocialPost(String author,
@@ -42,7 +55,8 @@ public class SocialPost implements Cborable {
                       Resharing shareTo,
                       Optional<FileRef> parent,
                       List<SocialPost> previousVersions,
-                      List<FileRef> comments) {
+                      List<FileRef> comments,
+                      Map<PublicKeyHash, FriendLink> introductions) {
         this.author = author;
         this.body = body;
         this.postTime = postTime;
@@ -50,6 +64,7 @@ public class SocialPost implements Cborable {
         this.parent = parent;
         this.previousVersions = previousVersions;
         this.comments = comments;
+        this.introductions = introductions;
     }
 
     @JsMethod
@@ -73,7 +88,7 @@ public class SocialPost implements Cborable {
                            LocalDateTime postTime) {
         ArrayList<SocialPost> versions = new ArrayList<>(previousVersions);
         versions.add(this);
-        return new SocialPost(author, body, postTime, shareTo, parent, versions, comments);
+        return new SocialPost(author, body, postTime, shareTo, parent, versions, comments, introductions);
     }
 
     /** adding references to comments does not change the version of this comment (the hash ignores the comment refs)
@@ -85,7 +100,7 @@ public class SocialPost implements Cborable {
         ArrayList<FileRef> updatedComments = new ArrayList<>(comments);
         if (! comments.contains(comment))
             updatedComments.add(comment);
-        return new SocialPost(author, body, postTime, shareTo, parent, previousVersions, updatedComments);
+        return new SocialPost(author, body, postTime, shareTo, parent, previousVersions, updatedComments, introductions);
     }
 
     public SocialPost addComments(List<FileRef> newComments) {
@@ -94,7 +109,19 @@ public class SocialPost implements Cborable {
             if (!updatedComments.contains(comment))
                 updatedComments.add(comment);
         }
-        return new SocialPost(author, body, postTime, shareTo, parent, previousVersions, updatedComments);
+        return new SocialPost(author, body, postTime, shareTo, parent, previousVersions, updatedComments, introductions);
+    }
+
+    public SocialPost addIntroductions(Collection<FriendLink> intros) {
+        Map<PublicKeyHash, FriendLink> updated = new TreeMap<>(introductions);
+        for (FriendLink intro : intros)
+            updated.put(intro.identity, intro);
+        return new SocialPost(author, body, postTime, shareTo, parent, previousVersions, comments, updated);
+    }
+
+    /** The introduction passed on with a comment of someone else's, or null. */
+    public String getIntroduction(FileRef comment) {
+        return Optional.ofNullable(introductions.get(comment.cap.owner)).map(FriendLink::toLink).orElse(null);
     }
 
     private byte[] serializeWithoutComments() {
@@ -118,6 +145,8 @@ public class SocialPost implements Cborable {
             state.put("v", new CborObject.CborList(previousVersions));
         if (! comments.isEmpty())
             state.put("d", new CborObject.CborList(comments));
+        if (! introductions.isEmpty())
+            state.put("in", new CborObject.CborList(new ArrayList<>(introductions.values())));
 
         List<CborObject> withMimeType = new ArrayList<>();
         withMimeType.add(new CborObject.CborLong(MimeTypes.CBOR_PEERGOS_POST_INT));
@@ -143,8 +172,10 @@ public class SocialPost implements Cborable {
         Optional<FileRef> parent = m.getOptional("p", FileRef::fromCbor);
         List<SocialPost> previousVersions = m.getList("v", SocialPost::fromCbor);
         List<FileRef> comments = m.getList("d", FileRef::fromCbor);
+        Map<PublicKeyHash, FriendLink> introductions = new TreeMap<>();
+        m.getList("in", FriendLink::fromCbor).forEach(l -> introductions.put(l.identity, l));
 
-        return new SocialPost(author, body, postTime, shareTo, parent, previousVersions, comments);
+        return new SocialPost(author, body, postTime, shareTo, parent, previousVersions, comments, introductions);
     }
 
     public static class MutableRef implements Cborable {
