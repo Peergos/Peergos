@@ -1599,7 +1599,8 @@ public class UserContext {
         List<String> needWritingSpace = paths.stream().filter(writable::contains).collect(Collectors.toList());
         Map<PublicKeyHash, PublicKeyHash> rotatedSigners = new HashMap<>();
         List<String> toUpgrade = paths.stream().filter(hidden::contains).collect(Collectors.toList());
-        List<String> toAdopt = paths.stream().filter(p -> ! hidden.contains(p)).collect(Collectors.toList());
+        // moving a writable member into its own writing space writes its parent link, so adopt those too
+        List<String> toAdopt = paths.stream().filter(p -> ! hidden.contains(p) || writable.contains(p)).collect(Collectors.toList());
         if (needWritingSpace.isEmpty())
             return adoptPending(toAdopt)
                     .thenCompose(x -> upgradeToRestrictedFormat(toUpgrade))
@@ -3811,6 +3812,7 @@ public class UserContext {
     public CompletableFuture<FileSharedWithState> sharedWith(Path p) {
         return getUserRoot().thenCompose(home -> sharedWithCache.getSharedWith(p, home.version));
     }
+
 
     @JsMethod
     public CompletableFuture<SharedWithState> getDirectorySharingState(Path dir) {
