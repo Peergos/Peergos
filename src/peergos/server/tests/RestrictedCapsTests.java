@@ -786,6 +786,33 @@ public class RestrictedCapsTests {
     }
 
     @Test(timeout = 120_000)
+    public void legacyDataMovedIntoAHiddenLinkIsUpgraded() {
+        UserContext owner = signIn(username("lm"));
+        Path home = PathUtil.get(owner.username);
+        CryptreeNode.setWriteLegacyFormat(true);
+        mkdir(owner, home, "old");
+        mkdir(owner, home.resolve("old"), "inner");
+        byte[] data = randomData(200);
+        upload(owner, home.resolve("old/inner"), "file.bin", data);
+        CryptreeNode.setWriteLegacyFormat(false);
+        mkdir(owner, home, "work");
+        mkdir(owner, home.resolve("work"), "drop");
+        mkdir(owner, home.resolve("work/drop"), "sub");
+        String path = home.resolve("work/drop").toString();
+        // read only, so the drop folder shares a writing space with the old one, and a move re-points
+        LinkProperties link = owner.createSecretLink(List.of(path), List.of(), List.of(path),
+                Optional.empty(), Optional.empty(), "", false).join();
+
+        move(signIn(owner.username), home.resolve("old/inner").toString(), home.resolve("work/drop/sub").toString());
+        UserContext fromLink = openLink(owner, link);
+        Assert.assertEquals(Set.of("inner"), children(fromLink.getByPath("/drop/sub").join().get(), fromLink.network).keySet());
+        PeergosNetworkUtils.checkFileContents(data, fromLink.getByPath("/drop/sub/inner/file.bin").join().get(), fromLink);
+        UserContext fresh = signIn(owner.username);
+        Assert.assertEquals("/" + unix(home) + "/work/drop/sub/inner/file.bin",
+                fresh.getByPath(home.resolve("work/drop/sub/inner/file.bin")).join().get().getPath(fresh.network).join());
+    }
+
+    @Test(timeout = 120_000)
     public void aBadChildLinkOnlyBreaksThatChild() {
         UserContext owner = signIn(username("bc"));
         Path home = PathUtil.get(owner.username);
