@@ -121,12 +121,19 @@ public class RelativeCapability implements Cborable {
 
     public RelativeCapability unwrapFullKey(SymmetricKey parentFullKey, Optional<byte[]> parentPublicKey) {
         if (fullKeyLink.isPresent())
-            return new RelativeCapability(writer, mapKey, bat, fullKeyLink.get().target(parentFullKey.derive(linkLabel())), wBaseKeyLink,
-                    Optional.empty(), Optional.empty()).pending(pending);
+            return new RelativeCapability(writer, mapKey, bat, matching(fullKeyLink.get().target(parentFullKey.derive(linkLabel()))),
+                    wBaseKeyLink, Optional.empty(), Optional.empty()).pending(pending);
         if (sealedFullKey.isPresent())
-            return new RelativeCapability(writer, mapKey, bat, sealedFullKey.get().open(parentFullKey, parentPublicKey.get()),
+            return new RelativeCapability(writer, mapKey, bat, matching(sealedFullKey.get().open(parentFullKey, parentPublicKey.get())),
                     wBaseKeyLink, Optional.empty(), Optional.empty()).pending(true);
         return this;
+    }
+
+    /** A restricted key holder could pair a full key with someone else's restricted key, showing us a different child. */
+    private SymmetricKey matching(SymmetricKey fullKey) {
+        if (! fullKey.derive(CryptreeNode.RESTRICTED).equals(rBaseKey))
+            throw new IllegalStateException("A child's full key doesn't match its restricted key");
+        return fullKey;
     }
 
     private String linkLabel() {
