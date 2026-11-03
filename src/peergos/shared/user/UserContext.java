@@ -2114,7 +2114,7 @@ public class UserContext {
                         (s, republish) -> getByPath(republish)
                                 .thenCompose(fopt -> fopt.isEmpty() ?
                                         Futures.of(s) :
-                                        makePublic(fopt.get()).thenApply(x -> s)),
+                                        makePublicAt(PathUtil.get(republish)).thenApply(x -> s)),
                         (a, b) -> b)));
     }
 
@@ -2172,13 +2172,29 @@ public class UserContext {
 
     /** Publishing is through a read only secret link, which is what the public file handler redirects to. */
     public CompletableFuture<CommittedWriterData> makePublic(FileWrapper file) {
+        // its path is walked up from it, which stops short at anything made through a restricted key
+        if (file.isPending())
+            return Futures.errored(new IllegalStateException("Couldn't tell where " + file.getName()
+                    + " is from the file alone, publish it by its path instead"));
+        return file.getPath(network).thenCompose(path -> makePublicAt(PathUtil.get(path)));
+    }
+
+    public CompletableFuture<CommittedWriterData> makePublicAt(Path path) {
+        // adopting gives new keys, so the capability to publish is only read after it
+        return adoptPending(path)
+                .thenCompose(x -> getByPath(path))
+                .thenCompose(opt -> makePublic(opt.orElseThrow(() -> new IllegalStateException("Couldn't retrieve " + path)),
+                        path.toString()));
+    }
+
+    private CompletableFuture<CommittedWriterData> makePublic(FileWrapper file, String path) {
         if (! file.getOwnerName().equals(username))
             return Futures.errored(new IllegalStateException("Only the owner of a file can make it public!"));
         if (file.isUserRoot())
             return Futures.errored(new IllegalStateException("You cannot publish your home directory!"));
         ensureAllowedToShare(file, username, false);
         AbsoluteCapability cap = file.getPointer().capability.readOnly();
-        return file.getPath(network).thenCompose(path -> publishedAt(PathUtil.get(path))
+        return publishedAt(PathUtil.get(path))
                 .thenCompose(existing -> {
                     // the profile republishes on every change, which mustn't mint a new link each time
                     if (existing.isPresent() && existing.get().cap.equals(Optional.of(cap)) && existing.get().link.isPresent())
@@ -2194,7 +2210,7 @@ public class UserContext {
                                                 .exceptionally(e -> false)
                                                 .thenCompose(x -> Futures.<CommittedWriterData>errored(t)));
                             });
-                }));
+                });
     }
 
     private CompletableFuture<CommittedWriterData> publish(String path, AbsoluteCapability cap, PublishedLink link) {
@@ -3294,7 +3310,7 @@ public class UserContext {
                                         .thenCompose(s -> Futures.reduceAll(published, true,
                                                 (b, p) -> getByPath(p).thenCompose(f -> f.isEmpty() ?
                                                         Futures.of(true) :
-                                                        makePublic(f.get()).thenApply(x -> true)),
+                                                        makePublicAt(PathUtil.get(p)).thenApply(x -> true)),
                                                 (a, b) -> b)));
                     }
                     if (depth + 1 == path.getNameCount())
