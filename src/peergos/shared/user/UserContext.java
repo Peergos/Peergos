@@ -1168,7 +1168,9 @@ public class UserContext {
     public CompletableFuture<LinkProperties> setSecretLinkMembers(List<String> paths,
                                                                   List<String> writablePaths,
                                                                   LinkProperties props) {
-        return setSecretLinkMembers(paths, writablePaths, Collections.emptyList(), props);
+        // a caller that doesn't say mustn't un-hide what is already hidden
+        List<String> hidden = props.members.stream().filter(m -> m.hidden).map(m -> m.path).collect(Collectors.toList());
+        return setSecretLinkMembers(paths, writablePaths, hidden, props);
     }
 
     @JsMethod
