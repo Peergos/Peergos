@@ -48,12 +48,27 @@ public class SealedKey implements Cborable {
         return new SealedKey(ephemeralPublic, cipherText);
     }
 
+    // opening is an X25519 operation, slow in the browser, and a folder's sealed keys are opened on every listing
+    private static final Map<ByteArrayWrapper, SymmetricKey> opened = new LRUCache<>(10_000);
+
     public SymmetricKey open(SymmetricKey dirFullKey, byte[] dirPublicKey) {
         byte[] secret = dirFullKey.derive(SEAL).getKey();
+        // keyed by the secret too, so only someone who could open it gets it from here
+        ByteArrayWrapper cacheKey = new ByteArrayWrapper(Hash.sha256(ArrayOps.concat(ArrayOps.concat(secret, dirPublicKey),
+                ArrayOps.concat(ephemeralPublic, cipherText))));
+        synchronized (opened) {
+            SymmetricKey cached = opened.get(cacheKey);
+            if (cached != null)
+                return cached;
+        }
         byte[] raw = boxer().crypto_box_open(cipherText, nonce(ephemeralPublic, dirPublicKey), ephemeralPublic, secret);
         if (raw == null)
             throw new IllegalStateException("Couldn't open sealed key");
-        return SymmetricKey.fromByteArray(raw);
+        SymmetricKey res = SymmetricKey.fromByteArray(raw);
+        synchronized (opened) {
+            opened.put(cacheKey, res);
+        }
+        return res;
     }
 
     @Override
