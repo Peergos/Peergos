@@ -3272,24 +3272,45 @@ public class UserContext {
         if (path.getNameCount() < 2)
             return Futures.of(true);
         return getByPath(path.subpath(0, 1).toString())
-                .thenCompose(home -> adoptPending(home.get(), path.subpath(1, path.getNameCount())));
+                .thenCompose(home -> adoptPending(home.get(), path, 1));
     }
 
-    private CompletableFuture<Boolean> adoptPending(FileWrapper parent, Path remaining) {
-        return parent.getChild(remaining.getName(0).toString(), crypto.hasher, network)
+    private CompletableFuture<Boolean> adoptPending(FileWrapper parent, Path path, int depth) {
+        return parent.getChild(path.getName(depth).toString(), crypto.hasher, network)
                 .thenCompose(childOpt -> {
                     if (childOpt.isEmpty())
                         return Futures.of(true);
                     FileWrapper child = childOpt.get();
-                    if (child.isPending())
-                        // rotating rewrites everything below with real parent links too
-                        return network.synchronizer.applyComplexUpdate(signer.publicKeyHash, parent.signingPair(),
-                                        (s, c) -> rotateAllKeys(child, parent, false, s, c))
-                                .thenApply(s -> true);
-                    if (remaining.getNameCount() == 1)
+                    if (child.isPending()) {
+                        Path at = path.getRoot() == null ?
+                                path.subpath(0, depth + 1) :
+                                path.getRoot().resolve(path.subpath(0, depth + 1));
+                        // rotating rewrites everything below with real parent links too, and leaves links,
+                        // shares and published caps to anything below on the old keys
+                        return publishedAtOrBelow(at).thenCompose(published ->
+                                network.synchronizer.applyComplexUpdate(signer.publicKeyHash, parent.signingPair(),
+                                                (s, c) -> rotateAllKeys(child, parent, false, s, c)
+                                                        .thenCompose(s2 -> reSendAllSharesAndLinksRecursive(at, s2, c)))
+                                        .thenCompose(s -> Futures.reduceAll(published, true,
+                                                (b, p) -> getByPath(p).thenCompose(f -> f.isEmpty() ?
+                                                        Futures.of(true) :
+                                                        makePublic(f.get()).thenApply(x -> true)),
+                                                (a, b) -> b)));
+                    }
+                    if (depth + 1 == path.getNameCount())
                         return Futures.of(true);
-                    return adoptPending(child, remaining.subpath(1, remaining.getNameCount()));
+                    return adoptPending(child, path, depth + 1);
                 });
+    }
+
+    private CompletableFuture<List<String>> publishedAtOrBelow(Path path) {
+        return publishedBelow(path).thenCompose(below -> publishedAt(path).thenApply(here -> {
+            if (here.isEmpty())
+                return below;
+            List<String> all = new ArrayList<>(below);
+            all.add(0, path.toString());
+            return all;
+        }));
     }
 
     public CompletableFuture<Snapshot> shareReadAccessWith(Path path, Set<String> readersToAdd, Snapshot s, Committer c) {
