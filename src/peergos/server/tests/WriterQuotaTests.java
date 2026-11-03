@@ -298,6 +298,105 @@ public class WriterQuotaTests {
     }
 
     /** Writes a small block under this key, over whatever it has now, if anything */
+    /** A writer whose last update the queue never sized has an empty stored target, and the edge to the child that
+     *  update named. Dropped, it takes that child with it, as one whose sized root names the child does. */
+    @Test
+    public void aChildLinkedUnderAWriterWhoseStoredTargetIsEmptyGoesWithIt() throws Exception {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        Path dir = sharedDir(owner, "team", sharee);
+        owner.setWriteShareQuota(dir, Optional.of(256L * KiB)).join();
+        FileWrapper shared = sharee.getByPath(dir).join().get();
+        PublicKeyHash ownerKey = shared.owner();
+        SigningPrivateKeyAndPublicHash w = shared.signingPair();
+
+        // the sharee makes a child writing space C under the capped folder, as usual
+        NetworkAccess net = network.clear();
+        SigningPrivateKeyAndPublicHash[] made = new SigningPrivateKeyAndPublicHash[1];
+        net.synchronizer.applyComplexUpdate(ownerKey, w, (s, committer) ->
+                CryptreeNode.initAndAuthoriseSigner(ownerKey, w, SigningKeyPair.random(crypto.random, crypto.signer), net, s, committer)
+                        .thenApply(child -> { made[0] = child.right; return child.left; })).join();
+        SigningPrivateKeyAndPublicHash c = made[0];
+        awaitUsageUpdate();
+
+        // empties C: processed, so C's stored target is empty, and C stays registered as W still names it
+        CommittedWriterData cNow = WriterData.getWriterData(ownerKey, c.publicKeyHash, service.mutable, service.storage).join();
+        PointerUpdate toEmpty = new PointerUpdate(cNow.hash, MaybeMultihash.empty(), PointerUpdate.increment(cNow.sequence));
+        service.mutable.setPointer(ownerKey, c, toEmpty).join();
+        awaitUsageUpdate();
+
+        // sets C to a root naming a new key D whose tree links a missing block: D is linked as the pointer arrives,
+        // and the update is never sized, so C's stored target stays empty
+        SigningPrivateKeyAndPublicHash d = newKeyUnder(ownerKey, c);
+        OwnerProof proof = OwnerProof.build(d, c.publicKeyHash).join();
+        byte[] absent = new byte[100];
+        random.nextBytes(absent);
+        Cid missing = crypto.hasher.hash(absent, false).join();
+        TransactionId tid = service.storage.startTransaction(ownerKey).join();
+        WriterData empty = WriterData.createEmpty(ownerKey, c, service.storage, crypto.hasher, tid).join();
+        Cid naming = service.storage.put(ownerKey, c, empty.addNamedKey("unsized", proof).withChamp(missing).serialize(),
+                crypto.hasher, tid).join();
+        service.mutable.setPointer(ownerKey, c, new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(naming),
+                PointerUpdate.increment(toEmpty.sequence))).join();
+        awaitUsageUpdate();
+
+        // the sharee drops C from the capped folder: D goes with it
+        NetworkAccess net2 = network.clear();
+        net2.synchronizer.applyComplexUpdate(ownerKey, w, (s, committer) ->
+                CryptreeNode.deAuthoriseSigner(ownerKey, w, c.publicKeyHash, net2, s, committer)).join();
+        awaitUsageUpdate();
+        assertCannotCommit(d, ownerKey, "a key linked under a dropped writer whose stored target was empty");
+    }
+
+    /** A refused commit can have made writers that name each other, and landed their own pointer updates while it
+     *  was in flight. Each has a parent then, but none that leads to the owner, so the undo takes them back. */
+    @Test
+    public void aCycleMadeInARefusedCommitIsTakenBackWithIt() throws Exception {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        Path dir = sharedDir(owner, "team", sharee);
+        owner.setWriteShareQuota(dir, Optional.of(256L * KiB)).join();
+        awaitUsageUpdate();
+        FileWrapper shared = sharee.getByPath(dir).join().get();
+        PublicKeyHash ownerKey = shared.owner();
+        SigningPrivateKeyAndPublicHash w = shared.signingPair();
+        SigningPrivateKeyAndPublicHash d = newKeyUnder(ownerKey, w);
+        SigningPrivateKeyAndPublicHash e = newKeyUnder(ownerKey, d);
+
+        // the commit's own roots for D (naming E) and E (naming D), written under W, which is registered
+        TransactionId tid = service.storage.startTransaction(ownerKey).join();
+        Cid champ = OwnedKeyChamp.createEmpty(ownerKey, w, service.storage, crypto.hasher, tid).join();
+        WriterData dEmpty = new WriterData(d.publicKeyHash, Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(champ),
+                Collections.emptyMap(), Optional.empty(), Optional.empty(), Optional.empty());
+        Cid dRoot = service.storage.put(ownerKey, w, dEmpty.addNamedKey("e", OwnerProof.build(e, d.publicKeyHash).join()).serialize(),
+                crypto.hasher, tid).join();
+        WriterData eEmpty = new WriterData(e.publicKeyHash, Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(champ),
+                Collections.emptyMap(), Optional.empty(), Optional.empty(), Optional.empty());
+        Cid eRoot = service.storage.put(ownerKey, w, eEmpty.addNamedKey("d", OwnerProof.build(d, e.publicKeyHash).join()).serialize(),
+                crypto.hasher, tid).join();
+        PointerUpdate dUpd = new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(dRoot), PointerUpdate.increment(Optional.empty()));
+        PointerUpdate eUpd = new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(eRoot), PointerUpdate.increment(Optional.empty()));
+        SignedPointerUpdate dSigned = new SignedPointerUpdate(d.publicKeyHash, d.secret.signMessage(dUpd.serialize()).join());
+        SignedPointerUpdate eSigned = new SignedPointerUpdate(e.publicKeyHash, e.secret.signMessage(eUpd.serialize()).join());
+
+        // as a commit [W naming D, D naming E, E naming D] registers them, in the order it proves them
+        SpaceCheckingKeyFilter filter = quotaFilter();
+        BulkCommitStorage.Registration underW = filter.registerNewWriter(ownerKey, w.publicKeyHash, d.publicKeyHash, Optional.of(dSigned));
+        BulkCommitStorage.Registration underD = filter.registerNewWriter(ownerKey, d.publicKeyHash, e.publicKeyHash, Optional.of(eSigned));
+        // while its blocks are written, the commit's own updates for D and E land, which a provisional writer may do
+        service.mutable.setPointer(ownerKey, d, dUpd).join();
+        service.mutable.setPointer(ownerKey, e, eUpd).join();
+        awaitUsageUpdate();
+        // the commit is refused, and takes back what it registered
+        underW.undo();
+        underD.undo();
+        awaitUsageUpdate();
+        assertCannotCommit(d, ownerKey, "a writer a refused commit made, named only by another it made");
+        assertCannotCommit(e, ownerKey, "a writer a refused commit made under one it made");
+    }
+
     private void assertCannotCommit(SigningPrivateKeyAndPublicHash key, PublicKeyHash owner, String what) {
         try {
             write(owner, key, 1, KiB);

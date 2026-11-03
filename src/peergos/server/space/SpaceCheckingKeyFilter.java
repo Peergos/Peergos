@@ -309,6 +309,12 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         return false;
     }
 
+    /** Whether the owner's identity is reached from the writer by edges between the user's own keys: parents that
+     *  only name each other, or the writer itself, own nothing */
+    private static boolean owned(UsageStore state, PublicKeyHash owner, PublicKeyHash writer) {
+        return ownedOtherwise(state, owner, writer, writer);
+    }
+
     private void processMutablePointerEvent(MutableEvent event) {
         try {
             PointerUpdate pointerUpdate = dht.getSigningKey(event.owner, event.writer)
@@ -342,8 +348,10 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
             WriterUsage current = state.getUsage(writer);
             if (current == null)
                 throw new IllegalStateException("Unknown writer key hash: " + writer);
-            if (current.target().equals(newRoot))
-                return; // already processed by another thread
+            // already processed by another thread, unless this empties a writer still holding an edge: its last update,
+            // never sized, left its stored target empty and that edge recorded, and with it gone the child goes too
+            if (current.target().equals(newRoot) && (newRoot.isPresent() || current.ownedKeys().isEmpty()))
+                return;
             if (! newRoot.isPresent()) {
                 LOG.info("Removing usage for (" + owner + ", " + writer + ") from " + current.directRetainedStorage());
                 // drop its edges too, so if it is re-owned later its children are counted again as newly added
@@ -794,7 +802,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                         try {
                             if (edgeAdded && ! namesWriter(owner, parent, writer))
                                 usageStore.removeOwnedKey(parent, writer);
-                            if ((newWriter || edgeAdded) && usageStore.getParents(writer).isEmpty())
+                            if ((newWriter || edgeAdded) && ! owned(usageStore, owner, writer))
                                 forgetWriter(username, owner, writer);
                         } catch (Exception e) {
                             LOG.log(Level.WARNING, "Couldn't take back new writer " + writer + " of owner " + owner, e);
@@ -858,7 +866,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
             } catch (IllegalStateException gone) {
                 continue; // forgotten already, with the writer's own update just processed
             }
-            if (username.equals(childUser) && usageStore.getParents(child).isEmpty())
+            if (username.equals(childUser) && ! owned(usageStore, owner, child))
                 forgetWriter(username, owner, child);
         }
     }
