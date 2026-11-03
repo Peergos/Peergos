@@ -2715,7 +2715,13 @@ public class FileWrapper {
                                                             throw new IllegalStateException("Cannot move " + name + ", it is no longer in its folder");
                                                         return freshUs.get().moveIn(v, c, freshTarget, freshParent, ourPath, newName, isPublic,
                                                                 targetMirrorBatId, context, preserveAccess);
-                                                    }))))).thenApply(s -> true);
+                                                    })))))
+                    // a link that hides where its items are can only read them in the restricted format
+                    .thenCompose(s -> target.getPath(net).thenCompose(targetPath -> context.isInHiddenLink(PathUtil.get(targetPath))
+                            .thenCompose(hidden -> ! hidden ?
+                                    Futures.of(true) :
+                                    context.getByPath(PathUtil.get(targetPath).resolve(newName).toString())
+                                            .thenCompose(moved -> moved.get().upgradeToRestrictedFormat(net, context.crypto)))));
         });
     }
 
