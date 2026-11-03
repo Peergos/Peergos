@@ -187,6 +187,8 @@ public class CryptreeNode implements Cborable {
 
     public static final String RESTRICTED = "restricted";
     public static final String PROPERTIES = "properties";
+    // so a child's full key link can't stand in for a directory's link to its parent key, which is directly under its full key
+    public static final String CHILD_KEYS = "child-keys";
 
     /** How a key opens this node: a full key to a legacy or restricted format node, a restricted key, or a parent
      *  key, which only opens the properties and parent link of a directory.
@@ -1241,7 +1243,7 @@ public class CryptreeNode implements Cborable {
                                 .thenCompose(newBase -> {
                                     // create and upload new metadata blob
                                     SymmetricKey nextSubfoldersKey = us.rBaseKey;
-                                    SymmetricKey ourParentKey = getParentKey(us.rBaseKey);
+                                    SymmetricKey ourParentKey = hasUnverifiedParentKey(us.rBaseKey) ? SymmetricKey.random() : getParentKey(us.rBaseKey);
                                     Optional<RelativeCapability> parentCap = getParentCapability(us.rBaseKey);
                                     RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(
                                             crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), nextSubfoldersKey);

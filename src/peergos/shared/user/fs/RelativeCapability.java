@@ -94,7 +94,7 @@ public class RelativeCapability implements Cborable {
     /** Replace our full key with the restricted key derived from it, and link to the full key from the parent's. */
     public RelativeCapability wrapFullKey(SymmetricKey parentFullKey) {
         return new RelativeCapability(writer, mapKey, bat, rBaseKey.derive(CryptreeNode.RESTRICTED), wBaseKeyLink,
-                Optional.of(SymmetricLink.fromPair(parentFullKey, rBaseKey)), Optional.empty());
+                Optional.of(SymmetricLink.fromPair(parentFullKey.derive(CryptreeNode.CHILD_KEYS), rBaseKey)), Optional.empty());
     }
 
     /** Replace our full key with the restricted key derived from it, and seal the full key to the parent. */
@@ -105,7 +105,7 @@ public class RelativeCapability implements Cborable {
 
     public RelativeCapability unwrapFullKey(SymmetricKey parentFullKey, Optional<byte[]> parentPublicKey) {
         if (fullKeyLink.isPresent())
-            return new RelativeCapability(writer, mapKey, bat, fullKeyLink.get().target(parentFullKey), wBaseKeyLink,
+            return new RelativeCapability(writer, mapKey, bat, fullKeyLink.get().target(parentFullKey.derive(CryptreeNode.CHILD_KEYS)), wBaseKeyLink,
                     Optional.empty(), Optional.empty());
         if (sealedFullKey.isPresent())
             return new RelativeCapability(writer, mapKey, bat, sealedFullKey.get().open(parentFullKey, parentPublicKey.get()),
