@@ -2720,7 +2720,7 @@ public class FileWrapper {
                     .thenCompose(s -> target.getPath(net).thenCompose(targetPath -> context.isInHiddenLink(PathUtil.get(targetPath))
                             .thenCompose(hidden -> ! hidden ?
                                     Futures.of(true) :
-                                    context.getByPath(PathUtil.get(targetPath).resolve(newName).toString())
+                                    context.getByPath(PathUtil.get(targetPath).resolve(newName))
                                             .thenCompose(moved -> moved.get().upgradeToRestrictedFormat(net, context.crypto)))));
         });
     }
