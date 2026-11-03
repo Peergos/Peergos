@@ -397,6 +397,24 @@ public class FileWrapper {
                 .thenCompose(p -> p.isEmpty() ? Futures.of(false) : p.get().isWithin(dirLocation, dir, hasher, network));
     }
 
+    /** Where loc is below this, which is at ourPath, found by walking down, since a pending node's parent link can't be read. */
+    public CompletableFuture<Optional<Path>> pathTo(Location loc, Path ourPath, Hasher hasher, NetworkAccess network) {
+        return pathTo(loc, ourPath, new HashSet<>(), hasher, network);
+    }
+
+    private CompletableFuture<Optional<Path>> pathTo(Location loc, Path ourPath, Set<Location> seen, Hasher hasher, NetworkAccess network) {
+        if (getLocation().equals(loc))
+            return Futures.of(Optional.of(ourPath));
+        if (! isDirectory() || ! seen.add(getLocation()))
+            return Futures.of(Optional.empty());
+        return getChildren(hasher, network)
+                .thenCompose(children -> Futures.reduceAll(children, Optional.<Path>empty(),
+                        (found, child) -> found.isPresent() ?
+                                Futures.of(found) :
+                                child.pathTo(loc, ourPath.resolve(child.getName()), seen, hasher, network),
+                        (a, b) -> a.isPresent() ? a : b));
+    }
+
     private CompletableFuture<Boolean> hasDescendantAt(Location loc, Set<Location> seen, Hasher hasher, NetworkAccess network) {
         // a restricted key holder can link to a folder from below it
         if (! isDirectory() || ! seen.add(getLocation()))
@@ -2684,6 +2702,39 @@ public class FileWrapper {
                                              String newName,
                                              UserContext context,
                                              Supplier<CompletableFuture<Boolean>> preserveAccess) {
+        boolean ours = context.signer != null && owner().equals(context.signer.publicKeyHash);
+        boolean restricted = isRestrictedKey() || parent.isRestrictedKey() || target.isRestrictedKey();
+        if (! ours || restricted || ! (isPending() || parent.isPending() || target.isPending()))
+            return moveWithoutAdopting(target, parent, ourPath, newName, context, preserveAccess);
+        // something pending can only be copied, which re-uploads its data, so adopt it first, which only rewrites
+        // metadata, and then move it in place
+        return (target.isPending() ?
+                context.findPendingPath(target) :
+                target.getPath(context.network).thenApply(p -> Optional.of(PathUtil.get(p))))
+                .thenCompose(targetPath -> {
+                    if (targetPath.isEmpty())
+                        return moveWithoutAdopting(target, parent, ourPath, newName, context, preserveAccess);
+                    // adopting rotates keys, so everything is retrieved again after it
+                    return context.adoptPending(ourPath)
+                            .thenCompose(x -> context.adoptPending(targetPath.get()))
+                            .thenCompose(x -> context.getByPath(ourPath))
+                            .thenCompose(us -> context.getByPath(ourPath.getParent())
+                                    .thenCompose(freshParent -> context.getByPath(targetPath.get())
+                                            .thenCompose(freshTarget -> {
+                                                if (us.isEmpty() || freshParent.isEmpty() || freshTarget.isEmpty())
+                                                    throw new IllegalStateException("Couldn't find " + ourPath + " or where it's moving to after giving them new keys");
+                                                return us.get().moveWithoutAdopting(freshTarget.get(), freshParent.get(), ourPath,
+                                                        newName, context, preserveAccess);
+                                            })));
+                });
+    }
+
+    private CompletableFuture<Boolean> moveWithoutAdopting(FileWrapper target,
+                                                           FileWrapper parent,
+                                                           Path ourPath,
+                                                           String newName,
+                                                           UserContext context,
+                                                           Supplier<CompletableFuture<Boolean>> preserveAccess) {
         ensureUnmodified();
 
         if (! isLegalName(newName))

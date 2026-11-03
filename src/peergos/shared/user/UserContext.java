@@ -3284,6 +3284,27 @@ public class UserContext {
      * Before sharing anything at or below one, give it new keys and a real parent link, so the share shows where it
      * is, and its maker can't use what they knew to reach anything above it.
      */
+    /** A pending item has no parent link to walk up, but it was made through a writable hidden link, in the
+     *  writing space of that link's member, so look for it below each of those.
+     */
+    public CompletableFuture<Optional<Path>> findPendingPath(FileWrapper pending) {
+        return getAllSecretLinks().thenCompose(links -> {
+            List<String> members = links.stream()
+                    .flatMap(l -> l.props.members.stream())
+                    .filter(m -> m.writable && m.hidden)
+                    .map(m -> m.path)
+                    .distinct()
+                    .collect(Collectors.toList());
+            return Futures.reduceAll(members, Optional.<Path>empty(),
+                    (found, path) -> found.isPresent() ?
+                            Futures.of(found) :
+                            getByPath(path).thenCompose(member -> member.isEmpty() || ! member.get().writer().equals(pending.writer()) ?
+                                    Futures.of(Optional.<Path>empty()) :
+                                    member.get().pathTo(pending.getLocation(), PathUtil.get(path), crypto.hasher, network)),
+                    (a, b) -> a.isPresent() ? a : b);
+        });
+    }
+
     public CompletableFuture<Boolean> adoptPending(Path path) {
         if (path.getNameCount() < 2)
             return Futures.of(true);
