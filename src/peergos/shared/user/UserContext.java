@@ -1184,7 +1184,11 @@ public class UserContext {
         Set<String> writable = new HashSet<>(writablePaths);
         Set<String> hidden = new HashSet<>(hiddenPaths);
         List<String> needWritingSpace = paths.stream().filter(writable::contains).collect(Collectors.toList());
-        List<String> toUpgrade = paths.stream().filter(hidden::contains).collect(Collectors.toList());
+        // members already hidden were upgraded then, and anything moved in since is upgraded by the move
+        Set<String> alreadyHidden = props.members.stream().filter(m -> m.hidden).map(m -> m.path).collect(Collectors.toSet());
+        List<String> toUpgrade = paths.stream()
+                .filter(p -> hidden.contains(p) && ! alreadyHidden.contains(p))
+                .collect(Collectors.toList());
         // moving a writable member into its own writing space writes its parent link, so adopt those too
         List<String> toAdopt = paths.stream().filter(p -> ! hidden.contains(p) || writable.contains(p)).collect(Collectors.toList());
         if (needWritingSpace.isEmpty())

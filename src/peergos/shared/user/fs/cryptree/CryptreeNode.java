@@ -1113,7 +1113,7 @@ public class CryptreeNode implements Cborable {
                                                                  NetworkAccess network,
                                                                  Crypto crypto) {
         Access access = open(us.rBaseKey).access;
-        if (access == Access.FULL)
+        if (access == Access.FULL || access == Access.RESTRICTED)
             return Futures.of(base);
         if (access != Access.LEGACY)
             throw new IllegalStateException("Upgrading a node needs its full key");
