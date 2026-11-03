@@ -189,6 +189,8 @@ public class CryptreeNode implements Cborable {
     public static final String PROPERTIES = "properties";
     // so a child's full key link can't stand in for a directory's link to its parent key, which is directly under its full key
     public static final String CHILD_KEYS = "child-keys";
+    // for a child whose full key was sealed to us, so that we remember it is pending when we link to it instead
+    public static final String PENDING_CHILD_KEYS = "pending-child-keys";
 
     /** How a key opens this node: a full key to a legacy or restricted format node, a restricted key, or a parent
      *  key, which only opens the properties and parent link of a directory.
@@ -494,11 +496,13 @@ public class CryptreeNode implements Cborable {
                         return Futures.of(full ?
                                 c.children.b().stream()
                                         .map(n -> {
+                                            // a restricted key holder can write a child whose full key we can't open, or one in the clear
+                                            if (! n.cap.hasWrappedFullKey())
+                                                return n.withCap(n.cap.asPending());
                                             try {
                                                 return n.withCap(n.cap.unwrapFullKey(us.rBaseKey, c.sealKey));
                                             } catch (Exception e) {
-                                                // a restricted key holder can write a child whose full key we can't open
-                                                return n;
+                                                return n.withCap(n.cap.asPending());
                                             }
                                         })
                                         .collect(Collectors.toList()) :
@@ -1421,7 +1425,11 @@ public class CryptreeNode implements Cborable {
                     .filter(e -> oldToNew.containsKey(location.apply(e)))
                     .map(c -> {
                         NamedAbsoluteCapability newTarget = oldToNew.get(location.apply(c));
-                        RelativeCapability newCap = ourPointer.relativise(newTarget.cap);
+                        RelativeCapability related = ourPointer.relativise(newTarget.cap);
+                        // the same keys are as pending as they were
+                        RelativeCapability newCap = c.cap.isPending() && related.rBaseKey.equals(c.cap.rBaseKey) ?
+                                related.asPending() :
+                                related;
                         if (c.cap.hasWrappedFullKey()) {
                             if (! newCap.rBaseKey.equals(c.cap.rBaseKey))
                                 throw new IllegalStateException("A restricted key can't replace a child");

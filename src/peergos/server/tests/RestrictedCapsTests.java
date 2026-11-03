@@ -682,6 +682,93 @@ public class RestrictedCapsTests {
         Assert.assertTrue(parent.isEmpty());
     }
 
+    private static boolean readsParentLink(CryptreeNode node, SymmetricKey key) {
+        try {
+            return node.getParentCapability(key).isPresent();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** A folder made through the link, by a maker who then writes it whatever parent link they like. */
+    private FileWrapper madeThroughLink(UserContext owner, LinkProperties link, String dir, Optional<RelativeCapability> parentLink) {
+        UserContext fromLink = openLink(owner, link);
+        fromLink.getByPath(dir).join().get().mkdir("made", fromLink.network, false, Optional.empty(), crypto).join();
+        FileWrapper made = fromLink.getByPath(dir + "/made").join().get();
+        SymmetricKey p = signIn(owner.username).getByPath(owner.username + "/work" + dir + "/made").join().get().getParentKey();
+        rewrite(made, fromLink, base -> {}, parent -> {
+            Map<String, Cborable> res = withParentLinks(parent, Optional.empty(), false);
+            parentLink.ifPresent(l -> res.put("q", PaddedCipherText.build(p, l, 16)));
+            return res;
+        });
+        // and the owner writes to the folder it is in
+        upload(signIn(owner.username), PathUtil.get(owner.username + "/work" + dir), "routine.txt", randomData(10));
+        return signIn(owner.username).getByPath(owner.username + "/work" + dir + "/made").join().get();
+    }
+
+    private LinkProperties dropLink(UserContext owner) {
+        Path home = PathUtil.get(owner.username);
+        mkdir(owner, home, "work");
+        mkdir(owner, home.resolve("work"), "drop");
+        mkdir(owner, home.resolve("work/drop"), "sub");
+        mkdir(owner, home.resolve("work/drop"), "other");
+        String path = home.resolve("work/drop").toString();
+        return owner.createSecretLink(List.of(path), List.of(path), List.of(path),
+                Optional.empty(), Optional.empty(), "", false).join();
+    }
+
+    @Test(timeout = 120_000)
+    public void aFolderMadeThroughALinkWithoutAParentLinkIsStillPending() {
+        UserContext owner = signIn(username("np"));
+        LinkProperties link = dropLink(owner);
+        FileWrapper made = madeThroughLink(owner, link, "/drop/sub", Optional.empty());
+        SymmetricKey makersP = made.getParentKey();
+        Assert.assertTrue(made.isPending());
+
+        Path drop = PathUtil.get(owner.username, "work", "drop");
+        move(signIn(owner.username), drop + "/sub/made", drop + "/other");
+        CryptreeNode moved = openLink(owner, link).getByPath("/drop/other/made").join().get().getPointer().fileAccess;
+        Assert.assertFalse(readsParentLink(moved, makersP));
+    }
+
+    @Test(timeout = 120_000)
+    public void theOwnersFileInAFolderMadeThroughALinkIsPending() {
+        UserContext owner = signIn(username("of"));
+        LinkProperties link = dropLink(owner);
+        madeThroughLink(owner, link, "/drop/sub", Optional.empty());
+        Path drop = PathUtil.get(owner.username, "work", "drop");
+        byte[] data = randomData(200);
+        upload(signIn(owner.username), drop.resolve("sub/made"), "owners.txt", data);
+        // the maker can open the owner's file with the folder's full key
+        FileWrapper owners = signIn(owner.username).getByPath(drop.resolve("sub/made/owners.txt")).join().get();
+        SymmetricKey ownersKey = owners.getPointer().capability.rBaseKey;
+        Assert.assertTrue(owners.isPending());
+
+        move(signIn(owner.username), drop + "/sub/made/owners.txt", drop + "/other");
+        UserContext after = signIn(owner.username);
+        PeergosNetworkUtils.checkFileContents(data, after.getByPath(drop.resolve("other/owners.txt")).join().get(), after);
+        CryptreeNode moved = openLink(owner, link).getByPath("/drop/other/owners.txt").join().get().getPointer().fileAccess;
+        Assert.assertFalse(readsParentLink(moved, ownersKey));
+    }
+
+    @Test(timeout = 120_000)
+    public void aFolderMadeThroughALinkWithAReadableParentLinkIsAdopted() {
+        UserContext owner = signIn(username("rp"));
+        LinkProperties link = dropLink(owner);
+        AbsoluteCapability drop = signIn(owner.username).getByPath(owner.username + "/work/drop").join().get().getPointer().capability;
+        RelativeCapability fake = new RelativeCapability(Optional.empty(), drop.getMapKey(), drop.bat, SymmetricKey.random(), Optional.empty());
+        FileWrapper made = madeThroughLink(owner, link, "/drop", Optional.of(fake));
+        SymmetricKey makersP = made.getParentKey();
+        Assert.assertTrue(made.isPending());
+
+        String path = owner.username + "/work/drop/made";
+        signIn(owner.username).createSecretLink(List.of(path), List.of(path), List.of(path),
+                Optional.empty(), Optional.empty(), "", false).join();
+        CryptreeNode after = openLink(owner, link).getByPath("/drop/made").join().get().getPointer().fileAccess;
+        Assert.assertFalse(readsParentLink(after, makersP));
+        Assert.assertFalse(signIn(owner.username).getByPath(path).join().get().isPending());
+    }
+
     @Test(timeout = 120_000)
     public void aBadChildLinkOnlyBreaksThatChild() {
         UserContext owner = signIn(username("bc"));

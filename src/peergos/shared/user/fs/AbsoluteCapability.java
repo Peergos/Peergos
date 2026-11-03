@@ -21,6 +21,8 @@ public class AbsoluteCapability implements Cborable {
     public final Optional<Bat> bat; // Only absent on legacy data
     public final SymmetricKey rBaseKey;
     public final Optional<SymmetricKey> wBaseKey;
+    // whether this, or a folder above it, was made through a restricted key, so its maker may know our keys
+    private boolean pending;
 
     public AbsoluteCapability(PublicKeyHash owner,
                               PublicKeyHash writer,
@@ -57,7 +59,7 @@ public class AbsoluteCapability implements Cborable {
     }
 
     public WritableAbsoluteCapability toWritable(SymmetricKey writeBaseKey) {
-        return new WritableAbsoluteCapability(owner, writer, mapKey, bat, rBaseKey, writeBaseKey);
+        return inherit(new WritableAbsoluteCapability(owner, writer, mapKey, bat, rBaseKey, writeBaseKey));
     }
 
     /*  Return a capability link of the form #$owner/$writer/$mapkey+$bat/$baseKey
@@ -98,19 +100,36 @@ public class AbsoluteCapability implements Cborable {
     }
 
     public AbsoluteCapability readOnly() {
-        return new AbsoluteCapability(owner, writer, mapKey, bat, rBaseKey, Optional.empty());
+        return inherit(new AbsoluteCapability(owner, writer, mapKey, bat, rBaseKey, Optional.empty()));
     }
 
     public AbsoluteCapability withMapKey(byte[] newMapKey, Optional<Bat> newBat) {
-        return new AbsoluteCapability(owner, writer, newMapKey, newBat, rBaseKey, wBaseKey);
+        return inherit(new AbsoluteCapability(owner, writer, newMapKey, newBat, rBaseKey, wBaseKey));
     }
 
     public AbsoluteCapability withBaseKey(SymmetricKey newBaseKey) {
-        return new AbsoluteCapability(owner, writer, mapKey, bat, newBaseKey, wBaseKey);
+        return inherit(new AbsoluteCapability(owner, writer, mapKey, bat, newBaseKey, wBaseKey));
     }
 
     public AbsoluteCapability withOwner(PublicKeyHash owner) {
-        return new AbsoluteCapability(owner, writer, mapKey, bat, rBaseKey, wBaseKey);
+        return inherit(new AbsoluteCapability(owner, writer, mapKey, bat, rBaseKey, wBaseKey));
+    }
+
+    public boolean isPending() {
+        return pending;
+    }
+
+    public AbsoluteCapability asPending() {
+        AbsoluteCapability res = wBaseKey.isPresent() ?
+                new WritableAbsoluteCapability(owner, writer, mapKey, bat, rBaseKey, wBaseKey.get()) :
+                new AbsoluteCapability(owner, writer, mapKey, bat, rBaseKey, wBaseKey);
+        res.pending = true;
+        return res;
+    }
+
+    protected <T extends AbsoluteCapability> T inherit(T derived) {
+        ((AbsoluteCapability) derived).pending = pending;
+        return derived;
     }
 
     public boolean isNull() {

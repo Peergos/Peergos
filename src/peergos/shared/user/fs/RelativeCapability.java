@@ -30,6 +30,8 @@ public class RelativeCapability implements Cborable {
     // full key is linked from the directory's, or sealed to it by someone who only has the directory's restricted key.
     public final Optional<SymmetricLink> fullKeyLink;
     public final Optional<SealedKey> sealedFullKey;
+    // whether the full key came from someone with only the directory's restricted key, so they may know it
+    private boolean pending;
 
     public RelativeCapability(Optional<PublicKeyHash> writer,
                               byte[] mapKey,
@@ -74,17 +76,31 @@ public class RelativeCapability implements Cborable {
     public AbsoluteCapability toAbsolute(AbsoluteCapability source) {
         Optional<SymmetricKey> wBaseKey = source.wBaseKey.flatMap(w -> wBaseKeyLink.map(link -> link.target(w)));
         PublicKeyHash writer = this.writer.orElse(source.writer);
-        if (wBaseKey.isPresent())
-            return new WritableAbsoluteCapability(source.owner, writer, mapKey, bat, rBaseKey, wBaseKey.get());
-        return new AbsoluteCapability(source.owner, writer, mapKey, bat, rBaseKey, wBaseKey);
+        AbsoluteCapability res = wBaseKey.isPresent() ?
+                new WritableAbsoluteCapability(source.owner, writer, mapKey, bat, rBaseKey, wBaseKey.get()) :
+                new AbsoluteCapability(source.owner, writer, mapKey, bat, rBaseKey, wBaseKey);
+        return pending || source.isPending() ? res.asPending() : res;
     }
 
     public RelativeCapability withWritingKey(Optional<PublicKeyHash> writingKey) {
-        return new RelativeCapability(writingKey, mapKey, bat, rBaseKey, wBaseKeyLink, fullKeyLink, sealedFullKey);
+        return new RelativeCapability(writingKey, mapKey, bat, rBaseKey, wBaseKeyLink, fullKeyLink, sealedFullKey).pending(pending);
     }
 
     public RelativeCapability withBaseKey(SymmetricKey newBaseKey) {
-        return new RelativeCapability(writer, mapKey, bat, newBaseKey, wBaseKeyLink, fullKeyLink, sealedFullKey);
+        return new RelativeCapability(writer, mapKey, bat, newBaseKey, wBaseKeyLink, fullKeyLink, sealedFullKey).pending(pending);
+    }
+
+    public boolean isPending() {
+        return pending;
+    }
+
+    public RelativeCapability asPending() {
+        return new RelativeCapability(writer, mapKey, bat, rBaseKey, wBaseKeyLink, fullKeyLink, sealedFullKey).pending(true);
+    }
+
+    private RelativeCapability pending(boolean pending) {
+        this.pending = pending;
+        return this;
     }
 
     public boolean hasWrappedFullKey() {
@@ -94,23 +110,27 @@ public class RelativeCapability implements Cborable {
     /** Replace our full key with the restricted key derived from it, and link to the full key from the parent's. */
     public RelativeCapability wrapFullKey(SymmetricKey parentFullKey) {
         return new RelativeCapability(writer, mapKey, bat, rBaseKey.derive(CryptreeNode.RESTRICTED), wBaseKeyLink,
-                Optional.of(SymmetricLink.fromPair(parentFullKey.derive(CryptreeNode.CHILD_KEYS), rBaseKey)), Optional.empty());
+                Optional.of(SymmetricLink.fromPair(parentFullKey.derive(linkLabel()), rBaseKey)), Optional.empty()).pending(pending);
     }
 
     /** Replace our full key with the restricted key derived from it, and seal the full key to the parent. */
     public RelativeCapability sealFullKey(byte[] parentPublicKey, SafeRandom random) {
         return new RelativeCapability(writer, mapKey, bat, rBaseKey.derive(CryptreeNode.RESTRICTED), wBaseKeyLink,
-                Optional.empty(), Optional.of(SealedKey.seal(rBaseKey, parentPublicKey, random)));
+                Optional.empty(), Optional.of(SealedKey.seal(rBaseKey, parentPublicKey, random))).pending(true);
     }
 
     public RelativeCapability unwrapFullKey(SymmetricKey parentFullKey, Optional<byte[]> parentPublicKey) {
         if (fullKeyLink.isPresent())
-            return new RelativeCapability(writer, mapKey, bat, fullKeyLink.get().target(parentFullKey.derive(CryptreeNode.CHILD_KEYS)), wBaseKeyLink,
-                    Optional.empty(), Optional.empty());
+            return new RelativeCapability(writer, mapKey, bat, fullKeyLink.get().target(parentFullKey.derive(linkLabel())), wBaseKeyLink,
+                    Optional.empty(), Optional.empty()).pending(pending);
         if (sealedFullKey.isPresent())
             return new RelativeCapability(writer, mapKey, bat, sealedFullKey.get().open(parentFullKey, parentPublicKey.get()),
-                    wBaseKeyLink, Optional.empty(), Optional.empty());
+                    wBaseKeyLink, Optional.empty(), Optional.empty()).pending(true);
         return this;
+    }
+
+    private String linkLabel() {
+        return pending ? CryptreeNode.PENDING_CHILD_KEYS : CryptreeNode.CHILD_KEYS;
     }
 
     public static RelativeCapability buildSubsequentChunk(byte[] mapkey, Optional<Bat> bat, SymmetricKey baseKey) {
@@ -125,7 +145,7 @@ public class RelativeCapability implements Cborable {
         bat.ifPresent(b -> cbor.put("a", b));
         cbor.put("k", rBaseKey.toCbor());
         wBaseKeyLink.ifPresent(w -> cbor.put("l", w.toCbor()));
-        fullKeyLink.ifPresent(f -> cbor.put("f", f.toCbor()));
+        fullKeyLink.ifPresent(f -> cbor.put(pending ? "h" : "f", f.toCbor()));
         sealedFullKey.ifPresent(g -> cbor.put("g", g.toCbor()));
         return CborObject.CborMap.build(cbor);
     }
@@ -145,9 +165,11 @@ public class RelativeCapability implements Cborable {
         Optional<Bat> bat = map.getOptional("a", Bat::fromCbor);
         SymmetricKey baseKey = SymmetricKey.fromCbor(map.get("k"));
         Optional<SymmetricLink> writerLink = Optional.ofNullable(map.get("l")).map(SymmetricLink::fromCbor);
-        Optional<SymmetricLink> fullKeyLink = Optional.ofNullable(map.get("f")).map(SymmetricLink::fromCbor);
+        Optional<SymmetricLink> pendingKeyLink = Optional.ofNullable(map.get("h")).map(SymmetricLink::fromCbor);
+        Optional<SymmetricLink> fullKeyLink = Optional.ofNullable(map.get("f")).map(SymmetricLink::fromCbor).or(() -> pendingKeyLink);
         Optional<SealedKey> sealedFullKey = Optional.ofNullable(map.get("g")).map(SealedKey::fromCbor);
-        return new RelativeCapability(writer, mapKey, bat, baseKey, writerLink, fullKeyLink, sealedFullKey);
+        return new RelativeCapability(writer, mapKey, bat, baseKey, writerLink, fullKeyLink, sealedFullKey)
+                .pending(pendingKeyLink.isPresent() && map.get("f") == null);
     }
 
     @Override

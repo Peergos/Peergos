@@ -32,24 +32,24 @@ public class WritableAbsoluteCapability extends AbsoluteCapability {
 
     @Override
     public WritableAbsoluteCapability withBaseKey(SymmetricKey newBaseKey) {
-        return new WritableAbsoluteCapability(owner, writer, getMapKey(), bat, newBaseKey, wBaseKey.get());
+        return inherit(new WritableAbsoluteCapability(owner, writer, getMapKey(), bat, newBaseKey, wBaseKey.get()));
     }
 
     public WritableAbsoluteCapability withBaseWriteKey(SymmetricKey newBaseWriteKey) {
-        return new WritableAbsoluteCapability(owner, writer, getMapKey(), bat, rBaseKey, newBaseWriteKey);
+        return inherit(new WritableAbsoluteCapability(owner, writer, getMapKey(), bat, rBaseKey, newBaseWriteKey));
     }
 
     @Override
     public WritableAbsoluteCapability withMapKey(byte[] newMapKey, Optional<Bat> newBat) {
-        return new WritableAbsoluteCapability(owner, writer, newMapKey, newBat, rBaseKey, wBaseKey.get());
+        return inherit(new WritableAbsoluteCapability(owner, writer, newMapKey, newBat, rBaseKey, wBaseKey.get()));
     }
 
     public AbsoluteCapability withOwner(PublicKeyHash owner) {
-        return new WritableAbsoluteCapability(owner, writer, getMapKey(), bat, rBaseKey, wBaseKey.get());
+        return inherit(new WritableAbsoluteCapability(owner, writer, getMapKey(), bat, rBaseKey, wBaseKey.get()));
     }
 
     public WritableAbsoluteCapability withSigner(PublicKeyHash newSigner) {
-        return new WritableAbsoluteCapability(owner, newSigner, getMapKey(), bat, rBaseKey, wBaseKey.get());
+        return inherit(new WritableAbsoluteCapability(owner, newSigner, getMapKey(), bat, rBaseKey, wBaseKey.get()));
     }
 
     /*  Return a capability link of the form #$owner/$writer/$mapkey+$bat/$baseKey/$baseWkey

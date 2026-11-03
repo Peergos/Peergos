@@ -350,11 +350,13 @@ public class FileWrapper {
             if (parentRFP == null)
                 return Futures.of(Optional.empty());
             FileProperties parentProps = parentRFP.getProperties();
+            // a pending node's parent link is what its maker wrote, so we can't tell what is above it
+            RetrievedCapability up = cap.isPending() ? new RetrievedCapability(parentRFP.capability.asPending(), parentRFP.fileAccess) : parentRFP;
             if (! parentProps.isLink)
-                return version.withWriter(parentRFP.capability.owner, parentRFP.capability.writer, network)
-                        .thenApply(fullVersion -> Optional.of(new FileWrapper(parentRFP, Optional.empty(),
+                return version.withWriter(up.capability.owner, up.capability.writer, network)
+                        .thenApply(fullVersion -> Optional.of(new FileWrapper(up, Optional.empty(),
                                 Optional.empty(), ownerName, fullVersion)));
-            return retrieveParent(parentRFP, ownerName, version, network);
+            return retrieveParent(up, ownerName, version, network);
         });
     }
 
@@ -364,22 +366,16 @@ public class FileWrapper {
         return pointer != null && pointer.fileAccess.isRestrictedKey(pointer.capability.rBaseKey);
     }
 
-    /** Whether this was made through a restricted key, so it has a parent link, but not one that we can read. */
+    /** Whether this, or a folder above it, was made through a restricted key, so its maker may know our keys. */
     public boolean isPending() {
         if (pointer == null || isRestrictedKey())
             return false;
+        if (pointer.capability.isPending())
+            return true;
         SymmetricKey key = pointer.capability.rBaseKey;
         if (pointer.fileAccess.hasUnverifiedParentKey(key))
             return true;
         return pointer.fileAccess.hasParentLink(key) && pointer.fileAccess.getParentCapability(key).isEmpty();
-    }
-
-    /** Whether this, or a folder above it, was made through a restricted key, so its maker may know our full key. */
-    public CompletableFuture<Boolean> isPendingOrBelowPending(NetworkAccess network) {
-        if (isPending())
-            return Futures.of(true);
-        return retrieveParent(network)
-                .thenCompose(p -> p.isEmpty() || p.get().isRoot() ? Futures.of(false) : p.get().isPendingOrBelowPending(network));
     }
 
     /** Whether this is at dirLocation or below it. Paths can't tell, as they stop where a parent link can't be read. */
@@ -387,19 +383,20 @@ public class FileWrapper {
         if (getLocation().equals(dirLocation))
             return Futures.of(true);
         if (isRestrictedKey() || isPending())
-            return dir.hasDescendantAt(getLocation(), hasher, network);
+            return dir.hasDescendantAt(getLocation(), new HashSet<>(), hasher, network);
         return retrieveParent(network)
                 .thenCompose(p -> p.isEmpty() ? Futures.of(false) : p.get().isWithin(dirLocation, dir, hasher, network));
     }
 
-    private CompletableFuture<Boolean> hasDescendantAt(Location loc, Hasher hasher, NetworkAccess network) {
-        if (! isDirectory())
+    private CompletableFuture<Boolean> hasDescendantAt(Location loc, Set<Location> seen, Hasher hasher, NetworkAccess network) {
+        // a restricted key holder can link to a folder from below it
+        if (! isDirectory() || ! seen.add(getLocation()))
             return Futures.of(false);
         return getChildren(hasher, network)
                 .thenCompose(children -> Futures.reduceAll(children, false,
                         (found, child) -> found || child.getLocation().equals(loc) ?
                                 Futures.of(true) :
-                                child.hasDescendantAt(loc, hasher, network),
+                                child.hasDescendantAt(loc, seen, hasher, network),
                         (a, b) -> a || b));
     }
 
@@ -2747,9 +2744,7 @@ public class FileWrapper {
                                 if (! keepAccess || differentParentWriter || restricted)
                                     return Futures.of(false);
                                 // whoever made a pending node knows its keys, so re-pointing would show them where we now are
-                                return (isPending() ? Futures.of(true) : parent.isPendingOrBelowPending(net))
-                                        .thenCompose(srcPending -> srcPending ? Futures.of(true) : target.isPendingOrBelowPending(net))
-                                        .thenApply(pending -> ! pending);
+                                return Futures.of(! isPending() && ! parent.isPending() && ! target.isPending());
                             })
                             .thenCompose(repoint -> {
                                 // TODO optimise different parent writer case by correcting owned keys
