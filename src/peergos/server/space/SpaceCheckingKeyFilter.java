@@ -144,6 +144,8 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         long t1 = System.currentTimeMillis();
         Set<PublicKeyHash> writers = store.getAllWriters();
         List<Multihash> us = List.of(ourId.bareMultihash());
+        // each user's identity, looked up once; without the PKI, a writer stands in for it as it used to
+        Map<String, Optional<PublicKeyHash>> identities = new HashMap<>();
         for (PublicKeyHash writerKey : writers) {
             WriterUsage tmpUsage = null;
             try {
@@ -152,7 +154,13 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 Logging.LOG().info("Checking for updates from user: " + writerUsage.owner + ", writer key: " + writerKey);
 
                 // the identity key the ownership chains lead to; the pointer and block reads don't need it
-                PublicKeyHash owner = core.getPublicKeyHash(writerUsage.owner).join().orElse(writerKey);
+                PublicKeyHash owner = identities.computeIfAbsent(writerUsage.owner, u -> {
+                    try {
+                        return core.getPublicKeyHash(u).join();
+                    } catch (Exception e) {
+                        return Optional.empty();
+                    }
+                }).orElse(writerKey);
                 MaybeMultihash rootHash = mutable.getPointerTarget(owner, writerKey, dht).join().updated;
                 boolean isChanged = ! writerUsage.target().equals(rootHash);
                 if (isChanged) {
@@ -420,6 +428,10 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                                                 Hasher hasher) {
         for (PublicKeyHash ownedKey : removed) {
             try {
+                // A key of another user's, named under this writer with a proof it signed (or by an edge an older
+                // version recorded), is theirs: this user dropping the name forgets nothing of it.
+                if (! state.getOwner(parent).equals(state.getOwner(ownedKey)))
+                    continue;
                 // a key that has been moved to another parent is still in use, not orphaned, as long as that parent
                 // is owned in turn: not by another user's writer, nor by the key itself, whatever edges an older
                 // version recorded
@@ -830,7 +842,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     mutable, quotaAdmin, dht, hasher);
         usageStore.removeWriter(writer);
         for (PublicKeyHash child : registered.ownedKeys())
-            if (usageStore.getParents(child).isEmpty())
+            if (username.equals(usageStore.getOwner(child)) && usageStore.getParents(child).isEmpty())
                 forgetWriter(username, owner, child);
     }
 

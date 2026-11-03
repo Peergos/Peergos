@@ -553,6 +553,34 @@ public class WriterQuotaTests {
     }
 
     @Test
+    public void aShareeDroppingTheirOwnWriterForgetsNothingOfTheOwners() throws Exception {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        UserContext third = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        PeergosNetworkUtils.friendBetweenGroups(List.of(sharee), List.of(third));
+        Path dir = sharedDir(owner, "team", sharee);
+        owner.setWriteShareQuota(dir, Optional.of(256L * KiB)).join();
+        upload(owner, dir, "ownersfile", 100 * KiB);
+        // the sharee names the owner's key under a writing space of their own, then drops that space
+        Path mine = sharedDir(sharee, "mine", third);
+        FileWrapper team = sharee.getByPath(dir).join().get();
+        linkUnder(sharee, team.signingPair(), sharee.getByPath(mine).join().get().signingPair());
+        awaitUsageUpdate();
+        long counted = owner.getSpaceUsage(false).join();
+        sharee.unShareWriteAccessWith(mine, Set.of(third.username)).join();
+        awaitUsageUpdate();
+
+        // the owner's key is still theirs, counted, and capped
+        PublicKeyHash k = team.signingPair().publicKeyHash;
+        Assert.assertEquals(owner.username, usageStore().getOwner(k));
+        Assert.assertEquals(Optional.of(256L * KiB), usageStore().getWriterQuota(k));
+        long after = owner.getSpaceUsage(false).join();
+        Assert.assertTrue("The owner's data was uncounted: " + after + " of " + counted, after >= counted - 10 * KiB);
+        assertRefusedForTheCap(() -> upload(sharee, dir, "big", 1024 * KiB));
+    }
+
+    @Test
     public void aKeyNamedUnderItselfDoesntOutliveItsRevocation() throws Exception {
         UserContext owner = signUp();
         UserContext sharee = signUp();
