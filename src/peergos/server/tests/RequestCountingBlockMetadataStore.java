@@ -60,6 +60,12 @@ class RequestCountingBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
+    public Map<Cid, BlockMetadata> getAll(PublicKeyHash owner, List<Cid> blocks) {
+        count.incrementAndGet();
+        return target.getAll(owner, blocks);
+    }
+
+    @Override
     public Optional<PublicKeyHash> getOwner(Cid block) {
         return target.getOwner(block);
     }
