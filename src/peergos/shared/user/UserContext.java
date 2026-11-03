@@ -3298,9 +3298,10 @@ public class UserContext {
                         return Futures.of(true);
                     FileWrapper child = childOpt.get();
                     if (child.isPending()) {
-                        Path at = path.getRoot() == null ?
-                                path.subpath(0, depth + 1) :
-                                path.getRoot().resolve(path.subpath(0, depth + 1));
+                        Path childPath = path;
+                        for (int i = path.getNameCount(); i > depth + 1; i--)
+                            childPath = childPath.getParent();
+                        Path at = childPath;
                         // rotating rewrites everything below with real parent links too, and leaves links,
                         // shares and published caps to anything below on the old keys
                         return publishedAtOrBelow(at).thenCompose(published ->
