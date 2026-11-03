@@ -532,6 +532,12 @@ public class JdbcUsageStore implements UsageStore {
              PreparedStatement quotas = conn.prepareStatement("DELETE FROM writerquotas WHERE writer_id = ?;");
              PreparedStatement usage = conn.prepareStatement("DELETE FROM writerusage WHERE writer_id = ?;");
              PreparedStatement writers = conn.prepareStatement("DELETE FROM writers WHERE id = ?;")) {
+            // out of the cache before the deletes too: if one fails, the writer is looked up afresh rather than
+            // trusted from a cache that outlives the attempt to remove it
+            synchronized (owners) {
+                ownerRemovals++;
+                owners.remove(writer);
+            }
             select.setBytes(1, writer.toBytes());
             ResultSet res = select.executeQuery();
             if (! res.next())

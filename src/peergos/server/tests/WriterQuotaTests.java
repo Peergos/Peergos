@@ -11,6 +11,8 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -582,6 +584,43 @@ public class WriterQuotaTests {
         long after = owner.getSpaceUsage(false).join();
         Assert.assertTrue("The owner's data was uncounted: " + after + " of " + counted, after >= counted - 10 * KiB);
         assertRefusedForTheCap(() -> upload(sharee, dir, "big", 1024 * KiB));
+    }
+
+    @Test
+    public void anEdgeNoProcessedRootNamesGoesWithItsParent() throws Exception {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        Path dir = sharedDir(owner, "team", sharee);
+        owner.setWriteShareQuota(dir, Optional.of(256L * KiB)).join();
+        awaitUsageUpdate();
+        FileWrapper shared = sharee.getByPath(dir).join().get();
+        PublicKeyHash ownerKey = shared.owner();
+        SigningPrivateKeyAndPublicHash parent = shared.signingPair();
+        SigningPrivateKeyAndPublicHash child = newKeyUnder(ownerKey, parent);
+
+        // the sharee sets a root naming a new key, which the server links on arrival but can't size (it links to a
+        // block that isn't there), then sets the old root back: the queue never processes a root naming the key
+        CommittedWriterData before = WriterData.getWriterData(ownerKey, parent.publicKeyHash, service.mutable, service.storage).join();
+        OwnerProof proof = OwnerProof.build(child, parent.publicKeyHash).join();
+        byte[] absent = new byte[100];
+        random.nextBytes(absent);
+        Cid missing = crypto.hasher.hash(absent, true).join();
+        TransactionId tid = service.storage.startTransaction(ownerKey).join();
+        Cid naming = service.storage.put(ownerKey, parent, before.props.get().addNamedKey("unsized", proof).withChamp(missing).serialize(),
+                crypto.hasher, tid).join();
+        PointerUpdate toNaming = new PointerUpdate(before.hash, MaybeMultihash.of(naming), PointerUpdate.increment(before.sequence));
+        service.mutable.setPointer(ownerKey, parent, toNaming).join();
+        awaitUsageUpdate();
+        Cid back = service.storage.put(ownerKey, parent, before.props.get().serialize(), crypto.hasher, tid).join();
+        service.mutable.setPointer(ownerKey, parent, new PointerUpdate(MaybeMultihash.of(naming), MaybeMultihash.of(back),
+                PointerUpdate.increment(toNaming.sequence))).join();
+        awaitUsageUpdate();
+
+        // revoked, the folder's writer goes, and the key linked under it with it
+        owner.unShareWriteAccessWith(dir, Set.of(sharee.username)).join();
+        awaitUsageUpdate();
+        assertCannotCommit(child, ownerKey, "a key linked under a revoked folder by a root the queue never processed");
     }
 
     @Test

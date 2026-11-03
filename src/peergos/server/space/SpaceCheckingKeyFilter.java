@@ -218,7 +218,9 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     }
 
     public void accept(MutableEvent event) {
-        // the pointer has moved by now, so a full queue mustn't fail the commit that moved it
+        // The pointer has moved by now, so a full queue mustn't fail the commit that moved it. The writer's usage is
+        // behind until its next update; an edge recorded below for a child that update never names goes when the
+        // writer does.
         if (! mutableQueue.offer(event))
             LOG.warning("Mutable event queue full, usage of writer " + event.writer + " waits for its next update");
         try {
@@ -348,17 +350,20 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 state.updateWriterUsageAtomically(writer, current.target(), MaybeMultihash.empty(),
                         current.ownedKeys(), Collections.emptySet(), 0,
                         -current.directRetainedStorage(), state.getUsage(current.owner).isErrored());
+                // Subtract data size from orphaned child keys (this assumes the keys form a tree without dupes): the
+                // ones the old root names, and any whose edge was recorded ahead of an update that was never
+                // processed (an event dropped or failed, a restart, an undo that threw). With this writer gone,
+                // nothing owns those either.
+                Set<PublicKeyHash> orphaned = new HashSet<>(current.ownedKeys());
                 if (existingRoot.isPresent()) {
                     try {
-                        // subtract data size from orphaned child keys (this assumes the keys form a tree without dupes)
-                        Set<PublicKeyHash> updatedOwned =
-                                DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, existingRoot,
-                                        (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht),  dht, hasher).join();
-                        processRemovedOwnedKeys(state, owner, writer, updatedOwned, mutable, quotaAdmin, dht, hasher);
+                        orphaned.addAll(DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, existingRoot,
+                                (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht), dht, hasher).join());
                     } catch (Exception e) {
                         LOG.log(Level.WARNING, e.getMessage(), e);
                     }
                 }
+                processRemovedOwnedKeys(state, owner, writer, orphaned, mutable, quotaAdmin, dht, hasher);
                 return;
             }
 
@@ -757,7 +762,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 }
                 // only the owner's own writers vouch for a writer in their space: another user's key, sent in a
                 // commit for this owner, must not register one here, whatever the rest of that commit does
-                if (! username.equals(parentUser) || parent.equals(writer))
+                if (! username.equals(parentUser) || parent.equals(writer) || writer.equals(owner))
                     return nothing;
                 String writerUser;
                 try {
@@ -787,14 +792,16 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 }, () -> {
                     synchronized (lock) {
                         try {
-                            if (newWriter)
-                                provisional.remove(writer);
                             if (edgeAdded && ! namesWriter(owner, parent, writer))
                                 usageStore.removeOwnedKey(parent, writer);
                             if ((newWriter || edgeAdded) && usageStore.getParents(writer).isEmpty())
                                 forgetWriter(username, owner, writer);
                         } catch (Exception e) {
                             LOG.log(Level.WARNING, "Couldn't take back new writer " + writer + " of owner " + owner, e);
+                        } finally {
+                            // only once it is forgotten or kept, or a pointer of its could land in between
+                            if (newWriter)
+                                provisional.remove(writer);
                         }
                     }
                 });
