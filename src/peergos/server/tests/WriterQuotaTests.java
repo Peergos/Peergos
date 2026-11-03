@@ -492,7 +492,11 @@ public class WriterQuotaTests {
                                 .thenApply(named::mergeAndOverwriteWith));
             }, net3.dhtClient)).join();
             Assert.fail("A commit creating a writer that has a pointer already landed");
-        } catch (Exception refused) {}
+        } catch (Exception refused) {
+            // refused for its stale claim, not anything else a commit can fail on
+            String message = String.valueOf(peergos.shared.util.Exceptions.getRootCause(refused).getMessage());
+            Assert.assertTrue(message, message.contains("PointerCAS") || message.contains("Pointers changed"));
+        }
         assertCannotCommit(child[0], ownerKey, "a dropped writer that a refused commit named again");
     }
 
@@ -655,7 +659,11 @@ public class WriterQuotaTests {
                                 .thenApply(named::mergeAndOverwriteWith));
             }, net.dhtClient)).join();
             Assert.fail("A commit creating a writer that has a pointer already landed");
-        } catch (Exception refused) {}
+        } catch (Exception refused) {
+            // refused for its stale claim, not anything else a commit can fail on
+            String message = String.valueOf(peergos.shared.util.Exceptions.getRootCause(refused).getMessage());
+            Assert.assertTrue(message, message.contains("PointerCAS") || message.contains("Pointers changed"));
+        }
 
         // the write in flight is still reserved, so a second as large doesn't fit beside it
         long expected = writerQuotas().getUsage(capped.publicKeyHash).expectedUsage();

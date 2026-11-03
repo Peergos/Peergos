@@ -26,8 +26,9 @@ public interface WriterUsageStore {
 
     void addWriter(String owner, PublicKeyHash writer);
 
-    /** Record that a registered writer owns another, ahead of the parent's pointer update that names it, so that
-     *  the caps over the parent bound the child's first writes. Does nothing if the edge is already there.
+    /** Record that a registered writer owns another, ahead of the queue's processing of the parent's pointer update
+     *  that names it (or of that update itself, for a commit creating the child), so that the caps over the parent
+     *  bound the child's first writes. Does nothing if the edge is already there.
      *
      * @return whether the edge is new
      */

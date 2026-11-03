@@ -740,7 +740,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         BulkCommitStorage.Registration nothing = registration(() -> {}, () -> {});
         Object lock = healLocks.computeIfAbsent(owner, o -> new Object());
         synchronized (lock) {
-            boolean writerAdded = false;
+            boolean writerAdded = false, markedProvisional = false;
             try {
                 String username = core.getUsername(owner).join();
                 if (! quotaAdmin.getLocalUsernames().contains(username))
@@ -764,8 +764,10 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     writerUser = usageStore.getOwner(writer);
                 } catch (IllegalStateException absent) {
                     usageStore.addUserIfAbsent(username);
-                    usageStore.addWriter(username, writer);
+                    // provisional before it is registered, so no other pointer of its lands in between
                     provisional.put(writer, ownUpdate.map(u -> u.signed));
+                    markedProvisional = true;
+                    usageStore.addWriter(username, writer);
                     writerUser = username;
                     writerAdded = true;
                 }
@@ -799,9 +801,10 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
             } catch (Exception e) {
                 LOG.log(Level.WARNING, "Couldn't register new writer " + writer + " of owner " + owner, e);
                 // nothing half done stays: a writer added here without its edge would write under no cap
+                if (markedProvisional)
+                    provisional.remove(writer);
                 if (writerAdded) {
                     try {
-                        provisional.remove(writer);
                         usageStore.removeWriter(writer);
                     } catch (Exception f) {
                         LOG.log(Level.WARNING, "Couldn't take back new writer " + writer + " of owner " + owner, f);
@@ -841,9 +844,16 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
             processMutablePointerEvent(usageStore, owner, writer, registered.target(), MaybeMultihash.empty(),
                     mutable, quotaAdmin, dht, hasher);
         usageStore.removeWriter(writer);
-        for (PublicKeyHash child : registered.ownedKeys())
-            if (username.equals(usageStore.getOwner(child)) && usageStore.getParents(child).isEmpty())
+        for (PublicKeyHash child : registered.ownedKeys()) {
+            String childUser;
+            try {
+                childUser = usageStore.getOwner(child);
+            } catch (IllegalStateException gone) {
+                continue; // forgotten already, with the writer's own update just processed
+            }
+            if (username.equals(childUser) && usageStore.getParents(child).isEmpty())
                 forgetWriter(username, owner, child);
+        }
     }
 
     /** Whether the parent's committed root names the writer as one it owns */

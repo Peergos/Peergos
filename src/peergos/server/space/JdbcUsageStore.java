@@ -700,7 +700,9 @@ public class JdbcUsageStore implements UsageStore {
             for (PublicKeyHash removed : removedOwnedKeys) {
                 writerSelect.setBytes(1, removed.toBytes());
                 ResultSet writerRes = writerSelect.executeQuery();
-                writerRes.next();
+                // a child forgotten before this update was recorded took its edges with it
+                if (! writerRes.next())
+                    continue;
                 int ownedId = writerRes.getInt(1);
                 // only this parent's edge: a key moved to another parent may already be owned there
                 deleteOwned.setInt(1, writerId);
