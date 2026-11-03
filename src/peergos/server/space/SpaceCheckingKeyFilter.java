@@ -916,17 +916,32 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 Deque<PublicKeyHash> toVisit = new ArrayDeque<>();
                 toVisit.add(owner);
                 List<PublicKeyHash> added = new ArrayList<>();
+                if (! known.contains(owner)) {
+                    usageStore.addWriter(username, owner);
+                    added.add(owner);
+                }
                 while (! toVisit.isEmpty()) {
                     PublicKeyHash current = toVisit.poll();
                     if (! visited.add(current))
                         continue;
-                    if (! known.contains(current)) {
-                        usageStore.addWriter(username, current);
-                        added.add(current);
-                    }
-                    toVisit.addAll(DeletableContentAddressedStorage.getDirectOwnedKeys(owner, current, mutable,
+                    Set<PublicKeyHash> named = DeletableContentAddressedStorage.getDirectOwnedKeys(owner, current, mutable,
                             (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht),
-                            dht, hasher).join());
+                            dht, hasher).join();
+                    for (PublicKeyHash child : named) {
+                        if (known.contains(child) || added.contains(child))
+                            continue;
+                        // a key of another user's named here is theirs, as it is when its name arrives
+                        try {
+                            if (! username.equals(usageStore.getOwner(child)))
+                                continue;
+                        } catch (IllegalStateException unregistered) {}
+                        usageStore.addWriter(username, child);
+                        added.add(child);
+                        // under the writer it was found named by, as any key the queue registers is: with no edge
+                        // it would write under no cap, and outlive the revocation of what names it
+                        usageStore.addOwnedKey(current, child);
+                    }
+                    toVisit.addAll(named);
                 }
                 for (PublicKeyHash newWriter : added) {
                     try {

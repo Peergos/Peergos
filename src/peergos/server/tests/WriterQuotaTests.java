@@ -397,6 +397,51 @@ public class WriterQuotaTests {
         assertCannotCommit(e, ownerKey, "a writer a refused commit made under one it made");
     }
 
+    /** A key the server once knew as the sharee's own, named under the owner's capped folder too, is forgotten when
+     *  the sharee drops it from their own account. The owner's folder still names it, so the next write heals it in
+     *  as the owner's: under the folder that names it, with its cap, not as a writer of the owner's with no parent. */
+    @Test
+    public void aKeyHealedBackInIsUnderTheCapOfTheFolderThatNamesIt() throws Exception {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        Path dir = sharedDir(owner, "team", sharee);
+        owner.setWriteShareQuota(dir, Optional.of(256L * KiB)).join();
+        awaitUsageUpdate();
+        FileWrapper shared = sharee.getByPath(dir).join().get();
+        PublicKeyHash ownerKey = shared.owner();
+        SigningPrivateKeyAndPublicHash w = shared.signingPair();
+        PublicKeyHash shareeKey = sharee.signer.publicKeyHash;
+
+        // K is a writer of the sharee's own account first, then named under the owner's capped folder as well
+        SigningPrivateKeyAndPublicHash k = newKeyUnder(shareeKey, sharee.signer);
+        linkUnder(sharee, k, sharee.signer);
+        awaitUsageUpdate();
+        linkUnderOwner(ownerKey, k, w);
+        awaitUsageUpdate();
+        Assert.assertEquals(sharee.username, usageStore().getOwner(k.publicKeyHash));
+
+        // dropped from the sharee's own account, the server forgets it
+        NetworkAccess net = network.clear();
+        net.synchronizer.applyComplexUpdate(shareeKey, sharee.signer, (s, committer) ->
+                CryptreeNode.deAuthoriseSigner(shareeKey, sharee.signer, k.publicKeyHash, net, s, committer)).join();
+        awaitUsageUpdate();
+        try {
+            Assert.fail("K is still registered, to " + usageStore().getOwner(k.publicKeyHash));
+        } catch (IllegalStateException forgotten) {}
+
+        // a write with K for the owner heals it in: about 1 MiB into a 256 KiB cap, with nothing refused before
+        try {
+            fillWriter(ownerKey, k);
+            Assert.fail("A healed key wrote past the cap of the folder that names it");
+        } catch (Exception refused) {
+            String message = String.valueOf(peergos.shared.util.Exceptions.getRootCause(refused).getMessage());
+            Assert.assertTrue(message, message.contains("Storage quota reached"));
+        }
+        Assert.assertEquals(owner.username, usageStore().getOwner(k.publicKeyHash));
+        Assert.assertEquals(Set.of(w.publicKeyHash), usageStore().getParents(k.publicKeyHash));
+    }
+
     private void assertCannotCommit(SigningPrivateKeyAndPublicHash key, PublicKeyHash owner, String what) {
         try {
             write(owner, key, 1, KiB);
