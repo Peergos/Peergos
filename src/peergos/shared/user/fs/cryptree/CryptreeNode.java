@@ -491,7 +491,14 @@ public class CryptreeNode implements Cborable {
                     if (c.children.isB())
                         return Futures.of(full ?
                                 c.children.b().stream()
-                                        .map(n -> n.withCap(n.cap.unwrapFullKey(us.rBaseKey, c.sealKey)))
+                                        .map(n -> {
+                                            try {
+                                                return n.withCap(n.cap.unwrapFullKey(us.rBaseKey, c.sealKey));
+                                            } catch (Exception e) {
+                                                // a restricted key holder can write a child whose full key we can't open
+                                                return n;
+                                            }
+                                        })
                                         .collect(Collectors.toList()) :
                                 c.children.b());
                     // Only get here on legacy format directories
@@ -754,7 +761,7 @@ public class CryptreeNode implements Cborable {
     /** Child links in a restricted format directory hold the child's restricted key, and its full key under ours. */
     private static ChildrenLinks wrapFullKeys(SymmetricKey ourFullKey, ChildrenLinks children) {
         return new ChildrenLinks(children.children.b().stream()
-                .map(c -> c.cap.fullKeyLink.isPresent() ? c : c.withCap(c.cap.wrapFullKey(ourFullKey)))
+                .map(c -> c.cap.hasWrappedFullKey() ? c : c.withCap(c.cap.wrapFullKey(ourFullKey)))
                 .collect(Collectors.toList()))
                 .withSealKey(Optional.of(SealedKey.publicKey(ourFullKey)));
     }

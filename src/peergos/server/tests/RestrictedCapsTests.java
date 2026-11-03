@@ -619,6 +619,57 @@ public class RestrictedCapsTests {
         Assert.assertTrue(node.getParentCapability(pPrime).isEmpty());
     }
 
+    @Test(timeout = 120_000)
+    public void aBadChildLinkOnlyBreaksThatChild() {
+        UserContext owner = signIn(username("bc"));
+        Path home = PathUtil.get(owner.username);
+        mkdir(owner, home, "work");
+        mkdir(owner, home.resolve("work"), "drop");
+        byte[] data = randomData(200);
+        upload(owner, home.resolve("work/drop"), "existing.txt", data);
+        upload(owner, home.resolve("work/drop"), "wrapped.txt", data);
+        upload(owner, home.resolve("work/drop"), "sealed.txt", data);
+        String path = home.resolve("work/drop").toString();
+        LinkProperties link = owner.createSecretLink(List.of(path), List.of(path), List.of(path),
+                Optional.empty(), Optional.empty(), "", false).join();
+
+        // a malicious client replaces two links with ones whose full keys the owner can't open, one wrapped and one sealed
+        UserContext fromLink = openLink(owner, link);
+        AbsoluteCapability w = fromLink.getByPath("/drop/wrapped.txt").join().get().getPointer().capability;
+        AbsoluteCapability s = fromLink.getByPath("/drop/sealed.txt").join().get().getPointer().capability;
+        RelativeCapability wrapped = new RelativeCapability(Optional.empty(), w.getMapKey(), w.bat, w.rBaseKey, Optional.empty(),
+                Optional.of(SymmetricLink.fromPair(SymmetricKey.random(), SymmetricKey.random())), Optional.empty());
+        RelativeCapability sealed = new RelativeCapability(Optional.empty(), s.getMapKey(), s.bat, s.rBaseKey, Optional.empty(),
+                Optional.empty(), Optional.of(SealedKey.seal(SymmetricKey.random(), SealedKey.publicKey(SymmetricKey.random()), crypto.random)));
+        List<NamedRelativeCapability> bad = List.of(
+                new NamedRelativeCapability("wrapped.txt", wrapped, Optional.of(false), Optional.empty(), Optional.empty()),
+                new NamedRelativeCapability("sealed.txt", sealed, Optional.of(false), Optional.empty(), Optional.empty()));
+        FileWrapper drop = fromLink.getByPath("/drop").join().get();
+        WritableAbsoluteCapability dropCap = drop.writableFilePointer();
+        SigningPrivateKeyAndPublicHash signer = drop.signingPair();
+        fromLink.network.synchronizer.applyComplexUpdate(dropCap.owner, signer, (v, c) -> drop.getPointer().fileAccess
+                .removeChildren(v, c, List.of(w, s), dropCap, Optional.empty(), fromLink.network, crypto.random, crypto.hasher)).join();
+        FileWrapper emptied = fromLink.getByPath("/drop").join().get();
+        fromLink.network.synchronizer.applyComplexUpdate(dropCap.owner, signer, (v, c) -> emptied.getPointer().fileAccess
+                .addChildrenAndCommit(v, c, bad, dropCap, signer, Optional.empty(), fromLink.network, crypto)).join();
+
+        UserContext fresh = signIn(owner.username);
+        Path dropPath = home.resolve("work/drop");
+        Set<String> all = Set.of("existing.txt", "wrapped.txt", "sealed.txt");
+        Assert.assertEquals(all, children(fresh.getByPath(dropPath).join().get(), fresh.network).keySet());
+        PeergosNetworkUtils.checkFileContents(data, fresh.getByPath(dropPath.resolve("existing.txt")).join().get(), fresh);
+        for (String name : List.of("wrapped.txt", "sealed.txt"))
+            Assert.assertTrue(fresh.getByPath(dropPath.resolve(name)).join().get().isRestrictedKey());
+
+        // and the owner rewriting the folder leaves them as they were for the link
+        upload(fresh, dropPath, "later.txt", data);
+        UserContext again = openLink(owner, link);
+        Assert.assertEquals(Set.of("existing.txt", "wrapped.txt", "sealed.txt", "later.txt"),
+                children(again.getByPath("/drop").join().get(), again.network).keySet());
+        for (String name : List.of("wrapped.txt", "sealed.txt"))
+            PeergosNetworkUtils.checkFileContents(data, again.getByPath("/drop/" + name).join().get(), again);
+    }
+
     @Test
     public void writableHiddenLinkToAFile() {
         UserContext owner = signIn(username("hw"));
