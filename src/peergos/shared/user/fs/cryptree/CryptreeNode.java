@@ -492,21 +492,26 @@ public class CryptreeNode implements Cborable {
         boolean full = open(us.rBaseKey).access == Access.FULL;
         return getLinkedData(us.owner, baseBlockKey(us.rBaseKey), ChildrenLinks::fromCbor, network.hasher, network, x -> {})
                 .thenCompose(c -> {
-                    if (c.children.isB())
-                        return Futures.of(full ?
-                                c.children.b().stream()
-                                        .map(n -> {
-                                            // a restricted key holder can write a child whose full key we can't open, or one in the clear
-                                            if (! n.cap.hasWrappedFullKey())
-                                                return n.withCap(n.cap.asPending());
-                                            try {
-                                                return n.withCap(n.cap.unwrapFullKey(us.rBaseKey, c.sealKey));
-                                            } catch (Exception e) {
-                                                return n.withCap(n.cap.asPending());
-                                            }
-                                        })
-                                        .collect(Collectors.toList()) :
-                                c.children.b());
+                    if (c.children.isB()) {
+                        if (! full)
+                            return Futures.of(c.children.b());
+                        // the stored public key is writable through the restricted key, so open with the one we derive
+                        Optional<byte[]> ourSealKey = c.children.b().stream().anyMatch(n -> n.cap.sealedFullKey.isPresent()) ?
+                                Optional.of(SealedKey.publicKey(us.rBaseKey)) :
+                                Optional.empty();
+                        return Futures.of(c.children.b().stream()
+                                .map(n -> {
+                                    // a restricted key holder can write a child whose full key we can't open, or one in the clear
+                                    if (! n.cap.hasWrappedFullKey())
+                                        return n.withCap(n.cap.asPending());
+                                    try {
+                                        return n.withCap(n.cap.unwrapFullKey(us.rBaseKey, ourSealKey));
+                                    } catch (Exception e) {
+                                        return n.withCap(n.cap.asPending());
+                                    }
+                                })
+                                .collect(Collectors.toList()));
+                    }
                     // Only get here on legacy format directories
                     return Futures.combineAllInOrder(c.children.a().stream()
                             .map(r -> network.retrieveMetadata(r.toAbsolute(us), version)
