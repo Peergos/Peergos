@@ -230,6 +230,11 @@ public class RestrictedCapsTests {
         Assert.assertEquals("/" + owner.username + "/a/b/c.bin", shared.getPath(friendAgain.network).join());
     }
 
+    /** getPath always uses '/', where a Path's toString uses the platform separator. */
+    private static String unix(Object path) {
+        return path.toString().replace('\\', '/');
+    }
+
     private UserContext openLink(UserContext owner, LinkProperties link) {
         return UserContext.fromSecretLinkV2(link.toLinkString(owner.signer.publicKeyHash), () -> Futures.of(""), network(), crypto).join();
     }
@@ -413,7 +418,7 @@ public class RestrictedCapsTests {
         String movedPath = home.resolve("work/drop/sub/big.bin").toString();
         LinkProperties visible = fresh.createSecretLink(List.of(movedPath), List.of(), List.of(),
                 Optional.empty(), Optional.empty(), "", false).join();
-        Assert.assertEquals("/" + movedPath, openLink(owner, visible).getByPath("/" + movedPath).join().get()
+        Assert.assertEquals("/" + unix(movedPath), openLink(owner, visible).getByPath("/" + unix(movedPath)).join().get()
                 .getPath(fresh.network).join());
     }
 
@@ -449,7 +454,7 @@ public class RestrictedCapsTests {
         FileWrapper moved = after.getByPath(drop.resolve("sub/up.bin")).join().get();
         PeergosNetworkUtils.checkFileContents(up, moved, after);
         Assert.assertFalse(moved.isPending());
-        Assert.assertEquals("/" + drop + "/sub/up.bin", moved.getPath(after.network).join());
+        Assert.assertEquals("/" + unix(drop) + "/sub/up.bin", moved.getPath(after.network).join());
         Optional<FileWrapper> withUploadersKey = after.network.getFile(uploadersCap, owner.username).join();
         Assert.assertTrue(withUploadersKey.isEmpty() || withUploadersKey.get().retrieveParent(after.network).join().isEmpty());
 
@@ -580,7 +585,7 @@ public class RestrictedCapsTests {
         // a plaintext link alongside the real one doesn't stop the owner reading it, and the real one wins
         FileWrapper both = fresh.getByPath(drop.resolve("both")).join().get();
         Assert.assertFalse(both.isPending());
-        Assert.assertEquals("/" + drop + "/both", both.getPath(fresh.network).join());
+        Assert.assertEquals("/" + unix(drop) + "/both", both.getPath(fresh.network).join());
 
         // nor is it followed when walking up from below
         FileWrapper child = fresh.getByPath(drop.resolve("above/child.txt")).join().get();
@@ -694,7 +699,7 @@ public class RestrictedCapsTests {
         UserContext fresh = signIn(owner.username);
         FileWrapper ownerView = fresh.getByPath(path).join().get();
         PeergosNetworkUtils.checkFileContents(shorter, ownerView, fresh);
-        Assert.assertEquals("/" + path, ownerView.getPath(fresh.network).join());
+        Assert.assertEquals("/" + unix(path), ownerView.getPath(fresh.network).join());
     }
 
     @Test
@@ -755,7 +760,7 @@ public class RestrictedCapsTests {
         PeergosNetworkUtils.checkFileContents(nested, fresh.getByPath(drop2.resolve("sub/nested.txt")).join().get(), fresh);
         FileWrapper ownerRenamed = fresh.getByPath(drop2.resolve("renamed.txt")).join().get();
         Assert.assertFalse(ownerRenamed.isPending());
-        Assert.assertEquals("/" + drop2 + "/renamed.txt", ownerRenamed.getPath(fresh.network).join());
+        Assert.assertEquals("/" + unix(drop2) + "/renamed.txt", ownerRenamed.getPath(fresh.network).join());
 
         // the owner can add to and change what the link made
         byte[] ownerData = randomData(400);
@@ -771,11 +776,11 @@ public class RestrictedCapsTests {
         Assert.assertFalse(afterShare.getByPath(drop2.resolve("sub")).join().get().isPending());
         FileWrapper adopted = afterShare.getByPath(drop2.resolve("sub/nested.txt")).join().get();
         Assert.assertFalse(adopted.isPending());
-        Assert.assertEquals("/" + drop2 + "/sub/nested.txt", adopted.getPath(afterShare.network).join());
+        Assert.assertEquals("/" + unix(drop2) + "/sub/nested.txt", adopted.getPath(afterShare.network).join());
         UserContext friendAgain = signIn(friend.username);
         FileWrapper friendView = friendAgain.getByPath(drop2.resolve("sub/nested.txt")).join().get();
         PeergosNetworkUtils.checkFileContents(nested, friendView, friendAgain);
-        Assert.assertEquals("/" + drop2 + "/sub/nested.txt", friendView.getPath(friendAgain.network).join());
+        Assert.assertEquals("/" + unix(drop2) + "/sub/nested.txt", friendView.getPath(friendAgain.network).join());
 
         // and the link still reads and writes it
         UserContext last = openLink(owner, link);
