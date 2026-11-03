@@ -3170,9 +3170,8 @@ public class UserContext {
         // only the owner records links
         if (p == null || p.getNameCount() < 2 || isSecretLink() || signer == null)
             return Futures.of(false);
-        String path = p.toString().replace('\\', '/').replaceAll("^/", "");
         return sharedWith(p).thenCompose(s -> s.links.stream()
-                .anyMatch(l -> l.members.stream().anyMatch(m -> m.hidden && m.path.replaceAll("^/", "").equals(path))) ?
+                .anyMatch(l -> l.members.stream().anyMatch(m -> m.hidden && PathUtil.get(m.path).equals(p))) ?
                 Futures.of(true) :
                 isInHiddenLink(p.getParent()));
     }
