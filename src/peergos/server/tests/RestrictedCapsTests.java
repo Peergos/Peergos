@@ -770,6 +770,22 @@ public class RestrictedCapsTests {
     }
 
     @Test(timeout = 120_000)
+    public void aReadOnlyHiddenLinkToSomethingMadeThroughALink() {
+        UserContext owner = signIn(username("ro"));
+        LinkProperties link = dropLink(owner);
+        UserContext fromLink = openLink(owner, link);
+        fromLink.getByPath("/drop").join().get().mkdir("made", fromLink.network, false, Optional.empty(), crypto).join();
+        byte[] data = randomData(200);
+        upload(fromLink, PathUtil.get("/drop/made"), "in.txt", data);
+
+        String path = owner.username + "/work/drop/made";
+        LinkProperties readOnly = signIn(owner.username).createSecretLink(List.of(path), List.of(), List.of(path),
+                Optional.empty(), Optional.empty(), "", false).join();
+        UserContext viaReadOnly = openLink(owner, readOnly);
+        PeergosNetworkUtils.checkFileContents(data, viaReadOnly.getByPath("/made/in.txt").join().get(), viaReadOnly);
+    }
+
+    @Test(timeout = 120_000)
     public void aBadChildLinkOnlyBreaksThatChild() {
         UserContext owner = signIn(username("bc"));
         Path home = PathUtil.get(owner.username);
