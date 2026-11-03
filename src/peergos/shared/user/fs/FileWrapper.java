@@ -404,30 +404,36 @@ public class FileWrapper {
     public CompletableFuture<Boolean> upgradeToRestrictedFormat(NetworkAccess network, Crypto crypto) {
         if (! isWritable())
             return Futures.errored(new IllegalStateException("Couldn't hide the location of " + getName() + " without write access"));
-        return (linkPointer.isPresent() ?
-                upgradeChunks(linkPointer.get(), Optional.empty(), entryWriter, network, crypto) :
-                Futures.of(true))
-                .thenCompose(x -> upgradeChunks(pointer, props.streamSecret, entryWriter, network, crypto))
-                .thenCompose(x -> ! isDirectory() ?
-                        Futures.of(true) :
-                        getUpdated(network)
-                                .thenCompose(updated -> updated.getChildren(crypto.hasher, network))
-                                .thenCompose(children -> Futures.reduceAll(children, true,
-                                        (b, child) -> child.upgradeToRestrictedFormat(network, crypto), (a, b) -> b)));
+        // a link node in front is a folder holding the target, so the walk covers both
+        RetrievedCapability top = linkPointer.orElse(pointer);
+        WritableAbsoluteCapability cap = (WritableAbsoluteCapability) top.capability;
+        SigningPrivateKeyAndPublicHash signer = top.fileAccess.getSigner(cap.rBaseKey, cap.wBaseKey.get(), entryWriter);
+        return network.synchronizer.applyComplexUpdate(cap.owner, signer,
+                        (s, c) -> upgradeSubtree(top, signer, s, c, network, crypto))
+                .thenApply(s -> true);
     }
 
-    private static CompletableFuture<Boolean> upgradeChunks(RetrievedCapability first,
-                                                            Optional<byte[]> streamSecret,
-                                                            Optional<SigningPrivateKeyAndPublicHash> entryWriter,
-                                                            NetworkAccess network,
-                                                            Crypto crypto) {
-        if (! (first.capability instanceof WritableAbsoluteCapability))
+    private static CompletableFuture<Snapshot> upgradeSubtree(RetrievedCapability node,
+                                                              SigningPrivateKeyAndPublicHash parentSigner,
+                                                              Snapshot s,
+                                                              Committer c,
+                                                              NetworkAccess network,
+                                                              Crypto crypto) {
+        if (! (node.capability instanceof WritableAbsoluteCapability))
             return Futures.errored(new IllegalStateException("Upgrading a node needs write access"));
-        WritableAbsoluteCapability cap = (WritableAbsoluteCapability) first.capability;
-        SigningPrivateKeyAndPublicHash signer = first.fileAccess.getSigner(cap.rBaseKey, cap.wBaseKey.get(), entryWriter);
-        return network.synchronizer.applyComplexUpdate(cap.owner, signer,
-                        (s, c) -> upgradeChunks(cap, signer, streamSecret, s, c, network, crypto))
-                .thenApply(s -> true);
+        WritableAbsoluteCapability cap = (WritableAbsoluteCapability) node.capability;
+        SigningPrivateKeyAndPublicHash signer = node.fileAccess.getSigner(cap.rBaseKey, cap.wBaseKey.get(), Optional.of(parentSigner));
+        boolean isDir = node.fileAccess.isDirectory();
+        Optional<byte[]> streamSecret = isDir ? Optional.empty() : node.getProperties().streamSecret;
+        return s.withWriter(cap.owner, cap.writer, network)
+                .thenCompose(s1 -> upgradeChunks(cap, signer, streamSecret, s1, c, network, crypto))
+                .thenCompose(s2 -> ! isDir ?
+                        Futures.of(s2) :
+                        network.getMetadata(s2.get(cap.writer), cap)
+                                .thenCompose(updated -> updated.get().getChildren(s2, crypto.hasher, network, cap))
+                                .thenCompose(children -> Futures.reduceAll(children, s2,
+                                        (s3, child) -> upgradeSubtree(child, signer, s3, c, network, crypto),
+                                        (a, b) -> b)));
     }
 
     private static CompletableFuture<Snapshot> upgradeChunks(WritableAbsoluteCapability cap,
