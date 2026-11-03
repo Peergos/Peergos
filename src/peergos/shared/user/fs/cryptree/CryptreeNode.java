@@ -276,8 +276,15 @@ public class CryptreeNode implements Cborable {
         OpenedParent cached = openedParent.get(parentKey);
         if (cached != null)
             return cached;
-        // a legacy node or a restricted directory, a restricted format file, or a parent key to a restricted format directory
-        for (String label : Arrays.asList(null, RESTRICTED, PROPERTIES)) {
+        // a legacy node or a restricted directory, a restricted format file, or a parent key to a restricted format
+        // directory, tried most likely first
+        Opened o = opened.get(parentKey);
+        List<String> labels = isDirectory ?
+                Arrays.asList(PROPERTIES, null, RESTRICTED) :
+                o != null && o.access == Access.FULL ?
+                        Arrays.asList(RESTRICTED, null, PROPERTIES) :
+                        Arrays.asList(null, RESTRICTED, PROPERTIES);
+        for (String label : labels) {
             SymmetricKey k = label == null ? parentKey : parentKey.derive(label);
             Optional<FromParent> block = tryDecrypt(fromParentKey, k, FromParent::fromCbor);
             if (block.isPresent()) {
@@ -1893,17 +1900,66 @@ public class CryptreeNode implements Cborable {
         PaddedCipherText fromParentKey = m.get("p", PaddedCipherText::fromCbor);
         FragmentedPaddedCipherText childrenOrData = m.get("d", FragmentedPaddedCipherText::fromCbor);
 
-        // A file's properties are under its base key, or the restricted key derived from it.
-        // A parent key to a directory also opens its properties.
-        boolean isDirectory = true;
-        for (String label : Arrays.asList(null, RESTRICTED, PROPERTIES)) {
-            SymmetricKey k = label == null ? base : base.derive(label);
+        Map<SymmetricKey, Opened> opened = new HashMap<>();
+        Map<SymmetricKey, OpenedParent> openedParent = new HashMap<>();
+        boolean isDirectory = isDirectory(base, fromBaseKey, fromParentKey, opened, openedParent);
+        CryptreeNode res = new CryptreeNode(MaybeMultihash.of(hash), isDirectory, bats, fromBaseKey, childrenOrData, fromParentKey);
+        res.opened.putAll(opened);
+        res.openedParent.putAll(openedParent);
+        return res;
+    }
+
+    /** Works out how the key opens the node on the way, so reading it afterwards doesn't try the same keys again. */
+    private static boolean isDirectory(SymmetricKey base,
+                                       PaddedCipherText fromBaseKey,
+                                       PaddedCipherText fromParentKey,
+                                       Map<SymmetricKey, Opened> opened,
+                                       Map<SymmetricKey, OpenedParent> openedParent) {
+        SymmetricKey restricted = base.derive(RESTRICTED);
+        Optional<FromBase> full = tryDecrypt(fromBaseKey, restricted, FromBase::fromCbor);
+        if (full.isPresent()) {
+            opened.put(base, new Opened(Access.FULL, full));
+            FromBase b = full.get();
+            // a file links from its full key to its data key, and a directory to the key its properties key derives from
+            Optional<SymmetricKey> linked = b.fromFullKey.flatMap(x -> {
+                try {
+                    return Optional.of(x.target(base));
+                } catch (Exception e) {
+                    return Optional.empty(); // a chunk made through a restricted key links from a random key
+                }
+            });
+            if (linked.isPresent() && linked.get().equals(b.parentOrData))
+                return false;
+            if (linked.isPresent() && linked.get().derive(PROPERTIES).equals(b.parentOrData))
+                return true;
+            return ! openFileProperties(base, restricted, fromParentKey, openedParent);
+        }
+        Optional<FromBase> direct = tryDecrypt(fromBaseKey, base, FromBase::fromCbor);
+        if (direct.isPresent()) {
+            opened.put(base, new Opened(direct.get().fromFullKey.isPresent() ? Access.RESTRICTED : Access.LEGACY, direct));
+            return ! openFileProperties(base, base, fromParentKey, openedParent);
+        }
+        opened.put(base, new Opened(Access.PARENT, Optional.empty()));
+        // a parent key opens a directory's properties, directly or through a key derived from it
+        for (SymmetricKey k : Arrays.asList(base.derive(PROPERTIES), base)) {
             Optional<FromParent> block = tryDecrypt(fromParentKey, k, FromParent::fromCbor);
             if (block.isPresent()) {
-                isDirectory = block.get().properties.isDirectory;
-                break;
+                openedParent.put(base, new OpenedParent(block.get(), k));
+                return block.get().properties.isDirectory;
             }
         }
-        return new CryptreeNode(MaybeMultihash.of(hash), isDirectory, bats, fromBaseKey, childrenOrData, fromParentKey);
+        return true;
+    }
+
+    /** A file's properties are under the key that opened its base block. */
+    private static boolean openFileProperties(SymmetricKey base,
+                                              SymmetricKey key,
+                                              PaddedCipherText fromParentKey,
+                                              Map<SymmetricKey, OpenedParent> openedParent) {
+        Optional<FromParent> block = tryDecrypt(fromParentKey, key, FromParent::fromCbor);
+        if (block.isEmpty())
+            return false;
+        openedParent.put(base, new OpenedParent(block.get(), key));
+        return ! block.get().properties.isDirectory;
     }
 }
