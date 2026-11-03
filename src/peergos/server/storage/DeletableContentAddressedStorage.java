@@ -562,9 +562,13 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                 composer = (acc, pair) -> CompletableFuture.completedFuture(Stream.concat(acc.stream(), Stream.of(pair.right))
                 .collect(Collectors.toSet()));
 
+        // A proof that doesn't verify proves nothing. A writer can put any it likes in its own root, so one that
+        // failed the whole walk would let it stall everything that reads that root, its own revocation included.
         BiFunction<Set<PublicKeyHash>, OwnerProof, CompletableFuture<Set<PublicKeyHash>>> proofComposer =
                 (acc, proof) -> proof.getAndVerifyOwner(owner, ipfs)
-                        .thenApply(claimedWriter -> Stream.concat(acc.stream(), claimedWriter.equals(writer) ?
+                        .thenApply(Optional::of)
+                        .exceptionally(invalid -> Optional.empty())
+                        .thenApply(claimedWriter -> Stream.concat(acc.stream(), claimedWriter.filter(writer::equals).isPresent() ?
                                 Stream.of(proof.ownedKey) :
                                 Stream.empty()).collect(Collectors.toSet()));
 
