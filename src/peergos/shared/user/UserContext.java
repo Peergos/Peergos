@@ -3165,6 +3165,17 @@ public class UserContext {
         return getUserRoot().thenCompose(home -> sharedWithCache.getSharedWith(p, home.version));
     }
 
+    /** Whether this is at or below a member of a link that hides where its items are. */
+    public CompletableFuture<Boolean> isInHiddenLink(Path p) {
+        // only the owner records links
+        if (p == null || p.getNameCount() < 2 || isSecretLink() || signer == null)
+            return Futures.of(false);
+        String path = p.toString().replace('\\', '/').replaceAll("^/", "");
+        return sharedWith(p).thenCompose(s -> s.links.stream()
+                .anyMatch(l -> l.members.stream().anyMatch(m -> m.hidden && m.path.replaceAll("^/", "").equals(path))) ?
+                Futures.of(true) :
+                isInHiddenLink(p.getParent()));
+    }
 
     @JsMethod
     public CompletableFuture<SharedWithState> getDirectorySharingState(Path dir) {
