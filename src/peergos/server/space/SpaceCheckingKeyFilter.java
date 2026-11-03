@@ -928,9 +928,14 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                             (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht),
                             dht, hasher).join();
                     for (PublicKeyHash child : named) {
-                        if (known.contains(child) || added.contains(child))
+                        if (added.contains(child))
                             continue;
-                        // a key of another user's named here is theirs, as it is when its name arrives
+                        if (known.contains(child)) {
+                            toVisit.add(child);
+                            continue;
+                        }
+                        // a key of another user's named here is theirs, as it is when its name arrives, and so is
+                        // what it names: its tree is in their space, and isn't walked for the owner's keys
                         try {
                             if (! username.equals(usageStore.getOwner(child)))
                                 continue;
@@ -940,8 +945,8 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                         // under the writer it was found named by, as any key the queue registers is: with no edge
                         // it would write under no cap, and outlive the revocation of what names it
                         usageStore.addOwnedKey(current, child);
+                        toVisit.add(child);
                     }
-                    toVisit.addAll(named);
                 }
                 for (PublicKeyHash newWriter : added) {
                     try {

@@ -442,6 +442,154 @@ public class WriterQuotaTests {
         Assert.assertEquals(Set.of(w.publicKeyHash), usageStore().getParents(k.publicKeyHash));
     }
 
+    /** The self heal walks the owner's tree from their identity. A sharee's own key named under the shared folder
+     *  is the sharee's, and so is whatever it names: the walk doesn't go through it, or a key it names would be
+     *  healed in as the owner's, under the sharee's key, with no cap and nothing to revoke it. */
+    @Test
+    public void aKeyNamedByAnotherUsersWriterIsntHealedInAsTheOwners() throws Exception {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        Path dir = sharedDir(owner, "team", sharee);
+        owner.setWriteShareQuota(dir, Optional.of(256L * KiB)).join();
+        awaitUsageUpdate();
+        FileWrapper shared = sharee.getByPath(dir).join().get();
+        PublicKeyHash ownerKey = shared.owner();
+        SigningPrivateKeyAndPublicHash w = shared.signingPair();
+        PublicKeyHash shareeKey = sharee.signer.publicKeyHash;
+
+        // K: a writer of the sharee's own account, named under the owner's capped folder as well
+        SigningPrivateKeyAndPublicHash k = newKeyUnder(shareeKey, sharee.signer);
+        linkUnder(sharee, k, sharee.signer);
+        awaitUsageUpdate();
+        linkUnderOwner(ownerKey, k, w);
+        awaitUsageUpdate();
+        Assert.assertEquals(sharee.username, usageStore().getOwner(k.publicKeyHash));
+
+        // X: a key the sharee holds
+        SigningKeyPair xPair = SigningKeyPair.random(crypto.random, crypto.signer);
+        SigningPrivateKeyAndPublicHash x = new SigningPrivateKeyAndPublicHash(ContentAddressedStorage.hashKey(xPair.publicSigningKey), xPair.secretSigningKey);
+        OwnerProof proof = OwnerProof.build(x, k.publicKeyHash).join();
+        // K's owned-key champ holds X; built to one side, its blocks are unique to this test
+        peergos.server.storage.RAMStorage aside = new peergos.server.storage.RAMStorage(crypto.hasher);
+        TransactionId asideTid = aside.startTransaction(shareeKey).join();
+        Cid emptyChamp = OwnedKeyChamp.createEmpty(shareeKey, k, aside, crypto.hasher, asideTid).join();
+        Cid champ = (Cid) OwnedKeyChamp.build(shareeKey, emptyChamp, aside, crypto.hasher).join()
+                .add(shareeKey, k, proof, crypto.hasher, asideTid).join();
+        Cid proofBlock = aside.put(shareeKey, k, proof.serialize(), crypto.hasher, asideTid).join();
+        byte[] champRaw = aside.getRaw(shareeKey, champ, Optional.empty()).join().get();
+        byte[] proofRaw = aside.getRaw(shareeKey, proofBlock, Optional.empty()).join().get();
+        WriterData kRoot = new WriterData(k.publicKeyHash, Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(champ),
+                Collections.emptyMap(), Optional.empty(), Optional.empty(), Optional.empty());
+        byte[] rootRaw = kRoot.serialize();
+        // Blocks are partitioned by owner. The root goes in the sharee's space (so K's pointer can be set) and in the
+        // owner's (under W, which the sharee holds); the champ's blocks only in the owner's. Processing K's pointer
+        // as the sharee's fails on the champ, so X stays unregistered while K's committed root names it
+        TransactionId tid = service.storage.startTransaction(shareeKey).join();
+        Cid naming = service.storage.put(shareeKey, k, rootRaw, crypto.hasher, tid).join();
+        TransactionId ownerTid = service.storage.startTransaction(ownerKey).join();
+        Assert.assertEquals(naming, service.storage.put(ownerKey, w, rootRaw, crypto.hasher, ownerTid).join());
+        Assert.assertEquals(champ, service.storage.put(ownerKey, w, champRaw, crypto.hasher, ownerTid).join());
+        Assert.assertEquals(proofBlock, service.storage.put(ownerKey, w, proofRaw, crypto.hasher, ownerTid).join());
+        service.mutable.setPointer(shareeKey, k, new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(naming),
+                PointerUpdate.increment(Optional.empty()))).join();
+        awaitUsageUpdate();
+        try {
+            Assert.fail("X registered already, to " + usageStore().getOwner(x.publicKeyHash));
+        } catch (IllegalStateException unregistered) {}
+
+        // a write with X for the owner: the self heal walks owner -> ... -> W -> K (the sharee's) -> X
+        String healed;
+        try {
+            write(ownerKey, x, 1, KiB);
+            healed = "committed";
+        } catch (Exception e) {
+            healed = "refused: " + peergos.shared.util.Exceptions.getRootCause(e).getMessage();
+        }
+        String xOwner;
+        Set<PublicKeyHash> parents;
+        try {
+            xOwner = usageStore().getOwner(x.publicKeyHash);
+            parents = usageStore().getParents(x.publicKeyHash);
+        } catch (IllegalStateException unregistered) {
+            xOwner = "<unregistered>";
+            parents = Set.of();
+        }
+
+        // the cap on the folder: about 1 MiB into a 256 KiB cap
+        String fill;
+        try {
+            fillWriter(ownerKey, x);
+            fill = "committed";
+        } catch (Exception e) {
+            fill = "refused: " + peergos.shared.util.Exceptions.getRootCause(e).getMessage();
+        }
+        awaitUsageUpdate();
+
+        // the owner revokes the share
+        owner.unShareWriteAccessWith(dir, Set.of(sharee.username)).join();
+        awaitUsageUpdate();
+        String after;
+        try {
+            write(ownerKey, x, 1, KiB);
+            after = "committed";
+        } catch (Exception e) {
+            after = "refused: " + peergos.shared.util.Exceptions.getRootCause(e).getMessage();
+        }
+
+        Assert.assertNotEquals("X was registered as the owner's", owner.username, xOwner);
+        Assert.assertTrue("X wrote for the owner: " + healed, healed.startsWith("refused"));
+        Assert.assertTrue("X wrote past the cap: " + fill, fill.startsWith("refused"));
+        Assert.assertTrue("X survived the revocation: " + after, after.startsWith("refused"));
+    }
+
+    /** A sharee's key named under the owner's folder has its root in the sharee's block space, which the owner's
+     *  self heal can't read: not walked, it doesn't stop a writer of the owner's the store has lost from being
+     *  healed in. */
+    @Test
+    public void aLostWriterIsHealedInPastAnotherUsersKeyInTheTree() throws Exception {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        Path dir = sharedDir(owner, "team", sharee);
+        owner.getByPath(dir).join().get().mkdir("inner", owner.network, false, owner.mirrorBatId(), crypto).join();
+        Path inner = dir.resolve("inner");
+        owner.shareWriteAccessWith(inner, Set.of(sharee.username)).join();
+        awaitUsageUpdate();
+        FileWrapper shared = sharee.getByPath(dir).join().get();
+        PublicKeyHash ownerKey = shared.owner();
+        SigningPrivateKeyAndPublicHash w = shared.signingPair();
+        SigningPrivateKeyAndPublicHash v = sharee.getByPath(inner).join().get().signingPair();
+        PublicKeyHash shareeKey = sharee.signer.publicKeyHash;
+
+        // K: a writer of the sharee's own, with a root of its own, named under the owner's folder as well
+        SigningPrivateKeyAndPublicHash k = newKeyUnder(shareeKey, sharee.signer);
+        linkUnder(sharee, k, sharee.signer);
+        awaitUsageUpdate();
+        write(shareeKey, k, 1, KiB);
+        awaitUsageUpdate();
+        linkUnderOwner(ownerKey, k, w);
+        awaitUsageUpdate();
+        Assert.assertEquals(sharee.username, usageStore().getOwner(k.publicKeyHash));
+
+        // the store loses the inner folder's writer, as a missed registration would
+        usageStore().removeWriter(v.publicKeyHash);
+        String healed;
+        try {
+            write(ownerKey, v, 1, KiB);
+            healed = "committed";
+        } catch (Exception e) {
+            healed = "refused: " + peergos.shared.util.Exceptions.getRootCause(e).getMessage();
+        }
+        String vOwner;
+        try {
+            vOwner = usageStore().getOwner(v.publicKeyHash);
+        } catch (IllegalStateException unregistered) {
+            vOwner = "<unregistered>";
+        }
+        Assert.assertEquals("committed", healed);
+    }
+
     private void assertCannotCommit(SigningPrivateKeyAndPublicHash key, PublicKeyHash owner, String what) {
         try {
             write(owner, key, 1, KiB);
