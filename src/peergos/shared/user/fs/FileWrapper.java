@@ -378,6 +378,15 @@ public class FileWrapper {
         return pointer.fileAccess.hasParentLink(key) && pointer.fileAccess.getParentCapability(key).isEmpty();
     }
 
+    /** A file already in the restricted format, or anything copied rather than moved, has nothing to upgrade. */
+    private boolean mayNeedUpgradeAfterMove(FileWrapper target, UserContext context) {
+        if (context.signer == null || context.isSecretLink())
+            return false;
+        if (isRestrictedKey() || isPending() || target.isRestrictedKey() || target.isPending())
+            return false;
+        return isDirectory() || ! pointer.fileAccess.isRestrictedFormat(pointer.capability.rBaseKey);
+    }
+
     /** Whether this is at dirLocation or below it. Paths can't tell, as they stop where a parent link can't be read. */
     private CompletableFuture<Boolean> isWithin(Location dirLocation, FileWrapper dir, Hasher hasher, NetworkAccess network) {
         if (getLocation().equals(dirLocation))
@@ -2723,7 +2732,9 @@ public class FileWrapper {
                                                                 targetMirrorBatId, context, preserveAccess);
                                                     })))))
                     // a link that hides where its items are can only read them in the restricted format
-                    .thenCompose(s -> target.getPath(net).thenCompose(targetPath -> context.isInHiddenLink(PathUtil.get(targetPath))
+                    .thenCompose(s -> ! mayNeedUpgradeAfterMove(target, context) ?
+                            Futures.of(true) :
+                            target.getPath(net).thenCompose(targetPath -> context.isInHiddenLink(PathUtil.get(targetPath))
                             .thenCompose(hidden -> ! hidden ?
                                     Futures.of(true) :
                                     context.getByPath(PathUtil.get(targetPath).resolve(newName))
