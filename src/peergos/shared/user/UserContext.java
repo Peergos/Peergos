@@ -1319,7 +1319,8 @@ public class UserContext {
         return getByPath(path, v1)
                 .thenApply(opt -> opt.orElseThrow(() -> new IllegalStateException("Couldn't retrieve " + path)))
                 .thenApply(file -> {
-                    boolean differentWriter = file.getPointer().getParentCap().writer
+                    // a hidden member made through a link has no parent link we can read
+                    boolean differentWriter = writable && file.getPointer().getParentCap().writer
                             .map(parentWriter -> ! parentWriter.equals(file.writer())).orElse(false);
                     if (writable && ! differentWriter)
                         throw new IllegalStateException("To generate a writable secret link, the target must already be in a different writing space!");
