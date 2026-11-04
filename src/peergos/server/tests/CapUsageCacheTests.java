@@ -48,12 +48,12 @@ public class CapUsageCacheTests {
     public void aReservationIsOneStep() {
         UserUsage usage = new UserUsage(700);
         PublicKeyHash a = key(), b = key();
-        Assert.assertTrue(usage.reserve(a, 200, 1000, 0));
-        Assert.assertFalse(usage.reserve(b, 200, 1000, 0));
+        Assert.assertTrue(usage.reserve(a, 200, 1000, 0).isPresent());
+        Assert.assertTrue(usage.reserve(b, 200, 1000, 0).isEmpty());
         Assert.assertEquals("the refused write reserved nothing", 900, usage.expectedUsage());
         Assert.assertEquals("the first reservation stands", 200, usage.getPending(a));
         // refused once, the usage is errored and the tolerance applies
-        Assert.assertTrue(usage.reserve(b, 200, 1000, 200));
+        Assert.assertTrue(usage.reserve(b, 200, 1000, 200).isPresent());
     }
 
     /** A writer's own commit that changes its owned keys has landed: its bytes in flight go from every cap. */
@@ -86,20 +86,23 @@ public class CapUsageCacheTests {
     public void aReloadEndsTheToleranceOfARefusal() {
         UserUsage usage = new UserUsage(90);
         PublicKeyHash writer = key();
-        Assert.assertFalse(usage.reserve(writer, 20, 100, 50));
-        Assert.assertTrue("within the tolerance after a refusal", usage.reserve(writer, 20, 100, 50));
+        Assert.assertTrue(usage.reserve(writer, 20, 100, 50).isEmpty());
+        Assert.assertTrue("within the tolerance after a refusal", usage.reserve(writer, 20, 100, 50).isPresent());
         usage.reloadTotal(90, System.currentTimeMillis() - 60_000);
-        Assert.assertFalse("the quota alone once it has been read again", usage.reserve(key(), 20, 100, 50));
+        Assert.assertTrue("the quota alone once it has been read again", usage.reserve(key(), 20, 100, 50).isEmpty());
     }
 
-    /** Giving back a reservation a refusal already dropped doesn't go below nothing. */
+    /** A reservation given back after the writer's were dropped, as a processed commit of theirs drops them, gives
+     *  back nothing: what the writer has reserved since is other writes'. */
     @Test
-    public void aReleaseNeverGoesNegative() {
+    public void aLateReleaseLeavesTheWritesReservedSince() {
         UserUsage usage = new UserUsage(0);
         PublicKeyHash writer = key();
-        usage.addPending(writer, 100);
-        usage.releasePending(writer, 300);
-        Assert.assertEquals(0, usage.expectedUsage());
-        Assert.assertEquals(0, usage.getPending(writer));
+        Runnable first = usage.reserve(writer, 600, 1000, 0).get();
+        usage.reloadTotal(0, System.currentTimeMillis() + 1);
+        Assert.assertTrue(usage.reserve(writer, 900, 1000, 0).isPresent());
+        first.run();
+        Assert.assertEquals(900, usage.getPending(writer));
+        Assert.assertTrue(usage.reserve(writer, 600, 1000, 0).isEmpty());
     }
 }

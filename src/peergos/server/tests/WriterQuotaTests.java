@@ -1536,6 +1536,30 @@ public class WriterQuotaTests {
     }
 
     @Test
+    public void aCommitRefusedAfterTheWritersNextLandsLeavesTheWritesReservedSince() throws Exception {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        Path dir = sharedDir(owner, "team", sharee);
+        owner.setWriteShareQuota(dir, Optional.of(1024L * KiB)).join();
+        awaitUsageUpdate();
+        FileWrapper shared = sharee.getByPath(dir).join().get();
+        PublicKeyHash ownerKey = shared.owner();
+        PublicKeyHash capped = shared.signingPair().publicKeyHash;
+        SpaceCheckingKeyFilter filter = quotaFilter();
+
+        // a 600 KiB commit passes the cap; another commit of the writer lands and is processed meanwhile, which clears
+        // the writer's reservations, and a 900 KiB write is reserved after it
+        Runnable first = filter.allowCommit(ownerKey, capped, 600 * KiB, Map::of);
+        upload(sharee, dir, "small", 10 * KiB);
+        awaitUsageUpdate();
+        Assert.assertTrue(filter.allowWrite(ownerKey, capped, 900 * KiB));
+        // the first is refused after all: what it gives back is not the later write's, so 600 KiB more doesn't fit
+        first.run();
+        assertRefusedForTheCap(() -> filter.allowWrite(ownerKey, capped, 600 * KiB));
+    }
+
+    @Test
     public void aWriterNamedAgainIsCountedAgainWhenTheQueueIsBehind() throws Exception {
         UserContext owner = signUp();
         UserContext sharee = signUp();

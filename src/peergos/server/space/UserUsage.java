@@ -11,6 +11,9 @@ public class UserUsage implements Cborable {
     private Map<PublicKeyHash, Long> pending;
     // when each writer last reserved, so reservations for writes that never land can expire
     private final Map<PublicKeyHash, Long> pendingSince = new HashMap<>();
+    // how often each writer's reservations were dropped whole: a reservation made before the last drop has nothing
+    // left to give back, and what the writer has reserved now is other writes'
+    private final Map<PublicKeyHash, Long> drops = new HashMap<>();
 
     public UserUsage(long totalBytes) {
         this.totalBytes = totalBytes;
@@ -31,8 +34,7 @@ public class UserUsage implements Cborable {
     }
 
     protected synchronized void confirmUsage(PublicKeyHash writer, long usageDelta) {
-        pending.remove(writer);
-        pendingSince.remove(writer);
+        clearPending(writer);
         totalBytes += usageDelta;
         errored = false;
     }
@@ -47,6 +49,7 @@ public class UserUsage implements Cborable {
             if (e.getValue() >= staleBefore)
                 return false;
             pending.remove(e.getKey());
+            drops.merge(e.getKey(), 1L, Long::sum);
             return true;
         });
     }
@@ -55,16 +58,17 @@ public class UserUsage implements Cborable {
      *  arriving together can't both fit where only one does. A write that doesn't fit reserves nothing, and
      *  the writer's other writes in flight keep what they reserved: each gives its own back if it fails.
      *
-     * @return false if it doesn't fit: the usage is marked errored
+     * @return what gives the reservation back, or empty if it doesn't fit: the usage is marked errored
      */
-    public synchronized boolean reserve(PublicKeyHash writer, long size, long quota, long tolerance) {
+    public synchronized Optional<Runnable> reserve(PublicKeyHash writer, long size, long quota, long tolerance) {
         long allowed = errored ? quota + tolerance : quota;
         if (expectedUsage() + size > allowed) {
             errored = true;
-            return false;
+            return Optional.empty();
         }
         addPending(writer, size);
-        return true;
+        long dropsBefore = drops.getOrDefault(writer, 0L);
+        return Optional.of(() -> release(writer, size, dropsBefore));
     }
 
     public synchronized void addPending(PublicKeyHash writer, long usageDelta) {
@@ -72,8 +76,10 @@ public class UserUsage implements Cborable {
         pendingSince.put(writer, System.currentTimeMillis());
     }
 
-    /** Give back a reservation, or what is left of it after a reload dropped a stale one. */
-    public synchronized void releasePending(PublicKeyHash writer, long size) {
+    /** Give back a reservation, unless the writer's were dropped since it was made, by a processed commit or a reload */
+    private synchronized void release(PublicKeyHash writer, long size, long dropsBefore) {
+        if (drops.getOrDefault(writer, 0L) != dropsBefore)
+            return;
         long left = pending.getOrDefault(writer, 0L) - size;
         if (left > 0)
             pending.put(writer, left);
@@ -86,6 +92,7 @@ public class UserUsage implements Cborable {
     protected synchronized void clearPending(PublicKeyHash writer) {
         pending.remove(writer);
         pendingSince.remove(writer);
+        drops.merge(writer, 1L, Long::sum);
     }
 
     public synchronized long getPending(PublicKeyHash writer) {

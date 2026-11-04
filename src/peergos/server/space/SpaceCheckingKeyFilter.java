@@ -843,15 +843,16 @@ public class SpaceCheckingKeyFilter implements SpaceUsage, BulkCommitStorage.Com
         // from then on each check reads the committed total afresh (getUsage), until a processed commit clears
         // the flag.
         long pending = usage.getPending(writer);
-        if (! usage.reserve(writer, size, quota, USAGE_TOLERANCE)) {
+        Optional<Runnable> own = usage.reserve(writer, size, quota, USAGE_TOLERANCE);
+        if (own.isEmpty()) {
             usageStore.confirmUsage(username, writer, 0, true);
             LOG.info("Rejecting write for " + username);
             throw new IllegalStateException("Storage quota reached! \nUsed "
                     + usage.totalUsage() + " out of " + quota + " bytes. Rejecting write of size " + (size + pending) + ". \n" +
                     "Please delete some files or request more space.");
         }
-        List<UserUsage> reserved = new ArrayList<>();
-        reserved.add(usage);
+        List<Runnable> reserved = new ArrayList<>();
+        reserved.add(own.get());
         try {
             for (PublicKeyHash cap : writerQuotas.getCaps(writer)) {
                 Optional<Long> capQuota = writerQuotas.getQuota(cap);
@@ -859,14 +860,15 @@ public class SpaceCheckingKeyFilter implements SpaceUsage, BulkCommitStorage.Com
                     continue;
                 UserUsage capUsage = writerQuotas.getUsage(cap);
                 long capPending = capUsage.getPending(writer);
-                if (! capUsage.reserve(writer, size, capQuota.get(), USAGE_TOLERANCE)) {
+                Optional<Runnable> held = capUsage.reserve(writer, size, capQuota.get(), USAGE_TOLERANCE);
+                if (held.isEmpty()) {
                     LOG.info("Rejecting write to capped writing space " + cap);
                     // Don't reveal the usage of an enclosing capped space to someone who can only write to a nested one
                     throw new IllegalStateException("Storage quota reached for this shared folder! \n"
                             + (cap.equals(writer) ? "Used " + capUsage.totalUsage() + " out of " + capQuota.get() + " bytes. " : "")
                             + "Rejecting write of size " + (size + capPending) + ".");
                 }
-                reserved.add(capUsage);
+                reserved.add(held.get());
             }
             SlidingWindowCounter writeLimit = writeLimiter.get(username);
             if (writeLimit == null) {
@@ -877,14 +879,10 @@ public class SpaceCheckingKeyFilter implements SpaceUsage, BulkCommitStorage.Com
                 throw new IllegalStateException("Upload bandwidth exceeded please try again tomorrow");
         } catch (RuntimeException e) {
             // whatever refused, or failed, gives back what was reserved before it
-            for (UserUsage held : reserved)
-                held.releasePending(writer, size);
+            reserved.forEach(Runnable::run);
             throw e;
         }
-        return () -> {
-            for (UserUsage held : reserved)
-                held.releasePending(writer, size);
-        };
+        return () -> reserved.forEach(Runnable::run);
     }
 
     /** Whether a commit may be applied, given the bytes it writes and the net change in stored bytes
