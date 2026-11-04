@@ -402,4 +402,71 @@ public class JdbcUsageStoreTests {
         Assert.assertEquals(List.of(owner), store.getAncestors(sibling));
         Assert.assertTrue(store.getAncestors(owner).isEmpty());
     }
+
+    /** A pointer update records an edge to a child while the queue forgets that child. Whichever goes first, no
+     *  edge is left to a writer that isn't there: the parent's usage would trip on it for good. */
+    @Test
+    public void anEdgeRecordedAsItsChildIsForgottenGoesWithIt() throws Exception {
+        Crypto crypto = Main.initCrypto();
+        Connection db = new Sqlite.UncloseableConnection(Sqlite.build(":memory:"));
+        Thread[] adding = new Thread[1];
+        java.util.concurrent.CountDownLatch reached = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        Connection pausing = pausingEdgeInserts(db, () -> Thread.currentThread() == adding[0], reached, release);
+        JdbcUsageStore store = new JdbcUsageStore(() -> pausing, new SqliteCommands());
+        String username = "alice";
+        store.addUserIfAbsent(username);
+        PublicKeyHash parent = randomKey(crypto);
+        PublicKeyHash child = randomKey(crypto);
+        store.addWriter(username, parent);
+        store.addWriter(username, child);
+
+        // the edge's writers are looked up, and its insert waits while the child is forgotten
+        adding[0] = new Thread(() -> store.addOwnedKey(parent, child));
+        adding[0].start();
+        Assert.assertTrue(reached.await(10, java.util.concurrent.TimeUnit.SECONDS));
+        Thread removing = new Thread(() -> store.removeWriter(child));
+        removing.start();
+        removing.join(2_000);
+        release.countDown();
+        adding[0].join(10_000);
+        removing.join(10_000);
+
+        try (PreparedStatement dangling = db.prepareStatement(
+                "SELECT COUNT(*) FROM ownedkeys WHERE owned_id NOT IN (SELECT id FROM writers)")) {
+            ResultSet res = dangling.executeQuery();
+            res.next();
+            Assert.assertEquals("edges to a forgotten writer", 0, res.getInt(1));
+        }
+        Assert.assertTrue(store.getUsage(parent).ownedKeys().isEmpty());
+    }
+
+    /** A connection whose inserts of an edge wait, on the given thread, until released */
+    private static Connection pausingEdgeInserts(Connection target,
+                                                 java.util.function.BooleanSupplier paused,
+                                                 java.util.concurrent.CountDownLatch reached,
+                                                 java.util.concurrent.CountDownLatch release) {
+        return (Connection) java.lang.reflect.Proxy.newProxyInstance(Connection.class.getClassLoader(),
+                new Class<?>[]{Connection.class}, (proxy, method, args) -> {
+                    Object res = invoke(target, method, args);
+                    if (method.getName().equals("prepareStatement") && ((String) args[0]).contains("INTO ownedkeys"))
+                        return java.lang.reflect.Proxy.newProxyInstance(PreparedStatement.class.getClassLoader(),
+                                new Class<?>[]{PreparedStatement.class}, (p, m, a) -> {
+                                    if (m.getName().startsWith("execute") && paused.getAsBoolean()) {
+                                        reached.countDown();
+                                        release.await();
+                                    }
+                                    return invoke(res, m, a);
+                                });
+                    return res;
+                });
+    }
+
+    private static Object invoke(Object target, java.lang.reflect.Method method, Object[] args) throws Throwable {
+        try {
+            return method.invoke(target, args);
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            throw e.getCause();
+        }
+    }
 }

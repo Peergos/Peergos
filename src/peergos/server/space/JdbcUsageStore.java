@@ -266,15 +266,17 @@ public class JdbcUsageStore implements UsageStore {
 
     @Override
     public boolean addOwnedKey(PublicKeyHash parent, PublicKeyHash owned) {
-        try (Connection conn = getConnection(true, false);
-             PreparedStatement insertOwned = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ", "INTO ownedkeys (parent_id, owned_id) VALUES(?, ?)"))) {
-            insertOwned.setInt(1, getWriterId(parent, conn));
-            insertOwned.setInt(2, getWriterId(owned, conn));
-            if (insertOwned.executeUpdate() == 0)
-                return false;
-        } catch (SQLException sqe) {
-            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            throw new RuntimeException(sqe);
+        synchronized (edges) {
+            try (Connection conn = getConnection(true, false);
+                 PreparedStatement insertOwned = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ", "INTO ownedkeys (parent_id, owned_id) VALUES(?, ?)"))) {
+                insertOwned.setInt(1, getWriterId(parent, conn));
+                insertOwned.setInt(2, getWriterId(owned, conn));
+                if (insertOwned.executeUpdate() == 0)
+                    return false;
+            } catch (SQLException sqe) {
+                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+                throw new RuntimeException(sqe);
+            }
         }
         notifyListeners(owned, l -> l.edgeChanged(owned));
         return true;
@@ -515,34 +517,36 @@ public class JdbcUsageStore implements UsageStore {
 
     @Override
     public void removeWriter(PublicKeyHash writer) {
-        try (Connection conn = getConnection(true, false);
-             PreparedStatement select = conn.prepareStatement("SELECT id FROM writers WHERE key_hash = ?;");
-             PreparedStatement ownedKeys = conn.prepareStatement("DELETE FROM ownedkeys WHERE owned_id = ? OR parent_id = ?;");
-             PreparedStatement pending = conn.prepareStatement("DELETE FROM pendingusage WHERE writer_id = ?;");
-             PreparedStatement quotas = conn.prepareStatement("DELETE FROM writerquotas WHERE writer_id = ?;");
-             PreparedStatement usage = conn.prepareStatement("DELETE FROM writerusage WHERE writer_id = ?;");
-             PreparedStatement writers = conn.prepareStatement("DELETE FROM writers WHERE id = ?;")) {
-            // out of the cache before the deletes too: if one fails, the writer is looked up afresh rather than
-            // trusted from a cache that outlives the attempt to remove it
-            synchronized (owners) {
-                ownerRemovals++;
-                owners.remove(writer);
+        synchronized (edges) {
+            try (Connection conn = getConnection(true, false);
+                 PreparedStatement select = conn.prepareStatement("SELECT id FROM writers WHERE key_hash = ?;");
+                 PreparedStatement ownedKeys = conn.prepareStatement("DELETE FROM ownedkeys WHERE owned_id = ? OR parent_id = ?;");
+                 PreparedStatement pending = conn.prepareStatement("DELETE FROM pendingusage WHERE writer_id = ?;");
+                 PreparedStatement quotas = conn.prepareStatement("DELETE FROM writerquotas WHERE writer_id = ?;");
+                 PreparedStatement usage = conn.prepareStatement("DELETE FROM writerusage WHERE writer_id = ?;");
+                 PreparedStatement writers = conn.prepareStatement("DELETE FROM writers WHERE id = ?;")) {
+                // out of the cache before the deletes too: if one fails, the writer is looked up afresh rather than
+                // trusted from a cache that outlives the attempt to remove it
+                synchronized (owners) {
+                    ownerRemovals++;
+                    owners.remove(writer);
+                }
+                select.setBytes(1, writer.toBytes());
+                ResultSet res = select.executeQuery();
+                if (! res.next())
+                    return;
+                int id = res.getInt(1);
+                ownedKeys.setInt(1, id);
+                ownedKeys.setInt(2, id);
+                ownedKeys.executeUpdate();
+                for (PreparedStatement byWriter : List.of(pending, quotas, usage, writers)) {
+                    byWriter.setInt(1, id);
+                    byWriter.executeUpdate();
+                }
+            } catch (SQLException sqe) {
+                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+                throw new RuntimeException(sqe);
             }
-            select.setBytes(1, writer.toBytes());
-            ResultSet res = select.executeQuery();
-            if (! res.next())
-                return;
-            int id = res.getInt(1);
-            ownedKeys.setInt(1, id);
-            ownedKeys.setInt(2, id);
-            ownedKeys.executeUpdate();
-            for (PreparedStatement byWriter : List.of(pending, quotas, usage, writers)) {
-                byWriter.setInt(1, id);
-                byWriter.executeUpdate();
-            }
-        } catch (SQLException sqe) {
-            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            throw new RuntimeException(sqe);
         }
         // After the deletes, and counted, so a lookup that read the owner before them doesn't cache it (getOwner).
         // Cached, the writer would outlive its removal.
@@ -608,6 +612,11 @@ public class JdbcUsageStore implements UsageStore {
             throw new RuntimeException(sqe);
         }
     }
+
+    // Edges are recorded on request threads as pointers land while the queue forgets writers, and SQLite enforces no
+    // foreign keys: an edge whose writers were looked up just before one was removed would point at nothing, and
+    // reading its parent's usage would fail from then on. So recording edges and removing writers take turns.
+    private final Object edges = new Object();
 
     private final Map<PublicKeyHash, String> owners = Collections.synchronizedMap(new LRUCache<>(100));
     private long ownerRemovals = 0; // guarded by owners
@@ -726,48 +735,50 @@ public class JdbcUsageStore implements UsageStore {
                                                long newDirectSize,
                                                long delta,
                                                boolean errored) {
-        try (Connection conn = getConnection(true, false)) {
-            int writerId = getWriterId(writer, conn);
-            int casCount;
-            try (PreparedStatement casUpdate = conn.prepareStatement(
-                    "UPDATE writerusage SET direct_size=?, target=? WHERE writer_id=? AND target IS NOT DISTINCT FROM ?")) {
-                casUpdate.setLong(1, newDirectSize);
-                casUpdate.setBytes(2, newTarget.isPresent() ? newTarget.get().toBytes() : null);
-                casUpdate.setInt(3, writerId);
-                casUpdate.setBytes(4, oldTarget.isPresent() ? oldTarget.get().toBytes() : null);
-                casCount = casUpdate.executeUpdate();
-            }
-            if (casCount == 0)
-                return false;
+        synchronized (edges) {
+            try (Connection conn = getConnection(true, false)) {
+                int writerId = getWriterId(writer, conn);
+                int casCount;
+                try (PreparedStatement casUpdate = conn.prepareStatement(
+                        "UPDATE writerusage SET direct_size=?, target=? WHERE writer_id=? AND target IS NOT DISTINCT FROM ?")) {
+                    casUpdate.setLong(1, newDirectSize);
+                    casUpdate.setBytes(2, newTarget.isPresent() ? newTarget.get().toBytes() : null);
+                    casUpdate.setInt(3, writerId);
+                    casUpdate.setBytes(4, oldTarget.isPresent() ? oldTarget.get().toBytes() : null);
+                    casCount = casUpdate.executeUpdate();
+                }
+                if (casCount == 0)
+                    return false;
 
-            long userId;
-            try (PreparedStatement getUser = conn.prepareStatement(
-                    "SELECT user_id FROM writerusage WHERE writer_id=?")) {
-                getUser.setInt(1, writerId);
-                ResultSet rs = getUser.executeQuery();
-                rs.next();
-                userId = rs.getLong(1);
-            }
+                long userId;
+                try (PreparedStatement getUser = conn.prepareStatement(
+                        "SELECT user_id FROM writerusage WHERE writer_id=?")) {
+                    getUser.setInt(1, writerId);
+                    ResultSet rs = getUser.executeQuery();
+                    rs.next();
+                    userId = rs.getLong(1);
+                }
 
-            try (PreparedStatement updateUsage = conn.prepareStatement(
-                    "UPDATE userusage SET total_bytes=total_bytes+?, errored=? WHERE user_id=?")) {
-                updateUsage.setLong(1, delta);
-                updateUsage.setBoolean(2, errored);
-                updateUsage.setLong(3, userId);
-                updateUsage.executeUpdate();
-            }
+                try (PreparedStatement updateUsage = conn.prepareStatement(
+                        "UPDATE userusage SET total_bytes=total_bytes+?, errored=? WHERE user_id=?")) {
+                    updateUsage.setLong(1, delta);
+                    updateUsage.setBoolean(2, errored);
+                    updateUsage.setLong(3, userId);
+                    updateUsage.executeUpdate();
+                }
 
-            try (PreparedStatement resetPending = conn.prepareStatement(
-                    "UPDATE pendingusage SET pending_bytes=0 WHERE writer_id=? AND user_id=?")) {
-                resetPending.setInt(1, writerId);
-                resetPending.setLong(2, userId);
-                resetPending.executeUpdate();
-            }
+                try (PreparedStatement resetPending = conn.prepareStatement(
+                        "UPDATE pendingusage SET pending_bytes=0 WHERE writer_id=? AND user_id=?")) {
+                    resetPending.setInt(1, writerId);
+                    resetPending.setLong(2, userId);
+                    resetPending.executeUpdate();
+                }
 
-            updateOwnedKeys(writerId, removedOwnedKeys, addedOwnedKeys, conn);
-        } catch (SQLException sqe) {
-            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            throw new RuntimeException(sqe);
+                updateOwnedKeys(writerId, removedOwnedKeys, addedOwnedKeys, conn);
+            } catch (SQLException sqe) {
+                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+                throw new RuntimeException(sqe);
+            }
         }
         boolean ownedKeysChanged = ! removedOwnedKeys.isEmpty() || ! addedOwnedKeys.isEmpty();
         notifyListeners(writer, l -> l.usageChanged(writer, delta, ownedKeysChanged));
