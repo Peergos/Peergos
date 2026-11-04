@@ -90,7 +90,8 @@ public class ServerBulkCommitter implements BulkCommitter {
     }
 
     /** A commit too big for one request goes as several, of which only the last carries the pointer
-     *  updates. The earlier ones are held by a transaction and stay unreachable until it lands.
+     *  updates. All go under one transaction, which holds the earlier ones' blocks until the last lands and
+     *  closes it, and under which the server gives back what they reserved if it refuses the last.
      */
     private CompletableFuture<List<Cid>> splitAndSend(PublicKeyHash owner, BulkCommit commit, CommitContext context) {
         return (commit.tid.isPresent() ?
@@ -106,10 +107,7 @@ public class ServerBulkCommitter implements BulkCommitter {
                                             }),
                                             (x, y) -> x && y)
                                     .thenApply(x -> written);
-                        })
-                        .thenCompose(written -> commit.tid.isPresent() ?
-                                Futures.of(written) :
-                                target.closeTransaction(owner, tid).thenApply(x -> written)));
+                        }));
     }
 
     /** One block of a writer's commit, kept with its hash so it can be ordered and signed for. */
@@ -171,7 +169,7 @@ public class ServerBulkCommitter implements BulkCommitter {
                                             w.preWritten, w.pointer, Optional.empty()));
                                 }
                                 List<BulkCommit> all = new ArrayList<>(calls);
-                                all.add(new BulkCommit(commit.tid, last));
+                                all.add(new BulkCommit(Optional.of(tid), last));
                                 return all;
                             });
                 });

@@ -150,8 +150,10 @@ public class BulkCommitTests {
 
         // the blocks-only calls each carry a signature over their own ordered block hashes
         for (BulkCommit call : calls) {
-            Assert.assertTrue("blocks-only calls are held by a transaction",
-                    call.hasPointerUpdate() || call.tid.isPresent());
+            // the last too, so the server knows what the earlier ones wrote ahead of it, and gives that back if it
+            // refuses the last
+            Assert.assertEquals("every call is under the one transaction", Optional.of("test"),
+                    call.tid.map(TransactionId::toString));
             for (WriterCommit w : call.writers) {
                 if (w.pointer.isPresent())
                     continue;
