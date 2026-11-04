@@ -48,11 +48,11 @@ public class BulkCommitStorage extends DelegatingStorage {
     public interface CommitQuota {
         Runnable allowCommit(PublicKeyHash owner, PublicKeyHash writer, int written, Supplier<Map<PublicKeyHash, Long>> deltas);
 
-        default void reservedAhead(TransactionId tid, Runnable release) {}
+        void reservedAhead(TransactionId tid, Runnable release);
 
-        default void namedAhead(TransactionId tid) {}
+        void namedAhead(TransactionId tid);
 
-        default void refusedAhead(TransactionId tid) {}
+        void refusedAhead(TransactionId tid);
     }
 
     private final ContentAddressedStorage target;
