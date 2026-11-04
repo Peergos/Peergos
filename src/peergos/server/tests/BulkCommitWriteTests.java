@@ -346,6 +346,106 @@ public class BulkCommitWriteTests {
         service.storage.closeTransaction(owner, theirs).join();
     }
 
+    /** A refused commit takes back what it registered last first, so a writer it named under two parents stays
+     *  provisional until it is forgotten: no other update of that writer can land while it is being taken back. */
+    @Test
+    public void aWriterNamedTwiceInARefusedCommitStaysProvisionalWhileItIsTakenBack() throws Exception {
+        UserContext user = ensureSignedUp(generateUsername(random), generatePassword(), network, crypto);
+        PublicKeyHash owner = user.signer.publicKeyHash;
+        SigningPrivateKeyAndPublicHash home = user.getUserRoot().join().signingPair();
+        Threads.sleep(2_000); // the home writer's edge from the identity is recorded
+        SigningKeyPair pair = SigningKeyPair.random(crypto.random, crypto.signer);
+        PublicKeyHash childHash = network.dhtClient.putSigningKey(user.signer.secret.signMessage(pair.publicSigningKey.serialize()).join(),
+                owner, owner, pair.publicSigningKey, network.dhtClient.startTransaction(owner).join()).join();
+        SigningPrivateKeyAndPublicHash child = new SigningPrivateKeyAndPublicHash(childHash, pair.secretSigningKey);
+
+        // the identity and the home writer both name the child, which the commit creates
+        List<WriterCommit> writers = new ArrayList<>();
+        for (SigningPrivateKeyAndPublicHash parent : List.of(user.signer, home)) {
+            CommittedWriterData current = WriterData.getWriterData(owner, parent.publicKeyHash, service.mutable, service.storage).join();
+            byte[] root = current.props.get().addNamedKey("child", OwnerProof.build(child, parent.publicKeyHash).join()).serialize();
+            Cid rootHash = crypto.hasher.hash(root, false).join();
+            byte[] signed = parent.secret.signMessage(new PointerUpdate(current.hash, MaybeMultihash.of(rootHash),
+                    PointerUpdate.increment(current.sequence)).serialize()).join();
+            writers.add(new WriterCommit(parent.publicKeyHash, List.of(root), Collections.emptyList(), Collections.emptyList(),
+                    Optional.of(new SignedPointerUpdate(parent.publicKeyHash, signed)), Optional.empty()));
+        }
+        byte[] childRoot = new WriterData(childHash, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+                Collections.emptyMap(), Optional.empty(), Optional.empty(), Optional.empty()).serialize();
+        Cid childRootHash = crypto.hasher.hash(childRoot, false).join();
+        writers.add(new WriterCommit(childHash, List.of(childRoot), Collections.emptyList(), Collections.emptyList(),
+                Optional.of(new SignedPointerUpdate(childHash, child.secret.signMessage(new PointerUpdate(MaybeMultihash.empty(),
+                        MaybeMultihash.of(childRootHash), PointerUpdate.increment(Optional.empty())).serialize()).join())), Optional.empty()));
+        // another update of the child than the commit's own
+        SignedPointerUpdate another = new SignedPointerUpdate(childHash, child.secret.signMessage(new PointerUpdate(MaybeMultihash.empty(),
+                MaybeMultihash.of(childRootHash), Optional.of(7L)).serialize()).join());
+
+        // after each registration is taken back, whether that other update could land
+        java.lang.reflect.Field local = ProxyingSpaceUsage.class.getDeclaredField("local");
+        local.setAccessible(true);
+        peergos.server.space.SpaceCheckingKeyFilter filter = (peergos.server.space.SpaceCheckingKeyFilter) local.get(service.usage);
+        BulkCommitStorage server = serverBulkCommit();
+        BulkCommitStorage.WriterRegistrar real = field(server, "registerWriter");
+        List<String> settable = new ArrayList<>();
+        BulkCommitStorage.WriterRegistrar probing = (o, parent, writer, own) -> {
+            BulkCommitStorage.Registration registered = real.register(o, parent, writer, own);
+            return new BulkCommitStorage.Registration() {
+                @Override
+                public void landed() {
+                    registered.landed();
+                }
+
+                @Override
+                public void undo() {
+                    registered.undo();
+                    if (filter.isOwnedWriter(owner, another))
+                        settable.add("after its edge from " + parent + " was taken back");
+                }
+            };
+        };
+        BulkCommitStorage refusing = new BulkCommitStorage(field(server, "target"), field(server, "unfiltered"),
+                new RefusingPointers(field(server, "pointers")), crypto.hasher, probing, field(server, "quota"));
+        try {
+            refusing.bulkCommit(owner, new BulkCommit(Optional.empty(), writers)).join();
+            Assert.fail("A refused commit landed");
+        } catch (CompletionException refused) {}
+        Assert.assertEquals("The child could be set while it was being taken back", Collections.emptyList(), settable);
+    }
+
+    /** A pointer store that refuses every commit's updates */
+    private static class RefusingPointers implements MutablePointers {
+        private final MutablePointers target;
+
+        RefusingPointers(MutablePointers target) {
+            this.target = target;
+        }
+
+        @Override
+        public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writer, byte[] signed) {
+            return target.setPointer(owner, writer, signed);
+        }
+
+        @Override
+        public CompletableFuture<Boolean> setPointers(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
+            return Futures.errored(new IllegalStateException("Refused"));
+        }
+
+        @Override
+        public void recordApplied(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
+            target.recordApplied(owner, updates);
+        }
+
+        @Override
+        public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
+            return target.getPointer(owner, writer);
+        }
+
+        @Override
+        public MutablePointers clearCache() {
+            return target.clearCache();
+        }
+    }
+
     /** The server's bulk commit layer, below the caching and proxying layers that wrap it */
     private static BulkCommitStorage serverBulkCommit() throws Exception {
         Deque<Object> toVisit = new ArrayDeque<>(List.of(service.storage));

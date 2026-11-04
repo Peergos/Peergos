@@ -127,10 +127,12 @@ public class BulkCommitStorage extends DelegatingStorage {
                                                                     });
                                                                 });
                                                     })))
-                                            // a commit refused before its pointers landed takes back the writers it registered
+                                            // a commit refused before its pointers landed takes back the writers it registered, the
+                                            // last first: a writer named under two parents stays provisional until its first edge goes
                                             .whenComplete((written, refused) -> {
                                                 if (refused != null && ! landed[0])
-                                                    registered.forEach(Registration::undo);
+                                                    for (int i = registered.size() - 1; i >= 0; i--)
+                                                        registered.get(i).undo();
                                             });
                                 })));
     }

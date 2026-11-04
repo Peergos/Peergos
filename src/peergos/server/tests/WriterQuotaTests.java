@@ -388,9 +388,9 @@ public class WriterQuotaTests {
         service.mutable.setPointer(ownerKey, d, dUpd).join();
         service.mutable.setPointer(ownerKey, e, eUpd).join();
         awaitUsageUpdate();
-        // the commit is refused, and takes back what it registered
-        underW.undo();
+        // the commit is refused, and takes back what it registered, the last first
         underD.undo();
+        underW.undo();
         awaitUsageUpdate();
         assertCannotCommit(d, ownerKey, "a writer a refused commit made, named only by another it made");
         assertCannotCommit(e, ownerKey, "a writer a refused commit made under one it made");
@@ -825,8 +825,8 @@ public class WriterQuotaTests {
         // as a commit naming the child under both is registered, and then refused
         BulkCommitStorage.Registration underFirst = quotaFilter().registerNewWriter(ownerKey, first.signingPair().publicKeyHash, child.publicKeyHash, Optional.empty());
         BulkCommitStorage.Registration underSecond = quotaFilter().registerNewWriter(ownerKey, second.signingPair().publicKeyHash, child.publicKeyHash, Optional.empty());
-        underFirst.undo();
         underSecond.undo();
+        underFirst.undo();
         assertCannotCommit(child, ownerKey, "a key a refused commit named under two parents");
     }
 
