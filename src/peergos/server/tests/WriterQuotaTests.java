@@ -1536,6 +1536,68 @@ public class WriterQuotaTests {
     }
 
     @Test
+    public void aRefusedCommitGivesBackWhatItSentInline() {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        Path dir = sharedDir(owner, "team", sharee);
+        owner.setWriteShareQuota(dir, Optional.of(1024L * KiB)).join();
+        awaitUsageUpdate();
+        FileWrapper shared = sharee.getByPath(dir).join().get();
+
+        // a 540 KiB commit, its blocks small enough to travel inside the call, passes the cap and is then refused,
+        // its start being stale: what it reserved goes back as the call fails
+        try {
+            write(shared.owner(), shared.signingPair(), 6, 90 * KiB, true);
+            Assert.fail("A commit over a stale start landed");
+        } catch (Exception refused) {}
+        // so another 600 KiB fits under the 1 MiB cap
+        upload(sharee, dir, "fits", 600 * KiB);
+    }
+
+    @Test
+    public void aRefusedLastCallGivesBackWhatTheCallsBeforeItReserved() {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        Path dir = sharedDir(owner, "team", sharee);
+        owner.setWriteShareQuota(dir, Optional.of(1024L * KiB)).join();
+        awaitUsageUpdate();
+        FileWrapper shared = sharee.getByPath(dir).join().get();
+        PublicKeyHash ownerKey = shared.owner();
+        SigningPrivateKeyAndPublicHash writer = shared.signingPair();
+
+        // 600 KiB in a blocks-only call of a split commit, held by its transaction, passes the cap
+        List<byte[]> blocks = new ArrayList<>();
+        for (int i = 0; i < 6; i++) {
+            byte[] block = new byte[100 * KiB];
+            random.nextBytes(block);
+            blocks.add(block);
+        }
+        PointerUpdate current = service.mutable.getPointerTarget(ownerKey, writer.publicKeyHash, service.storage).join();
+        List<Cid> hashes = blocks.stream().map(b -> crypto.hasher.hash(b, true).join()).toList();
+        byte[] listSignature = WriterCommit.blockListPayload(hashes, PointerUpdate.increment(current.sequence), crypto.hasher)
+                .thenCompose(payload -> writer.secret.signMessage(payload)).join();
+        TransactionId tid = service.storage.startTransaction(ownerKey).join();
+        service.storage.bulkCommit(ownerKey, new BulkCommit(Optional.of(tid), List.of(new WriterCommit(writer.publicKeyHash,
+                List.of(), blocks, List.of(), Optional.empty(), Optional.of(listSignature))))).join();
+
+        // the last call, under the same transaction, is refused: its root is a block nobody has
+        Cid missing = crypto.hasher.hash(new CborObject.CborLong(random.nextLong()).serialize(), false).join();
+        byte[] update = writer.secret.signMessage(new PointerUpdate(current.updated, MaybeMultihash.of(missing),
+                PointerUpdate.increment(current.sequence)).serialize()).join();
+        try {
+            service.storage.bulkCommit(ownerKey, new BulkCommit(Optional.of(tid), List.of(new WriterCommit(writer.publicKeyHash,
+                    List.of(), List.of(), List.of(), Optional.of(new SignedPointerUpdate(writer.publicKeyHash, update)),
+                    Optional.empty())))).join();
+            Assert.fail("A last call naming a block nobody has landed");
+        } catch (Exception refused) {}
+        service.storage.closeTransaction(ownerKey, tid).join();
+        // so another 600 KiB fits under the 1 MiB cap
+        upload(sharee, dir, "fits", 600 * KiB);
+    }
+
+    @Test
     public void aCommitRefusedAfterTheWritersNextLandsLeavesTheWritesReservedSince() throws Exception {
         UserContext owner = signUp();
         UserContext sharee = signUp();
