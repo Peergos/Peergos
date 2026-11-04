@@ -30,7 +30,7 @@ import java.util.stream.Collectors;
 /** This class checks whether a given user is using more storage space than their quota
  *
  */
-public class SpaceCheckingKeyFilter implements SpaceUsage {
+public class SpaceCheckingKeyFilter implements SpaceUsage, BulkCommitStorage.CommitQuota {
     private static final Logger LOG = Logging.LOG();
     private static final long USAGE_TOLERANCE = 1024 * 1024;
     private final CoreNode core;
@@ -786,6 +786,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         }
     };
 
+    @Override
     public void reservedAhead(TransactionId tid, Runnable release) {
         synchronized (reservedAhead) {
             reservedAhead.computeIfAbsent(tid.id, t -> new ArrayList<>()).add(release);
@@ -793,6 +794,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     }
 
     /** The transaction's pointer update has landed: what was reserved ahead is confirmed when it is processed */
+    @Override
     public void namedAhead(TransactionId tid) {
         synchronized (reservedAhead) {
             reservedAhead.remove(tid.id);
@@ -801,6 +803,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
 
     /** The transaction's pointer update was refused: the blocks written ahead of it are not named, and their bytes
      *  are given back. A retry that names them after all is counted when its update is processed. */
+    @Override
     public void refusedAhead(TransactionId tid) {
         List<Runnable> releases;
         synchronized (reservedAhead) {
@@ -895,6 +898,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
      * @param deltas computes the change in stored bytes, only called when the write would be rejected
      * @return what gives back the bytes reserved for it, if the commit is refused after all
      */
+    @Override
     public Runnable allowCommit(PublicKeyHash owner, PublicKeyHash writer, int written, Supplier<Map<PublicKeyHash, Long>> deltas) {
         try {
             return reserve(owner, writer, written);

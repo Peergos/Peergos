@@ -46,7 +46,7 @@ public class BulkCommitStorage extends DelegatingStorage {
      *  or lost after all. Blocks written ahead of the pointer update that names them are reserved under
      *  their transaction until that update lands or is refused. */
     public interface CommitQuota {
-        Runnable allow(PublicKeyHash owner, PublicKeyHash writer, int written, Supplier<Map<PublicKeyHash, Long>> deltas);
+        Runnable allowCommit(PublicKeyHash owner, PublicKeyHash writer, int written, Supplier<Map<PublicKeyHash, Long>> deltas);
 
         default void reservedAhead(TransactionId tid, Runnable release) {}
 
@@ -512,7 +512,7 @@ public class BulkCommitStorage extends DelegatingStorage {
                             // leaves a user who is over quota unable to get back under. Charge it
                             // against what the commit will actually leave stored.
                             int size = w.inlineSize();
-                            releases.add(quota.allow(owner, w.writer, size, allDeltas));
+                            releases.add(quota.allowCommit(owner, w.writer, size, allDeltas));
                             return writeBlocks(owner, w, tid).thenApply(cids -> {
                                 written.addAll(cids);
                                 return done;

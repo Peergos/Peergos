@@ -1007,27 +1007,7 @@ public class Main extends Builder {
             // updates it consists of happen behind one call, below the proxying layer.
             ContentAddressedStorage filteringDht = new BulkCommitStorage(
                     new WriteFilter(localStorage, spaceChecker::allowWrite), localStorage, blockingMutablePointers,
-                    hasher, spaceChecker::registerNewWriter, new BulkCommitStorage.CommitQuota() {
-                        @Override
-                        public Runnable allow(PublicKeyHash owner, PublicKeyHash writer, int written, Supplier<Map<PublicKeyHash, Long>> deltas) {
-                            return spaceChecker.allowCommit(owner, writer, written, deltas);
-                        }
-
-                        @Override
-                        public void reservedAhead(TransactionId tid, Runnable release) {
-                            spaceChecker.reservedAhead(tid, release);
-                        }
-
-                        @Override
-                        public void namedAhead(TransactionId tid) {
-                            spaceChecker.namedAhead(tid);
-                        }
-
-                        @Override
-                        public void refusedAhead(TransactionId tid) {
-                            spaceChecker.refusedAhead(tid);
-                        }
-                    });
+                    hasher, spaceChecker::registerNewWriter, spaceChecker);
             ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(p2pHttpProxy);
             LRUCache<PublicKeyHash, Boolean> nonLocal = new LRUCache<>(100);
             ContentAddressedStorage p2pDht = new ContentAddressedStorage.Proxying(filteringDht, proxingDht, nodeIds,
