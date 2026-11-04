@@ -15,6 +15,7 @@ import peergos.shared.util.*;
 
 import java.nio.file.*;
 import java.util.*;
+import java.util.function.*;
 
 /** Revoking write access leaves the old key's signature valid, but nothing owns it any more, so the server must not
  *  take writes from it: they would land in space the owner can't reach but pays for.
@@ -128,20 +129,30 @@ public class RevokedWriterTests {
 
     @Test
     public void aForgedOwnerProofDoesntStopARevocation() {
+        assertRevocableDespite("p", writer -> new OwnerProof(writer, new byte[96]));
+    }
+
+    @Test
+    public void aProofNamingNoKeyDoesntStopARevocation() {
+        PublicKeyHash notAKey = new PublicKeyHash(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.id, new byte[0]));
+        assertRevocableDespite("k", writer -> new OwnerProof(notAKey, new byte[96]));
+    }
+
+    /** The sharee names a key in the shared folder's root with a proof that doesn't verify */
+    private void assertRevocableDespite(String prefix, Function<PublicKeyHash, OwnerProof> forge) {
         String suffix = "" + Math.abs(random.nextInt() % 1_000_000);
-        UserContext owner = signIn("po" + suffix);
-        UserContext sharee = signIn("ps" + suffix);
+        UserContext owner = signIn(prefix + "o" + suffix);
+        UserContext sharee = signIn(prefix + "s" + suffix);
         PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
         owner.getUserRoot().join().mkdir("dir", owner.network, false, owner.mirrorBatId(), crypto).join();
         Path dir = PathUtil.get(owner.username, "dir");
         owner.shareWriteAccessWith(dir, Set.of(sharee.username)).join();
 
-        // the sharee names a key in the shared folder's root with a proof that doesn't verify
         FileWrapper shared = sharee.getByPath(dir).join().get();
         PublicKeyHash ownerKey = shared.owner();
         SigningPrivateKeyAndPublicHash writer = shared.signingPair();
         NetworkAccess net = sharee.network.clear();
-        OwnerProof forged = new OwnerProof(writer.publicKeyHash, new byte[96]);
+        OwnerProof forged = forge.apply(writer.publicKeyHash);
         net.synchronizer.applyComplexUpdate(ownerKey, writer, (s, committer) -> IpfsTransaction.call(ownerKey, tid -> {
             CommittedWriterData current = s.get(writer);
             return committer.commit(ownerKey, writer, current.props.get().addNamedKey("forged", forged), current, tid);
