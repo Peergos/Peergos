@@ -328,7 +328,7 @@ public class BulkCommitWriteTests {
         SignedPointerUpdate ours = new SignedPointerUpdate(owner, user.signer.secret.signMessage(new PointerUpdate(
                 before.updated, MaybeMultihash.of(rootHash), PointerUpdate.increment(before.sequence)).serialize()).join());
 
-        BulkCommitStorage server = serverBulkCommit();
+        BulkCommitStorage server = serverBulkCommit(service.storage);
         MutablePointers inner = field(server, "pointers");
         BulkCommitStorage racing = new BulkCommitStorage(field(server, "target"), field(server, "unfiltered"),
                 new RacingPointers(inner, owner, competing), crypto.hasher, field(server, "registerWriter"), field(server, "quota"));
@@ -384,7 +384,7 @@ public class BulkCommitWriteTests {
         java.lang.reflect.Field local = ProxyingSpaceUsage.class.getDeclaredField("local");
         local.setAccessible(true);
         peergos.server.space.SpaceCheckingKeyFilter filter = (peergos.server.space.SpaceCheckingKeyFilter) local.get(service.usage);
-        BulkCommitStorage server = serverBulkCommit();
+        BulkCommitStorage server = serverBulkCommit(service.storage);
         BulkCommitStorage.WriterRegistrar real = field(server, "registerWriter");
         List<String> settable = new ArrayList<>();
         BulkCommitStorage.WriterRegistrar probing = (o, parent, writer, own) -> {
@@ -444,36 +444,6 @@ public class BulkCommitWriteTests {
         public MutablePointers clearCache() {
             return target.clearCache();
         }
-    }
-
-    /** The server's bulk commit layer, below the caching and proxying layers that wrap it */
-    private static BulkCommitStorage serverBulkCommit() throws Exception {
-        Deque<Object> toVisit = new ArrayDeque<>(List.of(service.storage));
-        Set<Object> seen = Collections.newSetFromMap(new IdentityHashMap<>());
-        while (! toVisit.isEmpty()) {
-            Object at = toVisit.poll();
-            if (at instanceof BulkCommitStorage)
-                return (BulkCommitStorage) at;
-            if (! seen.add(at))
-                continue;
-            for (Class<?> c = at.getClass(); c != null; c = c.getSuperclass())
-                for (java.lang.reflect.Field f : c.getDeclaredFields())
-                    if (ContentAddressedStorage.class.isAssignableFrom(f.getType())
-                            && ! java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
-                        f.setAccessible(true);
-                        Object next = f.get(at);
-                        if (next != null)
-                            toVisit.add(next);
-                    }
-        }
-        throw new IllegalStateException("No bulk commit layer under the service's storage");
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <T> T field(Object o, String name) throws Exception {
-        java.lang.reflect.Field f = o.getClass().getDeclaredField(name);
-        f.setAccessible(true);
-        return (T) f.get(o);
     }
 
     /** A pointer store whose conditional write of a commit's updates loses to another update of the writer that

@@ -143,23 +143,34 @@ public class BulkCommitStorage extends DelegatingStorage {
                                                     })))
                                             // a commit refused before its pointers landed takes back the writers it registered, the
                                             // last first: a writer named under two parents stays provisional until its first edge goes;
-                                            // and it gives back the bytes it reserved
+                                            // and it gives back the bytes it reserved, unless it lost its CAS: the client merges and
+                                            // sends again naming the blocks this call wrote, without reserving them again. A 429 is
+                                            // retried as this same call, which reserves them again
                                             .whenComplete((written, refused) -> {
                                                 if (refused != null && ! landed[0]) {
                                                     for (int i = registered.size() - 1; i >= 0; i--)
                                                         registered.get(i).undo();
-                                                    releases.forEach(Runnable::run);
+                                                    if (! (Exceptions.getRootCause(refused) instanceof PointerCasException))
+                                                        releases.forEach(Runnable::run);
                                                 }
                                             });
                                 })));
         if (commit.tid.isEmpty() || ! commit.hasPointerUpdate())
             return res;
-        // however it was refused, before its pointers landed, the blocks written ahead of it in its transaction
-        // are not named by it, and their bytes are given back
+        // refused before its pointers landed, the blocks written ahead of it in its transaction are not named by it,
+        // and their bytes are given back. Except after a lost CAS or a 429: the client sends again under the same
+        // transaction naming them, without reserving them again, and the retry's processed commit drops them anyway
         return res.whenComplete((written, refused) -> {
-            if (refused != null && ! landed[0])
+            if (refused != null && ! landed[0] && ! sentAgain(refused))
                 quota.refusedAhead(commit.tid.get());
         });
+    }
+
+    /** Refused in a way the client answers by sending the commit again: a lost CAS it merges, or a 429 it retries,
+     *  which the server raises as a RateLimitException (a TooManyRequestsException is one, as a client sees it) */
+    private static boolean sentAgain(Throwable refused) {
+        Throwable cause = Exceptions.getRootCause(refused);
+        return cause instanceof PointerCasException || cause instanceof RateLimitException;
     }
 
     /** Apply a batch signed block write for an owner whose home server we are.

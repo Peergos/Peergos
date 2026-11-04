@@ -9,6 +9,7 @@ import peergos.server.space.WriterQuotas;
 import peergos.server.space.WriterUsage;
 import peergos.server.space.WriterUsageStore;
 import peergos.server.storage.BulkCommitStorage;
+import peergos.server.storage.DelegatingDeletableStorage;
 import peergos.server.storage.DeletableContentAddressedStorage;
 import peergos.server.storage.admin.QuotaAdmin;
 import peergos.server.util.*;
@@ -26,6 +27,9 @@ import peergos.shared.util.*;
 
 import java.nio.file.*;
 import java.util.*;
+
+import static peergos.server.tests.PeergosNetworkUtils.field;
+import static peergos.server.tests.PeergosNetworkUtils.serverBulkCommit;
 
 public class WriterQuotaTests {
 
@@ -1865,5 +1869,117 @@ public class WriterQuotaTests {
 
         assertUploadRejected(remaining, dir, "big", 1200 * KiB);
         assertUploadRejected(remaining, nested, "big", 600 * KiB);
+    }
+
+    @Test
+    public void aLostCasKeepsReservedWhatItsRetryNames() throws Exception {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        Path dir = sharedDir(owner, "team", sharee);
+        owner.setWriteShareQuota(dir, Optional.of(1024L * KiB)).join();
+        awaitUsageUpdate();
+        FileWrapper shared = sharee.getByPath(dir).join().get();
+        PublicKeyHash ownerKey = shared.owner();
+        SigningPrivateKeyAndPublicHash writer = shared.signingPair();
+
+        // 300 KiB in a blocks-only call, held by its transaction, ahead of the commit that names them, and 300 KiB more
+        // travelling inline in it
+        PointerUpdate current = service.mutable.getPointerTarget(ownerKey, writer.publicKeyHash, service.storage).join();
+        List<byte[]> written = randomBlocks(3, 100 * KiB);
+        List<Cid> ahead = written.stream().map(b -> crypto.hasher.hash(b, true).join()).toList();
+        byte[] listSignature = WriterCommit.blockListPayload(ahead, PointerUpdate.increment(current.sequence), crypto.hasher)
+                .thenCompose(payload -> writer.secret.signMessage(payload)).join();
+        TransactionId tid = service.storage.startTransaction(ownerKey).join();
+        service.storage.bulkCommit(ownerKey, new BulkCommit(Optional.of(tid), List.of(new WriterCommit(writer.publicKeyHash,
+                List.of(), written, List.of(), Optional.empty(), Optional.of(listSignature))))).join();
+        List<byte[]> inline = randomBlocks(3, 100 * KiB);
+        List<byte[]> cbor = rootOver(ownerKey, current, inline, ahead);
+
+        // the commit loses its CAS: another commit moved the pointer first, as far as this one knows
+        Cid elsewhere = crypto.hasher.hash(new CborObject.CborLong(random.nextLong()).serialize(), false).join();
+        try {
+            service.storage.bulkCommit(ownerKey, new BulkCommit(Optional.of(tid), List.of(new WriterCommit(writer.publicKeyHash,
+                    cbor, inline, ahead, Optional.of(update(writer, MaybeMultihash.of(elsewhere), current, cbor)), Optional.empty())))).join();
+            Assert.fail("A commit whose CAS was lost landed");
+        } catch (Exception lost) {
+            Throwable cause = peergos.shared.util.Exceptions.getRootCause(lost);
+            Assert.assertTrue(String.valueOf(cause), cause instanceof PointerCasException);
+        }
+
+        // a client merges and sends it again, naming the same 600 KiB without sending them again, so meanwhile they still count
+        boolean fitted = false;
+        try {
+            fitted = quotaFilter().allowWrite(ownerKey, writer.publicKeyHash, 600 * KiB);
+        } catch (Exception refused) {}
+        Assert.assertFalse("600 KiB more fitted beside the lost commit's, over the 1 MiB cap with its retry", fitted);
+
+        service.storage.bulkCommit(ownerKey, new BulkCommit(Optional.of(tid), List.of(new WriterCommit(writer.publicKeyHash,
+                cbor, List.of(), ahead, Optional.of(update(writer, current.updated, current, cbor)), Optional.empty())))).join();
+        awaitUsageUpdate();
+        long used = writerQuotas().getUsage(writer.publicKeyHash).totalUsage();
+        Assert.assertTrue("the retry landed what the lost commit wrote: " + used, used >= 600 * KiB);
+    }
+
+    @Test
+    public void a429KeepsReservedWhatItsRetryNamesButNotWhatItSendsAgain() throws Exception {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        Path dir = sharedDir(owner, "team", sharee);
+        owner.setWriteShareQuota(dir, Optional.of(1024L * KiB)).join();
+        awaitUsageUpdate();
+        FileWrapper shared = sharee.getByPath(dir).join().get();
+        PublicKeyHash ownerKey = shared.owner();
+        SigningPrivateKeyAndPublicHash writer = shared.signingPair();
+        long before = writerQuotas().getUsage(writer.publicKeyHash).expectedUsage();
+
+        // 400 KiB written ahead under the commit's transaction, and 400 KiB more travelling inline in it
+        TransactionId tid = service.storage.startTransaction(ownerKey).join();
+        List<Cid> ahead = service.storage.putRawBatch(ownerKey, writer, randomBlocks(4, 100 * KiB), tid, x -> {}, crypto.hasher).join();
+        List<byte[]> inline = randomBlocks(4, 100 * KiB);
+        PointerUpdate current = service.mutable.getPointerTarget(ownerKey, writer.publicKeyHash, service.storage).join();
+        List<byte[]> cbor = rootOver(ownerKey, current, inline, ahead);
+        BulkCommit commit = new BulkCommit(Optional.of(tid), List.of(new WriterCommit(writer.publicKeyHash, cbor, inline, ahead,
+                Optional.of(update(writer, current.updated, current, cbor)), Optional.empty())));
+
+        // the block store is throttled as the inline blocks are written, after they were reserved
+        BulkCommitStorage server = throttledOnce();
+        try {
+            server.bulkCommit(ownerKey, commit).join();
+            Assert.fail("A throttled commit landed");
+        } catch (Exception throttled) {
+            Throwable cause = peergos.shared.util.Exceptions.getRootCause(throttled);
+            Assert.assertTrue(String.valueOf(cause), cause instanceof RateLimitException);
+        }
+
+        // a client sends the same call again: what it names, written ahead, is still reserved for it, and what it sends
+        // again it reserves again, so it fits
+        long reserved = writerQuotas().getUsage(writer.publicKeyHash).expectedUsage() - before;
+        Assert.assertTrue("what the retry names was given back: " + reserved, reserved >= 400 * KiB);
+        server.bulkCommit(ownerKey, commit).join();
+        awaitUsageUpdate();
+        long used = writerQuotas().getUsage(writer.publicKeyHash).totalUsage();
+        Assert.assertTrue("the retry landed: " + used, used >= 800 * KiB);
+    }
+
+    /** The server's bulk commit layer over a block store that is throttled once, refusing a raw write with the
+     *  RateLimitException the server answers with a 429 */
+    private static BulkCommitStorage throttledOnce() throws Exception {
+        BulkCommitStorage server = serverBulkCommit(service.storage);
+        boolean[] throttled = {false};
+        DeletableContentAddressedStorage store = new DelegatingDeletableStorage(field(server, "unfiltered")) {
+            @Override
+            public java.util.concurrent.CompletableFuture<List<Cid>> putRaw(PublicKeyHash owner, PublicKeyHash writer,
+                                                                            List<byte[]> signedHashes, List<byte[]> blocks,
+                                                                            TransactionId tid, ProgressConsumer<Long> progress) {
+                if (throttled[0])
+                    return super.putRaw(owner, writer, signedHashes, blocks, tid, progress);
+                throttled[0] = true;
+                return Futures.errored(new RateLimitException());
+            }
+        };
+        return new BulkCommitStorage(field(server, "target"), store, field(server, "pointers"), crypto.hasher,
+                field(server, "registerWriter"), field(server, "quota"));
     }
 }

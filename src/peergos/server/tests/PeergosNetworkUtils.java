@@ -3,6 +3,7 @@ package peergos.server.tests;
 import org.junit.Assert;
 import peergos.server.*;
 import peergos.server.apps.email.*;
+import peergos.server.storage.BulkCommitStorage;
 import peergos.server.storage.ResetableFileInputStream;
 import peergos.server.tests.util.*;
 import peergos.shared.Crypto;
@@ -18,6 +19,7 @@ import peergos.shared.messaging.messages.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.BufferedStorage;
+import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -2967,5 +2969,35 @@ public class PeergosNetworkUtils {
         if (isRegistered)
             return UserContext.signIn(username, password, UserTests::noMfa, network, crypto).join();
         return UserContext.signUp(username, password, "", network, crypto).join();
+    }
+
+    /** The server's bulk commit layer, below the caching and proxying layers that wrap it */
+    public static BulkCommitStorage serverBulkCommit(ContentAddressedStorage storage) throws Exception {
+        Deque<Object> toVisit = new ArrayDeque<>(List.of(storage));
+        Set<Object> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        while (! toVisit.isEmpty()) {
+            Object at = toVisit.poll();
+            if (at instanceof BulkCommitStorage)
+                return (BulkCommitStorage) at;
+            if (! seen.add(at))
+                continue;
+            for (Class<?> c = at.getClass(); c != null; c = c.getSuperclass())
+                for (java.lang.reflect.Field f : c.getDeclaredFields())
+                    if (ContentAddressedStorage.class.isAssignableFrom(f.getType())
+                            && ! java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                        f.setAccessible(true);
+                        Object next = f.get(at);
+                        if (next != null)
+                            toVisit.add(next);
+                    }
+        }
+        throw new IllegalStateException("No bulk commit layer under the storage");
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <T> T field(Object o, String name) throws Exception {
+        java.lang.reflect.Field f = o.getClass().getDeclaredField(name);
+        f.setAccessible(true);
+        return (T) f.get(o);
     }
 }
