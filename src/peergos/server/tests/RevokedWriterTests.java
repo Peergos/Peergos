@@ -129,17 +129,24 @@ public class RevokedWriterTests {
 
     @Test
     public void aForgedOwnerProofDoesntStopARevocation() {
-        assertRevocableDespite("p", writer -> new OwnerProof(writer, new byte[96]));
+        assertRevocableDespite("p", shared -> new OwnerProof(shared.signingPair().publicKeyHash, new byte[96]));
     }
 
     @Test
     public void aProofNamingNoKeyDoesntStopARevocation() {
         PublicKeyHash notAKey = new PublicKeyHash(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.id, new byte[0]));
-        assertRevocableDespite("k", writer -> new OwnerProof(notAKey, new byte[96]));
+        assertRevocableDespite("k", shared -> new OwnerProof(notAKey, new byte[96]));
+    }
+
+    /** A block that needs a BAT to be read is no key either, but the walk can't read it to find that out */
+    @Test
+    public void aProofNamingAProtectedBlockDoesntStopARevocation() {
+        assertRevocableDespite("b", shared -> new OwnerProof(
+                new PublicKeyHash((Cid) shared.getPointer().fileAccess.committedHash().get()), new byte[96]));
     }
 
     /** The sharee names a key in the shared folder's root with a proof that doesn't verify */
-    private void assertRevocableDespite(String prefix, Function<PublicKeyHash, OwnerProof> forge) {
+    private void assertRevocableDespite(String prefix, Function<FileWrapper, OwnerProof> forge) {
         String suffix = "" + Math.abs(random.nextInt() % 1_000_000);
         UserContext owner = signIn(prefix + "o" + suffix);
         UserContext sharee = signIn(prefix + "s" + suffix);
@@ -152,7 +159,7 @@ public class RevokedWriterTests {
         PublicKeyHash ownerKey = shared.owner();
         SigningPrivateKeyAndPublicHash writer = shared.signingPair();
         NetworkAccess net = sharee.network.clear();
-        OwnerProof forged = forge.apply(writer.publicKeyHash);
+        OwnerProof forged = forge.apply(shared);
         net.synchronizer.applyComplexUpdate(ownerKey, writer, (s, committer) -> IpfsTransaction.call(ownerKey, tid -> {
             CommittedWriterData current = s.get(writer);
             return committer.commit(ownerKey, writer, current.props.get().addNamedKey("forged", forged), current, tid);
