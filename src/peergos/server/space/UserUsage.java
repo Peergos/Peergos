@@ -90,9 +90,10 @@ public class UserUsage implements Cborable {
     }
 
     protected synchronized void clearPending(PublicKeyHash writer) {
-        pending.remove(writer);
         pendingSince.remove(writer);
-        drops.merge(writer, 1L, Long::sum);
+        // only a writer with bytes reserved has a release to stop: every cap is told of each writer whose edges change
+        if (pending.remove(writer) != null)
+            drops.merge(writer, 1L, Long::sum);
     }
 
     public synchronized long getPending(PublicKeyHash writer) {

@@ -105,4 +105,25 @@ public class CapUsageCacheTests {
         Assert.assertEquals(900, usage.getPending(writer));
         Assert.assertTrue(usage.reserve(writer, 600, 1000, 0).isEmpty());
     }
+
+    /** Every cap is told of each writer whose edges change, and keeps nothing for one that reserved nothing under
+     *  it, while a late release of one that did still gives back nothing reserved since. */
+    @Test
+    public void aCapKeepsNothingForWritersThatReservedNothing() throws Exception {
+        Connection db = new Sqlite.UncloseableConnection(Sqlite.build(":memory:"));
+        JdbcUsageStore store = new JdbcUsageStore(() -> db, new SqliteCommands());
+        WriterQuotas quotas = new WriterQuotas(store);
+        PublicKeyHash cap = key(), writer = key();
+        UserUsage usage = quotas.getUsage(cap);
+        Runnable first = usage.reserve(writer, 600, 1000, 0).get();
+        quotas.usageChanged(writer, 0, true);
+        for (int i = 0; i < 1_000; i++)
+            quotas.usageChanged(key(), 0, true);
+        Assert.assertTrue(usage.reserve(writer, 900, 1000, 0).isPresent());
+        first.run();
+        Assert.assertEquals(900, usage.getPending(writer));
+        java.lang.reflect.Field drops = UserUsage.class.getDeclaredField("drops");
+        drops.setAccessible(true);
+        Assert.assertEquals(1, ((Map<?, ?>) drops.get(usage)).size());
+    }
 }
