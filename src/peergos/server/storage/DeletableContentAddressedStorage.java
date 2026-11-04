@@ -569,6 +569,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         // reading as a key nobody owns, whose space the usage accounting and the garbage collector would then free.
         BiFunction<Set<PublicKeyHash>, OwnerProof, CompletableFuture<Set<PublicKeyHash>>> proofComposer =
                 (acc, proof) -> ownedKeyBytes(owner, proof.ownedKey, ipfs)
+                        // judged inside a future, so bytes that aren't a key fail it rather than throw past it
                         .thenCompose(raw -> Futures.of(raw)
                                 .thenCompose(bytes -> proof.verifyOwner(PublicSigningKey.fromByteArray(bytes)))
                                 .thenApply(Optional::of)
