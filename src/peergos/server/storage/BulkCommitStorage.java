@@ -112,14 +112,19 @@ public class BulkCommitStorage extends DelegatingStorage {
                                                             return Futures.of(written);
                                                         }
                                                         return pointers.setPointers(owner, signed)
-                                                                .thenApply(set -> {
-                                                                    // the pointers moved after they were checked and none was set: the
-                                                                    // commit didn't land, and saying it did would lose it
-                                                                    if (! set)
-                                                                        throw new IllegalStateException("Pointers changed since this commit was checked; nothing was applied");
-                                                                    landed[0] = true;
-                                                                    registered.forEach(Registration::landed);
-                                                                    return written;
+                                                                .thenCompose(set -> {
+                                                                    if (set) {
+                                                                        landed[0] = true;
+                                                                        registered.forEach(Registration::landed);
+                                                                        return Futures.of(written);
+                                                                    }
+                                                                    // the pointers moved after they were checked and none was set: the commit
+                                                                    // didn't land, and saying it did would lose it. Reported as the lost CAS it
+                                                                    // is, which a client merges and retries on, as with a single pointer
+                                                                    return lostCas(owner, commit, updates).<List<Cid>>thenApply(lost -> {
+                                                                        throw lost.map(cas -> (RuntimeException) cas).orElseGet(() ->
+                                                                                new IllegalStateException("Pointers changed since this commit was checked; nothing was applied"));
+                                                                    });
                                                                 });
                                                     })))
                                             // a commit refused before its pointers landed takes back the writers it registered
@@ -336,6 +341,33 @@ public class BulkCommitStorage extends DelegatingStorage {
                 return getRaw(owner, hash, bat).thenApply(opt -> opt.map(CborObject::fromByteArray));
             }
         };
+    }
+
+    /** The first of the commit's pointer updates that no longer applies, against the pointer as it is now */
+    private CompletableFuture<Optional<PointerCasException>> lostCas(PublicKeyHash owner,
+                                                                      BulkCommit commit,
+                                                                      List<Optional<PointerUpdate>> updates) {
+        List<CompletableFuture<Optional<PointerCasException>>> checks = new ArrayList<>();
+        for (int i = 0; i < commit.writers.size(); i++) {
+            if (updates.get(i).isEmpty())
+                continue;
+            PointerUpdate claimed = updates.get(i).get();
+            PublicKeyHash writer = commit.writers.get(i).writer;
+            checks.add(pointers.getPointer(owner, writer).thenCompose(current -> {
+                if (current.isEmpty())
+                    return Futures.of(claimed.original.isPresent() ?
+                            Optional.of(new PointerCasException(MaybeMultihash.empty(), Optional.empty(), claimed.original)) :
+                            Optional.empty());
+                return writerKey(owner, writer)
+                        .thenCompose(key -> key.unsignMessage(current.get()))
+                        .thenApply(msg -> PointerUpdate.fromCbor(CborObject.fromByteArray(msg)))
+                        .thenApply(now -> now.updated.equals(claimed.original) ?
+                                Optional.empty() :
+                                Optional.of(new PointerCasException(now.updated, now.sequence, claimed.original)));
+            }));
+        }
+        return Futures.combineAllInOrder(checks)
+                .thenApply(found -> found.stream().filter(Optional::isPresent).map(Optional::get).findFirst());
     }
 
     /** The pointer update each writer is proposing, which also checks the signature we are relying on. */
