@@ -43,8 +43,8 @@ public class BulkCommitStorage extends DelegatingStorage {
     /** Whether a commit may be applied, given the bytes a writer writes and, if that alone would be
      *  refused, the net change in stored bytes each writer's pointer update in the commit will cause.
      *  Refuses by throwing; otherwise returns what gives back the bytes it reserved, for a commit refused
-     *  or lost after all. Blocks written ahead of the pointer update that names them are reserved under
-     *  their transaction until that update lands or is refused. */
+     *  after all. Blocks written ahead of the pointer update that names them are reserved under their
+     *  transaction until that update lands or is refused. */
     public interface CommitQuota {
         Runnable allowCommit(PublicKeyHash owner, PublicKeyHash writer, int written, Supplier<Map<PublicKeyHash, Long>> deltas);
 
@@ -143,9 +143,10 @@ public class BulkCommitStorage extends DelegatingStorage {
                                                     })))
                                             // a commit refused before its pointers landed takes back the writers it registered, the
                                             // last first: a writer named under two parents stays provisional until its first edge goes;
-                                            // and it gives back the bytes it reserved, unless it lost its CAS: the client merges and
-                                            // sends again naming the blocks this call wrote, without reserving them again. A 429 is
-                                            // retried as this same call, which reserves them again
+                                            // and it gives back the bytes it reserved, unless it lost its CAS: a client that can merge
+                                            // sends a commit naming the blocks this call wrote without sending them, so they stay
+                                            // reserved until the writer's next processed commit, or expire. A 429 is retried as this
+                                            // same call, which reserves them again
                                             .whenComplete((written, refused) -> {
                                                 if (refused != null && ! landed[0]) {
                                                     for (int i = registered.size() - 1; i >= 0; i--)
@@ -158,8 +159,8 @@ public class BulkCommitStorage extends DelegatingStorage {
         if (commit.tid.isEmpty() || ! commit.hasPointerUpdate())
             return res;
         // refused before its pointers landed, the blocks written ahead of it in its transaction are not named by it,
-        // and their bytes are given back. Except after a lost CAS or a 429: the client sends again under the same
-        // transaction naming them, without reserving them again, and the retry's processed commit drops them anyway
+        // and their bytes are given back. Except after a lost CAS or a 429, which a client may answer by naming them
+        // again without writing them again: the retry's processed commit drops them, or they expire
         return res.whenComplete((written, refused) -> {
             if (refused != null && ! landed[0] && ! sentAgain(refused))
                 quota.refusedAhead(commit.tid.get());

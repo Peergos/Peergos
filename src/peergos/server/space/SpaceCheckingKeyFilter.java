@@ -816,7 +816,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage, BulkCommitStorage.Com
     /** Reserve the bytes of a write that is about to be made, if it fits in the owner's quota and every cap over
      *  the writer, or refuse it.
      *
-     * @return what gives the reservation back, for a write that is then refused or lost; one that lands is
+     * @return what gives the reservation back, for a write that is then refused; one that lands is
      *         confirmed when its pointer update is processed
      */
     private Runnable reserve(PublicKeyHash owner, PublicKeyHash writer, int size) {
