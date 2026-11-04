@@ -145,7 +145,7 @@ public class RevokedWriterTests {
                 new PublicKeyHash((Cid) shared.getPointer().fileAccess.committedHash().get()), new byte[96]));
     }
 
-    /** The sharee names a key in the shared folder's root with a proof that doesn't verify */
+    /** The sharee names a key in the shared folder's root with a proof that doesn't verify, or one the server can't read */
     private void assertRevocableDespite(String prefix, Function<FileWrapper, OwnerProof> forge) {
         String suffix = "" + Math.abs(random.nextInt() % 1_000_000);
         UserContext owner = signIn(prefix + "o" + suffix);

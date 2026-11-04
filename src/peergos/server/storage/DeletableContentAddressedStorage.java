@@ -565,7 +565,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
         // A proof that doesn't verify proves nothing. A writer can put any it likes in its own root, so one that
         // failed the whole walk would let it stall everything that reads that root, its own revocation included.
-        // Only the proof is judged, though: a key that can't be read fails the walk, as it always has, rather than
+        // Only the proof is judged, though: a key that can't be read fails the walk, rather than
         // reading as a key nobody owns, whose space the usage accounting and the garbage collector would then free.
         BiFunction<Set<PublicKeyHash>, OwnerProof, CompletableFuture<Set<PublicKeyHash>>> proofComposer =
                 (acc, proof) -> ownedKeyBytes(owner, proof.ownedKey, ipfs)

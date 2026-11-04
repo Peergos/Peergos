@@ -259,7 +259,7 @@ public class BulkCommitStorage extends DelegatingStorage {
                 // A root whose owned keys can't be walked, one naming a block this server won't read for instance,
                 // which a writer can put in its own root, vouches for nothing rather than failing every commit that
                 // carries it, the owner's revocation of that writer included. A writer nobody vouches for is still
-                // refused its blocks, so this only ever registers less.
+                // refused its blocks, so this only ever registers fewer writers.
                 owned.addAll(Futures.of(i)
                         .thenCompose(at -> DeletableContentAddressedStorage.getDirectOwnedKeys(owner, w.writer,
                                 updates.get(at).map(u -> u.updated).orElse(MaybeMultihash.empty()),
