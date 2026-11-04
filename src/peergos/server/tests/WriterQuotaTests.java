@@ -762,11 +762,6 @@ public class WriterQuotaTests {
 
     /** Blocks into a writer's own space in one buffered commit, over what it has, or as its first write */
     private void write(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, int count, int size) {
-        write(owner, writer, count, size, false);
-    }
-
-    /** The same, or claiming the writer has nothing yet when it has, which refuses the commit after its blocks are checked */
-    private void write(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, int count, int size, boolean staleStart) {
         NetworkAccess net = network.clear();
         List<byte[]> blocks = new ArrayList<>();
         for (int i = 0; i < count; i++) {
@@ -783,7 +778,7 @@ public class WriterQuotaTests {
                                     writer.publicKeyHash, sigs, List.of(links), tid));
                         })
                         .thenCompose(links -> {
-                            CommittedWriterData current = s.contains(writer.publicKeyHash) && ! staleStart ? s.get(writer)
+                            CommittedWriterData current = s.contains(writer.publicKeyHash) ? s.get(writer)
                                     : new CommittedWriterData(MaybeMultihash.empty(), Optional.empty(), Optional.empty());
                             return (current.props.isPresent() ? Futures.of(current.props.get())
                                     : WriterData.createEmpty(owner, writer, net.dhtClient, crypto.hasher, tid))
@@ -1516,7 +1511,7 @@ public class WriterQuotaTests {
     }
 
     @Test
-    public void aRefusedCommitGivesBackWhatItReserved() {
+    public void aRefusedCommitGivesBackWhatItReserved() throws Exception {
         UserContext owner = signUp();
         UserContext sharee = signUp();
         PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
@@ -1524,19 +1519,21 @@ public class WriterQuotaTests {
         owner.setWriteShareQuota(dir, Optional.of(1024L * KiB)).join();
         awaitUsageUpdate();
         FileWrapper shared = sharee.getByPath(dir).join().get();
+        PublicKeyHash ownerKey = shared.owner();
 
-        // a 600 KiB commit passes the cap, its blocks going ahead of its pointer update, and is then refused, its start
-        // being stale: what it reserved goes back as its transaction closes
-        try {
-            write(shared.owner(), shared.signingPair(), 6, 100 * KiB, true);
-            Assert.fail("A commit over a stale start landed");
-        } catch (Exception refused) {}
+        // 600 KiB passes the cap, written ahead of the commit naming them, as a client writes blocks too large to travel
+        // inline, and held by its transaction; the commit is refused after its own blocks are reserved
+        TransactionId tid = service.storage.startTransaction(ownerKey).join();
+        List<Cid> ahead = service.storage.putRawBatch(ownerKey, shared.signingPair(), randomBlocks(6, 100 * KiB), tid,
+                x -> {}, crypto.hasher).join();
+        refusedBesideAStranger(ownerKey, shared.signingPair(), Optional.of(tid), List.of(), ahead);
+        service.storage.closeTransaction(ownerKey, tid).join();
         // so another 600 KiB fits under the 1 MiB cap
         upload(sharee, dir, "fits", 600 * KiB);
     }
 
     @Test
-    public void aRefusedCommitGivesBackWhatItSentInline() {
+    public void aRefusedCommitGivesBackWhatItSentInline() throws Exception {
         UserContext owner = signUp();
         UserContext sharee = signUp();
         PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
@@ -1545,14 +1542,62 @@ public class WriterQuotaTests {
         awaitUsageUpdate();
         FileWrapper shared = sharee.getByPath(dir).join().get();
 
-        // a 540 KiB commit, its blocks small enough to travel inside the call, passes the cap and is then refused,
-        // its start being stale: what it reserved goes back as the call fails
-        try {
-            write(shared.owner(), shared.signingPair(), 6, 90 * KiB, true);
-            Assert.fail("A commit over a stale start landed");
-        } catch (Exception refused) {}
+        // a 540 KiB commit, its blocks small enough to travel inside the call, passes the cap and is then refused
+        refusedBesideAStranger(shared.owner(), shared.signingPair(), Optional.empty(), randomBlocks(6, 90 * KiB), List.of());
         // so another 600 KiB fits under the 1 MiB cap
         upload(sharee, dir, "fits", 600 * KiB);
+    }
+
+    /** A commit of the writer's blocks, inline and written ahead, refused after they are reserved: a second writer in it
+     *  is one the server doesn't know, refused at its own quota check, which follows the first writer's */
+    private void refusedBesideAStranger(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, Optional<TransactionId> tid,
+                                        List<byte[]> inline, List<Cid> ahead) {
+        PointerUpdate current = service.mutable.getPointerTarget(owner, writer.publicKeyHash, service.storage).join();
+        List<byte[]> cbor = rootOver(owner, current, inline, ahead);
+        SigningKeyPair pair = SigningKeyPair.random(crypto.random, crypto.signer);
+        PublicKeyHash stranger = ContentAddressedStorage.hashKey(pair.publicSigningKey);
+        byte[] root = new WriterData(stranger, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+                Collections.emptyMap(), Optional.empty(), Optional.empty(), Optional.empty()).serialize();
+        byte[] created = pair.secretSigningKey.signMessage(new PointerUpdate(MaybeMultihash.empty(),
+                MaybeMultihash.of(crypto.hasher.hash(root, false).join()), PointerUpdate.increment(Optional.empty())).serialize()).join();
+        try {
+            service.storage.bulkCommit(owner, new BulkCommit(tid, List.of(
+                    new WriterCommit(writer.publicKeyHash, cbor, inline, ahead, Optional.of(update(writer, current.updated, current, cbor)),
+                            Optional.empty()),
+                    new WriterCommit(stranger, List.of(root), List.of(), List.of(), Optional.of(new SignedPointerUpdate(stranger, created)),
+                            Optional.empty())))).join();
+            Assert.fail("A commit with a writer the server doesn't know landed");
+        } catch (Exception refused) {
+            String message = String.valueOf(peergos.shared.util.Exceptions.getRootCause(refused).getMessage());
+            Assert.assertTrue(message, message.contains("not present on this server"));
+        }
+    }
+
+    private List<byte[]> randomBlocks(int count, int size) {
+        List<byte[]> blocks = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            byte[] block = new byte[size];
+            random.nextBytes(block);
+            blocks.add(block);
+        }
+        return blocks;
+    }
+
+    /** The writer's root with these blocks as its tree, and the list naming them: the cbor blocks of a commit of them */
+    private static List<byte[]> rootOver(PublicKeyHash owner, PointerUpdate current, List<byte[]> inline, List<Cid> ahead) {
+        List<Cid> named = new ArrayList<>(inline.stream().map(b -> crypto.hasher.hash(b, true).join()).toList());
+        named.addAll(ahead);
+        byte[] list = new CborObject.CborList(named.stream().map(CborObject.CborMerkleLink::new).toList()).serialize();
+        WriterData wd = WriterData.getWriterData(owner, (Cid) current.updated.get(), current.sequence, service.storage).join().props.get();
+        return List.of(wd.withChamp(crypto.hasher.hash(list, false).join()).serialize(), list);
+    }
+
+    /** The writer's pointer update from a root it claims is current to the first of these cbor blocks */
+    private static SignedPointerUpdate update(SigningPrivateKeyAndPublicHash writer, MaybeMultihash from, PointerUpdate current,
+                                              List<byte[]> cbor) {
+        byte[] signed = writer.secret.signMessage(new PointerUpdate(from, MaybeMultihash.of(crypto.hasher.hash(cbor.get(0), false).join()),
+                PointerUpdate.increment(current.sequence)).serialize()).join();
+        return new SignedPointerUpdate(writer.publicKeyHash, signed);
     }
 
     @Test
