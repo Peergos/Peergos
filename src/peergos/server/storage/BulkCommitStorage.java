@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.server.util.Logging;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
@@ -15,6 +16,8 @@ import peergos.shared.util.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.stream.*;
 
 /** Applies a whole logical write - blocks and pointer updates - for an owner whose home server we are.
@@ -27,6 +30,7 @@ import java.util.stream.*;
  *  checked that the signed root really does reach it, and that the commit leaves no dangling link.
  */
 public class BulkCommitStorage extends DelegatingStorage {
+    private static final Logger LOG = Logging.LOG();
 
     /** Whether a commit may be applied, given the bytes a writer writes and, if that alone would be
      *  refused, the net change in stored bytes each writer's pointer update in the commit will cause. */
@@ -261,7 +265,11 @@ public class BulkCommitStorage extends DelegatingStorage {
                                 updates.get(at).map(u -> u.updated).orElse(MaybeMultihash.empty()),
                                 (h, seq) -> ContentAddressedStorage.getWriterData(owner, h, seq, withCallBlocks),
                                 withCallBlocks, hasher))
-                        .exceptionally(unwalkable -> Collections.emptySet())
+                        .exceptionally(unwalkable -> {
+                            LOG.log(Level.WARNING, "Couldn't walk the owned keys of " + w.writer
+                                    + ", so it vouches for no new writer", unwalkable);
+                            return Collections.emptySet();
+                        })
                         .join());
             }
             List<PublicKeyHash> vouched = remaining.stream()
