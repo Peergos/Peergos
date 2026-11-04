@@ -8,6 +8,7 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
@@ -564,12 +565,14 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
         // A proof that doesn't verify proves nothing. A writer can put any it likes in its own root, so one that
         // failed the whole walk would let it stall everything that reads that root, its own revocation included.
+        // Only the proof is judged, though: a key that can't be read fails the walk, as it always has, rather than
+        // reading as a key nobody owns, whose space the usage accounting and the garbage collector would then free.
         BiFunction<Set<PublicKeyHash>, OwnerProof, CompletableFuture<Set<PublicKeyHash>>> proofComposer =
-                (acc, proof) -> Futures.of(proof)
-                        // an inline key that isn't a key throws before there is a future to catch it on
-                        .thenCompose(p -> p.getAndVerifyOwner(owner, ipfs))
-                        .thenApply(Optional::of)
-                        .exceptionally(invalid -> Optional.empty())
+                (acc, proof) -> ownedKeyBytes(owner, proof.ownedKey, ipfs)
+                        .thenCompose(raw -> Futures.of(raw)
+                                .thenCompose(bytes -> proof.verifyOwner(PublicSigningKey.fromByteArray(bytes)))
+                                .thenApply(Optional::of)
+                                .exceptionally(invalid -> Optional.empty()))
                         .thenApply(claimedWriter -> Stream.concat(acc.stream(), claimedWriter.filter(writer::equals).isPresent() ?
                                 Stream.of(proof.ownedKey) :
                                 Stream.empty()).collect(Collectors.toSet()));
@@ -583,6 +586,14 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                         proofComposer,
                         (a, b) -> Stream.concat(a.stream(), b.stream())
                                 .collect(Collectors.toSet())));
+    }
+
+    /** The encoding of an owned key: inline in its hash, or, for a key made before keys were inlined, a block of its own */
+    private static CompletableFuture<byte[]> ownedKeyBytes(PublicKeyHash owner, PublicKeyHash key, ContentAddressedStorage ipfs) {
+        if (key.isIdentity())
+            return Futures.of(key.getHash());
+        return ipfs.getRaw(owner, key.target, Optional.empty())
+                .thenApply(block -> block.orElseThrow(() -> new IllegalStateException("Couldn't retrieve owned key: " + key)));
     }
 
     static CompletableFuture<CommittedWriterData> getWriterData(List<Multihash> peerIds,

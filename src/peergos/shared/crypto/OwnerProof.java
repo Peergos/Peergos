@@ -1,6 +1,7 @@
 package peergos.shared.crypto;
 
 import peergos.shared.cbor.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.*;
 
@@ -19,9 +20,14 @@ public class OwnerProof implements Cborable {
     public CompletableFuture<PublicKeyHash> getAndVerifyOwner(PublicKeyHash owner, ContentAddressedStorage ipfs) {
         return ipfs.getSigningKey(owner, ownedKey)
                 .thenCompose(signer -> signer
-                        .map(k -> k.unsignMessage(signedOwner)
-                                .thenApply(unsigned -> PublicKeyHash.fromCbor(CborObject.fromByteArray(unsigned))))
+                        .map(this::verifyOwner)
                         .orElseThrow(() -> new IllegalStateException("Couldn't retrieve owned key: " + ownedKey)));
+    }
+
+    /** The owner this proof names, given the owned key it was signed with */
+    public CompletableFuture<PublicKeyHash> verifyOwner(PublicSigningKey ownedKey) {
+        return ownedKey.unsignMessage(signedOwner)
+                .thenApply(unsigned -> PublicKeyHash.fromCbor(CborObject.fromByteArray(unsigned)));
     }
 
     public static CompletableFuture<OwnerProof> build(SigningPrivateKeyAndPublicHash ownedKeypair, PublicKeyHash owner) {
