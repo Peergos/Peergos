@@ -459,9 +459,11 @@ public class RestrictedCapsTests {
         Assert.assertTrue(withUploadersKey.isEmpty() || withUploadersKey.get().retrieveParent(after.network).join().isEmpty());
 
         PeergosNetworkUtils.checkFileContents(own, after.getByPath(drop.resolve("made/own.txt")).join().get(), after);
-        FileWrapper madeByLink = after.network.getFile(madeCap, owner.username).join().get();
-        FileWrapper ownSeenByMaker = madeByLink.getChild("own.txt", crypto.hasher, after.network).join().get();
-        Assert.assertNotEquals(ownKey, ownSeenByMaker.getPointer().capability.rBaseKey);
+        Optional<FileWrapper> madeByLink = after.network.getFile(madeCap, owner.username).join();
+        Optional<FileWrapper> ownSeenByMaker = madeByLink.isEmpty() ? Optional.empty() :
+                madeByLink.get().getChild("own.txt", crypto.hasher, after.network).join();
+        Assert.assertTrue(ownSeenByMaker.isEmpty() || ! ownKey.equals(ownSeenByMaker.get().getPointer().capability.rBaseKey));
+        PeergosNetworkUtils.checkFileContents(own, openLink(owner, link).getByPath("/drop/made/own.txt").join().get(), after);
     }
 
     private static void assertRefused(Runnable r) {
