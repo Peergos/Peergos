@@ -744,10 +744,6 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
      *         names: a writer it made or linked would otherwise stay registered, and write outside every cap once
      *         its parent is gone
      */
-    public BulkCommitStorage.Registration registerNewWriter(PublicKeyHash owner, PublicKeyHash parent, PublicKeyHash writer) {
-        return registerNewWriter(owner, parent, writer, Optional.empty());
-    }
-
     public BulkCommitStorage.Registration registerNewWriter(PublicKeyHash owner, PublicKeyHash parent, PublicKeyHash writer,
                                                              Optional<SignedPointerUpdate> ownUpdate) {
         BulkCommitStorage.Registration nothing = registration(() -> {}, () -> {});

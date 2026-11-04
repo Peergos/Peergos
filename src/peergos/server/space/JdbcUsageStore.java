@@ -276,7 +276,7 @@ public class JdbcUsageStore implements UsageStore {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
         }
-        edgeChanged(owned);
+        notifyListeners(owned, l -> l.edgeChanged(owned));
         return true;
     }
 
@@ -294,25 +294,15 @@ public class JdbcUsageStore implements UsageStore {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
         }
-        edgeChanged(owned);
+        notifyListeners(owned, l -> l.edgeChanged(owned));
     }
 
-    private void edgeChanged(PublicKeyHash owned) {
+    private void notifyListeners(PublicKeyHash writer, Consumer<UsageListener> event) {
         for (UsageListener listener : listeners) {
             try {
-                listener.edgeChanged(owned);
+                event.accept(listener);
             } catch (Exception e) {
-                LOG.log(Level.WARNING, "Usage listener failed for writer " + owned, e);
-            }
-        }
-    }
-
-    private void ownedKeysChanged(PublicKeyHash owned) {
-        for (UsageListener listener : listeners) {
-            try {
-                listener.usageChanged(owned, 0, true);
-            } catch (Exception e) {
-                LOG.log(Level.WARNING, "Usage listener failed for writer " + owned, e);
+                LOG.log(Level.WARNING, "Usage listener failed for writer " + writer, e);
             }
         }
     }
@@ -560,9 +550,9 @@ public class JdbcUsageStore implements UsageStore {
             ownerRemovals++;
             owners.remove(writer);
         }
-        notifyWriterQuotaChanged(writer, Optional.empty());
+        notifyListeners(writer, l -> l.writerQuotaChanged(writer, Optional.empty()));
         // its edges went with it, and so do its bytes in flight under the caps above it
-        ownedKeysChanged(writer);
+        notifyListeners(writer, l -> l.usageChanged(writer, 0, true));
     }
 
     @Override
@@ -780,13 +770,7 @@ public class JdbcUsageStore implements UsageStore {
             throw new RuntimeException(sqe);
         }
         boolean ownedKeysChanged = ! removedOwnedKeys.isEmpty() || ! addedOwnedKeys.isEmpty();
-        for (UsageListener listener : listeners) {
-            try {
-                listener.usageChanged(writer, delta, ownedKeysChanged);
-            } catch (Exception e) {
-                LOG.log(Level.WARNING, "Usage listener failed for writer " + writer, e);
-            }
-        }
+        notifyListeners(writer, l -> l.usageChanged(writer, delta, ownedKeysChanged));
         return true;
     }
 
@@ -815,18 +799,8 @@ public class JdbcUsageStore implements UsageStore {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
         }
-        notifyWriterQuotaChanged(writer, quota);
+        notifyListeners(writer, l -> l.writerQuotaChanged(writer, quota));
         return true;
-    }
-
-    private void notifyWriterQuotaChanged(PublicKeyHash writer, Optional<Long> quota) {
-        for (UsageListener listener : listeners) {
-            try {
-                listener.writerQuotaChanged(writer, quota);
-            } catch (Exception e) {
-                LOG.log(Level.WARNING, "Usage listener failed for writer quota " + writer, e);
-            }
-        }
     }
 
     @Override
@@ -840,7 +814,7 @@ public class JdbcUsageStore implements UsageStore {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
         }
-        notifyWriterQuotaChanged(writer, Optional.empty());
+        notifyListeners(writer, l -> l.writerQuotaChanged(writer, Optional.empty()));
     }
 
     @Override

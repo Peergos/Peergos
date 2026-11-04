@@ -297,7 +297,6 @@ public class WriterQuotaTests {
         assertCannotCommit(made[0], ownerKey, "a key from a refused commit, after the share was revoked");
     }
 
-    /** Writes a small block under this key, over whatever it has now, if anything */
     /** A writer whose last update the queue never sized has an empty stored target, and the edge to the child that
      *  update named. Dropped, it takes that child with it, as one whose sized root names the child does. */
     @Test
@@ -507,13 +506,10 @@ public class WriterQuotaTests {
             healed = "refused: " + peergos.shared.util.Exceptions.getRootCause(e).getMessage();
         }
         String xOwner;
-        Set<PublicKeyHash> parents;
         try {
             xOwner = usageStore().getOwner(x.publicKeyHash);
-            parents = usageStore().getParents(x.publicKeyHash);
         } catch (IllegalStateException unregistered) {
             xOwner = "<unregistered>";
-            parents = Set.of();
         }
 
         // the cap on the folder: about 1 MiB into a 256 KiB cap
@@ -588,6 +584,7 @@ public class WriterQuotaTests {
             vOwner = "<unregistered>";
         }
         Assert.assertEquals("committed", healed);
+        Assert.assertEquals(owner.username, vOwner);
     }
 
     private void assertCannotCommit(SigningPrivateKeyAndPublicHash key, PublicKeyHash owner, String what) {
@@ -729,7 +726,7 @@ public class WriterQuotaTests {
         // a commit creating the child registers it and is still writing its blocks: until it lands, no other commit
         // lands the child, a retry say, or what that wrote would be forgotten with the first if it is refused
         BulkCommitStorage.Registration creating = quotaFilter().registerNewWriter(ownerKey, parent.publicKeyHash,
-                ContentAddressedStorage.hashKey(pair.publicSigningKey));
+                ContentAddressedStorage.hashKey(pair.publicSigningKey), Optional.empty());
         NetworkAccess net = network.clear();
         try {
             net.synchronizer.applyComplexUpdate(ownerKey, parent, (s, committer) ->
@@ -808,7 +805,7 @@ public class WriterQuotaTests {
 
         // a commit creating the child registers it and is still writing its blocks: the child may set only the pointer
         // that commit carries, or a write of its own let in now would be forgotten with the commit if it is refused
-        BulkCommitStorage.Registration creating = quotaFilter().registerNewWriter(ownerKey, parent.publicKeyHash, child.publicKeyHash);
+        BulkCommitStorage.Registration creating = quotaFilter().registerNewWriter(ownerKey, parent.publicKeyHash, child.publicKeyHash, Optional.empty());
         assertCannotCommit(child, ownerKey, "a key the commit creating it hasn't landed");
         // the commit is refused and takes its registration back
         creating.undo();
@@ -826,8 +823,8 @@ public class WriterQuotaTests {
         SigningPrivateKeyAndPublicHash child = newKeyUnder(ownerKey, first.signingPair());
 
         // as a commit naming the child under both is registered, and then refused
-        BulkCommitStorage.Registration underFirst = quotaFilter().registerNewWriter(ownerKey, first.signingPair().publicKeyHash, child.publicKeyHash);
-        BulkCommitStorage.Registration underSecond = quotaFilter().registerNewWriter(ownerKey, second.signingPair().publicKeyHash, child.publicKeyHash);
+        BulkCommitStorage.Registration underFirst = quotaFilter().registerNewWriter(ownerKey, first.signingPair().publicKeyHash, child.publicKeyHash, Optional.empty());
+        BulkCommitStorage.Registration underSecond = quotaFilter().registerNewWriter(ownerKey, second.signingPair().publicKeyHash, child.publicKeyHash, Optional.empty());
         underFirst.undo();
         underSecond.undo();
         assertCannotCommit(child, ownerKey, "a key a refused commit named under two parents");
