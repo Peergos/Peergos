@@ -291,9 +291,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         PointerUpdate pointerUpdate = dht.getSigningKey(event.owner, event.writer)
                 .thenApply(signer -> PointerUpdate.fromCbor(CborObject.fromByteArray(signer.get()
                         .unsignMessage(event.writerSignedBtreeRootHash).join()))).join();
-        Set<PublicKeyHash> updatedOwned =
-                DeletableContentAddressedStorage.getDirectOwnedKeys(event.owner, event.writer, pointerUpdate.updated,
-                        (h, s) -> DeletableContentAddressedStorage.getWriterData(us, event.owner, h, s, false, ourId, hasher, dht), dht, hasher).join();
+        Set<PublicKeyHash> updatedOwned = directOwnedKeys(event.owner, event.writer, pointerUpdate.updated, us, ourId, dht, hasher);
         if (updatedOwned.isEmpty())
             return;
         // Only the keys not linked under this writer yet. A linked key is a registered writer, so registering and
@@ -309,6 +307,46 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         // parent's caps
         for (PublicKeyHash owned : ownKeys(usageStore, owner, event.writer, unlinked))
             usageStore.addOwnedKey(event.writer, owned);
+    }
+
+    private record RootOf(PublicKeyHash owner, PublicKeyHash writer, Multihash root) {}
+
+    // What a writer's root names never changes, a root being content addressed. Walked as a pointer lands, it is read
+    // here again by the queue, for that update and as the previous root of the next one, rather than from S3 each
+    // time, where a read can take a second or two. Bounded by its roots and by the keys it holds, as a root can name any
+    // number of keys, and most name none.
+    private static final int MAX_CACHED_ROOTS = 10_000, MAX_CACHED_OWNED_KEYS = 100_000;
+    private static final LinkedHashMap<RootOf, Set<PublicKeyHash>> ownedKeysByRoot = new LinkedHashMap<>(16, 0.75f, true);
+    private static long cachedOwnedKeys = 0; // guarded by ownedKeysByRoot, each root counting as one key more
+
+    /** The keys a writer's root names directly, as DeletableContentAddressedStorage.getDirectOwnedKeys */
+    private static Set<PublicKeyHash> directOwnedKeys(PublicKeyHash owner,
+                                                     PublicKeyHash writer,
+                                                     MaybeMultihash root,
+                                                     List<Multihash> us,
+                                                     Cid ourId,
+                                                     DeletableContentAddressedStorage dht,
+                                                     Hasher hasher) {
+        if (! root.isPresent())
+            return Collections.emptySet();
+        RootOf key = new RootOf(owner, writer, root.get());
+        synchronized (ownedKeysByRoot) {
+            Set<PublicKeyHash> cached = ownedKeysByRoot.get(key);
+            if (cached != null)
+                return cached;
+        }
+        Set<PublicKeyHash> named = Set.copyOf(DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, root,
+                (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht), dht, hasher).join());
+        synchronized (ownedKeysByRoot) {
+            Set<PublicKeyHash> replaced = ownedKeysByRoot.put(key, named);
+            cachedOwnedKeys += named.size() - (replaced == null ? -1 : replaced.size());
+            Iterator<Set<PublicKeyHash>> eldest = ownedKeysByRoot.values().iterator();
+            while ((ownedKeysByRoot.size() > MAX_CACHED_ROOTS || cachedOwnedKeys > MAX_CACHED_OWNED_KEYS) && eldest.hasNext()) {
+                cachedOwnedKeys -= 1 + eldest.next().size();
+                eldest.remove();
+            }
+        }
+        return named;
     }
 
     /** The keys a writer names that are its owner's own, other than itself. A key of another user's, named with an
@@ -395,8 +433,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 Set<PublicKeyHash> orphaned = new HashSet<>(current.ownedKeys());
                 if (existingRoot.isPresent()) {
                     try {
-                        orphaned.addAll(DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, existingRoot,
-                                (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht), dht, hasher).join());
+                        orphaned.addAll(directOwnedKeys(owner, writer, existingRoot, us, ourId, dht, hasher));
                     } catch (Exception e) {
                         LOG.log(Level.WARNING, e.getMessage(), e);
                     }
@@ -410,9 +447,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 long changeInStorage = dht.getChangeInContainedSize(owner, current.target().toOptional().map(c -> (Cid) c), (Cid) newRoot.get()).get();
                 long t1 = System.nanoTime();
                 LOG.info("Calculating change in used space for (" + owner + ", " + writer + ") took " + (t1-t0)/1_000_000 + "mS");
-                Set<PublicKeyHash> updatedOwned =
-                        DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, newRoot,
-                                (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht), dht, hasher).join();
+                Set<PublicKeyHash> updatedOwned = directOwnedKeys(owner, writer, newRoot, us, ourId, dht, hasher);
                 // a key linked under this writer is registered already
                 for (PublicKeyHash owned : updatedOwned) {
                     if (! current.ownedKeys().contains(owned))
@@ -421,8 +456,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 Set<PublicKeyHash> ownedHere = ownKeys(state, current.owner, writer, updatedOwned);
                 // What the replaced root named. A child's edge can be recorded ahead of its parent's update, so the
                 // store's edges alone don't say which children this update adds or drops.
-                Set<PublicKeyHash> namedBefore = DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, current.target(),
-                        (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht), dht, hasher).join();
+                Set<PublicKeyHash> namedBefore = directOwnedKeys(owner, writer, current.target(), us, ourId, dht, hasher);
                 UserUsage usage = state.getUsage(current.owner);
                 boolean initialErrored = usage.isErrored();
                 String username = current.owner;
@@ -988,10 +1022,8 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
 
     /** Whether the parent's committed root names the writer as one it owns */
     private boolean namesWriter(PublicKeyHash owner, PublicKeyHash parent, PublicKeyHash writer) {
-        List<Multihash> us = List.of(ourId.bareMultihash());
-        return DeletableContentAddressedStorage.getDirectOwnedKeys(owner, parent, mutable,
-                (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht),
-                dht, hasher).join().contains(writer);
+        MaybeMultihash root = mutable.getPointerTarget(owner, parent, dht).join().updated;
+        return directOwnedKeys(owner, parent, root, List.of(ourId.bareMultihash()), ourId, dht, hasher).contains(writer);
     }
 
     /** A write was attempted with a writer that is absent from the usage store. If the writer is reachable through
