@@ -145,7 +145,7 @@ public interface SyncFilesystem {
         Optional<LocalDateTime> res;
         try (AsyncReader fin = op.diffStart == op.diffEnd ? AsyncReader.build(new byte[0]) : srcFs.getBytes(op.source, op.diffStart)) {
             Optional<Thumbnail> thumbnail = srcFs.getThumbnail(op.source);
-            LocalDateTime modified = LocalDateTime.ofInstant(Instant.ofEpochSecond(op.sourceState.modificationTime / 1000, 0), ZoneOffset.UTC);
+            LocalDateTime modified = LocalDateTime.ofInstant(Instant.ofEpochMilli(op.sourceState.modificationTime), ZoneOffset.UTC);
             res = targetFs.setBytes(to, op.diffStart, fin, op.diffEnd - op.diffStart, Optional.of(op.sourceState.hashTree),
                     Optional.of(modified), thumbnail, op.props, isCancelled, progress);
         }
