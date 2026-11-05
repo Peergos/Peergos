@@ -34,6 +34,16 @@ public class LocalS3Server {
         handler.serveRequestsFor(keyFragment);
     }
 
+    /** Simulate s3 answering reads slowly, as it can take a second or two. */
+    public void setReadLatency(long millis) {
+        handler.setReadLatency(millis);
+    }
+
+    /** The number of reads (GET or HEAD) answered so far. */
+    public long reads() {
+        return handler.reads();
+    }
+
     public void start() {
         server.start();
     }
