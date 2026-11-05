@@ -577,6 +577,24 @@ public class JdbcUsageStore implements UsageStore {
         }
     }
 
+    @Override
+    public Set<PublicKeyHash> getOwnedKeys(PublicKeyHash writer) {
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement("SELECT c.key_hash FROM ownedkeys o " +
+                     "INNER JOIN writers p ON o.parent_id = p.id " +
+                     "INNER JOIN writers c ON o.owned_id = c.id WHERE p.key_hash = ?;")) {
+            select.setBytes(1, writer.toBytes());
+            Set<PublicKeyHash> res = new HashSet<>();
+            ResultSet resultSet = select.executeQuery();
+            while (resultSet.next())
+                res.add(PublicKeyHash.decode(resultSet.getBytes(1)));
+            return res;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
     public PublicKeyHash getOwnerKey(PublicKeyHash writer) {
         try (Connection conn = getConnection()) {
             return getOwnerKey(writer, conn);

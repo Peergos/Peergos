@@ -2,10 +2,14 @@ package peergos.server.tests;
 
 import org.junit.*;
 import peergos.server.*;
+import peergos.server.mutable.MutableEvent;
 import peergos.server.space.SpaceCheckingKeyFilter;
 import peergos.server.space.UsageStore;
 import peergos.server.space.WriterQuotas;
+import peergos.server.space.WriterUsage;
 import peergos.server.storage.BulkCommitStorage;
+import peergos.server.storage.DeletableContentAddressedStorage;
+import peergos.server.storage.admin.QuotaAdmin;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
@@ -639,6 +643,77 @@ public class WriterQuotaTests {
 
         sharee.setWriteShareQuota(mine, Optional.of(1L)).join();
         upload(owner, dir, "ownersfile", 10 * KiB);
+    }
+
+    /** A landed pointer whose root names only keys already linked under its writer registers and links none of them
+     *  again, as it lands or in the queue: on a busy server those would be writes that change nothing, for each owned
+     *  key on every commit of the writer.
+     *  A key not linked yet is still registered and linked as the pointer lands. */
+    @Test
+    public void aLandedPointerRegistersAndLinksOnlyKeysNotLinkedYet() throws Exception {
+        UserContext owner = signUp();
+        Path dir = sharedDir(owner, "linked");
+        awaitUsageUpdate();
+        PublicKeyHash ownerKey = owner.signer.publicKeyHash;
+        PublicKeyHash parent = owner.getUserRoot().join().writer();
+        PublicKeyHash child = owner.getByPath(dir).join().get().writer();
+        UsageStore store = usageStore();
+        Assert.assertTrue(store.getOwnedKeys(parent).contains(child));
+        // the parent moves on from a root that names the child already
+        MaybeMultihash before = service.mutable.getPointerTarget(ownerKey, parent, service.storage).join().updated;
+        upload(owner, PathUtil.get(owner.username), "file", KiB);
+        awaitUsageUpdate();
+
+        Map<String, Integer> writes = new HashMap<>();
+        UsageStore counting = (UsageStore) java.lang.reflect.Proxy.newProxyInstance(UsageStore.class.getClassLoader(),
+                new Class<?>[] {UsageStore.class}, (proxy, method, methodArgs) -> {
+                    if (method.getName().equals("addWriter") || method.getName().equals("addOwnedKey"))
+                        writes.merge(method.getName(), 1, Integer::sum);
+                    // as the queue finds the parent before it reaches that move
+                    if (method.getName().equals("getUsage") && parent.equals(methodArgs[0])) {
+                        WriterUsage now = store.getUsage(parent);
+                        return new WriterUsage(now.owner, before, now.directRetainedStorage(), now.ownedKeys());
+                    }
+                    try {
+                        return method.invoke(store, methodArgs);
+                    } catch (java.lang.reflect.InvocationTargetException e) {
+                        throw e.getCause();
+                    }
+                });
+        MutableEvent landed = new MutableEvent(ownerKey, parent, service.mutable.getPointer(ownerKey, parent).join().get());
+        pointerLanded(landed, counting);
+        updateProcessed(ownerKey, parent, before, counting);
+        Assert.assertEquals("writes for keys already linked", Map.of(), writes);
+
+        store.removeOwnedKey(parent, child);
+        pointerLanded(landed, counting);
+        Assert.assertEquals(Map.of("addWriter", 1, "addOwnedKey", 1), writes);
+        Assert.assertTrue(store.getOwnedKeys(parent).contains(child));
+    }
+
+    /** The server's step as a pointer lands, against the given store */
+    private static void pointerLanded(MutableEvent event, UsageStore store) throws Exception {
+        java.lang.reflect.Method prepare = SpaceCheckingKeyFilter.class.getDeclaredMethod("prepareMutablePointerChange",
+                MutableEvent.class, DeletableContentAddressedStorage.class, UsageStore.class, Hasher.class);
+        prepare.setAccessible(true);
+        prepare.invoke(null, event, filterField("dht"), store, filterField("hasher"));
+    }
+
+    /** The queue's step for a writer's update from a root to its current one, against the given store */
+    private static void updateProcessed(PublicKeyHash owner, PublicKeyHash writer, MaybeMultihash from, UsageStore store) throws Exception {
+        MaybeMultihash to = service.mutable.getPointerTarget(owner, writer, service.storage).join().updated;
+        java.lang.reflect.Method process = SpaceCheckingKeyFilter.class.getDeclaredMethod("processMutablePointerEvent",
+                UsageStore.class, PublicKeyHash.class, PublicKeyHash.class, MaybeMultihash.class, MaybeMultihash.class,
+                MutablePointers.class, QuotaAdmin.class, DeletableContentAddressedStorage.class, Hasher.class);
+        process.setAccessible(true);
+        process.invoke(null, store, owner, writer, from, to, filterField("mutable"), filterField("quotaAdmin"),
+                filterField("dht"), filterField("hasher"));
+    }
+
+    private static Object filterField(String name) throws Exception {
+        java.lang.reflect.Field field = SpaceCheckingKeyFilter.class.getDeclaredField(name);
+        field.setAccessible(true);
+        return field.get(quotaFilter());
     }
 
     /** The server's quota filter, to take a commit's steps one at a time */

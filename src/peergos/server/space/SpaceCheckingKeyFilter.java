@@ -169,8 +169,10 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     long deltaUsage = updatedSize - writerUsage.directRetainedStorage();
                     Set<PublicKeyHash> directOwnedKeys = DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writerKey, mutable,
                             (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht), dht, hasher).join();
+                    // a key linked under this writer is registered already
                     for (PublicKeyHash key : directOwnedKeys)
-                        store.addWriter(writerUsage.owner, key);
+                        if (! writerUsage.ownedKeys().contains(key))
+                            store.addWriter(writerUsage.owner, key);
                     Set<PublicKeyHash> ownedHere = ownKeys(store, writerUsage.owner, writerKey, directOwnedKeys);
                     List<PublicKeyHash> newOwnedKeys = ownedHere.stream()
                             .filter(key -> !writerUsage.ownedKeys().contains(key))
@@ -272,12 +274,20 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         Set<PublicKeyHash> updatedOwned =
                 DeletableContentAddressedStorage.getDirectOwnedKeys(event.owner, event.writer, pointerUpdate.updated,
                         (h, s) -> DeletableContentAddressedStorage.getWriterData(us, event.owner, h, s, false, ourId, hasher, dht), dht, hasher).join();
+        if (updatedOwned.isEmpty())
+            return;
+        // Only the keys not linked under this writer yet. A linked key is a registered writer, so registering and
+        // linking it again would be writes that change nothing, on every commit of the writer.
+        Set<PublicKeyHash> unlinked = new HashSet<>(updatedOwned);
+        unlinked.removeAll(usageStore.getOwnedKeys(event.writer));
+        if (unlinked.isEmpty())
+            return;
         String owner = usageStore.getOwner(event.writer);
-        for (PublicKeyHash owned : updatedOwned)
+        for (PublicKeyHash owned : unlinked)
             usageStore.addWriter(owner, owned);
         // linked now rather than when the queue gets to it, so a child's first writes already count under its
         // parent's caps
-        for (PublicKeyHash owned : ownKeys(usageStore, owner, event.writer, updatedOwned))
+        for (PublicKeyHash owned : ownKeys(usageStore, owner, event.writer, unlinked))
             usageStore.addOwnedKey(event.writer, owned);
     }
 
@@ -383,8 +393,10 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 Set<PublicKeyHash> updatedOwned =
                         DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, newRoot,
                                 (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht), dht, hasher).join();
+                // a key linked under this writer is registered already
                 for (PublicKeyHash owned : updatedOwned) {
-                    state.addWriter(current.owner, owned);
+                    if (! current.ownedKeys().contains(owned))
+                        state.addWriter(current.owner, owned);
                 }
                 Set<PublicKeyHash> ownedHere = ownKeys(state, current.owner, writer, updatedOwned);
                 // What the replaced root named. A child's edge can be recorded ahead of its parent's update, so the

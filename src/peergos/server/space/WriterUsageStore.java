@@ -55,6 +55,11 @@ public interface WriterUsageStore {
      */
     Set<PublicKeyHash> getParents(PublicKeyHash writer);
 
+    /**
+     * @return the keys this writer has an edge to
+     */
+    Set<PublicKeyHash> getOwnedKeys(PublicKeyHash writer);
+
     PublicKeyHash getOwnerKey(String username);
 
     String getOwner(PublicKeyHash writer);
