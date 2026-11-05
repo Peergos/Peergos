@@ -441,6 +441,47 @@ public class JdbcUsageStoreTests {
         Assert.assertTrue(store.getUsage(parent).ownedKeys().isEmpty());
     }
 
+    /** One user's edge being recorded holds up only that user: another user's edges, usage updates and removals go on.
+     *  On a busy server every landed pointer and every usage update would otherwise take turns with all the others. */
+    @Test
+    public void anotherUsersEdgesAndUpdatesDontWaitForAUsersEdge() throws Exception {
+        Crypto crypto = Main.initCrypto();
+        Connection db = new Sqlite.UncloseableConnection(Sqlite.build(":memory:"));
+        Thread[] adding = new Thread[1];
+        java.util.concurrent.CountDownLatch reached = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        Connection pausing = pausingEdgeInserts(db, () -> Thread.currentThread() == adding[0], reached, release);
+        JdbcUsageStore store = new JdbcUsageStore(() -> pausing, new SqliteCommands());
+        PublicKeyHash aliceParent = randomKey(crypto), aliceChild = randomKey(crypto);
+        PublicKeyHash bobParent = randomKey(crypto), bobChild = randomKey(crypto), bobOther = randomKey(crypto);
+        store.addUserIfAbsent("alice");
+        store.addUserIfAbsent("bob");
+        for (PublicKeyHash k : List.of(aliceParent, aliceChild))
+            store.addWriter("alice", k);
+        for (PublicKeyHash k : List.of(bobParent, bobChild, bobOther))
+            store.addWriter("bob", k);
+
+        // alice's edge is recorded, and waits
+        adding[0] = new Thread(() -> store.addOwnedKey(aliceParent, aliceChild));
+        adding[0].start();
+        Assert.assertTrue(reached.await(10, java.util.concurrent.TimeUnit.SECONDS));
+        java.util.concurrent.CompletableFuture<Void> bobs = java.util.concurrent.CompletableFuture.runAsync(() -> {
+            store.addOwnedKey(bobParent, bobChild);
+            store.updateWriterUsageAtomically(bobParent, MaybeMultihash.empty(), target(1), Collections.emptySet(),
+                    Collections.emptySet(), 10, 10, false);
+            store.removeWriter(bobOther);
+        });
+        try {
+            bobs.get(10, java.util.concurrent.TimeUnit.SECONDS);
+        } finally {
+            release.countDown();
+            adding[0].join(10_000);
+        }
+        Assert.assertEquals(Set.of(bobChild), store.getOwnedKeys(bobParent));
+        Assert.assertEquals(Set.of(aliceChild), store.getOwnedKeys(aliceParent));
+        Assert.assertEquals(10, store.getUsage(bobParent).directRetainedStorage());
+    }
+
     /** A connection whose inserts of an edge wait, on the given thread, until released */
     private static Connection pausingEdgeInserts(Connection target,
                                                  java.util.function.BooleanSupplier paused,
