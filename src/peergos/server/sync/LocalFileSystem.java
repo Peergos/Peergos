@@ -175,13 +175,12 @@ public class LocalFileSystem extends StagedFileSystem {
 
     @Override
     public long getLastModified(Path p) {
-        long millis = root.resolve(p).toFile().lastModified();
-        return millis / 1000 * 1000;
+        return root.resolve(p).toFile().lastModified();
     }
 
     @Override
     public void setModificationTime(Path p, long modificationTime) {
-        root.resolve(p).toFile().setLastModified(modificationTime / 1000 * 1000);
+        root.resolve(p).toFile().setLastModified(modificationTime);
     }
 
     @Override
@@ -230,7 +229,7 @@ public class LocalFileSystem extends StagedFileSystem {
                 reporter.accept((long) read);
             }
             if (modificationTime.isPresent()) {
-                long time = modificationTime.get().toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000;
+                long time = modificationTime.get().toInstant(ZoneOffset.UTC).toEpochMilli();
                 if (time >= 0) {
                     root.resolve(p).toFile().setLastModified(time);
                     return modificationTime;
@@ -461,7 +460,7 @@ public class LocalFileSystem extends StagedFileSystem {
                     return;
                 String relPath = root.relativize(start.resolve(c.getFileName())).normalize().toString();
                 String canonicalRelPath = hasBackSlashes ? relPath.replaceAll("\\\\", "/") : relPath;
-                FileProps props = new FileProps(canonicalRelPath, attrs.lastModifiedTime().toMillis() / 1000 * 1000, attrs.size(), Optional.empty());
+                FileProps props = new FileProps(canonicalRelPath, attrs.lastModifiedTime().toMillis(), attrs.size(), Optional.empty());
                 if (attrs.isRegularFile()) {
                     file.accept(props);
                 } else if (attrs.isDirectory()) {
