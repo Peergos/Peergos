@@ -18,6 +18,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
@@ -29,7 +30,7 @@ public class JdbcAddressLRU implements AddressBook {
     private static final Logger LOG = Logging.LOG();
 
     private static final String SET = "INSERT OR REPLACE INTO addressbook (peerid, addresses, lastaccess) VALUES(?, ?, current_timestamp)";
-    private static final String GET = "SELECT addresses FROM addressbook WHERE peerid = ?;";
+    private static final String GET = "SELECT addresses, lastaccess < datetime('now', '-1 hour') AS stale FROM addressbook WHERE peerid = ?;";
     private static final String TOUCH = "UPDATE addressbook SET lastaccess=current_timestamp WHERE peerid = ?;";
     private static final String COUNT = "SELECT COUNT(*) FROM addressbook;";
     private static final String DELETE = "DELETE FROM addressbook WHERE peerid IN " +
@@ -40,6 +41,8 @@ public class JdbcAddressLRU implements AddressBook {
      *  address list grows without limit. */
     public static final int MAX_ADDRESSES_PER_PEER = 32;
     public static final long DEFAULT_TTL_MILLIS = 7 * 24 * 3600_000L;
+    /** Re-announcing a known address only rewrites the row once this old, see addAddrs. */
+    public static final long REFRESH_MILLIS = 3600_000L;
     /** Separates an address from the time it was last announced. Multiaddrs never contain it. */
     private static final String TIME_SEPARATOR = "|";
 
@@ -87,12 +90,20 @@ public class JdbcAddressLRU implements AddressBook {
     @NotNull
     @Override
     public CompletableFuture<Void> addAddrs(@NotNull PeerId peerId, long ttl, @NotNull Multiaddr... multiaddrs) {
-        Map<Multiaddr, Long> updated = new HashMap<>(readAddrs(peerId));
+        Map<Multiaddr, Long> existing = readAddrs(peerId);
+        Map<Multiaddr, Long> updated = new HashMap<>(existing);
         long now = time.get();
+        boolean changed = false;
         for (Multiaddr addr : multiaddrs) {
+            Long lastSeen = existing.get(addr);
+            if (lastSeen == null || lastSeen < now - REFRESH_MILLIS)
+                changed = true;
             updated.put(addr, now);
         }
-        writeAddrs(peerId, updated);
+        // Peers re-announce the same addresses on every connection and identify, and each write is
+        // several fsyncs, so only write when something new arrives or a timestamp is getting old.
+        if (changed)
+            writeAddrs(peerId, updated, existing.isEmpty());
         return Futures.of(null);
     }
 
@@ -111,8 +122,12 @@ public class JdbcAddressLRU implements AddressBook {
             present.setString(1, peerId.toBase58());
             ResultSet rs = present.executeQuery();
             if (rs.next()) {
-                touch.setString(1, peerId.toBase58());
-                touch.executeUpdate();
+                // The DHT reads addresses for ~20 peers per request it serves, so a write per read
+                // makes every DHT query cost ~20 fsync'd transactions. Hourly recency is plenty for the LRU.
+                if (rs.getBoolean("stale")) {
+                    touch.setString(1, peerId.toBase58());
+                    touch.executeUpdate();
+                }
                 Map<Multiaddr, Long> addrs = parseAddresses(rs.getString("addresses"), time.get());
                 prune(addrs);
                 return addrs;
@@ -185,15 +200,19 @@ public class JdbcAddressLRU implements AddressBook {
     @Override
     public CompletableFuture<Void> setAddrs(@NotNull PeerId peerId, long ttl, @NotNull Multiaddr... multiaddrs) {
         long now = time.get();
+        Map<Multiaddr, Long> existing = readAddrs(peerId);
         Map<Multiaddr, Long> addrs = new HashMap<>();
         for (Multiaddr addr : multiaddrs) {
             addrs.put(addr, now);
         }
-        writeAddrs(peerId, addrs);
+        boolean unchanged = existing.keySet().equals(addrs.keySet()) &&
+                existing.values().stream().allMatch(t -> t >= now - REFRESH_MILLIS);
+        if (! unchanged)
+            writeAddrs(peerId, addrs, existing.isEmpty());
         return Futures.of(null);
     }
 
-    private void writeAddrs(@NotNull PeerId peerId, Map<Multiaddr, Long> addrs) {
+    private void writeAddrs(@NotNull PeerId peerId, Map<Multiaddr, Long> addrs, boolean newPeer) {
         prune(addrs);
         try (Connection conn = getConnection();
              PreparedStatement insert = conn.prepareStatement(SET)) {
@@ -203,10 +222,12 @@ public class JdbcAddressLRU implements AddressBook {
             insert.setString(2, addrs.entrySet().stream()
                     .map(e -> e.getKey().toString() + TIME_SEPARATOR + e.getValue())
                     .collect(Collectors.joining(",")));
-            int changed = insert.executeUpdate();
-            int size = size();
-            if (size > maxSize) {
-                removeOldest(size - maxSize*8/10);
+            insert.executeUpdate();
+            if (newPeer) {
+                int size = size();
+                if (size > maxSize) {
+                    removeOldest(size - maxSize*8/10);
+                }
             }
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
@@ -227,6 +248,11 @@ public class JdbcAddressLRU implements AddressBook {
     public static JdbcAddressLRU buildSqlite(int maxSize, String db, Supplier<Long> time) {
         try {
             Connection file = Sqlite.build(db);
+            // This is a cache, so trade durability on power loss for not fsyncing every write
+            try (Statement s = file.createStatement()) {
+                s.execute("PRAGMA journal_mode=WAL;");
+                s.execute("PRAGMA synchronous=NORMAL;");
+            }
             // We need a connection that ignores close
             Connection instance = new Sqlite.UncloseableConnection(file);
             return new JdbcAddressLRU(maxSize, () -> instance, new SqliteCommands(), time);
