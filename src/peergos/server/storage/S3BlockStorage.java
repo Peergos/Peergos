@@ -1461,7 +1461,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             System.out.println("0 blocks to delete");
             return Futures.of(true);
         }
-        if ((cborCount + rawCount)*100/total < 5) {
+        if ((cborCount + rawCount)*100/total < 20) {
             System.out.println("Deleting " + cborCount + " cbor blocks and " + rawCount + " raw blocks out of " + total + ", " + ((cborCount + rawCount) * 100 / total) + "%");
             return Futures.of(true);
         }
