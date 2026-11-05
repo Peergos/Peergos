@@ -154,8 +154,8 @@ public class LocalFileSystem extends StagedFileSystem {
                 continue;
             }
             // a scan keeps the synced version of a file whose contents haven't changed, whatever its modification time
-            if (Files.isRegularFile(full, LinkOption.NOFOLLOW_LINKS) && size(p) == s.size && (getLastModified(p) == s.modificationTime ||
-                    hashFile(p, Optional.empty(), s.relPath, null, s.size, s.chunkSize).rootHash.equals(s.hashTree.rootHash))) {
+            if (Files.isRegularFile(full, LinkOption.NOFOLLOW_LINKS) && size(p) == s.size &&
+                    hashFile(p, Optional.empty(), s.relPath, null, s.size, s.chunkSize).rootHash.equals(s.hashTree.rootHash)) {
                 delete(p);
                 deleted.add(e.getKey());
             }

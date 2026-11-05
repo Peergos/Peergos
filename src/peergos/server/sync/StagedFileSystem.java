@@ -51,7 +51,7 @@ public abstract class StagedFileSystem implements SyncFilesystem {
         }
         // a source changed since would be copied with the range and hash of what it was, and a target changed since is
         // someone else's edit, so leave both to the sync
-        if (resuming && ! (SyncFilesystem.unchanged(srcFs, first.source, first.sourceState) &&
+        if (resuming && ! (SyncFilesystem.asScanned(srcFs, first.source, first.sourceState, synced) &&
                 SyncFilesystem.asScanned(this, first.target, first.targetState, synced)))
             throw new ConcurrentChangeException(first.sourceState.relPath + " has changed since it was copied in part");
         Optional<LocalDateTime> res = Optional.empty();

@@ -544,8 +544,8 @@ public class DirectorySync {
                     } else if (remote.size != file.size) {
                         progress.doneFile();
                     } else {
-                        // hashing here is not extra work: recording the entry lets buildDirState
-                        // below match it on modtime and size and skip hashing the file again
+                        // Record identical content in the remote file's hash scheme. The later local scan
+                        // hashes it again, since matching size and modtime cannot rule out an intervening edit.
                         HashTree localHash = localFS.hashFile(p, Optional.empty(), file.relPath, syncedVersions, file.size, remote.chunkSize);
                         progress.doneFile();
                         if (localHash.equals(remote.hashTree)) {
@@ -1702,12 +1702,13 @@ public class DirectorySync {
             presentFiles.add(relPath);
             FileState atSync = synced.byPath(relPath);
             // a Peergos file carries its hash, which catches an edit within the same second at the same size, and
-            // loses it when it is written
+            // loses it when it is written. Without authoritative metadata, hash the bytes: local size and
+            // modification time can both stay the same across an edit.
             boolean sameHashIfKnown = atSync == null || props.meta
                     .map(m -> m.getFileProperties().treeHash
                             .map(h -> h.rootHash.equals(atSync.hashTree.rootHash))
                             .orElse(false))
-                    .orElse(true);
+                    .orElse(false);
             if (atSync != null && atSync.modificationTime == props.modifiedTime && atSync.size == props.size && sameHashIfKnown) {
                 res.add(atSync);
                 if (props.meta.isPresent())

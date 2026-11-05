@@ -132,7 +132,8 @@ public class PeergosSyncFS implements SyncFilesystem {
         Optional<HashBranch> hash = f.getFileProperties().treeHash;
         if (hash.isPresent())
             return hash.get().rootHash.equals(scanned.hashTree.rootHash);
-        return f.getFileProperties().modified.toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000 == scanned.modificationTime;
+        // An edit can drop the hash without changing size or timestamp. Leave it for the next scan.
+        return false;
     }
 
     @Override
@@ -286,7 +287,7 @@ public class PeergosSyncFS implements SyncFilesystem {
                                         Supplier<Boolean> isCancelled,
                                         Consumer<String> progress) throws IOException {
         CopyOp first = ops.get(0);
-        boolean sourceUnchanged = SyncFilesystem.unchanged(srcFs, first.source, first.sourceState);
+        boolean sourceUnchanged = resuming && SyncFilesystem.asScanned(srcFs, first.source, first.sourceState, synced);
         if (first.targetState == null) {
             // a new file is only seen once its upload is complete, and an upload resumes from the props it started with
             if (resuming && ! (sourceUnchanged && SyncFilesystem.asScanned(this, first.target, null, synced)))

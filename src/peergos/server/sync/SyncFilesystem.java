@@ -154,7 +154,9 @@ public interface SyncFilesystem {
         return res;
     }
 
-    /** Whether a file has the size and modification time it had */
+    /** Whether a file has the size and modification time it had, not whether its contents are unchanged.
+     *  Use asScanned for content checks before destructive actions or resuming a copy.
+     */
     static boolean unchanged(SyncFilesystem fs, Path p, FileState was) {
         return fs.exists(p) && fs.size(p) == was.size && fs.getLastModified(p) == was.modificationTime;
     }
@@ -165,8 +167,7 @@ public interface SyncFilesystem {
             return scanned == null && fs.canCreate(p);
         if (scanned == null || fs.size(p) != scanned.size)
             return false;
-        if (fs.getLastModified(p) == scanned.modificationTime)
-            return true;
+        // Matching timestamps cannot prove equality: edits can preserve them or collide within their precision.
         // a scan keeps the synced version of a file whose contents haven't changed, whatever its modification time
         return fs.hashFile(p, Optional.empty(), scanned.relPath, syncDb, scanned.size, scanned.chunkSize)
                 .rootHash.equals(scanned.hashTree.rootHash);
