@@ -7,6 +7,7 @@ import peergos.server.space.SpaceCheckingKeyFilter;
 import peergos.server.space.UsageStore;
 import peergos.server.space.WriterQuotas;
 import peergos.server.space.WriterUsage;
+import peergos.server.space.WriterUsageStore;
 import peergos.server.storage.BulkCommitStorage;
 import peergos.server.storage.DeletableContentAddressedStorage;
 import peergos.server.storage.admin.QuotaAdmin;
@@ -903,6 +904,249 @@ public class WriterQuotaTests {
         underSecond.undo();
         underFirst.undo();
         assertCannotCommit(child, ownerKey, "a key a refused commit named under two parents");
+    }
+
+    /** A writer a commit is still creating is provisional on every server, and on this one after a restart: the
+     *  registration is in the store, not only in the memory of the server handling the commit */
+    @Test
+    public void aWriterACommitIsStillCreatingIsProvisionalOnEveryServer() throws Exception {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        FileWrapper shared = sharee.getByPath(sharedDir(owner, "team", sharee)).join().get();
+        PublicKeyHash ownerKey = shared.owner();
+        SigningPrivateKeyAndPublicHash parent = shared.signingPair();
+        SigningPrivateKeyAndPublicHash child = newKeyUnder(ownerKey, parent);
+
+        BulkCommitStorage.Registration creating = quotaFilter().registerNewWriter(ownerKey, parent.publicKeyHash, child.publicKeyHash, Optional.empty());
+        SignedPointerUpdate another = new SignedPointerUpdate(child.publicKeyHash, child.secret.signMessage(new byte[] {1}).join());
+        Assert.assertFalse("another server let in a pointer of a writer a commit is still creating",
+                anotherServer().isOwnedWriter(ownerKey, another));
+        creating.undo();
+    }
+
+    /** A registration nothing resolved, as the server handling its commit restarted before the commit landed or was
+     *  refused, is taken back once it expires by whichever server finds it: its writer and edge would otherwise stay
+     *  for good, the queue only dropping children a parent's earlier root named */
+    @Test
+    public void aRegistrationNothingResolvedIsTakenBackOnceItExpires() throws Exception {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        FileWrapper shared = sharee.getByPath(sharedDir(owner, "team", sharee)).join().get();
+        PublicKeyHash ownerKey = shared.owner();
+        SigningPrivateKeyAndPublicHash parent = shared.signingPair();
+        SigningPrivateKeyAndPublicHash child = newKeyUnder(ownerKey, parent);
+
+        quotaFilter().registerNewWriter(ownerKey, parent.publicKeyHash, child.publicKeyHash, Optional.empty());
+        Assert.assertTrue(usageStore().getOwnedKeys(parent.publicKeyHash).contains(child.publicKeyHash));
+        anotherServer().takeBackExpired(Long.MAX_VALUE);
+        Assert.assertFalse(usageStore().getOwnedKeys(parent.publicKeyHash).contains(child.publicKeyHash));
+        Assert.assertTrue(usageStore().getProvisional(child.publicKeyHash).isEmpty());
+        assertCannotCommit(child, ownerKey, "a key whose creating commit never landed, once its registration expired");
+    }
+
+    /** A commit that landed, its server restarting before the commit's row went, doesn't hold its writer back: the
+     *  writer's next write finds the commit landed, and the row goes */
+    @Test
+    public void aLandedCommitsLeftoverRowDoesntHoldItsWriterBack() throws Exception {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        FileWrapper shared = sharee.getByPath(sharedDir(owner, "team", sharee)).join().get();
+        PublicKeyHash ownerKey = shared.owner();
+        SigningPrivateKeyAndPublicHash parent = shared.signingPair();
+        SigningPrivateKeyAndPublicHash child = newKeyUnder(ownerKey, parent);
+
+        quotaFilter().registerNewWriter(ownerKey, parent.publicKeyHash, child.publicKeyHash, Optional.empty());
+        // the commit lands, naming the child under its parent
+        linkUnderOwner(ownerKey, child, parent);
+        write(ownerKey, child, 1, KiB);
+        Assert.assertTrue(usageStore().getProvisional(child.publicKeyHash).isEmpty());
+    }
+
+    /** As above, for a commit that carried the writer's own pointer update, as commits creating a writer do */
+    @Test
+    public void aLeftoverRowWhoseUpdateLandedDoesntHoldItsWriterBack() throws Exception {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        FileWrapper shared = sharee.getByPath(sharedDir(owner, "team", sharee)).join().get();
+        PublicKeyHash ownerKey = shared.owner();
+        SigningPrivateKeyAndPublicHash parent = shared.signingPair();
+        SigningPrivateKeyAndPublicHash child = newKeyUnder(ownerKey, parent);
+        linkUnderOwner(ownerKey, child, parent);
+        write(ownerKey, child, 1, KiB);
+
+        // the row of the commit that set that pointer, left behind
+        byte[] landed = service.mutable.getPointer(ownerKey, child.publicKeyHash).join().get();
+        usageStore().addProvisional(new WriterUsageStore.ProvisionalWriter(child.publicKeyHash, parent.publicKeyHash, ownerKey,
+                true, Optional.of(landed), System.currentTimeMillis() + 600_000));
+        write(ownerKey, child, 1, KiB);
+        Assert.assertTrue(usageStore().getProvisional(child.publicKeyHash).isEmpty());
+    }
+
+    /** A row whose writer was never registered, its server stopping between the two, is taken back like any other */
+    @Test
+    public void anExpiredRowWhoseWriterWasNeverRegisteredIsTakenBack() throws Exception {
+        UserContext owner = signUp();
+        PublicKeyHash ownerKey = owner.signer.publicKeyHash;
+        SigningPrivateKeyAndPublicHash home = owner.getUserRoot().join().signingPair();
+        PublicKeyHash child = newKeyUnder(ownerKey, home).publicKeyHash;
+
+        usageStore().addProvisional(new WriterUsageStore.ProvisionalWriter(child, home.publicKeyHash, ownerKey, true, Optional.empty(), 0));
+        anotherServer().takeBackExpired(System.currentTimeMillis());
+        Assert.assertTrue(usageStore().getProvisional(child).isEmpty());
+    }
+
+    /** An expired registration that can't be taken back yet still holds its writer back: its commit never landed */
+    @Test
+    public void anExpiredRegistrationNotYetTakenBackStillHoldsItsWriterBack() throws Exception {
+        UserContext owner = signUp();
+        PublicKeyHash ownerKey = owner.signer.publicKeyHash;
+        SigningPrivateKeyAndPublicHash home = owner.getUserRoot().join().signingPair();
+        SigningPrivateKeyAndPublicHash child = newKeyUnder(ownerKey, home);
+
+        quotaFilter().registerNewWriter(ownerKey, home.publicKeyHash, child.publicKeyHash, Optional.empty());
+        // its server stopped long ago, and the store can't take the edge back for now
+        usageStore().removeProvisional(child.publicKeyHash, home.publicKeyHash);
+        usageStore().addProvisional(new WriterUsageStore.ProvisionalWriter(child.publicKeyHash, home.publicKeyHash, ownerKey,
+                true, Optional.empty(), 0));
+        SpaceCheckingKeyFilter server = serverOver(failing("removeOwnedKey", new boolean[] {true}));
+        SignedPointerUpdate another = new SignedPointerUpdate(child.publicKeyHash, child.secret.signMessage(new byte[] {1}).join());
+        Assert.assertFalse("a pointer of a writer whose commit never landed", server.isOwnedWriter(ownerKey, another));
+        anotherServer().takeBackExpired(System.currentTimeMillis());
+    }
+
+    /** A writer whose own update was set on its own, its commit never landing as its server stopped, isn't let loose:
+     *  its parent doesn't name it, and once its row expires it is taken back */
+    @Test
+    public void aWriterWhoseOwnUpdateLandedWithoutItsCommitStaysProvisional() throws Exception {
+        UserContext owner = signUp();
+        PublicKeyHash ownerKey = owner.signer.publicKeyHash;
+        SigningPrivateKeyAndPublicHash home = owner.getUserRoot().join().signingPair();
+        SigningPrivateKeyAndPublicHash child = newKeyUnder(ownerKey, home);
+
+        quotaFilter().registerNewWriter(ownerKey, home.publicKeyHash, child.publicKeyHash, Optional.empty());
+        // the update its commit carries for it is set on its own, and the commit's server stops before it lands
+        usageStore().removeProvisional(child.publicKeyHash, home.publicKeyHash);
+        write(ownerKey, child, 1, KiB);
+        byte[] own = service.mutable.getPointer(ownerKey, child.publicKeyHash).join().get();
+        usageStore().addProvisional(new WriterUsageStore.ProvisionalWriter(child.publicKeyHash, home.publicKeyHash, ownerKey,
+                true, Optional.of(own), System.currentTimeMillis() + 600_000));
+
+        SpaceCheckingKeyFilter another = anotherServer();
+        SignedPointerUpdate next = new SignedPointerUpdate(child.publicKeyHash, child.secret.signMessage(new byte[] {1}).join());
+        Assert.assertFalse("a pointer of a writer its parent doesn't name", another.isOwnedWriter(ownerKey, next));
+        another.takeBackExpired(Long.MAX_VALUE);
+        Assert.assertTrue(usageStore().getProvisional(child.publicKeyHash).isEmpty());
+        assertCannotCommit(child, ownerKey, "a key whose creating commit never landed, once its registration expired");
+    }
+
+    /** A writer whose commit is refused while one of its pointers is being checked isn't let in: the undo forgets it
+     *  before its rows go, so a check that finds no rows finds it forgotten */
+    @Test
+    public void aWriterTakenBackWhileItsPointerIsCheckedIsntLetIn() throws Exception {
+        UserContext owner = signUp();
+        PublicKeyHash ownerKey = owner.signer.publicKeyHash;
+        SigningPrivateKeyAndPublicHash home = owner.getUserRoot().join().signingPair();
+        SigningPrivateKeyAndPublicHash child = newKeyUnder(ownerKey, home);
+
+        BulkCommitStorage.Registration creating = quotaFilter().registerNewWriter(ownerKey, home.publicKeyHash, child.publicKeyHash, Optional.empty());
+        UsageStore store = usageStore();
+        boolean[] refused = {false};
+        // the commit is refused, and its registration taken back, just as the check reads the writer's rows
+        UsageStore refusedAsRowsAreRead = (UsageStore) java.lang.reflect.Proxy.newProxyInstance(UsageStore.class.getClassLoader(),
+                new Class<?>[] {UsageStore.class}, (proxy, m, args) -> {
+                    if (m.getName().equals("getProvisional") && ! refused[0]) {
+                        refused[0] = true;
+                        creating.undo();
+                    }
+                    try {
+                        return m.invoke(store, args);
+                    } catch (java.lang.reflect.InvocationTargetException e) {
+                        throw e.getCause();
+                    }
+                });
+        SignedPointerUpdate another = new SignedPointerUpdate(child.publicKeyHash, child.secret.signMessage(new byte[] {1}).join());
+        Assert.assertFalse("a pointer of a writer its refused commit took back",
+                serverOver(refusedAsRowsAreRead).isOwnedWriter(ownerKey, another));
+        Assert.assertTrue(refused[0]);
+    }
+
+    /** A commit that landed stands, whether or not its row can be removed then: the row goes once it is found landed
+     *  or expires */
+    @Test
+    public void aLandedCommitStandsIfItsRowCantBeRemoved() throws Exception {
+        UserContext owner = signUp();
+        PublicKeyHash ownerKey = owner.signer.publicKeyHash;
+        SigningPrivateKeyAndPublicHash home = owner.getUserRoot().join().signingPair();
+        SigningPrivateKeyAndPublicHash child = newKeyUnder(ownerKey, home);
+
+        boolean[] fail = {false};
+        BulkCommitStorage.Registration registered = serverOver(failing("removeProvisional", fail))
+                .registerNewWriter(ownerKey, home.publicKeyHash, child.publicKeyHash, Optional.empty());
+        fail[0] = true;
+        registered.landed();
+        fail[0] = false;
+        Assert.assertEquals("the row stays, to go once it is found landed or expires", 1,
+                usageStore().getProvisional(child.publicKeyHash).size());
+    }
+
+    /** A new writer's row taken back takes the rows its commit left under other parents with it, whichever expires
+     *  first: the writer would otherwise stay owned through one of their edges, unrestricted, until that row expired */
+    @Test
+    public void aNewWritersRowTakesItsCommitsOtherRowsBackWithIt() throws Exception {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        FileWrapper first = sharee.getByPath(sharedDir(owner, "first", sharee)).join().get();
+        FileWrapper second = sharee.getByPath(sharedDir(owner, "second", sharee)).join().get();
+        PublicKeyHash ownerKey = first.owner();
+        PublicKeyHash firstParent = first.signingPair().publicKeyHash, secondParent = second.signingPair().publicKeyHash;
+        SigningPrivateKeyAndPublicHash child = newKeyUnder(ownerKey, first.signingPair());
+
+        // a commit naming the child under both is registered, and its server stops; the new writer's row expires first
+        quotaFilter().registerNewWriter(ownerKey, firstParent, child.publicKeyHash, Optional.empty());
+        quotaFilter().registerNewWriter(ownerKey, secondParent, child.publicKeyHash, Optional.empty());
+        usageStore().removeProvisional(child.publicKeyHash, firstParent);
+        usageStore().addProvisional(new WriterUsageStore.ProvisionalWriter(child.publicKeyHash, firstParent, ownerKey,
+                true, Optional.empty(), 0));
+        anotherServer().takeBackExpired(System.currentTimeMillis());
+        Assert.assertTrue(usageStore().getProvisional(child.publicKeyHash).isEmpty());
+        assertCannotCommit(child, ownerKey, "a key a commit that never landed named under two parents");
+    }
+
+    /** A quota filter over the server's store with nothing in memory: another server's, or this one's after a restart */
+    private static SpaceCheckingKeyFilter anotherServer() throws Exception {
+        return serverOver(usageStore());
+    }
+
+    private static SpaceCheckingKeyFilter serverOver(UsageStore store) throws Exception {
+        SpaceCheckingKeyFilter filter = new SpaceCheckingKeyFilter((peergos.shared.corenode.CoreNode) filterField("core"),
+                (MutablePointers) filterField("mutable"), (DeletableContentAddressedStorage) filterField("dht"),
+                (Hasher) filterField("hasher"), (QuotaAdmin) filterField("quotaAdmin"), store,
+                (Long) filterField("quotaUploadLimitSeconds"));
+        // its sweep stopped, so that only what a test does here takes registrations back
+        java.lang.reflect.Field sweeper = SpaceCheckingKeyFilter.class.getDeclaredField("sweeper");
+        sweeper.setAccessible(true);
+        ((java.util.concurrent.ExecutorService) sweeper.get(filter)).shutdownNow();
+        return filter;
+    }
+
+    /** The server's store, with one of its methods failing while the flag is set */
+    private static UsageStore failing(String method, boolean[] fail) throws Exception {
+        UsageStore store = usageStore();
+        return (UsageStore) java.lang.reflect.Proxy.newProxyInstance(UsageStore.class.getClassLoader(),
+                new Class<?>[] {UsageStore.class}, (proxy, m, args) -> {
+                    if (fail[0] && m.getName().equals(method))
+                        throw new IllegalStateException("Store unavailable");
+                    try {
+                        return m.invoke(store, args);
+                    } catch (java.lang.reflect.InvocationTargetException e) {
+                        throw e.getCause();
+                    }
+                });
     }
 
     @Test

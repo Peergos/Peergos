@@ -191,6 +191,19 @@ public interface SqlSupplier {
                 ");";
     }
 
+    /** Writers a commit is registering, by key rather than id, so a row can be in before its writer is */
+    default String createProvisionalWritersTableCommand() {
+        return "CREATE TABLE IF NOT EXISTS provisionalwriters (" +
+                "writer " + getByteArrayType() + " NOT NULL," +
+                "parent " + getByteArrayType() + " NOT NULL," +
+                "owner " + getByteArrayType() + " NOT NULL," +
+                "new_writer BOOLEAN NOT NULL," +
+                "signed " + getByteArrayType() + "," +
+                "expires BIGINT NOT NULL," +
+                "PRIMARY KEY (writer, parent)" +
+                ");";
+    }
+
     default void createTable(String sqlTableCreate, Connection conn) throws SQLException {
         Statement createStmt = conn.createStatement();
         createStmt.executeUpdate(sqlTableCreate);

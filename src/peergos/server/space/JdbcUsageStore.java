@@ -53,6 +53,7 @@ public class JdbcUsageStore implements UsageStore {
         try (Connection conn = getConnection()) {
             commands.createTable(commands.createUsageTablesCommand(), conn);
             commands.createTable(commands.createWriterQuotasTableCommand(), conn);
+            commands.createTable(commands.createProvisionalWritersTableCommand(), conn);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -527,7 +528,8 @@ public class JdbcUsageStore implements UsageStore {
              PreparedStatement pending = conn.prepareStatement("DELETE FROM pendingusage WHERE writer_id = ?;");
              PreparedStatement quotas = conn.prepareStatement("DELETE FROM writerquotas WHERE writer_id = ?;");
              PreparedStatement usage = conn.prepareStatement("DELETE FROM writerusage WHERE writer_id = ?;");
-             PreparedStatement writers = conn.prepareStatement("DELETE FROM writers WHERE id = ?;")) {
+             PreparedStatement writers = conn.prepareStatement("DELETE FROM writers WHERE id = ?;");
+             PreparedStatement provisional = conn.prepareStatement("DELETE FROM provisionalwriters WHERE writer = ?;")) {
             // out of the cache before the deletes too: if one fails, the writer is looked up afresh rather than
             // trusted from a cache that outlives the attempt to remove it
             synchronized (owners) {
@@ -536,27 +538,34 @@ public class JdbcUsageStore implements UsageStore {
             }
             select.setBytes(1, writer.toBytes());
             ResultSet res = select.executeQuery();
-            if (! res.next())
-                return;
-            int id = res.getInt(1);
-            ownedKeys.setInt(1, id);
-            ownedKeys.setInt(2, id);
-            ownedKeys.executeUpdate();
-            for (PreparedStatement byWriter : List.of(pending, quotas, usage, writers)) {
-                byWriter.setInt(1, id);
-                byWriter.executeUpdate();
+            boolean present = res.next();
+            if (present) {
+                int id = res.getInt(1);
+                ownedKeys.setInt(1, id);
+                ownedKeys.setInt(2, id);
+                ownedKeys.executeUpdate();
+                for (PreparedStatement byWriter : List.of(pending, quotas, usage, writers)) {
+                    byWriter.setInt(1, id);
+                    byWriter.executeUpdate();
+                }
             }
+            // After the deletes, and counted, so a lookup that read the owner before them doesn't cache it (getOwner).
+            // Cached, the writer would outlive its removal.
+            synchronized (owners) {
+                ownerRemovals++;
+                owners.remove(writer);
+            }
+            // Its rows last, once it is gone, as a pointer check that finds no rows then finds it gone (isOwnedWriter);
+            // and whether it was in or not, as a row can be in before its writer is
+            provisional.setBytes(1, writer.toBytes());
+            provisional.executeUpdate();
+            if (! present)
+                return;
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
         } finally {
             unlock(locks);
-        }
-        // After the deletes, and counted, so a lookup that read the owner before them doesn't cache it (getOwner).
-        // Cached, the writer would outlive its removal.
-        synchronized (owners) {
-            ownerRemovals++;
-            owners.remove(writer);
         }
         notifyListeners(writer, l -> l.writerQuotaChanged(writer, Optional.empty()));
         // its edges went with it, and so do its bytes in flight under the caps above it
@@ -575,6 +584,68 @@ public class JdbcUsageStore implements UsageStore {
             while (resultSet.next())
                 res.add(PublicKeyHash.decode(resultSet.getBytes(1)));
             return res;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
+    public boolean addProvisional(ProvisionalWriter p) {
+        try (Connection conn = getConnection(true, false);
+             PreparedStatement insert = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ",
+                     "INTO provisionalwriters (writer, parent, owner, new_writer, signed, expires) VALUES(?, ?, ?, ?, ?, ?)"))) {
+            insert.setBytes(1, p.writer().toBytes());
+            insert.setBytes(2, p.parent().toBytes());
+            insert.setBytes(3, p.owner().toBytes());
+            insert.setBoolean(4, p.newWriter());
+            insert.setBytes(5, p.signed().orElse(null));
+            insert.setLong(6, p.expires());
+            return insert.executeUpdate() > 0;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
+    public List<ProvisionalWriter> getProvisional(PublicKeyHash writer) {
+        return selectProvisional("WHERE writer = ?;", select -> select.setBytes(1, writer.toBytes()));
+    }
+
+    @Override
+    public List<ProvisionalWriter> getExpiredProvisional(long now) {
+        return selectProvisional("WHERE expires <= ?;", select -> select.setLong(1, now));
+    }
+
+    private interface Binder {
+        void bind(PreparedStatement select) throws SQLException;
+    }
+
+    private List<ProvisionalWriter> selectProvisional(String where, Binder binder) {
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement(
+                     "SELECT writer, parent, owner, new_writer, signed, expires FROM provisionalwriters " + where)) {
+            binder.bind(select);
+            ResultSet rs = select.executeQuery();
+            List<ProvisionalWriter> res = new ArrayList<>();
+            while (rs.next())
+                res.add(new ProvisionalWriter(PublicKeyHash.decode(rs.getBytes(1)), PublicKeyHash.decode(rs.getBytes(2)),
+                        PublicKeyHash.decode(rs.getBytes(3)), rs.getBoolean(4), Optional.ofNullable(rs.getBytes(5)), rs.getLong(6)));
+            return res;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
+    public void removeProvisional(PublicKeyHash writer, PublicKeyHash parent) {
+        try (Connection conn = getConnection(true, false);
+             PreparedStatement delete = conn.prepareStatement("DELETE FROM provisionalwriters WHERE writer = ? AND parent = ?;")) {
+            delete.setBytes(1, writer.toBytes());
+            delete.setBytes(2, parent.toBytes());
+            delete.executeUpdate();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);

@@ -4,6 +4,7 @@ import java.util.concurrent.atomic.*;
 import java.util.logging.*;
 
 import peergos.server.storage.*;
+import peergos.server.space.WriterUsageStore.ProvisionalWriter;
 import peergos.server.storage.admin.*;
 import peergos.server.util.*;
 
@@ -49,6 +50,11 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     private final ConcurrentHashMap<PublicKeyHash, Object> healLocks = new ConcurrentHashMap<>();
     private final Map<PublicKeyHash, Long> lastFailedHeals = new ConcurrentHashMap<>();
     private final LRUCache<PublicKeyHash, Boolean> nonLocalOwners = new LRUCache<>(1_000);
+    private final ScheduledExecutorService sweeper = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "Provisional writer sweep");
+        t.setDaemon(true);
+        return t;
+    });
 
     public SpaceCheckingKeyFilter(CoreNode core,
                                   MutablePointers mutable,
@@ -78,6 +84,14 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 }
             }
         }, "SpaceCheckingKeyFilter").start();
+        // registrations no server resolved, one restarting say, are taken back once they expire
+        sweeper.scheduleWithFixedDelay(() -> {
+            try {
+                takeBackExpired(System.currentTimeMillis());
+            } catch (Exception e) {
+                LOG.log(Level.WARNING, "Error taking back expired registrations: " + e.getMessage(), e);
+            }
+        }, 1, 1, TimeUnit.MINUTES);
         //add shutdown-hook to call close
         Runtime.getRuntime().addShutdownHook(new Thread(this::close, "SpaceChecker shutdown"));
     }
@@ -87,6 +101,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
      */
     private synchronized void close() {
         isRunning.set(false);
+        sweeper.shutdownNow();
         usageStore.close();
     }
 
@@ -594,17 +609,87 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         return usage;
     }
 
-    // Writers registered for commits still creating them, each with the pointer update its commit carries for
-    // it, if any: no other may land until the commit does, or a write it let in would be forgotten with it.
-    private final Map<PublicKeyHash, Optional<byte[]>> provisional = new ConcurrentHashMap<>();
+    // How long a commit has to land or be refused before whichever server finds its registration takes it back
+    private static final long PROVISIONAL_MILLIS = 10 * 60_000;
 
-    /** Whether a writer may set this pointer: a provisional writer only the one its commit carries, otherwise the
+    /** Whether a writer may set this pointer: one a commit is still creating only the pointer that commit carries for
+     *  it, if any, as another write it let in would be forgotten with the commit if that is refused; otherwise the
      *  owner's identity or a key the owner still owns. */
     public boolean isOwnedWriter(PublicKeyHash owner, SignedPointerUpdate update) {
-        Optional<byte[]> allowed = provisional.get(update.writer);
-        if (allowed != null)
-            return allowed.map(signed -> Arrays.equals(signed, update.signed)).orElse(false);
+        // Owned, then its rows, then owned again: a row is in before its writer, so a writer registered by now has its
+        // rows there to be read, and a writer taken back is gone before its rows are, so one whose rows went while they
+        // were read is found gone. An owner's identity is never provisional.
+        if (! isOwnedWriter(owner, update.writer))
+            return false;
+        if (update.writer.equals(owner))
+            return true;
+        long now = System.currentTimeMillis();
+        List<ProvisionalWriter> creating = new ArrayList<>();
+        for (ProvisionalWriter p : usageStore.getProvisional(update.writer)) {
+            // one expired, but not taken back yet, still holds its writer back
+            if (p.expires() <= now && takeBack(p))
+                continue;
+            if (p.newWriter())
+                creating.add(p);
+        }
+        if (! creating.isEmpty()) {
+            if (creating.stream().anyMatch(p -> p.signed().map(s -> Arrays.equals(s, update.signed)).orElse(false)))
+                return true;
+            // the commit may have landed with its row left behind, its server restarting in between
+            if (! creating.stream().allMatch(this::landed))
+                return false;
+            creating.forEach(p -> usageStore.removeProvisional(p.writer(), p.parent()));
+        }
         return isOwnedWriter(owner, update.writer);
+    }
+
+    /** Whether the commit a provisional writer is for has landed: the committed parent names the writer. Its own
+     *  pointer being the one the commit carries doesn't show that, as that update can be set on its own. */
+    private boolean landed(ProvisionalWriter p) {
+        return namesWriter(p.owner(), p.parent(), p.writer());
+    }
+
+    /** Takes back the registrations that have expired, as their commits' undos would have: for those whose server
+     *  restarted, or failed to, before the commit landed or was refused */
+    public void takeBackExpired(long now) {
+        for (ProvisionalWriter p : usageStore.getExpiredProvisional(now))
+            takeBack(p);
+    }
+
+    /** As an undo: the edge goes unless the committed parent names the writer, then the writer unless something owns
+     *  it. The row stays if that fails, to be tried again.
+     *
+     * @return whether it was taken back
+     */
+    private boolean takeBack(ProvisionalWriter p) {
+        Object lock = healLocks.computeIfAbsent(p.owner(), o -> new Object());
+        synchronized (lock) {
+            try {
+                try {
+                    usageStore.getOwner(p.writer());
+                } catch (IllegalStateException neverRegistered) {
+                    // its server stopped between the row and the writer: only the row is left to take back
+                    usageStore.removeProvisional(p.writer(), p.parent());
+                    return true;
+                }
+                // A new writer's own row last: its commit's rows under other parents go first, as its undo takes them
+                // back, or it would stay owned through one of their edges, unrestricted, until that row expired too.
+                if (p.newWriter())
+                    for (ProvisionalWriter other : usageStore.getProvisional(p.writer()))
+                        if (! other.newWriter() && Arrays.equals(other.signed().orElse(null), p.signed().orElse(null))
+                                && ! takeBack(other))
+                            return false;
+                if (! namesWriter(p.owner(), p.parent(), p.writer()))
+                    usageStore.removeOwnedKey(p.parent(), p.writer());
+                if (! owned(usageStore, p.owner(), p.writer()))
+                    forgetWriter(usernameOf(p.owner()), p.owner(), p.writer());
+                usageStore.removeProvisional(p.writer(), p.parent());
+                return true;
+            } catch (Exception e) {
+                LOG.log(Level.WARNING, "Couldn't take back provisional writer " + p.writer() + " of owner " + p.owner(), e);
+                return false;
+            }
+        }
     }
 
     /** Whether a writer may update its pointer: the owner's identity, or a key the owner still owns */
@@ -761,7 +846,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         BulkCommitStorage.Registration nothing = registration(() -> {}, () -> {});
         Object lock = healLocks.computeIfAbsent(owner, o -> new Object());
         synchronized (lock) {
-            boolean writerAdded = false, markedProvisional = false;
+            boolean writerAdded = false, rowAdded = false;
             try {
                 String username = core.getUsername(owner).join();
                 if (! quotaAdmin.getLocalUsernames().contains(username))
@@ -780,14 +865,17 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 // commit for this owner, must not register one here, whatever the rest of that commit does
                 if (! username.equals(parentUser) || parent.equals(writer) || writer.equals(owner))
                     return nothing;
+                long expires = System.currentTimeMillis() + PROVISIONAL_MILLIS;
+                Optional<byte[]> signed = ownUpdate.map(u -> u.signed);
                 String writerUser;
                 try {
                     writerUser = usageStore.getOwner(writer);
                 } catch (IllegalStateException absent) {
                     usageStore.addUserIfAbsent(username);
-                    // provisional before it is registered, so no other pointer of its lands in between
-                    provisional.put(writer, ownUpdate.map(u -> u.signed));
-                    markedProvisional = true;
+                    // Provisional before it is registered, so no other pointer of its lands in between, on any server.
+                    // A row for it left by an attempt that never registered it, cut short by a restart, gives way.
+                    usageStore.removeProvisional(writer, parent);
+                    rowAdded = usageStore.addProvisional(new ProvisionalWriter(writer, parent, owner, true, signed, expires));
                     usageStore.addWriter(username, writer);
                     writerUser = username;
                     writerAdded = true;
@@ -795,16 +883,31 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 // a writer of another user's stays theirs: an edge to it would count their data under this owner's caps
                 if (! username.equals(writerUser))
                     return nothing;
+                // in before the edge it may add, so a restart before the commit is resolved leaves a row to take it back
+                // by; a row another commit still creating the writer has in stays theirs
+                if (! writerAdded)
+                    rowAdded = usageStore.addProvisional(new ProvisionalWriter(writer, parent, owner, false, signed, expires));
                 boolean edgeAdded = usageStore.addOwnedKey(parent, writer);
                 boolean newWriter = writerAdded;
+                if (rowAdded && ! newWriter && ! edgeAdded) {
+                    usageStore.removeProvisional(writer, parent);
+                    return nothing;
+                }
+                boolean ownsRow = rowAdded;
                 // A commit made alongside this one may have landed the same writer under this parent meanwhile, and
                 // what a committed parent names stays. A writer left with no parent goes, whichever commit
                 // registered it and whatever its own pointer says: it would write under no cap. Under the
                 // registration lock, so no registration comes in between; an edge recorded as a pointer lands
                 // can, and is recorded again when the queue reaches that parent's update.
                 return registration(() -> {
-                    if (newWriter)
-                        provisional.remove(writer);
+                    if (! ownsRow)
+                        return;
+                    try {
+                        usageStore.removeProvisional(writer, parent);
+                    } catch (Exception e) {
+                        // the commit has landed regardless: its row goes when it is found landed, or once it expires
+                        LOG.log(Level.WARNING, "Couldn't remove the row of landed writer " + writer + " of owner " + owner, e);
+                    }
                 }, () -> {
                     synchronized (lock) {
                         try {
@@ -812,26 +915,25 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                                 usageStore.removeOwnedKey(parent, writer);
                             if ((newWriter || edgeAdded) && ! owned(usageStore, owner, writer))
                                 forgetWriter(username, owner, writer);
-                        } catch (Exception e) {
-                            LOG.log(Level.WARNING, "Couldn't take back new writer " + writer + " of owner " + owner, e);
-                        } finally {
                             // only once it is forgotten or kept, or a pointer of its could land in between
-                            if (newWriter)
-                                provisional.remove(writer);
+                            if (ownsRow)
+                                usageStore.removeProvisional(writer, parent);
+                        } catch (Exception e) {
+                            // its row stays, so the registration is taken back again once it expires
+                            LOG.log(Level.WARNING, "Couldn't take back new writer " + writer + " of owner " + owner, e);
                         }
                     }
                 });
             } catch (Exception e) {
                 LOG.log(Level.WARNING, "Couldn't register new writer " + writer + " of owner " + owner, e);
                 // nothing half done stays: a writer added here without its edge would write under no cap
-                if (markedProvisional)
-                    provisional.remove(writer);
-                if (writerAdded) {
-                    try {
+                try {
+                    if (writerAdded)
                         usageStore.removeWriter(writer);
-                    } catch (Exception f) {
-                        LOG.log(Level.WARNING, "Couldn't take back new writer " + writer + " of owner " + owner, f);
-                    }
+                    else if (rowAdded)
+                        usageStore.removeProvisional(writer, parent);
+                } catch (Exception f) {
+                    LOG.log(Level.WARNING, "Couldn't take back new writer " + writer + " of owner " + owner, f);
                 }
                 return nothing;
             }

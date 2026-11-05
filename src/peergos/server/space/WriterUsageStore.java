@@ -37,8 +37,32 @@ public interface WriterUsageStore {
     /** Take back an edge recorded ahead of a commit that was then refused */
     void removeOwnedKey(PublicKeyHash parent, PublicKeyHash owned);
 
-    /** Forget a writer that nothing owns any more, so it can't write again without proving it is owned */
+    /** Forget a writer that nothing owns any more, so it can't write again without proving it is owned. Its
+     *  provisional rows go with it. */
     void removeWriter(PublicKeyHash writer);
+
+    /** A writer a commit is registering under a parent, until the commit lands or is refused. It is in the store, not
+     *  in the memory of the server handling the commit, so another server, or that one after a restart, finds it, and
+     *  takes the registration back once it expires. Until then a new writer may set only the pointer update its
+     *  commit carries, if any.
+     *
+     * @param newWriter whether the commit registered the writer itself, not only its edge from the parent
+     * @param signed the pointer update the commit carries for the writer
+     */
+    record ProvisionalWriter(PublicKeyHash writer, PublicKeyHash parent, PublicKeyHash owner, boolean newWriter,
+                             Optional<byte[]> signed, long expires) {}
+
+    /** Records a provisional writer, unless one is recorded for this writer and parent already
+     *
+     * @return whether it is new
+     */
+    boolean addProvisional(ProvisionalWriter provisional);
+
+    List<ProvisionalWriter> getProvisional(PublicKeyHash writer);
+
+    List<ProvisionalWriter> getExpiredProvisional(long now);
+
+    void removeProvisional(PublicKeyHash writer, PublicKeyHash parent);
 
     Set<PublicKeyHash> getAllWriters();
 
