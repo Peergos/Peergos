@@ -234,17 +234,22 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         }
     }
 
-    public void accept(MutableEvent event) {
-        // The pointer has moved by now, so a full queue mustn't fail the commit that moved it. The writer's usage is
-        // behind until its next update; an edge recorded below for a child that update never names goes when the
-        // writer does.
-        if (! mutableQueue.offer(event))
-            LOG.warning("Mutable event queue full, usage of writer " + event.writer + " waits for its next update");
-        try {
-            prepareMutablePointerChange(event, dht, usageStore, hasher);
-        } catch (Exception e) {
-            LOG.log(Level.WARNING, "Error registering owned keys for writer " + event.writer + ": " + e.getMessage(), e);
+    /** Records what each pointer a call landed names, the children it links, so their first writes count under its
+     *  caps, then queues their usage updates. All are recorded before any is queued, or the queue could judge one
+     *  update before a child the call moves under another of its writers is linked there, and forget the child, its
+     *  cap with it. The pointers have moved by now, so a full queue mustn't fail the call that moved them: a writer's
+     *  usage is behind until its next update. */
+    public void accept(List<MutableEvent> landed) {
+        for (MutableEvent event : landed) {
+            try {
+                prepareMutablePointerChange(event, dht, usageStore, hasher);
+            } catch (Exception e) {
+                LOG.log(Level.WARNING, "Error registering owned keys for writer " + event.writer + ": " + e.getMessage(), e);
+            }
         }
+        for (MutableEvent event : landed)
+            if (! mutableQueue.offer(event))
+                LOG.warning("Mutable event queue full, usage of writer " + event.writer + " waits for its next update");
     }
 
     public static void processCorenodeEvent(String username,
