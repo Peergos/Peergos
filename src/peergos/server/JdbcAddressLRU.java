@@ -13,6 +13,7 @@ import peergos.shared.corenode.PkiCache;
 import peergos.shared.corenode.UserPublicKeyLink;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.util.Futures;
+import peergos.shared.util.LRUCache;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -50,6 +51,10 @@ public class JdbcAddressLRU implements AddressBook {
     private Supplier<Connection> conn;
     private final int maxSize;
     private final Supplier<Long> time;
+    /** Mirrors the table, as the DHT reads ~20 peers' addresses per request it serves. */
+    private final LRUCache<PeerId, Cached> cache;
+
+    private record Cached(Map<Multiaddr, Long> addrs, long lastTouched) {}
 
     public JdbcAddressLRU(int maxSize, Supplier<Connection> conn, SqlSupplier commands) {
         this(maxSize, conn, commands, System::currentTimeMillis);
@@ -59,6 +64,7 @@ public class JdbcAddressLRU implements AddressBook {
         this.maxSize = maxSize;
         this.conn = conn;
         this.time = time;
+        this.cache = new LRUCache<>(maxSize + 1);
         init(commands);
     }
 
@@ -115,17 +121,52 @@ public class JdbcAddressLRU implements AddressBook {
 
     /** The addresses we hold for a peer with the time each was last announced, stale ones dropped. */
     private Map<Multiaddr, Long> readAddrs(@NotNull PeerId peerId) {
+        long now = time.get();
+        Cached cached;
+        synchronized (cache) {
+            cached = cache.get(peerId);
+        }
+        if (cached != null) {
+            if (cached.lastTouched < now - REFRESH_MILLIS) {
+                touch(peerId);
+                synchronized (cache) {
+                    cache.put(peerId, new Cached(cached.addrs, now));
+                }
+            }
+            Map<Multiaddr, Long> addrs = new HashMap<>(cached.addrs);
+            prune(addrs);
+            return addrs;
+        }
+        Map<Multiaddr, Long> addrs = readAddrsFromDb(peerId);
+        synchronized (cache) {
+            cache.put(peerId, new Cached(Map.copyOf(addrs), now));
+        }
+        return addrs;
+    }
+
+    private void touch(PeerId peerId) {
+        try (Connection conn = getConnection();
+             PreparedStatement touch = conn.prepareStatement(TOUCH)) {
+            touch.setString(1, peerId.toBase58());
+            touch.executeUpdate();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+        }
+    }
+
+    private Map<Multiaddr, Long> readAddrsFromDb(@NotNull PeerId peerId) {
+        String id = peerId.toBase58();
         try (Connection conn = getConnection();
              PreparedStatement present = conn.prepareStatement(GET);
              PreparedStatement touch = conn.prepareStatement(TOUCH)) {
             conn.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
-            present.setString(1, peerId.toBase58());
+            present.setString(1, id);
             ResultSet rs = present.executeQuery();
             if (rs.next()) {
                 // The DHT reads addresses for ~20 peers per request it serves, so a write per read
                 // makes every DHT query cost ~20 fsync'd transactions. Hourly recency is plenty for the LRU.
                 if (rs.getBoolean("stale")) {
-                    touch.setString(1, peerId.toBase58());
+                    touch.setString(1, id);
                     touch.executeUpdate();
                 }
                 Map<Multiaddr, Long> addrs = parseAddresses(rs.getString("addresses"), time.get());
@@ -190,7 +231,10 @@ public class JdbcAddressLRU implements AddressBook {
              PreparedStatement delete = conn.prepareStatement(DELETE)) {
             conn.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
             delete.setInt(1, toRemove);
-            int changed = delete.executeUpdate();
+            delete.executeUpdate();
+            synchronized (cache) {
+                cache.clear();
+            }
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
         }
@@ -223,6 +267,9 @@ public class JdbcAddressLRU implements AddressBook {
                     .map(e -> e.getKey().toString() + TIME_SEPARATOR + e.getValue())
                     .collect(Collectors.joining(",")));
             insert.executeUpdate();
+            synchronized (cache) {
+                cache.put(peerId, new Cached(Map.copyOf(addrs), time.get()));
+            }
             if (newPeer) {
                 int size = size();
                 if (size > maxSize) {
