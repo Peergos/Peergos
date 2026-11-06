@@ -30,9 +30,11 @@ import java.util.stream.Collectors;
 public class JdbcAddressLRU implements AddressBook {
     private static final Logger LOG = Logging.LOG();
 
-    private static final String SET = "INSERT OR REPLACE INTO addressbook (peerid, addresses, lastaccess) VALUES(?, ?, current_timestamp)";
+    // Milliseconds, so the LRU can order peers used within the same second; sorts with older second-resolution rows
+    private static final String NOW = "strftime('%Y-%m-%d %H:%M:%f', 'now')";
+    private static final String SET = "INSERT OR REPLACE INTO addressbook (peerid, addresses, lastaccess) VALUES(?, ?, " + NOW + ")";
     private static final String GET = "SELECT addresses, lastaccess < datetime('now', '-1 hour') AS stale FROM addressbook WHERE peerid = ?;";
-    private static final String TOUCH = "UPDATE addressbook SET lastaccess=current_timestamp WHERE peerid = ?;";
+    private static final String TOUCH = "UPDATE addressbook SET lastaccess=" + NOW + " WHERE peerid = ?;";
     private static final String COUNT = "SELECT COUNT(*) FROM addressbook;";
     private static final String DELETE = "DELETE FROM addressbook WHERE peerid IN " +
             "(SELECT peerid FROM addressbook ORDER BY lastaccess ASC LIMIT ?);";
@@ -53,6 +55,9 @@ public class JdbcAddressLRU implements AddressBook {
     private final Supplier<Long> time;
     /** Mirrors the table, as the DHT reads ~20 peers' addresses per request it serves. */
     private final LRUCache<PeerId, Cached> cache;
+    /** Peers read (getAddrs) since lastaccess was last written for them. Reads only write lastaccess hourly, but DHT
+     *  churn can turn the whole book over in minutes, so these are touched in one batch before evicting. */
+    private final LRUCache<PeerId, Boolean> readSinceTouch;
 
     private record Cached(Map<Multiaddr, Long> addrs, long lastTouched) {}
 
@@ -65,6 +70,7 @@ public class JdbcAddressLRU implements AddressBook {
         this.conn = conn;
         this.time = time;
         this.cache = new LRUCache<>(maxSize + 1);
+        this.readSinceTouch = new LRUCache<>(maxSize + 1);
         init(commands);
     }
 
@@ -116,6 +122,8 @@ public class JdbcAddressLRU implements AddressBook {
     @NotNull
     @Override
     public CompletableFuture<Collection<Multiaddr>> getAddrs(@NotNull PeerId peerId) {
+        // Only reads count as use: writes set lastaccess themselves
+        markUsed(peerId);
         return Futures.of(new ArrayList<>(readAddrs(peerId).keySet()));
     }
 
@@ -142,6 +150,12 @@ public class JdbcAddressLRU implements AddressBook {
             cache.put(peerId, new Cached(Map.copyOf(addrs), now));
         }
         return addrs;
+    }
+
+    private void markUsed(PeerId peerId) {
+        synchronized (readSinceTouch) {
+            readSinceTouch.put(peerId, Boolean.TRUE);
+        }
     }
 
     private void touch(PeerId peerId) {
@@ -227,11 +241,33 @@ public class JdbcAddressLRU implements AddressBook {
     }
 
     private void removeOldest(int toRemove) {
+        List<String> recent;
+        synchronized (readSinceTouch) {
+            recent = readSinceTouch.keySet().stream().map(PeerId::toBase58).collect(Collectors.toList());
+            readSinceTouch.clear();
+        }
         try (Connection conn = getConnection();
+             PreparedStatement touch = conn.prepareStatement(TOUCH);
              PreparedStatement delete = conn.prepareStatement(DELETE)) {
             conn.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
-            delete.setInt(1, toRemove);
-            delete.executeUpdate();
+            boolean autoCommit = conn.getAutoCommit();
+            conn.setAutoCommit(false);
+            try {
+                for (String id : recent) {
+                    touch.setString(1, id);
+                    touch.addBatch();
+                }
+                if (! recent.isEmpty())
+                    touch.executeBatch();
+                delete.setInt(1, toRemove);
+                delete.executeUpdate();
+                conn.commit();
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            } finally {
+                conn.setAutoCommit(autoCommit);
+            }
             synchronized (cache) {
                 cache.clear();
             }
