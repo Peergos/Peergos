@@ -40,14 +40,7 @@ public class ServerIdentity extends Builder {
                 JdbcServerIdentityStore idstore = JdbcServerIdentityStore.build(getDBConnector(a, "serverids-file"), sqlCommands, Main.initCrypto());
                 List<PeerId> ids = idstore.getIdentities();
                 PeerId current = ids.get(ids.size() - 1);
-                byte[] currentRecord = idstore.getRecord(current);
-                Optional<IpnsMapping> ipnsMapping = IPNS.parseAndValidateIpnsEntry(
-                        ArrayOps.concat("/ipns/".getBytes(StandardCharsets.UTF_8), current.getBytes()),
-                        currentRecord);
-                if (ipnsMapping.isEmpty())
-                    throw new IllegalStateException("Invalid record!");
-                IpnsEntry entry = new IpnsEntry(ipnsMapping.get().getSignature(), ipnsMapping.get().getData());
-                ResolutionRecord res = entry.getValue();
+                ResolutionRecord res = storedValue(idstore.getRecord(current));
                 boolean hasNextId = res.host.isPresent();
                 if (hasNextId) {
                     System.out.println("This server has already generated a next identity");
@@ -81,6 +74,26 @@ public class ServerIdentity extends Builder {
                     ARG_PRIVATE_KEY
             )
     );
+
+    /** Reads one of our own stored records without the expiry check, so an expired one can still be renewed.
+     *  IpnsEntry.getValue(signer, crypto) can't be used either, as it only verifies Ed25519 signatures. */
+    public static ResolutionRecord storedValue(byte[] record) {
+        Ipns.IpnsEntry entry = parseStored(record);
+        return new IpnsEntry(entry.getSignatureV2().toByteArray(), entry.getData().toByteArray()).getValue();
+    }
+
+    public static LocalDateTime storedExpiry(byte[] record) {
+        byte[] validity = parseStored(record).getValidity().toByteArray();
+        return LocalDateTime.parse(new String(validity, StandardCharsets.UTF_8).substring(0, validity.length - 1), IPNS.rfc3339nano);
+    }
+
+    private static Ipns.IpnsEntry parseStored(byte[] record) {
+        try {
+            return Ipns.IpnsEntry.parseFrom(record);
+        } catch (InvalidProtocolBufferException e) {
+            throw new IllegalStateException("Invalid server identity record", e);
+        }
+    }
 
     public static byte[] generateSignedIpnsRecord(PrivKey peerPrivate, Optional<Multihash> host, boolean moved, long sequence) {
         int years = 1;
@@ -123,15 +136,8 @@ public class ServerIdentity extends Builder {
                 if (ids.isEmpty())
                     throw new IllegalStateException("Please run Peergos once before trying to rotate the server identity!");
                 PeerId current = ids.get(ids.size() - 1);
-                byte[] currentRecord = idstore.getRecord(current);
-                Optional<IpnsMapping> ipnsMapping = IPNS.parseAndValidateIpnsEntry(
-                        ArrayOps.concat("/ipns/".getBytes(StandardCharsets.UTF_8), current.getBytes()),
-                        currentRecord);
-                if (ipnsMapping.isEmpty())
-                    throw new IllegalStateException("Invalid record!");
-                IpnsEntry ipnsEntry = new IpnsEntry(ipnsMapping.get().getSignature(), ipnsMapping.get().getData());
                 Crypto crypto = Main.initCrypto();
-                ResolutionRecord res = ipnsEntry.getValue(Multihash.decode(ipnsMapping.get().publisher.toBytes()), crypto).join();
+                ResolutionRecord res = storedValue(idstore.getRecord(current));
                 PrivKey nextPriv;
                 if (res.host.isPresent()) {
                     // require password to regenerate next identity

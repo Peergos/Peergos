@@ -322,42 +322,49 @@ public class IpfsWrapper implements AutoCloseable {
         return launch(args, ids);
     }
 
+    /** Renews a record that expires within 6 months, or has already expired. */
+    private byte[] renewIfDue(ServerIdentityStore ids, PeerId id, byte[] rec) {
+        if (! ServerIdentity.storedExpiry(rec).isBefore(LocalDateTime.now().plusMonths(6)))
+            return rec;
+        LOG.info("Updating ipns record for " + id);
+        ResolutionRecord currentRR = ServerIdentity.storedValue(rec);
+        byte[] privPb = ids.getPrivateKey(id);
+        PrivKey priv;
+        // handle current peer key being supplied on command line
+        if (privPb == null && id.equals(embeddedIpfs.node.getPeerId())) {
+            priv = embeddedIpfs.node.getPrivKey();
+        } else
+            priv = KeyKt.unmarshalPrivateKey(privPb);
+        byte[] newRecord = ServerIdentity.generateSignedIpnsRecord(priv, currentRR.host, currentRR.moved, currentRR.sequence + 1);
+        IPNS.parseAndValidateIpnsEntry(IPNS.getKey(Multihash.deserialize(id.getBytes())), newRecord).get();
+        ids.setRecord(id, newRecord);
+        return newRecord;
+    }
+
     private void startIdPublisher(ServerIdentityStore ids) {
         Thread publisher = new Thread(() -> {
             while (running) {
                 try {
-                    List<PeerId> all = ids.getIdentities();
+                    // renew them all before publishing any, so a slow publish can't hold up a renewal
                     Map<PeerId, byte[]> presignedRecords = new LinkedHashMap<>();
-                    for (PeerId id : all) {
-                        byte[] signedIpnsRecord = ids.getRecord(id);
-                        presignedRecords.put(id, signedIpnsRecord);
+                    for (PeerId id : ids.getIdentities()) {
+                        byte[] rec = ids.getRecord(id);
+                        try {
+                            rec = renewIfDue(ids, id, rec);
+                        } catch (Exception e) {
+                            LOG.log(Level.SEVERE, "Couldn't renew ipns record for " + id, e);
+                        }
+                        presignedRecords.put(id, rec);
                     }
                     if (! presignedRecords.isEmpty()) {
                         LOG.info("Publishing " + presignedRecords.size() + " pre-signed ipns records for server identity changes");
                         presignedRecords.forEach((id, rec) -> {
                             LOG.info("Publishing ipns record for " + id);
-                            // renew record if it expires within 6 months
-                            Multihash key = Multihash.deserialize(id.getBytes());
-                            byte[] ipnsKey = IPNS.getKey(key);
-                            IpnsMapping currentMapping = IPNS.parseAndValidateIpnsEntry(ipnsKey, rec).get();
-                            if (currentMapping.value.expiry.isBefore(LocalDateTime.now().plusMonths(6))) {
-                                LOG.info("Updating ipns record for " + id);
-                                IpnsEntry entry = new IpnsEntry(currentMapping.getSignature(), currentMapping.getData());
-                                ResolutionRecord currentRR = entry.getValue();
-                                long newSequence = currentRR.sequence + 1;
-                                byte[] privPb = ids.getPrivateKey(id);
-                                PrivKey priv;
-                                // handle current peer key being supplied on command line
-                                if (privPb == null && id.equals(embeddedIpfs.node.getPeerId())) {
-                                    priv = embeddedIpfs.node.getPrivKey();
-                                } else
-                                    priv = KeyKt.unmarshalPrivateKey(privPb);
-                                byte[] newRecord = ServerIdentity.generateSignedIpnsRecord(priv, currentRR.host, currentRR.moved, newSequence);
-                                IPNS.parseAndValidateIpnsEntry(ipnsKey, newRecord).get();
-                                ids.setRecord(id, newRecord);
-                                rec = newRecord;
+                            try {
+                                embeddedIpfs.publishPresignedRecord(Multihash.deserialize(id.getBytes()), rec).join();
+                            } catch (Exception e) {
+                                LOG.log(Level.WARNING, "Couldn't publish ipns record for " + id, e);
                             }
-                            embeddedIpfs.publishPresignedRecord(key, rec).join();
                         });
                     }
                 } catch (Exception e) {
