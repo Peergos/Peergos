@@ -1209,6 +1209,29 @@ public class WriterQuotaTests {
         }
     }
 
+    /** As above, the sharee pointing the root's owned key champ, rather than one key, at a block the server won't read */
+    @Test
+    public void anExpiredRegistrationUnderAnUnreadableOwnedKeyChampIsTakenBack() throws Exception {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        FileWrapper shared = sharee.getByPath(sharedDir(owner, "team", sharee)).join().get();
+        PublicKeyHash ownerKey = shared.owner();
+        SigningPrivateKeyAndPublicHash parent = shared.signingPair();
+        Cid unreadable = (Cid) shared.getPointer().fileAccess.committedHash().get();
+        NetworkAccess net = sharee.network.clear();
+        net.synchronizer.applyComplexUpdate(ownerKey, parent, (s, committer) -> IpfsTransaction.call(ownerKey, tid -> {
+            CommittedWriterData current = s.get(parent);
+            return committer.commit(ownerKey, parent, current.props.get().withOwnedRoot(unreadable), current, tid);
+        }, net.dhtClient)).join();
+        SigningPrivateKeyAndPublicHash child = newKeyUnder(ownerKey, parent);
+
+        quotaFilter().registerNewWriter(ownerKey, parent.publicKeyHash, child.publicKeyHash, Optional.empty());
+        anotherServer().takeBackExpired(Long.MAX_VALUE);
+        Assert.assertFalse(usageStore().getOwnedKeys(parent.publicKeyHash).contains(child.publicKeyHash));
+        Assert.assertTrue(usageStore().getProvisional(child.publicKeyHash).isEmpty());
+    }
+
     /** A quota filter over the server's store with nothing in memory: another server's, or this one's after a restart */
     private static SpaceCheckingKeyFilter anotherServer() throws Exception {
         return serverOver(usageStore());
