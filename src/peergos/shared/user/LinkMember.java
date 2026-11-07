@@ -24,14 +24,17 @@ public class LinkMember implements Cborable {
 
     public final String path;
     public final boolean writable;
+    // whoever opens the link can't see where in the drive this is
+    public final boolean hidden;
 
-    public LinkMember(String path, boolean writable) {
+    public LinkMember(String path, boolean writable, boolean hidden) {
         this.path = path;
         this.writable = writable;
+        this.hidden = hidden;
     }
 
-    public static LinkMember build(String path, AbsoluteCapability cap) {
-        return new LinkMember(path, cap.isWritable());
+    public static LinkMember build(String path, AbsoluteCapability cap, boolean hidden) {
+        return new LinkMember(path, cap.isWritable(), hidden);
     }
 
     @JsMethod
@@ -44,8 +47,13 @@ public class LinkMember implements Cborable {
         return writable;
     }
 
+    @JsMethod
+    public boolean isHidden() {
+        return hidden;
+    }
+
     public LinkMember withPath(String newPath) {
-        return new LinkMember(newPath, writable);
+        return new LinkMember(newPath, writable, hidden);
     }
 
     @Override
@@ -54,6 +62,8 @@ public class LinkMember implements Cborable {
         state.put("p", new CborObject.CborString(path));
         if (writable)
             state.put("w", new CborObject.CborBoolean(true));
+        if (hidden)
+            state.put("h", new CborObject.CborBoolean(true));
         return CborObject.CborMap.build(state);
     }
 
@@ -61,7 +71,7 @@ public class LinkMember implements Cborable {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Invalid cbor for LinkMember! " + cbor);
         CborObject.CborMap m = (CborObject.CborMap) cbor;
-        return new LinkMember(m.getString("p"), m.getBoolean("w", false));
+        return new LinkMember(m.getString("p"), m.getBoolean("w", false), m.getBoolean("h", false));
     }
 
     @Override
@@ -69,16 +79,16 @@ public class LinkMember implements Cborable {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         LinkMember that = (LinkMember) o;
-        return writable == that.writable && Objects.equals(path, that.path);
+        return writable == that.writable && hidden == that.hidden && Objects.equals(path, that.path);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(path, writable);
+        return Objects.hash(path, writable, hidden);
     }
 
     @Override
     public String toString() {
-        return path + (writable ? " (writable)" : "");
+        return path + (writable ? " (writable)" : "") + (hidden ? " (hidden)" : "");
     }
 }
