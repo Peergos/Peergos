@@ -53,6 +53,8 @@ public class MultiNodeNetworkTests {
             .with("enable-gc", "true")
             .with("allow-external-login", "true")
             .removeArg(IpfsWrapper.IPFS_BOOTSTRAP_NODES); // no bootstrapping
+    // MNNT_QUIC_ONLY=true: the nodes listen, and bootstrap, on QUIC only
+    private static final boolean QUIC_ONLY = "true".equals(System.getenv("MNNT_QUIC_ONLY"));
     private static Random random = new Random(0);
     private static List<NetworkAccess> nodes = new ArrayList<>();
     private static List<ServerProcesses> services = new ArrayList<>();
@@ -122,11 +124,21 @@ public class MultiNodeNetworkTests {
         nodes.set(i, buildApi(startArgs));
     }
 
+    private static Args withSwarm(Args a, int swarmPort) {
+        return QUIC_ONLY ? a.with("ipfs-swarm-addrs", "/ip4/127.0.0.1/udp/" + swarmPort + "/quic-v1") : a;
+    }
+
+    private static String bootstrapAddress(int swarmPort, Multihash nodeId) {
+        return QUIC_ONLY ?
+                "/ip4/127.0.0.1/udp/" + swarmPort + "/quic-v1/p2p/" + nodeId :
+                Main.getLocalBootstrapAddress(swarmPort, nodeId).toString();
+    }
+
     private static String buildBootstrapList(int exclude) {
         StringBuilder res = new StringBuilder();
         for (int i=0; i < 3; i++) {
             if (i != exclude && services.size() > i) {
-                res.append(","+Main.getLocalBootstrapAddress(
+                res.append(","+bootstrapAddress(
                         argsToCleanUp.get(i).getInt("ipfs-swarm-port"),
                         services.get(i).localApi.storage.id().join().bareMultihash()));
             }
@@ -141,11 +153,11 @@ public class MultiNodeNetworkTests {
         Args withPrivKey = Args.parse(new String[0], config, false);
         ServerIdentity.ROTATE.main(withPrivKey);
         Args withNewPrivKey = Args.parse(new String[0], config, false);
-        String bootstrapList = Main.getLocalBootstrapAddress(argsToCleanUp.get(0).getInt("ipfs-swarm-port"), services.get(0).localApi.storage.id().join().bareMultihash()).toString();
+        String bootstrapList = bootstrapAddress(argsToCleanUp.get(0).getInt("ipfs-swarm-port"), services.get(0).localApi.storage.id().join().bareMultihash());
         for (int n = 1; n < 3; n++)
             if (n != i)
-                bootstrapList += "," + Main.getLocalBootstrapAddress(argsToCleanUp.get(n).getInt("ipfs-swarm-port"), services.get(n).localApi.storage.id().join().bareMultihash());
-        argsToCleanUp.set(i, withNewPrivKey.with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, bootstrapList));
+                bootstrapList += "," + bootstrapAddress(argsToCleanUp.get(n).getInt("ipfs-swarm-port"), services.get(n).localApi.storage.id().join().bareMultihash());
+        argsToCleanUp.set(i, withSwarm(withNewPrivKey, withNewPrivKey.getInt("ipfs-swarm-port")).with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, bootstrapList));
     }
 
     private UserService getService(int i)  {
@@ -241,6 +253,7 @@ public class MultiNodeNetworkTests {
     public static void init() throws Exception {
         long t0 = System.currentTimeMillis();
         System.getProperties().setProperty("io.netty.eventLoopThreads", "1");
+        args = withSwarm(args, args.getInt("ipfs-swarm-port"));
         // start pki node
         ServerProcesses pki = Main.PKI_INIT.main(args);
         PublicKeyHash peergosId = pki.localApi.coreNode.getPublicKeyHash("peergos").join().get();
@@ -252,7 +265,7 @@ public class MultiNodeNetworkTests {
         pki.localApi.gc.stop();
         argsToCleanUp.add(args);
         int bootstrapSwarmPort = args.getInt("ipfs-swarm-port");
-        String bootstrapList = Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId).toString();
+        String bootstrapList = bootstrapAddress(bootstrapSwarmPort, pkiNodeId);
         long t1 = System.currentTimeMillis();
         System.out.println("MNNT starting PKI took " + (t1 - t0)/1000 + "s");
 
@@ -264,7 +277,7 @@ public class MultiNodeNetworkTests {
             int ipfsSwarmPort = TestPorts.getTcpAndUdpPort();
             int peergosPort = TestPorts.getPort();
             int proxyTargetPort = TestPorts.getPort();
-            Args normalNode = UserTests.buildArgs()
+            Args normalNode = withSwarm(UserTests.buildArgs(), ipfsSwarmPort)
                     .with(Main.PEERGOS_PATH, Files.createTempDirectory("peergos-mnnt-" + System.nanoTime()).toString())
                     .with("useIPFS", "true")
                     .with("async-bootstrap", "false")
@@ -284,7 +297,7 @@ public class MultiNodeNetworkTests {
 
             service.localApi.gc.stop();
             Multihash ourId = service.localApi.storage.id().get();
-            bootstrapList += "," + Main.getLocalBootstrapAddress(ipfsSwarmPort, ourId);
+            bootstrapList += "," + bootstrapAddress(ipfsSwarmPort, ourId);
 
             nodes.add(buildApi(normalNode));
             long n1 = System.currentTimeMillis();
