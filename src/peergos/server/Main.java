@@ -100,6 +100,8 @@ public class Main extends Builder {
             "Also run the identity this server rotated away from, on this port, for servers that still dial it. " +
             "Give it the port the old identity used, and ipfs-swarm-port a new one.", false);
     public static final String PEERGOS_IDENTITY_HASH = "z59vuwzfFDp3ZA8ZpnnmHEuMtyA1q34m3Th49DYXQVJntWpxdGrRqXi";
+    /** Every peerid the pki node has had, the current one last. Saved configs naming an earlier one are migrated. */
+    public static final List<String> PKI_NODE_IDS = List.of("QmVdFZgHnEgcedCS2G2ZNiEN59LuVrnRm7z3yXtEBv2XiF");
     public static final Command.Arg ARG_HTTP_PROXY = new Command.Arg("http_proxy", "Use a http proxy for all requests, format host:port", false);
     public static final Command.Arg ARG_SERVER_URL = new Command.Arg("server-url", "Address of the remote Peergos or self-hosted server to use in app/proxy mode", false);
     public static final Command.Arg ARG_NATIVE_TWEETNACL_PATH = new Command.Arg("native-tweetnacl-path",
@@ -144,7 +146,7 @@ public class Main extends Builder {
             Stream.of(
                     new Command.Arg("port", "service port", false, "8000"),
                     new Command.Arg("peergos.identity.hash", "The hash of peergos user's public key, this is used to bootstrap the pki", true, PEERGOS_IDENTITY_HASH),
-                    new Command.Arg("pki-node-id", "Ipfs node id of the pki node", true, "QmVdFZgHnEgcedCS2G2ZNiEN59LuVrnRm7z3yXtEBv2XiF"),
+                    new Command.Arg("pki-node-id", "Ipfs node id of the pki node", true, PKI_NODE_IDS.get(PKI_NODE_IDS.size() - 1)),
                     new Command.Arg("pki.node.ipaddress", "IP address of the pki node", true, "172.104.157.121"),
                     ARG_IPFS_API_ADDRESS,
                     new Command.Arg("ipfs-gateway-address", "IPFS Gateway address", false, "/ip4/127.0.0.1/tcp/8080"),
@@ -1507,6 +1509,8 @@ public class Main extends Builder {
         BlockedCertificates.install();
         try {
             Args a = Args.parse(args);
+            if (PkiNodeIdMigration.migrateConfig(a.getConfigFile()))
+                a = Args.parse(args);
             Builder.setClientConfig(a.getConfigFile());
             MAIN.main(a);
         } catch (Throwable e) {
