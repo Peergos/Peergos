@@ -44,8 +44,12 @@ public class FileState implements Cborable {
         this.chunkSize = chunkSize;
     }
 
+    public FileState withModtime(long modtime) {
+        return new FileState(relPath, modtime, size, hashTree, chunkSize);
+    }
+
     public FileState withModtime(Optional<LocalDateTime> modtime) {
-        return new FileState(relPath, modtime.map(t -> t.toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000).orElse(modificationTime), size, hashTree, chunkSize);
+        return new FileState(relPath, modtime.map(t -> t.toInstant(ZoneOffset.UTC).toEpochMilli()).orElse(modificationTime), size, hashTree, chunkSize);
     }
 
     public String prettyPrint() {

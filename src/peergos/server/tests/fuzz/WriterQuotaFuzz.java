@@ -208,7 +208,7 @@ public class WriterQuotaFuzz {
             owner.shareWriteAccessWith(f.path, Set.of(sharee)).join();
         } catch (Exception e) {
             // sharing a folder for the first time gives it a writing space of its own, which is a little new metadata,
-            // and a cap that's full refuses any growth. Revoking has no such excuse: it rewrites what's already there.
+            // and a cap that's full refuses any growth
             boolean mayBeFull = ! f.isWritingSpace && capsOver(f).stream()
                     .anyMatch(c -> upperBoundUnder(c) + FOLDER_OVERHEAD > c.cap.get());
             if (! isQuotaRejection(e) || ! mayBeFull)
@@ -229,7 +229,17 @@ public class WriterQuotaFuzz {
         Folder f = pick(shared);
         String sharee = pick(new ArrayList<>(f.sharedWith));
         record("unshare " + f.path + " from " + sharee);
-        owner.unShareWriteAccessWith(f.path, Set.of(sharee)).join();
+        try {
+            owner.unShareWriteAccessWith(f.path, Set.of(sharee)).join();
+        } catch (Exception e) {
+            // revoking moves the folder into a new writing space too, and a full cap refuses that metadata as well
+            boolean mayBeFull = capsOver(f).stream()
+                    .anyMatch(c -> upperBoundUnder(c) + FOLDER_OVERHEAD > c.cap.get());
+            if (! isQuotaRejection(e) || ! mayBeFull)
+                throw e;
+            outcomes.merge("unshare/refused-full", 1, Integer::sum);
+            return;
+        }
         f.sharedWith.remove(sharee);
         everRevoked.add(sharee);
         // a session opened before the keys were rotated doesn't follow them, which is not what's being tested here

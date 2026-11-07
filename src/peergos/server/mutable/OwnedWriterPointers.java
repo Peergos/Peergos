@@ -14,22 +14,22 @@ import java.util.function.*;
 public class OwnedWriterPointers implements MutablePointers {
 
     private final MutablePointers target;
-    private final BiFunction<PublicKeyHash, PublicKeyHash, Boolean> isOwned;
+    private final BiFunction<PublicKeyHash, SignedPointerUpdate, Boolean> isOwned;
 
-    public OwnedWriterPointers(MutablePointers target, BiFunction<PublicKeyHash, PublicKeyHash, Boolean> isOwned) {
+    public OwnedWriterPointers(MutablePointers target, BiFunction<PublicKeyHash, SignedPointerUpdate, Boolean> isOwned) {
         this.target = target;
         this.isOwned = isOwned;
     }
 
-    private void check(PublicKeyHash owner, PublicKeyHash writer) {
-        if (! isOwned.apply(owner, writer))
-            throw new IllegalStateException("Key not allowed to write to this server: " + writer);
+    private void check(PublicKeyHash owner, SignedPointerUpdate update) {
+        if (! isOwned.apply(owner, update))
+            throw new IllegalStateException("Key not allowed to write to this server: " + update.writer);
     }
 
     @Override
     public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writer, byte[] writerSignedBtreeRootHash) {
         try {
-            check(owner, writer);
+            check(owner, new SignedPointerUpdate(writer, writerSignedBtreeRootHash));
         } catch (IllegalStateException e) {
             return Futures.errored(e);
         }
@@ -40,7 +40,7 @@ public class OwnedWriterPointers implements MutablePointers {
     public CompletableFuture<Boolean> setPointers(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
         try {
             for (SignedPointerUpdate u : updates)
-                check(owner, u.writer);
+                check(owner, u);
         } catch (IllegalStateException e) {
             return Futures.errored(e);
         }

@@ -28,6 +28,18 @@ import java.util.stream.*;
  */
 public class BulkCommitStorage extends DelegatingStorage {
 
+    /** A writer registered for a commit that is creating it, provisionally: until the commit lands it may set
+     *  only the pointer that commit carries for it, and if the commit is refused the registration is taken back. */
+    public interface Registration {
+        void landed();
+
+        void undo();
+    }
+
+    public interface WriterRegistrar {
+        Registration register(PublicKeyHash owner, PublicKeyHash parent, PublicKeyHash writer, Optional<SignedPointerUpdate> ownUpdate);
+    }
+
     /** Whether a commit may be applied, given the bytes a writer writes and, if that alone would be
      *  refused, the net change in stored bytes each writer's pointer update in the commit will cause. */
     public interface CommitQuota {
@@ -38,14 +50,14 @@ public class BulkCommitStorage extends DelegatingStorage {
     private final DeletableContentAddressedStorage unfiltered;
     private final MutablePointers pointers;
     private final Hasher hasher;
-    private final BiFunction<PublicKeyHash, PublicKeyHash, Boolean> registerWriter;
+    private final WriterRegistrar registerWriter;
     private final CommitQuota quota;
 
     public BulkCommitStorage(ContentAddressedStorage target,
                              DeletableContentAddressedStorage unfiltered,
                              MutablePointers pointers,
                              Hasher hasher,
-                             BiFunction<PublicKeyHash, PublicKeyHash, Boolean> registerWriter,
+                             WriterRegistrar registerWriter,
                              CommitQuota quota) {
         super(target);
         this.target = target;
@@ -83,21 +95,46 @@ public class BulkCommitStorage extends DelegatingStorage {
                 .thenCompose(hashes -> updates(owner, commit)
                         .thenCompose(updates -> verifyBlockLists(owner, commit, hashes)
                                 .thenCompose(x -> verify(owner, commit, hashes, updates))
-                                .thenCompose(inCall -> registerNewWriters(owner, commit, updates, inCall)
-                                        .thenApply(y -> inCall))
-                                .thenCompose(inCall -> withTransaction(owner, commit.tid, commit.hasPointerUpdate(),
-                                        // the transaction has to outlive the pointer update, or the blocks
-                                        // it holds are collectable in the window before they are reachable
-                                        tid -> writeBlocks(owner, commit, updates, inCall, tid)
-                                                .thenCompose(written -> {
-                                                    List<SignedPointerUpdate> signed = commit.writers.stream()
-                                                            .flatMap(w -> w.pointer.stream())
-                                                            .collect(Collectors.toList());
-                                                    if (signed.isEmpty())
-                                                        return Futures.of(written);
-                                                    return pointers.setPointers(owner, signed)
-                                                            .thenApply(b -> written);
-                                                })))));
+                                .thenCompose(inCall -> {
+                                    List<Registration> registered = registerNewWriters(owner, commit, updates, inCall);
+                                    boolean[] landed = {false};
+                                    // from a future, as a refusal is thrown before the transaction's future exists
+                                    return Futures.of(true).thenCompose(x -> withTransaction(owner, commit.tid, commit.hasPointerUpdate(),
+                                            // the transaction has to outlive the pointer update, or the blocks
+                                            // it holds are collectable in the window before they are reachable
+                                            tid -> writeBlocks(owner, commit, updates, inCall, tid)
+                                                    .thenCompose(written -> {
+                                                        List<SignedPointerUpdate> signed = commit.writers.stream()
+                                                                .flatMap(w -> w.pointer.stream())
+                                                                .collect(Collectors.toList());
+                                                        if (signed.isEmpty()) {
+                                                            landed[0] = true;
+                                                            return Futures.of(written);
+                                                        }
+                                                        return pointers.setPointers(owner, signed)
+                                                                .thenCompose(set -> {
+                                                                    if (set) {
+                                                                        landed[0] = true;
+                                                                        registered.forEach(Registration::landed);
+                                                                        return Futures.of(written);
+                                                                    }
+                                                                    // the pointers moved after they were checked and none was set: the commit
+                                                                    // didn't land, and saying it did would lose it. Reported as the lost CAS it
+                                                                    // is, which a client merges and retries on, as with a single pointer
+                                                                    return lostCas(owner, commit, updates).<List<Cid>>thenApply(lost -> {
+                                                                        throw lost.map(cas -> (RuntimeException) cas).orElseGet(() ->
+                                                                                new IllegalStateException("Pointers changed since this commit was checked; nothing was applied"));
+                                                                    });
+                                                                });
+                                                    })))
+                                            // a commit refused before its pointers landed takes back the writers it registered, the
+                                            // last first: a writer named under two parents stays provisional until its first edge goes
+                                            .whenComplete((written, refused) -> {
+                                                if (refused != null && ! landed[0])
+                                                    for (int i = registered.size() - 1; i >= 0; i--)
+                                                        registered.get(i).undo();
+                                            });
+                                })));
     }
 
     /** Apply a batch signed block write for an owner whose home server we are.
@@ -223,16 +260,16 @@ public class BulkCommitStorage extends DelegatingStorage {
      *  signed WriterData names it as an owned key - which is what lets a parent and the child it creates
      *  commit together, rather than the child's blocks having to wait for the parent's pointer to land.
      */
-    private CompletableFuture<Boolean> registerNewWriters(PublicKeyHash owner,
-                                                          BulkCommit commit,
-                                                          List<Optional<PointerUpdate>> updates,
-                                                          Map<Cid, byte[]> cborInCall) {
+    private List<Registration> registerNewWriters(PublicKeyHash owner,
+                                                  BulkCommit commit,
+                                                  List<Optional<PointerUpdate>> updates,
+                                                  Map<Cid, byte[]> cborInCall) {
         List<PublicKeyHash> newWriters = new ArrayList<>();
         for (int i = 0; i < commit.writers.size(); i++)
             if (updates.get(i).map(u -> ! u.original.isPresent()).orElse(false))
                 newWriters.add(commit.writers.get(i).writer);
         if (newWriters.isEmpty())
-            return Futures.of(true);
+            return Collections.emptyList();
 
         ContentAddressedStorage withCallBlocks = overlay(cborInCall);
         // Only a writer that isn't itself being created here can vouch for one that is, so widen the set
@@ -243,9 +280,10 @@ public class BulkCommitStorage extends DelegatingStorage {
             if (updates.get(i).map(u -> u.original.isPresent()).orElse(true))
                 authorised.add(commit.writers.get(i).writer);
         List<PublicKeyHash> remaining = new ArrayList<>(newWriters);
-        List<PublicKeyHash> provenHere = new ArrayList<>();
+        // in the order they were proven, so each one's vouchers are registered before it is
+        LinkedHashMap<PublicKeyHash, List<PublicKeyHash>> provenHere = new LinkedHashMap<>();
         while (! remaining.isEmpty()) {
-            Set<PublicKeyHash> owned = new HashSet<>();
+            Map<PublicKeyHash, List<PublicKeyHash>> ownedBy = new HashMap<>();
             for (int i = 0; i < commit.writers.size(); i++) {
                 WriterCommit w = commit.writers.get(i);
                 if (! authorised.contains(w.writer))
@@ -256,28 +294,37 @@ public class BulkCommitStorage extends DelegatingStorage {
                 // which a writer can put in its own root, vouches for nothing rather than failing every commit that
                 // carries it, the owner's revocation of that writer included. A writer nobody vouches for is still
                 // refused its blocks, so this only ever registers fewer writers.
-                owned.addAll(Futures.of(i)
+                Set<PublicKeyHash> ownedKeys = Futures.of(i)
                         .thenCompose(at -> DeletableContentAddressedStorage.getDirectOwnedKeys(owner, w.writer,
                                 updates.get(at).map(u -> u.updated).orElse(MaybeMultihash.empty()),
                                 (h, seq) -> ContentAddressedStorage.getWriterData(owner, h, seq, withCallBlocks),
                                 withCallBlocks, hasher))
                         .exceptionally(unwalkable -> Collections.emptySet())
-                        .join());
+                        .join();
+                for (PublicKeyHash owned : ownedKeys)
+                    ownedBy.computeIfAbsent(owned, k -> new ArrayList<>()).add(w.writer);
             }
             List<PublicKeyHash> vouched = remaining.stream()
-                    .filter(owned::contains)
+                    .filter(ownedBy::containsKey)
                     .collect(Collectors.toList());
             if (vouched.isEmpty())
                 break;
             authorised.addAll(vouched);
-            provenHere.addAll(vouched);
+            vouched.forEach(v -> provenHere.put(v, ownedBy.get(v)));
             remaining.removeAll(vouched);
         }
         // A writer this call doesn't vouch for may still be provable from what is already committed,
-        // which is exactly what the quota check's own self heal does, so leave those to it.
-        for (PublicKeyHash newWriter : provenHere)
-            registerWriter.apply(owner, newWriter);
-        return Futures.of(true);
+        // which is exactly what the quota check's own self heal does, so leave those to it. A writer this
+        // call does vouch for is linked under every parent that names it, so each one's caps bound it.
+        List<Registration> registered = new ArrayList<>();
+        provenHere.forEach((newWriter, parents) -> {
+            Optional<SignedPointerUpdate> own = commit.writers.stream()
+                    .filter(w -> w.writer.equals(newWriter))
+                    .findFirst()
+                    .flatMap(w -> w.pointer);
+            parents.forEach(parent -> registered.add(registerWriter.register(owner, parent, newWriter, own)));
+        });
+        return registered;
     }
 
     /** A view of the store with this call's blocks in it, for reading a graph the call is only proposing. */
@@ -304,6 +351,33 @@ public class BulkCommitStorage extends DelegatingStorage {
                 return getRaw(owner, hash, bat).thenApply(opt -> opt.map(CborObject::fromByteArray));
             }
         };
+    }
+
+    /** The first of the commit's pointer updates that no longer applies, against the pointer as it is now */
+    private CompletableFuture<Optional<PointerCasException>> lostCas(PublicKeyHash owner,
+                                                                      BulkCommit commit,
+                                                                      List<Optional<PointerUpdate>> updates) {
+        List<CompletableFuture<Optional<PointerCasException>>> checks = new ArrayList<>();
+        for (int i = 0; i < commit.writers.size(); i++) {
+            if (updates.get(i).isEmpty())
+                continue;
+            PointerUpdate claimed = updates.get(i).get();
+            PublicKeyHash writer = commit.writers.get(i).writer;
+            checks.add(pointers.getPointer(owner, writer).thenCompose(current -> {
+                if (current.isEmpty())
+                    return Futures.of(claimed.original.isPresent() ?
+                            Optional.of(new PointerCasException(MaybeMultihash.empty(), Optional.empty(), claimed.original)) :
+                            Optional.empty());
+                return writerKey(owner, writer)
+                        .thenCompose(key -> key.unsignMessage(current.get()))
+                        .thenApply(msg -> PointerUpdate.fromCbor(CborObject.fromByteArray(msg)))
+                        .thenApply(now -> now.updated.equals(claimed.original) ?
+                                Optional.empty() :
+                                Optional.of(new PointerCasException(now.updated, now.sequence, claimed.original)));
+            }));
+        }
+        return Futures.combineAllInOrder(checks)
+                .thenApply(found -> found.stream().filter(Optional::isPresent).map(Optional::get).findFirst());
     }
 
     /** The pointer update each writer is proposing, which also checks the signature we are relying on. */

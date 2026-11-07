@@ -56,6 +56,18 @@ class LocalS3Handler implements HttpHandler {
         throttled.remove(keyFragment);
     }
 
+    /** How long each read (GET or HEAD) waits before it is answered */
+    private volatile long readLatencyMillis = 0;
+    private final java.util.concurrent.atomic.AtomicLong reads = new java.util.concurrent.atomic.AtomicLong();
+
+    void setReadLatency(long millis) {
+        readLatencyMillis = millis;
+    }
+
+    long reads() {
+        return reads.get();
+    }
+
     @Override
     public void handle(HttpExchange exchange) throws IOException {
         try {
@@ -71,6 +83,11 @@ class LocalS3Handler implements HttpHandler {
                 return;
             }
             Map<String, String> qp = parseQueryParams(exchange.getRequestURI().getRawQuery());
+            if (method.equals("GET") || method.equals("HEAD")) {
+                reads.incrementAndGet();
+                if (readLatencyMillis > 0)
+                    Thread.sleep(readLatencyMillis);
+            }
 
             switch (method) {
                 case "GET":

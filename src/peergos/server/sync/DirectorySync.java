@@ -652,7 +652,9 @@ public class DirectorySync {
                 } else if (synced != null && remote != null && local != null &&
                         remote.hashTree.rootHash.equals(local.hashTree.rootHash) &&
                         (synced.equalsIgnoreModtime(local) || synced.equalsIgnoreModtime(remote))) {
-                    // already synced
+                    // already synced; the recorded time follows the local file, as a local mismatch costs a full hash
+                    if (synced.modificationTime != local.modificationTime)
+                        syncedVersions.add(synced.withModtime(local.modificationTime));
                     if (! syncLocalDeletes && syncedVersions.hasLocalDelete(path))
                         syncedVersions.removeLocalDelete(path);
                     if (! syncRemoteDeletes && syncedVersions.hasRemoteDelete(path))
@@ -789,7 +791,7 @@ public class DirectorySync {
                             remoteState.addDir(relPath.substring(0, relPath.length() - filename.length() - 1));
                         AtomicBoolean uploadStarted = new AtomicBoolean(false);
                         AtomicBoolean uploadEnded = new AtomicBoolean(false);
-                        LocalDateTime modificationTime = LocalDateTime.ofInstant(Instant.ofEpochSecond(local.modificationTime / 1000, 0), ZoneOffset.UTC);
+                        LocalDateTime modificationTime = LocalDateTime.ofInstant(Instant.ofEpochMilli(local.modificationTime), ZoneOffset.UTC);
                         folder.files.add(new FileWrapper.FileUploadProperties(filename,
                                 () -> {
                                     try {
@@ -1154,7 +1156,8 @@ public class DirectorySync {
                     } else if (remote.modificationTime > local.modificationTime) {
                         LOG.accept("Sync Local: Set mod time " + local.relPath + " " + progress);
                         localFs.setModificationTime(localFs.resolve(local.relPath), remote.modificationTime);
-                        syncedVersions.add(remote);
+                        // a filesystem may not let us set it (Android SAF), or keep less precision
+                        syncedVersions.add(remote.withModtime(localFs.getLastModified(localFs.resolve(local.relPath))));
                         progress.doneFile();
                         return;
                     }
@@ -1738,8 +1741,9 @@ public class DirectorySync {
                     }
                 }
                 FileState fstat = new FileState(relPath, props.modifiedTime, props.size, hashTree, chunkSize);
+                // keep the new modification time, or this file is hashed again on every scan
                 if (atSync != null && atSync.equalsIgnoreModtime(fstat)) {
-                    res.add(atSync);
+                    res.add(atSync.withModtime(props.modifiedTime));
                 } else
                     res.add(fstat);
             }

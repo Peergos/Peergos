@@ -132,7 +132,7 @@ public class PeergosSyncFS implements SyncFilesystem {
         Optional<HashBranch> hash = f.getFileProperties().treeHash;
         if (hash.isPresent())
             return hash.get().rootHash.equals(scanned.hashTree.rootHash);
-        return f.getFileProperties().modified.toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000 == scanned.modificationTime;
+        return f.getFileProperties().modified.toInstant(ZoneOffset.UTC).toEpochMilli() == scanned.modificationTime;
     }
 
     @Override
@@ -171,13 +171,13 @@ public class PeergosSyncFS implements SyncFilesystem {
         if (file.isEmpty())
             throw new IllegalStateException("Couldn't retrieve file modification time for " + root.resolve(p));
         LocalDateTime modified = file.get().getFileProperties().modified;
-        return modified.toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000;
+        return modified.toInstant(ZoneOffset.UTC).toEpochMilli();
     }
 
     @Override
     public void setModificationTime(Path p, long t) {
         FileWrapper f = context.getByPath(root.resolve(p)).join().get();
-        LocalDateTime newModified = LocalDateTime.ofInstant(Instant.ofEpochSecond(t / 1000, 0), ZoneOffset.UTC);
+        LocalDateTime newModified = LocalDateTime.ofInstant(Instant.ofEpochMilli(t), ZoneOffset.UTC);
         Optional<FileWrapper> parent = context.getByPath(root.resolve(p).getParent()).join();
         f.setProperties(f.getFileProperties().withModified(newModified), context.crypto.hasher, context.network, parent).join();
     }
@@ -346,7 +346,7 @@ public class PeergosSyncFS implements SyncFilesystem {
             f = context.getByPath(root.resolve(p)).join().get();
         }
         FileWrapper start = f;
-        LocalDateTime modified = LocalDateTime.ofInstant(Instant.ofEpochSecond(source.modificationTime / 1000, 0), ZoneOffset.UTC);
+        LocalDateTime modified = LocalDateTime.ofInstant(Instant.ofEpochMilli(source.modificationTime), ZoneOffset.UTC);
         ProgressConsumer<Long> reporter = SyncFilesystem.perMiB("Uploaded",
                 ops.stream().mapToLong(op -> op.diffEnd - op.diffStart).sum(), p.toString(), progress);
         ProgressConsumer<Long> monitor = x -> {
@@ -581,7 +581,7 @@ public class PeergosSyncFS implements SyncFilesystem {
             for (FileWrapper child : children) {
                 Path childPath = basePath.resolve(child.getName());
                 FileProps childProps = new FileProps(root.relativize(childPath).normalize().toString().replaceAll("\\\\", "/"),
-                        child.getFileProperties().modified.toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000,
+                        child.getFileProperties().modified.toInstant(ZoneOffset.UTC).toEpochMilli(),
                         child.getSize(), Optional.of(child));
                 if (!child.isDirectory()) {
                     onFile.accept(childProps);

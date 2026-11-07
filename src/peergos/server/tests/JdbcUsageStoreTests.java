@@ -16,6 +16,83 @@ import java.util.*;
 
 public class JdbcUsageStoreTests {
 
+    /** A provisional row is kept by key, so it can be in ahead of its writer: one per writer and parent, found once it
+     *  expires, and gone with its writer */
+    @Test
+    public void provisionalWriters() throws Exception {
+        Crypto crypto = Main.initCrypto();
+        Connection db = new Sqlite.UncloseableConnection(Sqlite.build(":memory:"));
+        JdbcUsageStore store = new JdbcUsageStore(() -> db, new SqliteCommands());
+        PublicKeyHash writer = randomKey(crypto), parent = randomKey(crypto), owner = randomKey(crypto);
+        Assert.assertTrue(store.addProvisional(new WriterUsageStore.ProvisionalWriter(writer, parent, owner, true,
+                Optional.of(new byte[] {1}), 1_000)));
+        Assert.assertFalse("a second row for the same writer and parent",
+                store.addProvisional(new WriterUsageStore.ProvisionalWriter(writer, parent, owner, false, Optional.empty(), 2_000)));
+        List<WriterUsageStore.ProvisionalWriter> rows = store.getProvisional(writer);
+        Assert.assertEquals(1, rows.size());
+        Assert.assertTrue(rows.get(0).newWriter());
+        Assert.assertArrayEquals(new byte[] {1}, rows.get(0).signed().get());
+        Assert.assertEquals(List.of(parent, owner), List.of(rows.get(0).parent(), rows.get(0).owner()));
+        Assert.assertTrue(store.getExpiredProvisional(999).isEmpty());
+        Assert.assertEquals(1, store.getExpiredProvisional(1_000).size());
+
+        store.addUserIfAbsent("alice");
+        store.addWriter("alice", writer);
+        store.removeWriter(writer);
+        Assert.assertTrue(store.getProvisional(writer).isEmpty());
+    }
+
+    /** A removed writer's rows go only once it is gone, from the store and its owner cache: a pointer check reads the
+     *  writer, then its rows, then the writer again, so one that finds no rows finds the writer gone, even if a lookup
+     *  just before its removal cached it. A row whose writer was never in goes too. */
+    @Test
+    public void aRemovedWritersRowsGoOnlyOnceItIsGone() throws Exception {
+        Crypto crypto = Main.initCrypto();
+        Connection db = new Sqlite.UncloseableConnection(Sqlite.build(":memory:"));
+        JdbcUsageStore[] store = new JdbcUsageStore[1];
+        PublicKeyHash writer = randomKey(crypto), parent = randomKey(crypto), owner = randomKey(crypto);
+        List<Boolean> writerFoundAsRowsWent = new ArrayList<>();
+        Connection checking = (Connection) java.lang.reflect.Proxy.newProxyInstance(Connection.class.getClassLoader(),
+                new Class<?>[]{Connection.class}, (proxy, method, args) -> {
+                    Object res = invoke(db, method, args);
+                    // a lookup as the writer starts to go, which caches it
+                    if (method.getName().equals("prepareStatement") && ((String) args[0]).startsWith("DELETE FROM ownedkeys WHERE owned_id"))
+                        return java.lang.reflect.Proxy.newProxyInstance(PreparedStatement.class.getClassLoader(),
+                                new Class<?>[]{PreparedStatement.class}, (p, m, a) -> {
+                                    if (m.getName().startsWith("execute"))
+                                        store[0].getOwner(writer);
+                                    return invoke(res, m, a);
+                                });
+                    if (method.getName().equals("prepareStatement") && ((String) args[0]).startsWith("DELETE FROM provisionalwriters"))
+                        return java.lang.reflect.Proxy.newProxyInstance(PreparedStatement.class.getClassLoader(),
+                                new Class<?>[]{PreparedStatement.class}, (p, m, a) -> {
+                                    if (m.getName().startsWith("execute")) {
+                                        try {
+                                            store[0].getOwner(writer);
+                                            writerFoundAsRowsWent.add(true);
+                                        } catch (IllegalStateException gone) {
+                                            writerFoundAsRowsWent.add(false);
+                                        }
+                                    }
+                                    return invoke(res, m, a);
+                                });
+                    return res;
+                });
+        store[0] = new JdbcUsageStore(() -> checking, new SqliteCommands());
+        store[0].addUserIfAbsent("alice");
+        store[0].addProvisional(new WriterUsageStore.ProvisionalWriter(writer, parent, owner, true, Optional.empty(), 1_000));
+        store[0].addWriter("alice", writer);
+        Assert.assertEquals("alice", store[0].getOwner(writer));
+        store[0].removeWriter(writer);
+        Assert.assertEquals(List.of(false), writerFoundAsRowsWent);
+        Assert.assertTrue(store[0].getProvisional(writer).isEmpty());
+
+        PublicKeyHash neverIn = randomKey(crypto);
+        store[0].addProvisional(new WriterUsageStore.ProvisionalWriter(neverIn, parent, owner, true, Optional.empty(), 1_000));
+        store[0].removeWriter(neverIn);
+        Assert.assertTrue(store[0].getProvisional(neverIn).isEmpty());
+    }
+
     @Test
     public void ownedKeys() throws Exception {
         Crypto crypto = Main.initCrypto();
@@ -401,5 +478,113 @@ public class JdbcUsageStoreTests {
         Assert.assertEquals(Set.of(share, owner), new HashSet<>(store.getAncestors(nested)));
         Assert.assertEquals(List.of(owner), store.getAncestors(sibling));
         Assert.assertTrue(store.getAncestors(owner).isEmpty());
+    }
+
+    /** A pointer update records an edge to a child while the queue forgets that child. Whichever goes first, no
+     *  edge is left to a writer that isn't there: the parent's usage would trip on it for good. */
+    @Test
+    public void anEdgeRecordedAsItsChildIsForgottenGoesWithIt() throws Exception {
+        Crypto crypto = Main.initCrypto();
+        Connection db = new Sqlite.UncloseableConnection(Sqlite.build(":memory:"));
+        Thread[] adding = new Thread[1];
+        java.util.concurrent.CountDownLatch reached = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        Connection pausing = pausingEdgeInserts(db, () -> Thread.currentThread() == adding[0], reached, release);
+        JdbcUsageStore store = new JdbcUsageStore(() -> pausing, new SqliteCommands());
+        String username = "alice";
+        store.addUserIfAbsent(username);
+        PublicKeyHash parent = randomKey(crypto);
+        PublicKeyHash child = randomKey(crypto);
+        store.addWriter(username, parent);
+        store.addWriter(username, child);
+
+        // the edge's writers are looked up, and its insert waits while the child is forgotten
+        adding[0] = new Thread(() -> store.addOwnedKey(parent, child));
+        adding[0].start();
+        Assert.assertTrue(reached.await(10, java.util.concurrent.TimeUnit.SECONDS));
+        Thread removing = new Thread(() -> store.removeWriter(child));
+        removing.start();
+        removing.join(2_000);
+        release.countDown();
+        adding[0].join(10_000);
+        removing.join(10_000);
+
+        try (PreparedStatement dangling = db.prepareStatement(
+                "SELECT COUNT(*) FROM ownedkeys WHERE owned_id NOT IN (SELECT id FROM writers)")) {
+            ResultSet res = dangling.executeQuery();
+            res.next();
+            Assert.assertEquals("edges to a forgotten writer", 0, res.getInt(1));
+        }
+        Assert.assertTrue(store.getUsage(parent).ownedKeys().isEmpty());
+    }
+
+    /** One user's edge being recorded holds up only that user: another user's edges, usage updates and removals go on.
+     *  On a busy server every landed pointer and every usage update would otherwise take turns with all the others. */
+    @Test
+    public void anotherUsersEdgesAndUpdatesDontWaitForAUsersEdge() throws Exception {
+        Crypto crypto = Main.initCrypto();
+        Connection db = new Sqlite.UncloseableConnection(Sqlite.build(":memory:"));
+        Thread[] adding = new Thread[1];
+        java.util.concurrent.CountDownLatch reached = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        Connection pausing = pausingEdgeInserts(db, () -> Thread.currentThread() == adding[0], reached, release);
+        JdbcUsageStore store = new JdbcUsageStore(() -> pausing, new SqliteCommands());
+        PublicKeyHash aliceParent = randomKey(crypto), aliceChild = randomKey(crypto);
+        PublicKeyHash bobParent = randomKey(crypto), bobChild = randomKey(crypto), bobOther = randomKey(crypto);
+        store.addUserIfAbsent("alice");
+        store.addUserIfAbsent("bob");
+        for (PublicKeyHash k : List.of(aliceParent, aliceChild))
+            store.addWriter("alice", k);
+        for (PublicKeyHash k : List.of(bobParent, bobChild, bobOther))
+            store.addWriter("bob", k);
+
+        // alice's edge is recorded, and waits
+        adding[0] = new Thread(() -> store.addOwnedKey(aliceParent, aliceChild));
+        adding[0].start();
+        Assert.assertTrue(reached.await(10, java.util.concurrent.TimeUnit.SECONDS));
+        java.util.concurrent.CompletableFuture<Void> bobs = java.util.concurrent.CompletableFuture.runAsync(() -> {
+            store.addOwnedKey(bobParent, bobChild);
+            store.updateWriterUsageAtomically(bobParent, MaybeMultihash.empty(), target(1), Collections.emptySet(),
+                    Collections.emptySet(), 10, 10, false);
+            store.removeWriter(bobOther);
+        });
+        try {
+            bobs.get(10, java.util.concurrent.TimeUnit.SECONDS);
+        } finally {
+            release.countDown();
+            adding[0].join(10_000);
+        }
+        Assert.assertEquals(Set.of(bobChild), store.getOwnedKeys(bobParent));
+        Assert.assertEquals(Set.of(aliceChild), store.getOwnedKeys(aliceParent));
+        Assert.assertEquals(10, store.getUsage(bobParent).directRetainedStorage());
+    }
+
+    /** A connection whose inserts of an edge wait, on the given thread, until released */
+    private static Connection pausingEdgeInserts(Connection target,
+                                                 java.util.function.BooleanSupplier paused,
+                                                 java.util.concurrent.CountDownLatch reached,
+                                                 java.util.concurrent.CountDownLatch release) {
+        return (Connection) java.lang.reflect.Proxy.newProxyInstance(Connection.class.getClassLoader(),
+                new Class<?>[]{Connection.class}, (proxy, method, args) -> {
+                    Object res = invoke(target, method, args);
+                    if (method.getName().equals("prepareStatement") && ((String) args[0]).contains("INTO ownedkeys"))
+                        return java.lang.reflect.Proxy.newProxyInstance(PreparedStatement.class.getClassLoader(),
+                                new Class<?>[]{PreparedStatement.class}, (p, m, a) -> {
+                                    if (m.getName().startsWith("execute") && paused.getAsBoolean()) {
+                                        reached.countDown();
+                                        release.await();
+                                    }
+                                    return invoke(res, m, a);
+                                });
+                    return res;
+                });
+    }
+
+    private static Object invoke(Object target, java.lang.reflect.Method method, Object[] args) throws Throwable {
+        try {
+            return method.invoke(target, args);
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            throw e.getCause();
+        }
     }
 }

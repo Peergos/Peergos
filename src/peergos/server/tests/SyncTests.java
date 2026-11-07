@@ -35,6 +35,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -2151,5 +2152,129 @@ public class SyncTests {
         Files.delete(file);
         status.setStatus("Dir sync took 2s");
         Assert.assertTrue("the same message still restamps the time", Files.exists(file));
+    }
+
+    private static class CountingHashes extends LocalFileSystem {
+        final AtomicInteger hashes = new AtomicInteger();
+
+        CountingHashes(Path root) {
+            super(root, crypto.hasher);
+        }
+
+        @Override
+        public HashTree hashFile(Path p, Optional<peergos.shared.user.fs.FileWrapper> meta, String relPath, SyncState synced, long size, int chunkSize) {
+            hashes.incrementAndGet();
+            return super.hashFile(p, meta, relPath, synced, size, chunkSize);
+        }
+    }
+
+    /** Like Android SAF, which keeps the time a file was written whatever we ask for */
+    private static class CantSetModtime extends CountingHashes {
+        CantSetModtime(Path root) {
+            super(root);
+        }
+
+        @Override
+        public void setModificationTime(Path p, long t) {}
+
+        @Override
+        public Optional<LocalDateTime> setBytes(Path p, long fileOffset, AsyncReader fin, long size, Optional<HashTree> hash,
+                                                Optional<LocalDateTime> modificationTime, Optional<peergos.shared.user.fs.Thumbnail> thumbnail,
+                                                ResumeUploadProps props, Supplier<Boolean> isCancelled, Consumer<String> progress) throws IOException {
+            super.setBytes(p, fileOffset, fin, size, hash, Optional.empty(), thumbnail, props, isCancelled, progress);
+            long actual = getLastModified(p);
+            return Optional.of(LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(actual), java.time.ZoneOffset.UTC));
+        }
+    }
+
+    private static void sync(SyncFilesystem local, Path remote, SyncState state) throws Exception {
+        DirectorySync.syncDir(local, new LocalFileSystem(remote, crypto.hasher), true, true,
+                null, null, state, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+    }
+
+    private static void setModtime(Path f, long millis) throws IOException {
+        Files.setLastModifiedTime(f, java.nio.file.attribute.FileTime.fromMillis(millis));
+    }
+
+    @Test
+    public void sameSizeEditInTheSameSecondIsSynced() throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        long second = System.currentTimeMillis() / 1000 * 1000 - 10_000;
+        write(base1, "notes.txt", "OLD!\n");
+        setModtime(base1.resolve("notes.txt"), second + 100);
+        syncBoth(base1, base2, state);
+        write(base1, "notes.txt", "NEW!\n");
+        setModtime(base1.resolve("notes.txt"), second + 800);
+        syncBoth(base1, base2, state);
+        Assert.assertEquals("NEW!\n", tree(base2).get("notes.txt"));
+
+        Files.delete(base2.resolve("notes.txt"));
+        syncBoth(base1, base2, state);
+        Assert.assertEquals(Map.of(), tree(base1));
+    }
+
+    @Test
+    public void stateFromSecondPrecisionIsRehashedOnlyOnce() throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        long second = System.currentTimeMillis() / 1000 * 1000 - 10_000;
+        for (String name : List.of("a", "b")) {
+            write(base1, name, "contents of " + name);
+            setModtime(base1.resolve(name), second + 345);
+        }
+        syncBoth(base1, base2, state);
+        for (String path : state.allFilePaths()) {
+            FileState f = state.byPath(path);
+            state.add(f.withModtime(f.modificationTime / 1000 * 1000));
+        }
+        CountingHashes local = new CountingHashes(base1);
+        sync(local, base2, state);
+        Assert.assertEquals(2, local.hashes.get());
+        local.hashes.set(0);
+        sync(local, base2, state);
+        Assert.assertEquals(0, local.hashes.get());
+    }
+
+    @Test
+    public void touchedFileIsRehashedOnlyOnce() throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        write(base1, "f", "unchanged");
+        syncBoth(base1, base2, state);
+        setModtime(base1.resolve("f"), Files.getLastModifiedTime(base1.resolve("f")).toMillis() + 1_234);
+        CountingHashes local = new CountingHashes(base1);
+        sync(local, base2, state);
+        Assert.assertEquals(1, local.hashes.get());
+        local.hashes.set(0);
+        sync(local, base2, state);
+        Assert.assertEquals(0, local.hashes.get());
+        Assert.assertEquals("unchanged", tree(base2).get("f"));
+    }
+
+    @Test
+    public void filesystemThatCantSetModtimeIsNotRehashed() throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync"), base2 = Files.createTempDirectory("peergos-sync");
+        SyncState state = new JdbcTreeState(":memory:");
+        long old = System.currentTimeMillis() / 1000 * 1000 - 100_000;
+        write(base2, "downloaded", "from the other side");
+        setModtime(base2.resolve("downloaded"), old + 321);
+        CantSetModtime local = new CantSetModtime(base1);
+        sync(local, base2, state);
+        Assert.assertEquals("from the other side", tree(base1).get("downloaded"));
+        // added on both sides since the last sync, the other side's newer
+        write(base1, "both", "on both sides");
+        write(base2, "both", "on both sides");
+        setModtime(base1.resolve("both"), old + 1);
+        setModtime(base2.resolve("both"), old + 50_000);
+        sync(local, base2, state);
+        sync(local, base2, state);
+        local.hashes.set(0);
+        sync(local, base2, state);
+        Assert.assertEquals(0, local.hashes.get());
+
+        write(base1, "both", "edited locally");
+        sync(local, base2, state);
+        Assert.assertEquals("edited locally", tree(base2).get("both"));
     }
 }

@@ -4,6 +4,7 @@ import java.util.concurrent.atomic.*;
 import java.util.logging.*;
 
 import peergos.server.storage.*;
+import peergos.server.space.WriterUsageStore.ProvisionalWriter;
 import peergos.server.storage.admin.*;
 import peergos.server.util.*;
 
@@ -49,6 +50,11 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     private final ConcurrentHashMap<PublicKeyHash, Object> healLocks = new ConcurrentHashMap<>();
     private final Map<PublicKeyHash, Long> lastFailedHeals = new ConcurrentHashMap<>();
     private final LRUCache<PublicKeyHash, Boolean> nonLocalOwners = new LRUCache<>(1_000);
+    private final ScheduledExecutorService sweeper = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "Provisional writer sweep");
+        t.setDaemon(true);
+        return t;
+    });
 
     public SpaceCheckingKeyFilter(CoreNode core,
                                   MutablePointers mutable,
@@ -78,6 +84,14 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 }
             }
         }, "SpaceCheckingKeyFilter").start();
+        // registrations no server resolved, one restarting say, are taken back once they expire
+        sweeper.scheduleWithFixedDelay(() -> {
+            try {
+                takeBackExpired(System.currentTimeMillis());
+            } catch (Exception e) {
+                LOG.log(Level.WARNING, "Error taking back expired registrations: " + e.getMessage(), e);
+            }
+        }, 1, 1, TimeUnit.MINUTES);
         //add shutdown-hook to call close
         Runtime.getRuntime().addShutdownHook(new Thread(this::close, "SpaceChecker shutdown"));
     }
@@ -87,6 +101,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
      */
     private synchronized void close() {
         isRunning.set(false);
+        sweeper.shutdownNow();
         usageStore.close();
     }
 
@@ -144,6 +159,8 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         long t1 = System.currentTimeMillis();
         Set<PublicKeyHash> writers = store.getAllWriters();
         List<Multihash> us = List.of(ourId.bareMultihash());
+        // each user's identity, looked up once; without the PKI, a writer stands in for it as it used to
+        Map<String, Optional<PublicKeyHash>> identities = new HashMap<>();
         for (PublicKeyHash writerKey : writers) {
             WriterUsage tmpUsage = null;
             try {
@@ -151,7 +168,14 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 WriterUsage writerUsage = tmpUsage;
                 Logging.LOG().info("Checking for updates from user: " + writerUsage.owner + ", writer key: " + writerKey);
 
-                PublicKeyHash owner = writerKey; //NB: owner is a dummy value
+                // the identity key the ownership chains lead to; the pointer and block reads don't need it
+                PublicKeyHash owner = identities.computeIfAbsent(writerUsage.owner, u -> {
+                    try {
+                        return core.getPublicKeyHash(u).join();
+                    } catch (Exception e) {
+                        return Optional.empty();
+                    }
+                }).orElse(writerKey);
                 MaybeMultihash rootHash = mutable.getPointerTarget(owner, writerKey, dht).join().updated;
                 boolean isChanged = ! writerUsage.target().equals(rootHash);
                 if (isChanged) {
@@ -160,16 +184,20 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     long deltaUsage = updatedSize - writerUsage.directRetainedStorage();
                     Set<PublicKeyHash> directOwnedKeys = DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writerKey, mutable,
                             (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht), dht, hasher).join();
-                    List<PublicKeyHash> newOwnedKeys = directOwnedKeys.stream()
+                    // a key linked under this writer is registered already
+                    for (PublicKeyHash key : directOwnedKeys)
+                        if (! writerUsage.ownedKeys().contains(key))
+                            store.addWriter(writerUsage.owner, key);
+                    Set<PublicKeyHash> ownedHere = ownKeys(store, writerUsage.owner, writerKey, directOwnedKeys);
+                    List<PublicKeyHash> newOwnedKeys = ownedHere.stream()
                             .filter(key -> !writerUsage.ownedKeys().contains(key))
                             .collect(Collectors.toList());
                     for (PublicKeyHash newOwnedKey : newOwnedKeys) {
-                        store.addWriter(writerUsage.owner, newOwnedKey);
                         processMutablePointerEvent(store, owner, newOwnedKey, MaybeMultihash.empty(),
                                 mutable.getPointerTarget(owner, newOwnedKey, dht).get().updated, mutable, quotas, dht, hasher);
                     }
                     HashSet<PublicKeyHash> removedOwnedKeys = new HashSet<>(writerUsage.ownedKeys());
-                    removedOwnedKeys.removeAll(directOwnedKeys);
+                    removedOwnedKeys.removeAll(ownedHere);
                     boolean updated = store.updateWriterUsageAtomically(writerKey, writerUsage.target(), rootHash,
                             removedOwnedKeys, new HashSet<>(newOwnedKeys), updatedSize, deltaUsage,
                             store.getUsage(writerUsage.owner).isErrored());
@@ -206,13 +234,22 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         }
     }
 
-    public void accept(MutableEvent event) {
-        mutableQueue.add(event);
-        try {
-            prepareMutablePointerChange(event, dht, usageStore, hasher);
-        } catch (Exception e) {
-            LOG.log(Level.WARNING, "Error registering owned keys for writer " + event.writer + ": " + e.getMessage(), e);
+    /** Records what each pointer a call landed names, the children it links, so their first writes count under its
+     *  caps, then queues their usage updates. All are recorded before any is queued, or the queue could judge one
+     *  update before a child the call moves under another of its writers is linked there, and forget the child, its
+     *  cap with it. The pointers have moved by now, so a full queue mustn't fail the call that moved them: a writer's
+     *  usage is behind until its next update. */
+    public void accept(List<MutableEvent> landed) {
+        for (MutableEvent event : landed) {
+            try {
+                prepareMutablePointerChange(event, dht, usageStore, hasher);
+            } catch (Exception e) {
+                LOG.log(Level.WARNING, "Error registering owned keys for writer " + event.writer + ": " + e.getMessage(), e);
+            }
         }
+        for (MutableEvent event : landed)
+            if (! mutableQueue.offer(event))
+                LOG.warning("Mutable event queue full, usage of writer " + event.writer + " waits for its next update");
     }
 
     public static void processCorenodeEvent(String username,
@@ -254,13 +291,96 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         PointerUpdate pointerUpdate = dht.getSigningKey(event.owner, event.writer)
                 .thenApply(signer -> PointerUpdate.fromCbor(CborObject.fromByteArray(signer.get()
                         .unsignMessage(event.writerSignedBtreeRootHash).join()))).join();
-        Set<PublicKeyHash> updatedOwned =
-                DeletableContentAddressedStorage.getDirectOwnedKeys(event.owner, event.writer, pointerUpdate.updated,
-                        (h, s) -> DeletableContentAddressedStorage.getWriterData(us, event.owner, h, s, false, ourId, hasher, dht), dht, hasher).join();
+        Set<PublicKeyHash> updatedOwned = directOwnedKeys(event.owner, event.writer, pointerUpdate.updated, us, ourId, dht, hasher);
+        if (updatedOwned.isEmpty())
+            return;
+        // Only the keys not linked under this writer yet. A linked key is a registered writer, so registering and
+        // linking it again would be writes that change nothing, on every commit of the writer.
+        Set<PublicKeyHash> unlinked = new HashSet<>(updatedOwned);
+        unlinked.removeAll(usageStore.getOwnedKeys(event.writer));
+        if (unlinked.isEmpty())
+            return;
         String owner = usageStore.getOwner(event.writer);
-        for (PublicKeyHash owned : updatedOwned) {
+        for (PublicKeyHash owned : unlinked)
             usageStore.addWriter(owner, owned);
+        // linked now rather than when the queue gets to it, so a child's first writes already count under its
+        // parent's caps
+        for (PublicKeyHash owned : ownKeys(usageStore, owner, event.writer, unlinked))
+            usageStore.addOwnedKey(event.writer, owned);
+    }
+
+    private record RootOf(PublicKeyHash owner, PublicKeyHash writer, Multihash root) {}
+
+    // What a writer's root names never changes, a root being content addressed. Walked as a pointer lands, it is read
+    // here again by the queue, for that update and as the previous root of the next one, rather than from S3 each
+    // time, where a read can take a second or two. Bounded by its roots and by the keys it holds, as a root can name any
+    // number of keys, and most name none.
+    private static final int MAX_CACHED_ROOTS = 10_000, MAX_CACHED_OWNED_KEYS = 100_000;
+    private static final LinkedHashMap<RootOf, Set<PublicKeyHash>> ownedKeysByRoot = new LinkedHashMap<>(16, 0.75f, true);
+    private static long cachedOwnedKeys = 0; // guarded by ownedKeysByRoot, each root counting as one key more
+
+    /** The keys a writer's root names directly, as DeletableContentAddressedStorage.getDirectOwnedKeys */
+    private static Set<PublicKeyHash> directOwnedKeys(PublicKeyHash owner,
+                                                     PublicKeyHash writer,
+                                                     MaybeMultihash root,
+                                                     List<Multihash> us,
+                                                     Cid ourId,
+                                                     DeletableContentAddressedStorage dht,
+                                                     Hasher hasher) {
+        if (! root.isPresent())
+            return Collections.emptySet();
+        RootOf key = new RootOf(owner, writer, root.get());
+        synchronized (ownedKeysByRoot) {
+            Set<PublicKeyHash> cached = ownedKeysByRoot.get(key);
+            if (cached != null)
+                return cached;
         }
+        Set<PublicKeyHash> named = Set.copyOf(DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, root,
+                (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht), dht, hasher).join());
+        synchronized (ownedKeysByRoot) {
+            Set<PublicKeyHash> replaced = ownedKeysByRoot.put(key, named);
+            cachedOwnedKeys += named.size() - (replaced == null ? -1 : replaced.size());
+            Iterator<Set<PublicKeyHash>> eldest = ownedKeysByRoot.values().iterator();
+            while ((ownedKeysByRoot.size() > MAX_CACHED_ROOTS || cachedOwnedKeys > MAX_CACHED_OWNED_KEYS) && eldest.hasNext()) {
+                cachedOwnedKeys -= 1 + eldest.next().size();
+                eldest.remove();
+            }
+        }
+        return named;
+    }
+
+    /** The keys a writer names that are its owner's own, other than itself. A key of another user's, named with an
+     *  owner proof it signed, stays theirs: an edge to it would keep it registered after its owner revokes it, and
+     *  count their data under this user's caps. A key named under itself owns nothing more for it. */
+    private static Set<PublicKeyHash> ownKeys(UsageStore state, String username, PublicKeyHash writer, Set<PublicKeyHash> named) {
+        return named.stream()
+                .filter(key -> ! key.equals(writer) && username.equals(state.getOwner(key)))
+                .collect(Collectors.toSet());
+    }
+
+    /** Whether a writer is still owned other than through the edge from this parent: by a chain of edges up to the
+     *  owner's identity, through writers of the same user. A key named under itself, or under keys it names in
+     *  turn, has no such chain, nor has one named by another user's writer. */
+    private static boolean ownedOtherwise(UsageStore state, PublicKeyHash owner, PublicKeyHash writer, PublicKeyHash parent) {
+        String username = state.getOwner(writer);
+        Set<PublicKeyHash> seen = new HashSet<>(List.of(writer));
+        Deque<PublicKeyHash> toVisit = new ArrayDeque<>(state.getParents(writer));
+        toVisit.remove(parent);
+        while (! toVisit.isEmpty()) {
+            PublicKeyHash current = toVisit.poll();
+            if (! seen.add(current) || ! username.equals(state.getOwner(current)))
+                continue;
+            if (current.equals(owner))
+                return true;
+            toVisit.addAll(state.getParents(current));
+        }
+        return false;
+    }
+
+    /** Whether the owner's identity is reached from the writer by edges between the user's own keys: parents that
+     *  only name each other, or the writer itself, own nothing */
+    private static boolean owned(UsageStore state, PublicKeyHash owner, PublicKeyHash writer) {
+        return ownedOtherwise(state, owner, writer, writer);
     }
 
     private void processMutablePointerEvent(MutableEvent event) {
@@ -296,25 +416,29 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
             WriterUsage current = state.getUsage(writer);
             if (current == null)
                 throw new IllegalStateException("Unknown writer key hash: " + writer);
-            if (current.target().equals(newRoot))
-                return; // already processed by another thread
+            // already processed by another thread, unless this empties a writer still holding an edge: its last update,
+            // never sized, left its stored target empty and that edge recorded, and with it gone the child goes too
+            if (current.target().equals(newRoot) && (newRoot.isPresent() || current.ownedKeys().isEmpty()))
+                return;
             if (! newRoot.isPresent()) {
                 LOG.info("Removing usage for (" + owner + ", " + writer + ") from " + current.directRetainedStorage());
                 // drop its edges too, so if it is re-owned later its children are counted again as newly added
                 state.updateWriterUsageAtomically(writer, current.target(), MaybeMultihash.empty(),
                         current.ownedKeys(), Collections.emptySet(), 0,
                         -current.directRetainedStorage(), state.getUsage(current.owner).isErrored());
+                // Subtract data size from orphaned child keys (this assumes the keys form a tree without dupes): the
+                // ones the old root names, and any whose edge was recorded ahead of an update that was never
+                // processed (an event dropped or failed, a restart, an undo that threw). With this writer gone,
+                // nothing owns those either.
+                Set<PublicKeyHash> orphaned = new HashSet<>(current.ownedKeys());
                 if (existingRoot.isPresent()) {
                     try {
-                        // subtract data size from orphaned child keys (this assumes the keys form a tree without dupes)
-                        Set<PublicKeyHash> updatedOwned =
-                                DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, existingRoot,
-                                        (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht),  dht, hasher).join();
-                        processRemovedOwnedKeys(state, owner, writer, updatedOwned, mutable, quotaAdmin, dht, hasher);
+                        orphaned.addAll(directOwnedKeys(owner, writer, existingRoot, us, ourId, dht, hasher));
                     } catch (Exception e) {
                         LOG.log(Level.WARNING, e.getMessage(), e);
                     }
                 }
+                processRemovedOwnedKeys(state, owner, writer, orphaned, mutable, quotaAdmin, dht, hasher);
                 return;
             }
 
@@ -323,12 +447,16 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 long changeInStorage = dht.getChangeInContainedSize(owner, current.target().toOptional().map(c -> (Cid) c), (Cid) newRoot.get()).get();
                 long t1 = System.nanoTime();
                 LOG.info("Calculating change in used space for (" + owner + ", " + writer + ") took " + (t1-t0)/1_000_000 + "mS");
-                Set<PublicKeyHash> updatedOwned =
-                        DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, newRoot,
-                                (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht), dht, hasher).join();
+                Set<PublicKeyHash> updatedOwned = directOwnedKeys(owner, writer, newRoot, us, ourId, dht, hasher);
+                // a key linked under this writer is registered already
                 for (PublicKeyHash owned : updatedOwned) {
-                    state.addWriter(current.owner, owned);
+                    if (! current.ownedKeys().contains(owned))
+                        state.addWriter(current.owner, owned);
                 }
+                Set<PublicKeyHash> ownedHere = ownKeys(state, current.owner, writer, updatedOwned);
+                // What the replaced root named. A child's edge can be recorded ahead of its parent's update, so the
+                // store's edges alone don't say which children this update adds or drops.
+                Set<PublicKeyHash> namedBefore = directOwnedKeys(owner, writer, current.target(), us, ourId, dht, hasher);
                 UserUsage usage = state.getUsage(current.owner);
                 boolean initialErrored = usage.isErrored();
                 String username = current.owner;
@@ -336,9 +464,12 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 boolean errored = initialErrored && usage.totalUsage() > quota;
 
                 HashSet<PublicKeyHash> removedChildren = new HashSet<>(current.ownedKeys());
-                removedChildren.removeAll(updatedOwned);
+                removedChildren.removeAll(ownedHere);
+                // only children the replaced root owned: a new writer's edge is recorded ahead of its parent's pointer
+                // update, and an earlier update of the parent still in the queue never named it
+                removedChildren.retainAll(namedBefore);
                 processRemovedOwnedKeys(state, owner, writer, removedChildren, mutable, quotaAdmin, dht, hasher);
-                HashSet<PublicKeyHash> addedOwnedKeys = new HashSet<>(updatedOwned);
+                HashSet<PublicKeyHash> addedOwnedKeys = new HashSet<>(ownedHere);
                 addedOwnedKeys.removeAll(current.ownedKeys());
                 boolean updated = state.updateWriterUsageAtomically(writer, current.target(), newRoot,
                         removedChildren, addedOwnedKeys,
@@ -348,7 +479,12 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     cached.confirmUsage(writer, changeInStorage);
                     cached.setErrored(errored);
                 }
-                for (PublicKeyHash added : addedOwnedKeys) {
+                // Each child named anew is counted from its pointer, with its edge recorded ahead or not: one named
+                // again after it was dropped has data the store stopped counting when it was dropped.
+                HashSet<PublicKeyHash> namedNow = new HashSet<>(ownedHere);
+                namedNow.removeAll(namedBefore);
+                namedNow.addAll(addedOwnedKeys);
+                for (PublicKeyHash added : namedNow) {
                     state.addWriter(current.owner, added);
                     WriterUsage currentAdded = state.getUsage(added);
                     MaybeMultihash updatedRoot = mutable.getPointerTarget(owner, added, dht).join().updated;
@@ -371,10 +507,14 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                                                 Hasher hasher) {
         for (PublicKeyHash ownedKey : removed) {
             try {
-                // a key that has been moved to another parent is still in use, not orphaned
-                Set<PublicKeyHash> otherParents = new HashSet<>(state.getParents(ownedKey));
-                otherParents.remove(parent);
-                if (! otherParents.isEmpty())
+                // A key of another user's, named under this writer with a proof it signed (or by an edge an older
+                // version recorded), is theirs: this user dropping the name forgets nothing of it.
+                if (! state.getOwner(parent).equals(state.getOwner(ownedKey)))
+                    continue;
+                // a key that has been moved to another parent is still in use, not orphaned, as long as that parent
+                // is owned in turn: not by another user's writer, nor by the key itself, whatever edges an older
+                // version recorded
+                if (ownedOtherwise(state, owner, ownedKey, parent))
                     continue;
                 MaybeMultihash currentTarget = mutable.getPointerTarget(owner, ownedKey, dht).get().updated;
                 processMutablePointerEvent(state, owner, ownedKey, currentTarget, MaybeMultihash.empty(), mutable, quotaAdmin, dht, hasher);
@@ -508,6 +648,89 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         return usage;
     }
 
+    // How long a commit has to land or be refused before whichever server finds its registration takes it back
+    private static final long PROVISIONAL_MILLIS = 10 * 60_000;
+
+    /** Whether a writer may set this pointer: one a commit is still creating only the pointer that commit carries for
+     *  it, if any, as another write it let in would be forgotten with the commit if that is refused; otherwise the
+     *  owner's identity or a key the owner still owns. */
+    public boolean isOwnedWriter(PublicKeyHash owner, SignedPointerUpdate update) {
+        // Owned, then its rows, then owned again: a row is in before its writer, so a writer registered by now has its
+        // rows there to be read, and a writer taken back is gone before its rows are, so one whose rows went while they
+        // were read is found gone. An owner's identity is never provisional.
+        if (! isOwnedWriter(owner, update.writer))
+            return false;
+        if (update.writer.equals(owner))
+            return true;
+        long now = System.currentTimeMillis();
+        List<ProvisionalWriter> creating = new ArrayList<>();
+        for (ProvisionalWriter p : usageStore.getProvisional(update.writer)) {
+            // one expired, but not taken back yet, still holds its writer back
+            if (p.expires() <= now && takeBack(p))
+                continue;
+            if (p.newWriter())
+                creating.add(p);
+        }
+        if (! creating.isEmpty()) {
+            if (creating.stream().anyMatch(p -> p.signed().map(s -> Arrays.equals(s, update.signed)).orElse(false)))
+                return true;
+            // the commit may have landed with its row left behind, its server restarting in between
+            if (! creating.stream().allMatch(this::landed))
+                return false;
+            creating.forEach(p -> usageStore.removeProvisional(p.writer(), p.parent()));
+        }
+        return isOwnedWriter(owner, update.writer);
+    }
+
+    /** Whether the commit a provisional writer is for has landed: the committed parent names the writer. Its own
+     *  pointer being the one the commit carries doesn't show that, as that update can be set on its own. */
+    private boolean landed(ProvisionalWriter p) {
+        return namesWriter(p.owner(), p.parent(), p.writer());
+    }
+
+    /** Takes back the registrations that have expired, as their commits' undos would have: for those whose server
+     *  restarted, or failed to, before the commit landed or was refused */
+    public void takeBackExpired(long now) {
+        for (ProvisionalWriter p : usageStore.getExpiredProvisional(now))
+            takeBack(p);
+    }
+
+    /** As an undo: the edge goes unless the committed parent names the writer, then the writer unless something owns
+     *  it. The row stays if that fails, to be tried again.
+     *
+     * @return whether it was taken back
+     */
+    private boolean takeBack(ProvisionalWriter p) {
+        Object lock = healLocks.computeIfAbsent(p.owner(), o -> new Object());
+        synchronized (lock) {
+            try {
+                try {
+                    usageStore.getOwner(p.writer());
+                } catch (IllegalStateException neverRegistered) {
+                    // its server stopped between the row and the writer: only the row is left to take back
+                    usageStore.removeProvisional(p.writer(), p.parent());
+                    return true;
+                }
+                // A new writer's own row last: its commit's rows under other parents go first, as its undo takes them
+                // back, or it would stay owned through one of their edges, unrestricted, until that row expired too.
+                if (p.newWriter())
+                    for (ProvisionalWriter other : usageStore.getProvisional(p.writer()))
+                        if (! other.newWriter() && Arrays.equals(other.signed().orElse(null), p.signed().orElse(null))
+                                && ! takeBack(other))
+                            return false;
+                if (! namesWriter(p.owner(), p.parent(), p.writer()))
+                    usageStore.removeOwnedKey(p.parent(), p.writer());
+                if (! owned(usageStore, p.owner(), p.writer()))
+                    forgetWriter(usernameOf(p.owner()), p.owner(), p.writer());
+                usageStore.removeProvisional(p.writer(), p.parent());
+                return true;
+            } catch (Exception e) {
+                LOG.log(Level.WARNING, "Couldn't take back provisional writer " + p.writer() + " of owner " + p.owner(), e);
+                return false;
+            }
+        }
+    }
+
     /** Whether a writer may update its pointer: the owner's identity, or a key the owner still owns */
     public boolean isOwnedWriter(PublicKeyHash owner, PublicKeyHash writer) {
         if (writer.equals(owner))
@@ -548,55 +771,50 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
 
         UserUsage usage = getUsage(username, usageStore);
 
-        long expectedUsage = usage.expectedUsage();
-        boolean errored = usage.isErrored();
-        if ((! errored && expectedUsage + size > quota) || (errored && expectedUsage + size > quota + USAGE_TOLERANCE)) {
-            long pending = usage.getPending(writer);
+        // Each check reserves the bytes as it passes, in one step, so two writes arriving together can't both
+        // fit where only one does. Whatever refuses later gives the reservations before it back. For the user's
+        // own quota that holds until a write is refused: from then on each check reads the committed total
+        // afresh (getUsage), until a processed commit clears the flag.
+        long pending = usage.getPending(writer);
+        if (! usage.reserve(writer, size, quota, USAGE_TOLERANCE)) {
             usageStore.confirmUsage(username, writer, 0, true);
-            usage.confirmUsage(writer, 0);
-            usage.setErrored(true);
             LOG.info("Rejecting write for " + username);
             throw new IllegalStateException("Storage quota reached! \nUsed "
                     + usage.totalUsage() + " out of " + quota + " bytes. Rejecting write of size " + (size + pending) + ". \n" +
                     "Please delete some files or request more space.");
         }
-        List<PublicKeyHash> caps = writerQuotas.getCaps(writer);
-        for (PublicKeyHash cap : caps)
-            checkWriterQuota(cap, writer, size);
-        SlidingWindowCounter writeLimit = writeLimiter.get(username);
-        if (writeLimit == null) {
-            writeLimit = new SlidingWindowCounter(quotaUploadLimitSeconds, quota);
-            writeLimiter.put(username, writeLimit);
-        }
-        if (! writeLimit.allowRequest(size))
-            throw new IllegalStateException("Upload bandwidth exceeded please try again tomorrow");
+        List<UserUsage> reserved = new ArrayList<>();
+        reserved.add(usage);
         try {
-            usage.addPending(writer, size);
-            for (PublicKeyHash cap : caps)
-                writerQuotas.getUsage(cap).addPending(writer, size);
-        } catch (Exception e) {
-            throw new IllegalStateException("Couldn't update pending usage for user " + username, e);
+            for (PublicKeyHash cap : writerQuotas.getCaps(writer)) {
+                Optional<Long> capQuota = writerQuotas.getQuota(cap);
+                if (capQuota.isEmpty())
+                    continue;
+                UserUsage capUsage = writerQuotas.getUsage(cap);
+                long capPending = capUsage.getPending(writer);
+                if (! capUsage.reserve(writer, size, capQuota.get(), USAGE_TOLERANCE)) {
+                    LOG.info("Rejecting write to capped writing space " + cap);
+                    // Don't reveal the usage of an enclosing capped space to someone who can only write to a nested one
+                    throw new IllegalStateException("Storage quota reached for this shared folder! \n"
+                            + (cap.equals(writer) ? "Used " + capUsage.totalUsage() + " out of " + capQuota.get() + " bytes. " : "")
+                            + "Rejecting write of size " + (size + capPending) + ".");
+                }
+                reserved.add(capUsage);
+            }
+            SlidingWindowCounter writeLimit = writeLimiter.get(username);
+            if (writeLimit == null) {
+                writeLimit = new SlidingWindowCounter(quotaUploadLimitSeconds, quota);
+                writeLimiter.put(username, writeLimit);
+            }
+            if (! writeLimit.allowRequest(size))
+                throw new IllegalStateException("Upload bandwidth exceeded please try again tomorrow");
+        } catch (RuntimeException e) {
+            // whatever refused, or failed, gives back what was reserved before it
+            for (UserUsage held : reserved)
+                held.releasePending(writer, size);
+            throw e;
         }
         return true;
-    }
-
-    private void checkWriterQuota(PublicKeyHash cap, PublicKeyHash writer, int size) {
-        Optional<Long> quota = writerQuotas.getQuota(cap);
-        if (quota.isEmpty())
-            return;
-        UserUsage usage = writerQuotas.getUsage(cap);
-        long expectedUsage = usage.expectedUsage();
-        boolean errored = usage.isErrored();
-        if ((! errored && expectedUsage + size > quota.get()) || (errored && expectedUsage + size > quota.get() + USAGE_TOLERANCE)) {
-            long pending = usage.getPending(writer);
-            usage.confirmUsage(writer, 0);
-            usage.setErrored(true);
-            LOG.info("Rejecting write to capped writing space " + cap);
-            // Don't reveal the usage of an enclosing capped space to someone who can only write to a nested one
-            throw new IllegalStateException("Storage quota reached for this shared folder! \n"
-                    + (cap.equals(writer) ? "Used " + usage.totalUsage() + " out of " + quota.get() + " bytes. " : "")
-                    + "Rejecting write of size " + (size + pending) + ".");
-        }
     }
 
     /** Whether a commit may be applied, given the bytes it writes and the net change in stored bytes
@@ -622,7 +840,9 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
             long change = changes.values().stream().mapToLong(x -> x).sum();
             long quota = getQuota(username, quotaAdmin);
             UserUsage usage = getUsage(username, usageStore);
-            if (usage.totalUsage() + change > quota)
+            // against what is committed and what other writes have reserved. Nothing is reserved here, so two such
+            // commits can both pass, each fitting on its own; this is for a commit that frees space.
+            if (usage.expectedUsage() + change > quota)
                 throw e;
             // a commit that shrinks a capped space is allowed, even if it is still over its cap afterwards. It is judged
             // by everything the commit does under the cap, as a rotation grows one writer by what it frees in another
@@ -634,7 +854,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                         .filter(c -> c.getKey().equals(cap) || writerQuotas.getCaps(c.getKey()).contains(cap))
                         .mapToLong(Map.Entry::getValue)
                         .sum();
-                if (capChange > 0 && writerQuotas.getUsage(cap).totalUsage() + capChange > capQuota.get())
+                if (capChange > 0 && writerQuotas.getUsage(cap).expectedUsage() + capChange > capQuota.get())
                     throw e;
             }
             LOG.info("Allowing a commit for " + username + " over quota: it frees " + (-change) + " bytes");
@@ -648,27 +868,162 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
      *  has already been checked, but it isn't in the committed pointers yet, so the self-heal below
      *  cannot find it and the write would be rejected.
      *
-     * @return true if the writer is now registered
+     *  The edge from its parent is recorded too. Otherwise nothing ties the writer to the parent until the
+     *  parent's pointer update has been processed, and the commit's own blocks for it would be charged to
+     *  the owner alone, past any cap over the parent.
+     *
+     *  Until the commit lands the writer is provisional: it may set only the pointer the commit carries for it, as
+     *  another write it let in would be forgotten with the commit if that is refused.
+     *
+     * @param ownUpdate the pointer update the commit carries for the writer, if any
+     * @return what takes the registration back if the commit is refused, leaving alone what a committed parent
+     *         names: a writer it made or linked would otherwise stay registered, and write outside every cap once
+     *         its parent is gone
      */
-    public boolean registerNewWriter(PublicKeyHash owner, PublicKeyHash writer) {
+    public BulkCommitStorage.Registration registerNewWriter(PublicKeyHash owner, PublicKeyHash parent, PublicKeyHash writer,
+                                                             Optional<SignedPointerUpdate> ownUpdate) {
+        BulkCommitStorage.Registration nothing = registration(() -> {}, () -> {});
         Object lock = healLocks.computeIfAbsent(owner, o -> new Object());
         synchronized (lock) {
-            try {
-                usageStore.getOwner(writer);
-                return true;
-            } catch (IllegalStateException absent) {}
+            boolean writerAdded = false, rowAdded = false;
             try {
                 String username = core.getUsername(owner).join();
                 if (! quotaAdmin.getLocalUsernames().contains(username))
-                    return false;
-                usageStore.addUserIfAbsent(username);
-                usageStore.addWriter(username, writer);
-                return true;
+                    return nothing;
+                // The parent first: a writer registered without its edge would write under no cap. The
+                // parent has a pointer already, so the self heal finds it if the store is missing it.
+                String parentUser;
+                try {
+                    parentUser = usageStore.getOwner(parent);
+                } catch (IllegalStateException absent) {
+                    if (! registerMissedWriters(owner, parent))
+                        return nothing;
+                    parentUser = usageStore.getOwner(parent);
+                }
+                // only the owner's own writers vouch for a writer in their space: another user's key, sent in a
+                // commit for this owner, must not register one here, whatever the rest of that commit does
+                if (! username.equals(parentUser) || parent.equals(writer) || writer.equals(owner))
+                    return nothing;
+                long expires = System.currentTimeMillis() + PROVISIONAL_MILLIS;
+                Optional<byte[]> signed = ownUpdate.map(u -> u.signed);
+                String writerUser;
+                try {
+                    writerUser = usageStore.getOwner(writer);
+                } catch (IllegalStateException absent) {
+                    usageStore.addUserIfAbsent(username);
+                    // Provisional before it is registered, so no other pointer of its lands in between, on any server.
+                    // A row for it left by an attempt that never registered it, cut short by a restart, gives way.
+                    usageStore.removeProvisional(writer, parent);
+                    rowAdded = usageStore.addProvisional(new ProvisionalWriter(writer, parent, owner, true, signed, expires));
+                    usageStore.addWriter(username, writer);
+                    writerUser = username;
+                    writerAdded = true;
+                }
+                // a writer of another user's stays theirs: an edge to it would count their data under this owner's caps
+                if (! username.equals(writerUser))
+                    return nothing;
+                // in before the edge it may add, so a restart before the commit is resolved leaves a row to take it back
+                // by; a row another commit still creating the writer has in stays theirs
+                if (! writerAdded)
+                    rowAdded = usageStore.addProvisional(new ProvisionalWriter(writer, parent, owner, false, signed, expires));
+                boolean edgeAdded = usageStore.addOwnedKey(parent, writer);
+                boolean newWriter = writerAdded;
+                if (rowAdded && ! newWriter && ! edgeAdded) {
+                    usageStore.removeProvisional(writer, parent);
+                    return nothing;
+                }
+                boolean ownsRow = rowAdded;
+                // A commit made alongside this one may have landed the same writer under this parent meanwhile, and
+                // what a committed parent names stays. A writer left with no parent goes, whichever commit
+                // registered it and whatever its own pointer says: it would write under no cap. Under the
+                // registration lock, so no registration comes in between; an edge recorded as a pointer lands
+                // can, and is recorded again when the queue reaches that parent's update.
+                return registration(() -> {
+                    if (! ownsRow)
+                        return;
+                    try {
+                        usageStore.removeProvisional(writer, parent);
+                    } catch (Exception e) {
+                        // the commit has landed regardless: its row goes when it is found landed, or once it expires
+                        LOG.log(Level.WARNING, "Couldn't remove the row of landed writer " + writer + " of owner " + owner, e);
+                    }
+                }, () -> {
+                    synchronized (lock) {
+                        try {
+                            if (edgeAdded && ! namesWriter(owner, parent, writer))
+                                usageStore.removeOwnedKey(parent, writer);
+                            if ((newWriter || edgeAdded) && ! owned(usageStore, owner, writer))
+                                forgetWriter(username, owner, writer);
+                            // only once it is forgotten or kept, or a pointer of its could land in between
+                            if (ownsRow)
+                                usageStore.removeProvisional(writer, parent);
+                        } catch (Exception e) {
+                            // its row stays, so the registration is taken back again once it expires
+                            LOG.log(Level.WARNING, "Couldn't take back new writer " + writer + " of owner " + owner, e);
+                        }
+                    }
+                });
             } catch (Exception e) {
                 LOG.log(Level.WARNING, "Couldn't register new writer " + writer + " of owner " + owner, e);
-                return false;
+                // nothing half done stays: a writer added here without its edge would write under no cap
+                try {
+                    if (writerAdded)
+                        usageStore.removeWriter(writer);
+                    else if (rowAdded)
+                        usageStore.removeProvisional(writer, parent);
+                } catch (Exception f) {
+                    LOG.log(Level.WARNING, "Couldn't take back new writer " + writer + " of owner " + owner, f);
+                }
+                return nothing;
             }
         }
+    }
+
+    private static BulkCommitStorage.Registration registration(Runnable landed, Runnable undo) {
+        return new BulkCommitStorage.Registration() {
+            @Override
+            public void landed() {
+                landed.run();
+            }
+
+            @Override
+            public void undo() {
+                undo.run();
+            }
+        };
+    }
+
+    /** Forget a writer that a refused commit registered or linked and that nothing owns now, with its bytes in
+     *  flight, and any writer registered under it meanwhile: with nothing above them they would write under no
+     *  cap. Its usage goes as a dropped child's does, as a write of its own may have landed in the meantime. */
+    private void forgetWriter(String username, PublicKeyHash owner, PublicKeyHash writer) {
+        getUsage(username, usageStore).clearPending(writer);
+        WriterUsage registered;
+        try {
+            registered = usageStore.getUsage(writer);
+        } catch (IllegalStateException gone) {
+            return; // forgotten already, with its children, by an undo nested in this one
+        }
+        if (registered.target().isPresent())
+            processMutablePointerEvent(usageStore, owner, writer, registered.target(), MaybeMultihash.empty(),
+                    mutable, quotaAdmin, dht, hasher);
+        usageStore.removeWriter(writer);
+        for (PublicKeyHash child : registered.ownedKeys()) {
+            String childUser;
+            try {
+                childUser = usageStore.getOwner(child);
+            } catch (IllegalStateException gone) {
+                continue; // forgotten already, with the writer's own update just processed
+            }
+            if (username.equals(childUser) && ! owned(usageStore, owner, child))
+                forgetWriter(username, owner, child);
+        }
+    }
+
+    /** Whether the parent's committed root names the writer as one it owns */
+    private boolean namesWriter(PublicKeyHash owner, PublicKeyHash parent, PublicKeyHash writer) {
+        MaybeMultihash root = mutable.getPointerTarget(owner, parent, dht).join().updated;
+        return directOwnedKeys(owner, parent, root, List.of(ourId.bareMultihash()), ourId, dht, hasher).contains(writer);
     }
 
     /** A write was attempted with a writer that is absent from the usage store. If the writer is reachable through
@@ -708,17 +1063,37 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 Deque<PublicKeyHash> toVisit = new ArrayDeque<>();
                 toVisit.add(owner);
                 List<PublicKeyHash> added = new ArrayList<>();
+                if (! known.contains(owner)) {
+                    usageStore.addWriter(username, owner);
+                    added.add(owner);
+                }
                 while (! toVisit.isEmpty()) {
                     PublicKeyHash current = toVisit.poll();
                     if (! visited.add(current))
                         continue;
-                    if (! known.contains(current)) {
-                        usageStore.addWriter(username, current);
-                        added.add(current);
-                    }
-                    toVisit.addAll(DeletableContentAddressedStorage.getDirectOwnedKeys(owner, current, mutable,
+                    Set<PublicKeyHash> named = DeletableContentAddressedStorage.getDirectOwnedKeys(owner, current, mutable,
                             (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht),
-                            dht, hasher).join());
+                            dht, hasher).join();
+                    for (PublicKeyHash child : named) {
+                        if (added.contains(child))
+                            continue;
+                        if (known.contains(child)) {
+                            toVisit.add(child);
+                            continue;
+                        }
+                        // a key of another user's named here is theirs, as it is when its name arrives, and so is
+                        // what it names: its tree is in their space, and isn't walked for the owner's keys
+                        try {
+                            if (! username.equals(usageStore.getOwner(child)))
+                                continue;
+                        } catch (IllegalStateException unregistered) {}
+                        usageStore.addWriter(username, child);
+                        added.add(child);
+                        // under the writer it was found named by, as any key the queue registers is: with no edge
+                        // it would write under no cap, and outlive the revocation of what names it
+                        usageStore.addOwnedKey(current, child);
+                        toVisit.add(child);
+                    }
                 }
                 for (PublicKeyHash newWriter : added) {
                     try {

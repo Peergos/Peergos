@@ -28,6 +28,22 @@ public class JdbcAddressBookTest {
         Assert.assertEquals(8, lru.size());
     }
 
+    /** Reads only write lastaccess hourly; a peer in use must still outlive DHT churn that turns the
+     *  book over in minutes. */
+    @Test
+    public void peerInUseSurvivesChurn() throws Exception {
+        JdbcAddressLRU lru = JdbcAddressLRU.buildSqlite(10, ":memory:");
+        Multiaddr addr = new Multiaddr("/ip4/127.0.0.0/tcp/8000");
+        PeerId inUse = PeerId.random();
+        lru.setAddrs(inUse, 0, addr);
+        for (int i = 0; i < 50; i++) {
+            Thread.sleep(2);
+            lru.setAddrs(PeerId.random(), 0, addr);
+            Assert.assertEquals("evicted after " + i + " new peers", Set.of(addr),
+                    lru.getAddrs(inUse).join().stream().collect(Collectors.toSet()));
+        }
+    }
+
     @Test
     public void add() {
         JdbcAddressLRU lru = JdbcAddressLRU.buildSqlite(10, ":memory:");

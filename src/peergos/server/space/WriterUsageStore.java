@@ -13,15 +13,56 @@ public interface WriterUsageStore {
         void usageChanged(PublicKeyHash writer, long delta, boolean ownedKeysChanged);
 
         default void writerQuotaChanged(PublicKeyHash writer, Optional<Long> quota) {}
+
+        /** An edge to this writer was added or removed on its own, ahead of or in place of its parent's update */
+        default void edgeChanged(PublicKeyHash owned) {
+            usageChanged(owned, 0, true);
+        }
     }
 
-    /** The listener is called after each successful updateWriterUsageAtomically, and each change to a writer quota */
+    /** The listener is called after each successful updateWriterUsageAtomically, each change to a writer quota, each
+     *  writer removed, and (edgeChanged) each edge added or removed outside those */
     void addUsageListener(UsageListener listener);
 
     void addWriter(String owner, PublicKeyHash writer);
 
-    /** Forget a writer that nothing owns any more, so it can't write again without proving it is owned */
+    /** Record that a registered writer owns another, ahead of the queue's processing of the parent's pointer update
+     *  that names it (or of that update itself, for a commit creating the child), so that the caps over the parent
+     *  bound the child's first writes. Does nothing if the edge is already there.
+     *
+     * @return whether the edge is new
+     */
+    boolean addOwnedKey(PublicKeyHash parent, PublicKeyHash owned);
+
+    /** Take back an edge recorded ahead of a commit that was then refused */
+    void removeOwnedKey(PublicKeyHash parent, PublicKeyHash owned);
+
+    /** Forget a writer that nothing owns any more, so it can't write again without proving it is owned. Its
+     *  provisional rows go with it. */
     void removeWriter(PublicKeyHash writer);
+
+    /** A writer a commit is registering under a parent, until the commit lands or is refused. It is in the store, not
+     *  in the memory of the server handling the commit, so another server, or that one after a restart, finds it, and
+     *  takes the registration back once it expires. Until then a new writer may set only the pointer update its
+     *  commit carries, if any.
+     *
+     * @param newWriter whether the commit registered the writer itself, not only its edge from the parent
+     * @param signed the pointer update the commit carries for the writer
+     */
+    record ProvisionalWriter(PublicKeyHash writer, PublicKeyHash parent, PublicKeyHash owner, boolean newWriter,
+                             Optional<byte[]> signed, long expires) {}
+
+    /** Records a provisional writer, unless one is recorded for this writer and parent already
+     *
+     * @return whether it is new
+     */
+    boolean addProvisional(ProvisionalWriter provisional);
+
+    List<ProvisionalWriter> getProvisional(PublicKeyHash writer);
+
+    List<ProvisionalWriter> getExpiredProvisional(long now);
+
+    void removeProvisional(PublicKeyHash writer, PublicKeyHash parent);
 
     Set<PublicKeyHash> getAllWriters();
 
@@ -37,6 +78,11 @@ public interface WriterUsageStore {
      * @return the keys that directly own this writer
      */
     Set<PublicKeyHash> getParents(PublicKeyHash writer);
+
+    /**
+     * @return the keys this writer has an edge to
+     */
+    Set<PublicKeyHash> getOwnedKeys(PublicKeyHash writer);
 
     PublicKeyHash getOwnerKey(String username);
 
