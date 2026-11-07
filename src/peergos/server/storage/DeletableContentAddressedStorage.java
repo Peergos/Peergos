@@ -584,15 +584,16 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                                 .collect(Collectors.toSet())));
     }
 
-    /** Whether a writer's root names a key as one it owns, as getDirectOwnedKeys would. Only the key's own proofs are
-     *  read and judged, so other keys the root names, which may not verify or be readable, don't stop it answering. */
-    public static CompletableFuture<Boolean> namesOwnedKey(PublicKeyHash owner,
-                                                           PublicKeyHash writer,
-                                                           MaybeMultihash root,
-                                                           PublicKeyHash key,
-                                                           CommittedWriterData.Retriever retriever,
-                                                           ContentAddressedStorage ipfs,
-                                                           Hasher hasher) {
+    /** Whether a writer's root holds a valid proof that it directly owns a key, as getDirectOwnedKeys would find. Only
+     *  that key's own proofs are read and judged, so the proofs of other keys in the root, which may not verify or be
+     *  readable, don't stop it answering. */
+    public static CompletableFuture<Boolean> directlyOwnsKey(PublicKeyHash owner,
+                                                             PublicKeyHash writer,
+                                                             MaybeMultihash root,
+                                                             PublicKeyHash key,
+                                                             CommittedWriterData.Retriever retriever,
+                                                             ContentAddressedStorage ipfs,
+                                                             Hasher hasher) {
         if (! root.isPresent())
             return Futures.of(false);
         return retriever.getWriterData((Cid)root.get(), Optional.empty())

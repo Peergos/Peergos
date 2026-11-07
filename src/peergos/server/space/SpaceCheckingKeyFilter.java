@@ -1028,7 +1028,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         MaybeMultihash root = mutable.getPointerTarget(owner, parent, dht).join().updated;
         List<Multihash> us = List.of(ourId.bareMultihash());
         try {
-            return DeletableContentAddressedStorage.namesOwnedKey(owner, parent, root, writer,
+            return DeletableContentAddressedStorage.directlyOwnsKey(owner, parent, root, writer,
                     (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht), dht, hasher).join();
         } catch (Exception unreadable) {
             return false;
