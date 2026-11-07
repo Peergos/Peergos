@@ -771,7 +771,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage, BulkCommitStorage.Com
         return true;
     }
 
-    /** A write ahead of the pointer update that will name its blocks: reserved until that update lands or is refused */
+    /** A write ahead of the pointer update that will name its blocks: reserved until that update lands or its transaction closes */
     public boolean allowWrite(PublicKeyHash owner, PublicKeyHash writer, int size, TransactionId tid) {
         reservedAhead(tid, reserve(owner, writer, size));
         return true;
@@ -801,10 +801,9 @@ public class SpaceCheckingKeyFilter implements SpaceUsage, BulkCommitStorage.Com
         }
     }
 
-    /** The transaction's pointer update was refused: the blocks written ahead of it are not named, and their bytes
-     *  are given back. A retry that names them after all is counted when its update is processed. */
+    /** The transaction was closed: its blocks are no longer held, and what it still holds reserved is given back */
     @Override
-    public void refusedAhead(TransactionId tid) {
+    public void closed(TransactionId tid) {
         List<Runnable> releases;
         synchronized (reservedAhead) {
             releases = reservedAhead.remove(tid.id);

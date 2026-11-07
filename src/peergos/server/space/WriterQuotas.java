@@ -17,6 +17,8 @@ import java.util.concurrent.*;
  */
 public class WriterQuotas implements WriterUsageStore.UsageListener {
     private static final long RELOAD_MILLIS = 600_000;
+    // reservations lapse after a day, as long as the GC keeps an open transaction's blocks
+    private static final long RESERVATION_MILLIS = 24 * 3600_000L;
     private static final long RELOAD_QUOTA_MILLIS = 60_000;
 
     private record Timed<V>(V value, long loadedAt) {
@@ -130,7 +132,7 @@ public class WriterQuotas implements WriterUsageStore.UsageListener {
         }
         // The same object, with its total read again: the bytes of writes in flight stay with it. Judged
         // against the committed total alone, each of a burst of writes would fit where together they do not.
-        current.value.reloadTotal(committed, now - RELOAD_MILLIS);
+        current.value.reloadTotal(committed, now - RESERVATION_MILLIS);
         capUsage.put(cap, new Timed<>(current.value, now));
         return current.value;
     }

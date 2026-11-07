@@ -42,9 +42,9 @@ public class BulkCommitStorage extends DelegatingStorage {
 
     /** Whether a commit may be applied, given the bytes a writer writes and, if that alone would be
      *  refused, the net change in stored bytes each writer's pointer update in the commit will cause.
-     *  Refuses by throwing; otherwise returns what gives back the bytes it reserved, for a commit refused
-     *  after all. Blocks written ahead of the pointer update that names them are reserved under their
-     *  transaction until that update lands or is refused. */
+     *  Refuses by throwing; otherwise returns what gives back the bytes it reserved. Blocks written under a
+     *  transaction, ahead of the pointer update that names them or by a commit that is refused, are reserved
+     *  under it until that update lands or the transaction is closed. */
     public interface CommitQuota {
         Runnable allowCommit(PublicKeyHash owner, PublicKeyHash writer, int written, Supplier<Map<PublicKeyHash, Long>> deltas);
 
@@ -52,7 +52,7 @@ public class BulkCommitStorage extends DelegatingStorage {
 
         void namedAhead(TransactionId tid);
 
-        void refusedAhead(TransactionId tid);
+        void closed(TransactionId tid);
     }
 
     private final ContentAddressedStorage target;
@@ -100,13 +100,13 @@ public class BulkCommitStorage extends DelegatingStorage {
         int named = commit.blockCount() + commit.writers.stream().mapToInt(w -> w.preWritten.size()).sum();
         if (named > ContentAddressedStorage.MAX_BULK_COMMIT_BLOCKS)
             throw new IllegalStateException("Too many blocks in one commit: " + named);
-        boolean[] landed = {false};
-        CompletableFuture<List<Cid>> res = hashBlocks(commit)
+        return hashBlocks(commit)
                 .thenCompose(hashes -> updates(owner, commit)
                         .thenCompose(updates -> verifyBlockLists(owner, commit, hashes)
                                 .thenCompose(x -> verify(owner, commit, hashes, updates))
                                 .thenCompose(inCall -> {
                                     List<Registration> registered = registerNewWriters(owner, commit, updates, inCall);
+                                    boolean[] landed = {false};
                                     List<Runnable> releases = new ArrayList<>();
                                     // from a future, as a refusal is thrown before the transaction's future exists
                                     return Futures.of(true).thenCompose(x -> withTransaction(owner, commit.tid, commit.hasPointerUpdate(),
@@ -140,38 +140,30 @@ public class BulkCommitStorage extends DelegatingStorage {
                                                                                 new IllegalStateException("Pointers changed since this commit was checked; nothing was applied"));
                                                                     });
                                                                 });
+                                                    })
+                                                    // refused, what the call wrote is held by its transaction, which a refusal leaves
+                                                    // open: it stays reserved under it until it is closed, or for a day
+                                                    .whenComplete((written, refused) -> {
+                                                        if (refused != null && ! landed[0])
+                                                            releases.forEach(r -> quota.reservedAhead(tid, r));
                                                     })))
                                             // a commit refused before its pointers landed takes back the writers it registered, the
-                                            // last first: a writer named under two parents stays provisional until its first edge goes;
-                                            // and it gives back the bytes it reserved, unless it lost its CAS: a client that can merge
-                                            // sends a commit naming the blocks this call wrote without sending them, so they stay
-                                            // reserved until the writer's next processed commit, or expire. A 429 is retried as this
-                                            // same call, which reserves them again
+                                            // last first: a writer named under two parents stays provisional until its first edge goes
                                             .whenComplete((written, refused) -> {
-                                                if (refused != null && ! landed[0]) {
+                                                if (refused != null && ! landed[0])
                                                     for (int i = registered.size() - 1; i >= 0; i--)
                                                         registered.get(i).undo();
-                                                    if (! (Exceptions.getRootCause(refused) instanceof PointerCasException))
-                                                        releases.forEach(Runnable::run);
-                                                }
                                             });
                                 })));
-        if (commit.tid.isEmpty() || ! commit.hasPointerUpdate())
-            return res;
-        // refused before its pointers landed, the blocks written ahead of it in its transaction are not named by it,
-        // and their bytes are given back. Except after a lost CAS or a 429, which a client may answer by naming them
-        // again without writing them again: the retry's processed commit drops them, or they expire
-        return res.whenComplete((written, refused) -> {
-            if (refused != null && ! landed[0] && ! sentAgain(refused))
-                quota.refusedAhead(commit.tid.get());
-        });
     }
 
-    /** Refused in a way the client answers by sending the commit again: a lost CAS it merges, or a 429 it retries,
-     *  which the server raises as a RateLimitException (a TooManyRequestsException is one, as a client sees it) */
-    private static boolean sentAgain(Throwable refused) {
-        Throwable cause = Exceptions.getRootCause(refused);
-        return cause instanceof PointerCasException || cause instanceof RateLimitException;
+    @Override
+    public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
+        return target.closeTransaction(owner, tid)
+                .thenApply(closed -> {
+                    quota.closed(tid);
+                    return closed;
+                });
     }
 
     /** Apply a batch signed block write for an owner whose home server we are.

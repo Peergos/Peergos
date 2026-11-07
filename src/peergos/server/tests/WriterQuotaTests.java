@@ -1524,6 +1524,7 @@ public class WriterQuotaTests {
         awaitUsageUpdate();
         FileWrapper shared = sharee.getByPath(dir).join().get();
         PublicKeyHash ownerKey = shared.owner();
+        long before = writerQuotas().getUsage(shared.signingPair().publicKeyHash).expectedUsage();
 
         // 600 KiB passes the cap, written ahead of the commit naming them, as a client writes blocks too large to travel
         // inline, and held by its transaction; the commit is refused after its own blocks are reserved
@@ -1531,6 +1532,9 @@ public class WriterQuotaTests {
         List<Cid> ahead = service.storage.putRawBatch(ownerKey, shared.signingPair(), randomBlocks(6, 100 * KiB), tid,
                 x -> {}, crypto.hasher).join();
         refusedBesideAStranger(ownerKey, shared.signingPair(), Optional.of(tid), List.of(), ahead);
+        // they stay reserved while the transaction holds them, until it is closed
+        long reserved = writerQuotas().getUsage(shared.signingPair().publicKeyHash).expectedUsage() - before;
+        Assert.assertTrue("the refusal gave back what its transaction holds: " + reserved, reserved >= 600 * KiB);
         service.storage.closeTransaction(ownerKey, tid).join();
         // so another 600 KiB fits under the 1 MiB cap
         upload(sharee, dir, "fits", 600 * KiB);
@@ -1545,9 +1549,15 @@ public class WriterQuotaTests {
         owner.setWriteShareQuota(dir, Optional.of(1024L * KiB)).join();
         awaitUsageUpdate();
         FileWrapper shared = sharee.getByPath(dir).join().get();
+        long before = writerQuotas().getUsage(shared.signingPair().publicKeyHash).expectedUsage();
 
         // a 540 KiB commit, its blocks small enough to travel inside the call, passes the cap and is then refused
-        refusedBesideAStranger(shared.owner(), shared.signingPair(), Optional.empty(), randomBlocks(6, 90 * KiB), List.of());
+        TransactionId tid = service.storage.startTransaction(shared.owner()).join();
+        refusedBesideAStranger(shared.owner(), shared.signingPair(), Optional.of(tid), randomBlocks(6, 90 * KiB), List.of());
+        // what it wrote stays reserved under its transaction, which holds it, until that is closed
+        long reserved = writerQuotas().getUsage(shared.signingPair().publicKeyHash).expectedUsage() - before;
+        Assert.assertTrue("the refusal gave back what its transaction holds: " + reserved, reserved >= 540 * KiB);
+        service.storage.closeTransaction(shared.owner(), tid).join();
         // so another 600 KiB fits under the 1 MiB cap
         upload(sharee, dir, "fits", 600 * KiB);
     }
@@ -1605,7 +1615,7 @@ public class WriterQuotaTests {
     }
 
     @Test
-    public void aRefusedLastCallGivesBackWhatTheCallsBeforeItReserved() {
+    public void aRefusedLastCallGivesBackWhatTheCallsBeforeItReserved() throws Exception {
         UserContext owner = signUp();
         UserContext sharee = signUp();
         PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
@@ -1615,6 +1625,7 @@ public class WriterQuotaTests {
         FileWrapper shared = sharee.getByPath(dir).join().get();
         PublicKeyHash ownerKey = shared.owner();
         SigningPrivateKeyAndPublicHash writer = shared.signingPair();
+        long before = writerQuotas().getUsage(writer.publicKeyHash).expectedUsage();
 
         // 600 KiB in a blocks-only call of a split commit, held by its transaction, passes the cap
         List<byte[]> blocks = new ArrayList<>();
@@ -1641,6 +1652,9 @@ public class WriterQuotaTests {
                     Optional.empty())))).join();
             Assert.fail("A last call naming a block nobody has landed");
         } catch (Exception refused) {}
+        // they stay reserved while the transaction holds them, until it is closed
+        long reserved = writerQuotas().getUsage(writer.publicKeyHash).expectedUsage() - before;
+        Assert.assertTrue("the refusal gave back what its transaction holds: " + reserved, reserved >= 600 * KiB);
         service.storage.closeTransaction(ownerKey, tid).join();
         // so another 600 KiB fits under the 1 MiB cap
         upload(sharee, dir, "fits", 600 * KiB);
@@ -1922,7 +1936,7 @@ public class WriterQuotaTests {
     }
 
     @Test
-    public void a429KeepsReservedWhatItsRetryNamesButNotWhatItSendsAgain() throws Exception {
+    public void a429KeepsWhatItReservedUntilItsTransactionIsClosed() throws Exception {
         UserContext owner = signUp();
         UserContext sharee = signUp();
         PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
@@ -1953,14 +1967,46 @@ public class WriterQuotaTests {
             Assert.assertTrue(String.valueOf(cause), cause instanceof RateLimitException);
         }
 
-        // a client sends the same call again: what it names, written ahead, is still reserved for it, and what it sends
-        // again it reserves again, so it fits
+        // what it names, written ahead, and what it sent stay reserved under its transaction, until it is closed
         long reserved = writerQuotas().getUsage(writer.publicKeyHash).expectedUsage() - before;
-        Assert.assertTrue("what the retry names was given back: " + reserved, reserved >= 400 * KiB);
-        server.bulkCommit(ownerKey, commit).join();
+        Assert.assertTrue("the 429 gave back what its transaction holds: " + reserved, reserved >= 800 * KiB);
+        service.storage.closeTransaction(ownerKey, tid).join();
+        Assert.assertEquals("closing the transaction gave back what it held", before,
+                writerQuotas().getUsage(writer.publicKeyHash).expectedUsage());
+    }
+
+    /** Blocks written under a transaction that a refused commit leaves open are kept from collection by it, so a refusal
+     *  that gave their bytes back would let a writer store past its cap by writing and being refused again and again */
+    @Test
+    public void aRefusedCommitKeepsReservedWhatItsOpenTransactionHolds() throws Exception {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        Path dir = sharedDir(owner, "team", sharee);
+        owner.setWriteShareQuota(dir, Optional.of(2048L * KiB)).join();
         awaitUsageUpdate();
-        long used = writerQuotas().getUsage(writer.publicKeyHash).totalUsage();
-        Assert.assertTrue("the retry landed: " + used, used >= 800 * KiB);
+        FileWrapper shared = sharee.getByPath(dir).join().get();
+        PublicKeyHash ownerKey = shared.owner();
+        SigningPrivateKeyAndPublicHash writer = shared.signingPair();
+
+        // 1500 KiB written under a transaction ahead of the commit naming them, which 700 KiB more inline takes past the
+        // 2 MiB cap: refused, and the transaction is left open
+        TransactionId tid = service.storage.startTransaction(ownerKey).join();
+        List<Cid> ahead = service.storage.putRawBatch(ownerKey, writer, randomBlocks(15, 100 * KiB), tid, x -> {}, crypto.hasher).join();
+        List<byte[]> inline = randomBlocks(7, 100 * KiB);
+        PointerUpdate current = service.mutable.getPointerTarget(ownerKey, writer.publicKeyHash, service.storage).join();
+        List<byte[]> cbor = rootOver(ownerKey, current, inline, ahead);
+        assertRefusedForTheCap(() -> service.storage.bulkCommit(ownerKey, new BulkCommit(Optional.of(tid), List.of(
+                new WriterCommit(writer.publicKeyHash, cbor, inline, ahead, Optional.of(update(writer, current.updated, current, cbor)),
+                        Optional.empty())))).join());
+
+        // 1700 KiB more fits under the cap only if the refusal gave the 1500 back, so it doesn't fit, even with the 1 MiB
+        // a refusal tolerates over the cap, until the transaction is closed
+        TransactionId next = service.storage.startTransaction(ownerKey).join();
+        List<byte[]> more = randomBlocks(17, 100 * KiB);
+        assertRefusedForTheCap(() -> service.storage.putRawBatch(ownerKey, writer, more, next, x -> {}, crypto.hasher).join());
+        service.storage.closeTransaction(ownerKey, tid).join();
+        service.storage.putRawBatch(ownerKey, writer, more, next, x -> {}, crypto.hasher).join();
     }
 
     /** The server's bulk commit layer over a block store that is throttled once, refusing a raw write with the
