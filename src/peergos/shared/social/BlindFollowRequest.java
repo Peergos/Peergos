@@ -30,6 +30,14 @@ public class BlindFollowRequest implements Cborable {
         return CborObject.CborMap.build(result);
     }
 
+    public static Optional<BlindFollowRequest> parse(byte[] raw) {
+        try {
+            return Optional.of(fromCbor(CborObject.fromByteArray(raw)));
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
     public static BlindFollowRequest fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Invalid cbor for BlindFollowRequest: "+  cbor);

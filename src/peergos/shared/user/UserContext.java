@@ -3493,7 +3493,9 @@ public class UserContext {
                     if (!(cbor instanceof CborObject.CborList))
                         throw new IllegalStateException("Invalid cbor for list of follow requests: " + cbor);
                     return ((CborObject.CborList) cbor).value.stream()
-                            .map(BlindFollowRequest::fromCbor)
+                            .map(c -> BlindFollowRequest.parse(c.serialize()))
+                            .filter(Optional::isPresent)
+                            .map(Optional::get)
                             .collect(Collectors.toList());
                 });
     }
