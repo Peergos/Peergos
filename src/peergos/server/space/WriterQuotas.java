@@ -77,7 +77,12 @@ public class WriterQuotas implements WriterUsageStore.UsageListener {
         synchronized (quotas) {
             quotas.put(writer, new Timed<>(quota, System.currentTimeMillis()));
         }
-        capUsage.remove(writer);
+        // the same object, read again at its next use: the writes in flight under the cap stay reserved. A cap
+        // removed goes with its object
+        if (quota.isEmpty())
+            capUsage.remove(writer);
+        else
+            capUsage.computeIfPresent(writer, (cap, cached) -> new Timed<>(cached.value, 0));
     }
 
     private List<PublicKeyHash> getAncestors(PublicKeyHash writer) {
@@ -116,20 +121,27 @@ public class WriterQuotas implements WriterUsageStore.UsageListener {
         Timed<UserUsage> current = capUsage.get(cap);
         if (current != null && current.isFresh(now, RELOAD_MILLIS))
             return current.value;
-        UserUsage loaded = new UserUsage(store.getSubtreeUsage(cap));
-        capUsage.put(cap, new Timed<>(loaded, now));
-        return loaded;
+        long committed = store.getSubtreeUsage(cap);
+        if (current == null) {
+            // one object per cap, or two first writes would each reserve in their own and both fit
+            Timed<UserUsage> loaded = new Timed<>(new UserUsage(committed), now);
+            Timed<UserUsage> raced = capUsage.putIfAbsent(cap, loaded);
+            return (raced != null ? raced : loaded).value;
+        }
+        // The same object, with its total read again: the bytes of writes in flight stay with it. Judged
+        // against the committed total alone, each of a burst of writes would fit where together they do not.
+        current.value.reloadTotal(committed, now - RELOAD_MILLIS);
+        capUsage.put(cap, new Timed<>(current.value, now));
+        return current.value;
     }
 
     @Override
     public void usageChanged(PublicKeyHash writer, long delta, boolean ownedKeysChanged) {
         if (ownedKeysChanged) {
-            // the writer may have left one capped subtree and joined another
-            synchronized (ancestors) {
-                ancestors.clear();
-                ancestorsGeneration++;
-            }
-            capUsage.clear();
+            // This writer's pointer update has landed, or it has been removed, so its reservations go; other
+            // writers' are kept
+            capUsage.values().forEach(cached -> cached.value.clearPending(writer));
+            edgeChanged(writer);
             return;
         }
         if (capUsage.isEmpty())
@@ -139,5 +151,16 @@ public class WriterQuotas implements WriterUsageStore.UsageListener {
             if (current != null)
                 current.value.confirmUsage(writer, delta);
         }
+    }
+
+    @Override
+    public void edgeChanged(PublicKeyHash owned) {
+        // the writer may have left one capped subtree and joined another, so every cap's total is read again at its
+        // next use; its writes in flight stay reserved where they are until they land
+        synchronized (ancestors) {
+            ancestors.clear();
+            ancestorsGeneration++;
+        }
+        capUsage.replaceAll((cap, cached) -> new Timed<>(cached.value, 0));
     }
 }

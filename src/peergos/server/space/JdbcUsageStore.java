@@ -10,8 +10,10 @@ import peergos.shared.util.*;
 
 import java.sql.*;
 import java.util.*;
+import java.util.concurrent.locks.*;
 import java.util.function.*;
 import java.util.logging.*;
+import java.util.stream.*;
 
 public class JdbcUsageStore implements UsageStore {
 	private static final Logger LOG = Logging.LOG();
@@ -51,6 +53,7 @@ public class JdbcUsageStore implements UsageStore {
         try (Connection conn = getConnection()) {
             commands.createTable(commands.createUsageTablesCommand(), conn);
             commands.createTable(commands.createWriterQuotasTableCommand(), conn);
+            commands.createTable(commands.createProvisionalWritersTableCommand(), conn);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -264,6 +267,52 @@ public class JdbcUsageStore implements UsageStore {
         }
     }
 
+    @Override
+    public boolean addOwnedKey(PublicKeyHash parent, PublicKeyHash owned) {
+        List<ReentrantLock> locks = lockUsersOf(List.of(parent, owned));
+        try (Connection conn = getConnection(true, false);
+             PreparedStatement insertOwned = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ", "INTO ownedkeys (parent_id, owned_id) VALUES(?, ?)"))) {
+            insertOwned.setInt(1, getWriterId(parent, conn));
+            insertOwned.setInt(2, getWriterId(owned, conn));
+            if (insertOwned.executeUpdate() == 0)
+                return false;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        } finally {
+            unlock(locks);
+        }
+        notifyListeners(owned, l -> l.edgeChanged(owned));
+        return true;
+    }
+
+    @Override
+    public void removeOwnedKey(PublicKeyHash parent, PublicKeyHash owned) {
+        // a writer removed meanwhile took its edges with it, so there may be nothing to delete
+        try (Connection conn = getConnection(true, false);
+             PreparedStatement deleteOwned = conn.prepareStatement("DELETE FROM ownedkeys WHERE "
+                     + "parent_id = (SELECT id FROM writers WHERE key_hash = ?) AND owned_id = (SELECT id FROM writers WHERE key_hash = ?);")) {
+            deleteOwned.setBytes(1, parent.toBytes());
+            deleteOwned.setBytes(2, owned.toBytes());
+            if (deleteOwned.executeUpdate() == 0)
+                return;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+        notifyListeners(owned, l -> l.edgeChanged(owned));
+    }
+
+    private void notifyListeners(PublicKeyHash writer, Consumer<UsageListener> event) {
+        for (UsageListener listener : listeners) {
+            try {
+                event.accept(listener);
+            } catch (Exception e) {
+                LOG.log(Level.WARNING, "Usage listener failed for writer " + writer, e);
+            }
+        }
+    }
+
     private int getWriterId(PublicKeyHash writer, Connection conn) {
         try (PreparedStatement writerSelect = conn.prepareStatement("SELECT id FROM writers WHERE key_hash = ?;")) {
             writerSelect.setBytes(1, writer.toBytes());
@@ -377,14 +426,23 @@ public class JdbcUsageStore implements UsageStore {
         try (PreparedStatement search = conn.prepareStatement(
                 "SELECT parent_id FROM ownedkeys WHERE owned_id = ?;")) {
             PublicKeyHash current = writer;
-            while (true) {
+            // a key named under itself, or a cycle of them, ends the walk as a key with no parent does
+            Set<PublicKeyHash> seen = new HashSet<>();
+            while (seen.add(current)) {
                 int writerId = getWriterId(current, conn);
                 search.setInt(1, writerId);
                 ResultSet resultSet = search.executeQuery();
-                if (!resultSet.next())
+                PublicKeyHash next = null;
+                while (next == null && resultSet.next()) {
+                    PublicKeyHash parent = getWriter(resultSet.getInt(1), conn);
+                    if (! seen.contains(parent))
+                        next = parent;
+                }
+                if (next == null)
                     return current;
-                current = getWriter(resultSet.getInt(1), conn);
+                current = next;
             }
+            return current;
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
@@ -463,31 +521,55 @@ public class JdbcUsageStore implements UsageStore {
 
     @Override
     public void removeWriter(PublicKeyHash writer) {
+        List<ReentrantLock> locks = lockUsersOf(List.of(writer));
         try (Connection conn = getConnection(true, false);
              PreparedStatement select = conn.prepareStatement("SELECT id FROM writers WHERE key_hash = ?;");
              PreparedStatement ownedKeys = conn.prepareStatement("DELETE FROM ownedkeys WHERE owned_id = ? OR parent_id = ?;");
              PreparedStatement pending = conn.prepareStatement("DELETE FROM pendingusage WHERE writer_id = ?;");
              PreparedStatement quotas = conn.prepareStatement("DELETE FROM writerquotas WHERE writer_id = ?;");
              PreparedStatement usage = conn.prepareStatement("DELETE FROM writerusage WHERE writer_id = ?;");
-             PreparedStatement writers = conn.prepareStatement("DELETE FROM writers WHERE id = ?;")) {
-            owners.remove(writer);
+             PreparedStatement writers = conn.prepareStatement("DELETE FROM writers WHERE id = ?;");
+             PreparedStatement provisional = conn.prepareStatement("DELETE FROM provisionalwriters WHERE writer = ?;")) {
+            // out of the cache before the deletes too: if one fails, the writer is looked up afresh rather than
+            // trusted from a cache that outlives the attempt to remove it
+            synchronized (owners) {
+                ownerRemovals++;
+                owners.remove(writer);
+            }
             select.setBytes(1, writer.toBytes());
             ResultSet res = select.executeQuery();
-            if (! res.next())
-                return;
-            int id = res.getInt(1);
-            ownedKeys.setInt(1, id);
-            ownedKeys.setInt(2, id);
-            ownedKeys.executeUpdate();
-            for (PreparedStatement byWriter : List.of(pending, quotas, usage, writers)) {
-                byWriter.setInt(1, id);
-                byWriter.executeUpdate();
+            boolean present = res.next();
+            if (present) {
+                int id = res.getInt(1);
+                ownedKeys.setInt(1, id);
+                ownedKeys.setInt(2, id);
+                ownedKeys.executeUpdate();
+                for (PreparedStatement byWriter : List.of(pending, quotas, usage, writers)) {
+                    byWriter.setInt(1, id);
+                    byWriter.executeUpdate();
+                }
             }
+            // After the deletes, and counted, so a lookup that read the owner before them doesn't cache it (getOwner).
+            // Cached, the writer would outlive its removal.
+            synchronized (owners) {
+                ownerRemovals++;
+                owners.remove(writer);
+            }
+            // Its rows last, once it is gone, as a pointer check that finds no rows then finds it gone (isOwnedWriter);
+            // and whether it was in or not, as a row can be in before its writer is
+            provisional.setBytes(1, writer.toBytes());
+            provisional.executeUpdate();
+            if (! present)
+                return;
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
+        } finally {
+            unlock(locks);
         }
-        notifyWriterQuotaChanged(writer, Optional.empty());
+        notifyListeners(writer, l -> l.writerQuotaChanged(writer, Optional.empty()));
+        // its edges went with it, and so do its bytes in flight under the caps above it
+        notifyListeners(writer, l -> l.usageChanged(writer, 0, true));
     }
 
     @Override
@@ -496,6 +578,86 @@ public class JdbcUsageStore implements UsageStore {
              PreparedStatement select = conn.prepareStatement("SELECT p.key_hash FROM ownedkeys o " +
                      "INNER JOIN writers p ON o.parent_id = p.id " +
                      "INNER JOIN writers c ON o.owned_id = c.id WHERE c.key_hash = ?;")) {
+            select.setBytes(1, writer.toBytes());
+            Set<PublicKeyHash> res = new HashSet<>();
+            ResultSet resultSet = select.executeQuery();
+            while (resultSet.next())
+                res.add(PublicKeyHash.decode(resultSet.getBytes(1)));
+            return res;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
+    public boolean addProvisional(ProvisionalWriter p) {
+        try (Connection conn = getConnection(true, false);
+             PreparedStatement insert = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ",
+                     "INTO provisionalwriters (writer, parent, owner, new_writer, signed, expires) VALUES(?, ?, ?, ?, ?, ?)"))) {
+            insert.setBytes(1, p.writer().toBytes());
+            insert.setBytes(2, p.parent().toBytes());
+            insert.setBytes(3, p.owner().toBytes());
+            insert.setBoolean(4, p.newWriter());
+            insert.setBytes(5, p.signed().orElse(null));
+            insert.setLong(6, p.expires());
+            return insert.executeUpdate() > 0;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
+    public List<ProvisionalWriter> getProvisional(PublicKeyHash writer) {
+        return selectProvisional("WHERE writer = ?;", select -> select.setBytes(1, writer.toBytes()));
+    }
+
+    @Override
+    public List<ProvisionalWriter> getExpiredProvisional(long now) {
+        return selectProvisional("WHERE expires <= ?;", select -> select.setLong(1, now));
+    }
+
+    private interface Binder {
+        void bind(PreparedStatement select) throws SQLException;
+    }
+
+    private List<ProvisionalWriter> selectProvisional(String where, Binder binder) {
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement(
+                     "SELECT writer, parent, owner, new_writer, signed, expires FROM provisionalwriters " + where)) {
+            binder.bind(select);
+            ResultSet rs = select.executeQuery();
+            List<ProvisionalWriter> res = new ArrayList<>();
+            while (rs.next())
+                res.add(new ProvisionalWriter(PublicKeyHash.decode(rs.getBytes(1)), PublicKeyHash.decode(rs.getBytes(2)),
+                        PublicKeyHash.decode(rs.getBytes(3)), rs.getBoolean(4), Optional.ofNullable(rs.getBytes(5)), rs.getLong(6)));
+            return res;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
+    public void removeProvisional(PublicKeyHash writer, PublicKeyHash parent) {
+        try (Connection conn = getConnection(true, false);
+             PreparedStatement delete = conn.prepareStatement("DELETE FROM provisionalwriters WHERE writer = ? AND parent = ?;")) {
+            delete.setBytes(1, writer.toBytes());
+            delete.setBytes(2, parent.toBytes());
+            delete.executeUpdate();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
+    public Set<PublicKeyHash> getOwnedKeys(PublicKeyHash writer) {
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement("SELECT c.key_hash FROM ownedkeys o " +
+                     "INNER JOIN writers p ON o.parent_id = p.id " +
+                     "INNER JOIN writers c ON o.owned_id = c.id WHERE p.key_hash = ?;")) {
             select.setBytes(1, writer.toBytes());
             Set<PublicKeyHash> res = new HashSet<>();
             ResultSet resultSet = select.executeQuery();
@@ -544,13 +706,50 @@ public class JdbcUsageStore implements UsageStore {
         }
     }
 
-    private Map<PublicKeyHash, String> owners = new LRUCache<>(100);
+    // Edges are recorded on request threads as pointers land while the queue forgets writers, and SQLite enforces no
+    // foreign keys: an edge whose writers were looked up just before one was removed would point at nothing, and
+    // reading its parent's usage would fail from then on. So recording a writer's edges and removing a writer take
+    // turns, under the lock of each user involved. An edge joins one user's writers, so users don't wait for each other.
+    private final ReentrantLock[] userLocks = Stream.generate(ReentrantLock::new).limit(256).toArray(ReentrantLock[]::new);
+
+    /** Locks the stripes of the users of these writers in index order, so no two callers each hold one the other wants */
+    private List<ReentrantLock> lockUsersOf(Collection<PublicKeyHash> writers) {
+        List<ReentrantLock> locks = writers.stream()
+                .mapToInt(w -> Math.floorMod(lockName(w).hashCode(), userLocks.length))
+                .distinct()
+                .sorted()
+                .mapToObj(i -> userLocks[i])
+                .toList();
+        locks.forEach(ReentrantLock::lock);
+        return locks;
+    }
+
+    /** A writer's owner, or the writer itself while it has none */
+    private String lockName(PublicKeyHash writer) {
+        try {
+            return getOwner(writer);
+        } catch (IllegalStateException unknown) {
+            return writer.toString();
+        }
+    }
+
+    private static void unlock(List<ReentrantLock> locks) {
+        for (int i = locks.size() - 1; i >= 0; i--)
+            locks.get(i).unlock();
+    }
+
+    private final Map<PublicKeyHash, String> owners = Collections.synchronizedMap(new LRUCache<>(100));
+    private long ownerRemovals = 0; // guarded by owners
 
     @Override
     public String getOwner(PublicKeyHash writer) {
         String cached = owners.get(writer);
         if (cached != null)
             return cached;
+        long removalsBefore;
+        synchronized (owners) {
+            removalsBefore = ownerRemovals;
+        }
         try (Connection conn = getConnection();
              PreparedStatement search = conn.prepareStatement("SELECT u.name FROM users u, writerusage wu WHERE u.id = wu.user_id AND wu.writer_id = ?;")) {
             int writerId = getWriterId(writer, conn);
@@ -559,7 +758,11 @@ public class JdbcUsageStore implements UsageStore {
             if (! resultSet.next())
                 throw new IllegalStateException("Unknown writer on this server!");
             String owner = resultSet.getString(1);
-            owners.put(writer, owner);
+            synchronized (owners) {
+                // a writer removed since the read may be the one read
+                if (ownerRemovals == removalsBefore)
+                    owners.put(writer, owner);
+            }
             return owner;
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
@@ -617,11 +820,14 @@ public class JdbcUsageStore implements UsageStore {
                                  Connection conn) throws SQLException {
         try (PreparedStatement writerSelect = conn.prepareStatement("SELECT id FROM writers WHERE key_hash = ?;");
              PreparedStatement deleteOwned = conn.prepareStatement("DELETE FROM ownedkeys WHERE parent_id = ? AND owned_id = ?;");
-             PreparedStatement insertOwned = conn.prepareStatement("INSERT INTO ownedkeys (parent_id, owned_id) VALUES(?, ?);")) {
+             // a new writer's edge may already be in, recorded while the commit creating it was being applied
+             PreparedStatement insertOwned = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ", "INTO ownedkeys (parent_id, owned_id) VALUES(?, ?)"))) {
             for (PublicKeyHash removed : removedOwnedKeys) {
                 writerSelect.setBytes(1, removed.toBytes());
                 ResultSet writerRes = writerSelect.executeQuery();
-                writerRes.next();
+                // a child forgotten before this update was recorded took its edges with it
+                if (! writerRes.next())
+                    continue;
                 int ownedId = writerRes.getInt(1);
                 // only this parent's edge: a key moved to another parent may already be owned there
                 deleteOwned.setInt(1, writerId);
@@ -649,6 +855,9 @@ public class JdbcUsageStore implements UsageStore {
                                                long newDirectSize,
                                                long delta,
                                                boolean errored) {
+        Set<PublicKeyHash> edgeWriters = new HashSet<>(addedOwnedKeys);
+        edgeWriters.add(writer);
+        List<ReentrantLock> locks = lockUsersOf(edgeWriters);
         try (Connection conn = getConnection(true, false)) {
             int writerId = getWriterId(writer, conn);
             int casCount;
@@ -691,15 +900,11 @@ public class JdbcUsageStore implements UsageStore {
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
+        } finally {
+            unlock(locks);
         }
         boolean ownedKeysChanged = ! removedOwnedKeys.isEmpty() || ! addedOwnedKeys.isEmpty();
-        for (UsageListener listener : listeners) {
-            try {
-                listener.usageChanged(writer, delta, ownedKeysChanged);
-            } catch (Exception e) {
-                LOG.log(Level.WARNING, "Usage listener failed for writer " + writer, e);
-            }
-        }
+        notifyListeners(writer, l -> l.usageChanged(writer, delta, ownedKeysChanged));
         return true;
     }
 
@@ -728,18 +933,8 @@ public class JdbcUsageStore implements UsageStore {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
         }
-        notifyWriterQuotaChanged(writer, quota);
+        notifyListeners(writer, l -> l.writerQuotaChanged(writer, quota));
         return true;
-    }
-
-    private void notifyWriterQuotaChanged(PublicKeyHash writer, Optional<Long> quota) {
-        for (UsageListener listener : listeners) {
-            try {
-                listener.writerQuotaChanged(writer, quota);
-            } catch (Exception e) {
-                LOG.log(Level.WARNING, "Usage listener failed for writer quota " + writer, e);
-            }
-        }
     }
 
     @Override
@@ -753,7 +948,7 @@ public class JdbcUsageStore implements UsageStore {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
         }
-        notifyWriterQuotaChanged(writer, Optional.empty());
+        notifyListeners(writer, l -> l.writerQuotaChanged(writer, Optional.empty()));
     }
 
     @Override

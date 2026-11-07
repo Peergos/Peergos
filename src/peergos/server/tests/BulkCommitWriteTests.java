@@ -2,6 +2,7 @@ package peergos.server.tests;
 
 import org.junit.*;
 import peergos.server.*;
+import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
@@ -299,6 +300,219 @@ public class BulkCommitWriteTests {
                                                    List<byte[]> blocks, TransactionId tid, ProgressConsumer<Long> progress) {
             puts.incrementAndGet();
             return target.putRaw(owner, writer, signatures, blocks, tid, progress);
+        }
+    }
+
+    /** The pointers a commit was checked against moved before they were set, so none was: it fails as the lost
+     *  CAS it is, which a client merges and retries on, as it does when a single pointer update loses one. */
+    @Test
+    public void aCommitWhosePointerMovesUnderItIsALostCas() throws Exception {
+        UserContext user = ensureSignedUp(generateUsername(random), generatePassword(), network, crypto);
+        PublicKeyHash owner = user.signer.publicKeyHash;
+        PointerUpdate before = service.mutable.getPointerTarget(owner, owner, service.storage).join();
+        WriterData current = WriterData.getWriterData(owner, (Cid) before.updated.get(), Optional.empty(), service.storage)
+                .join().props.get();
+
+        // another root from the same pointer, which lands between the commit's check and its pointer set
+        byte[] theirChild = new CborObject.CborLong(random.nextLong()).serialize();
+        TransactionId theirs = service.storage.startTransaction(owner).join();
+        Cid theirChildHash = service.storage.put(owner, user.signer, theirChild, crypto.hasher, theirs).join();
+        Cid theirRoot = service.storage.put(owner, user.signer, current.withChamp(theirChildHash).serialize(), crypto.hasher, theirs).join();
+        byte[] competing = user.signer.secret.signMessage(new PointerUpdate(before.updated, MaybeMultihash.of(theirRoot),
+                PointerUpdate.increment(before.sequence)).serialize()).join();
+
+        byte[] child = new CborObject.CborLong(random.nextLong()).serialize();
+        Cid childHash = crypto.hasher.hash(child, false).join();
+        byte[] root = current.withChamp(childHash).serialize();
+        Cid rootHash = crypto.hasher.hash(root, false).join();
+        SignedPointerUpdate ours = new SignedPointerUpdate(owner, user.signer.secret.signMessage(new PointerUpdate(
+                before.updated, MaybeMultihash.of(rootHash), PointerUpdate.increment(before.sequence)).serialize()).join());
+
+        BulkCommitStorage server = serverBulkCommit();
+        MutablePointers inner = field(server, "pointers");
+        BulkCommitStorage racing = new BulkCommitStorage(field(server, "target"), field(server, "unfiltered"),
+                new RacingPointers(inner, owner, competing), crypto.hasher, field(server, "registerWriter"), field(server, "quota"));
+        try {
+            racing.bulkCommit(owner, new BulkCommit(Optional.empty(), Arrays.asList(new WriterCommit(owner,
+                    Arrays.asList(root, child), Collections.emptyList(), Collections.emptyList(), Optional.of(ours),
+                    Optional.empty())))).join();
+            Assert.fail("A commit whose pointer moved under it landed");
+        } catch (CompletionException lost) {
+            Throwable cause = peergos.shared.util.Exceptions.getRootCause(lost);
+            Assert.assertTrue(String.valueOf(cause), cause instanceof PointerCasException);
+            Assert.assertEquals(MaybeMultihash.of(theirRoot), ((PointerCasException) cause).existing);
+        }
+        Assert.assertEquals(MaybeMultihash.of(theirRoot), service.mutable.getPointerTarget(owner, owner, service.storage).join().updated);
+        service.storage.closeTransaction(owner, theirs).join();
+    }
+
+    /** A refused commit takes back what it registered last first, so a writer it named under two parents stays
+     *  provisional until it is forgotten: no other update of that writer can land while it is being taken back. */
+    @Test
+    public void aWriterNamedTwiceInARefusedCommitStaysProvisionalWhileItIsTakenBack() throws Exception {
+        UserContext user = ensureSignedUp(generateUsername(random), generatePassword(), network, crypto);
+        PublicKeyHash owner = user.signer.publicKeyHash;
+        SigningPrivateKeyAndPublicHash home = user.getUserRoot().join().signingPair();
+        Threads.sleep(2_000); // the home writer's edge from the identity is recorded
+        SigningKeyPair pair = SigningKeyPair.random(crypto.random, crypto.signer);
+        PublicKeyHash childHash = network.dhtClient.putSigningKey(user.signer.secret.signMessage(pair.publicSigningKey.serialize()).join(),
+                owner, owner, pair.publicSigningKey, network.dhtClient.startTransaction(owner).join()).join();
+        SigningPrivateKeyAndPublicHash child = new SigningPrivateKeyAndPublicHash(childHash, pair.secretSigningKey);
+
+        // the identity and the home writer both name the child, which the commit creates
+        List<WriterCommit> writers = new ArrayList<>();
+        for (SigningPrivateKeyAndPublicHash parent : List.of(user.signer, home)) {
+            CommittedWriterData current = WriterData.getWriterData(owner, parent.publicKeyHash, service.mutable, service.storage).join();
+            byte[] root = current.props.get().addNamedKey("child", OwnerProof.build(child, parent.publicKeyHash).join()).serialize();
+            Cid rootHash = crypto.hasher.hash(root, false).join();
+            byte[] signed = parent.secret.signMessage(new PointerUpdate(current.hash, MaybeMultihash.of(rootHash),
+                    PointerUpdate.increment(current.sequence)).serialize()).join();
+            writers.add(new WriterCommit(parent.publicKeyHash, List.of(root), Collections.emptyList(), Collections.emptyList(),
+                    Optional.of(new SignedPointerUpdate(parent.publicKeyHash, signed)), Optional.empty()));
+        }
+        byte[] childRoot = new WriterData(childHash, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+                Collections.emptyMap(), Optional.empty(), Optional.empty(), Optional.empty()).serialize();
+        Cid childRootHash = crypto.hasher.hash(childRoot, false).join();
+        writers.add(new WriterCommit(childHash, List.of(childRoot), Collections.emptyList(), Collections.emptyList(),
+                Optional.of(new SignedPointerUpdate(childHash, child.secret.signMessage(new PointerUpdate(MaybeMultihash.empty(),
+                        MaybeMultihash.of(childRootHash), PointerUpdate.increment(Optional.empty())).serialize()).join())), Optional.empty()));
+        // another update of the child than the commit's own
+        SignedPointerUpdate another = new SignedPointerUpdate(childHash, child.secret.signMessage(new PointerUpdate(MaybeMultihash.empty(),
+                MaybeMultihash.of(childRootHash), Optional.of(7L)).serialize()).join());
+
+        // after each registration is taken back, whether that other update could land
+        java.lang.reflect.Field local = ProxyingSpaceUsage.class.getDeclaredField("local");
+        local.setAccessible(true);
+        peergos.server.space.SpaceCheckingKeyFilter filter = (peergos.server.space.SpaceCheckingKeyFilter) local.get(service.usage);
+        BulkCommitStorage server = serverBulkCommit();
+        BulkCommitStorage.WriterRegistrar real = field(server, "registerWriter");
+        List<String> settable = new ArrayList<>();
+        BulkCommitStorage.WriterRegistrar probing = (o, parent, writer, own) -> {
+            BulkCommitStorage.Registration registered = real.register(o, parent, writer, own);
+            return new BulkCommitStorage.Registration() {
+                @Override
+                public void landed() {
+                    registered.landed();
+                }
+
+                @Override
+                public void undo() {
+                    registered.undo();
+                    if (filter.isOwnedWriter(owner, another))
+                        settable.add("after its edge from " + parent + " was taken back");
+                }
+            };
+        };
+        BulkCommitStorage refusing = new BulkCommitStorage(field(server, "target"), field(server, "unfiltered"),
+                new RefusingPointers(field(server, "pointers")), crypto.hasher, probing, field(server, "quota"));
+        try {
+            refusing.bulkCommit(owner, new BulkCommit(Optional.empty(), writers)).join();
+            Assert.fail("A refused commit landed");
+        } catch (CompletionException refused) {}
+        Assert.assertEquals("The child could be set while it was being taken back", Collections.emptyList(), settable);
+    }
+
+    /** A pointer store that refuses every commit's updates */
+    private static class RefusingPointers implements MutablePointers {
+        private final MutablePointers target;
+
+        RefusingPointers(MutablePointers target) {
+            this.target = target;
+        }
+
+        @Override
+        public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writer, byte[] signed) {
+            return target.setPointer(owner, writer, signed);
+        }
+
+        @Override
+        public CompletableFuture<Boolean> setPointers(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
+            return Futures.errored(new IllegalStateException("Refused"));
+        }
+
+        @Override
+        public void recordApplied(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
+            target.recordApplied(owner, updates);
+        }
+
+        @Override
+        public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
+            return target.getPointer(owner, writer);
+        }
+
+        @Override
+        public MutablePointers clearCache() {
+            return target.clearCache();
+        }
+    }
+
+    /** The server's bulk commit layer, below the caching and proxying layers that wrap it */
+    private static BulkCommitStorage serverBulkCommit() throws Exception {
+        Deque<Object> toVisit = new ArrayDeque<>(List.of(service.storage));
+        Set<Object> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        while (! toVisit.isEmpty()) {
+            Object at = toVisit.poll();
+            if (at instanceof BulkCommitStorage)
+                return (BulkCommitStorage) at;
+            if (! seen.add(at))
+                continue;
+            for (Class<?> c = at.getClass(); c != null; c = c.getSuperclass())
+                for (java.lang.reflect.Field f : c.getDeclaredFields())
+                    if (ContentAddressedStorage.class.isAssignableFrom(f.getType())
+                            && ! java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                        f.setAccessible(true);
+                        Object next = f.get(at);
+                        if (next != null)
+                            toVisit.add(next);
+                    }
+        }
+        throw new IllegalStateException("No bulk commit layer under the service's storage");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> T field(Object o, String name) throws Exception {
+        java.lang.reflect.Field f = o.getClass().getDeclaredField(name);
+        f.setAccessible(true);
+        return (T) f.get(o);
+    }
+
+    /** A pointer store whose conditional write of a commit's updates loses to another update of the writer that
+     *  lands after the updates were checked: that one is set, and the commit's aren't */
+    private static class RacingPointers implements MutablePointers {
+        private final MutablePointers target;
+        private final PublicKeyHash writer;
+        private final byte[] competing;
+
+        RacingPointers(MutablePointers target, PublicKeyHash writer, byte[] competing) {
+            this.target = target;
+            this.writer = writer;
+            this.competing = competing;
+        }
+
+        @Override
+        public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writer, byte[] signed) {
+            return target.setPointer(owner, writer, signed);
+        }
+
+        @Override
+        public CompletableFuture<Boolean> setPointers(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
+            return target.setPointer(owner, writer, competing)
+                    .thenApply(landed -> false);
+        }
+
+        @Override
+        public void recordApplied(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
+            target.recordApplied(owner, updates);
+        }
+
+        @Override
+        public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
+            return target.getPointer(owner, writer);
+        }
+
+        @Override
+        public MutablePointers clearCache() {
+            return target.clearCache();
         }
     }
 

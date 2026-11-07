@@ -6,17 +6,19 @@ import peergos.shared.mutable.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
+import java.util.stream.*;
 
 public class MutableEventPropagator implements MutablePointers {
 
     private final MutablePointers target;
-    private final List<Consumer<? super MutableEvent>> listeners = new ArrayList<>();
+    private final List<Consumer<? super List<MutableEvent>>> listeners = new ArrayList<>();
 
     public MutableEventPropagator(MutablePointers target) {
         this.target = target;
     }
 
-    public void addListener(Consumer<? super MutableEvent> listener) {
+    /** The listener has the pointers each call lands together, in the call's order */
+    public void addListener(Consumer<? super List<MutableEvent>> listener) {
         listeners.add(listener);
     }
 
@@ -25,10 +27,9 @@ public class MutableEventPropagator implements MutablePointers {
         return target.setPointer(owner, writer, writerSignedBtreeRootHash)
                 .thenApply(res -> {
                     if (res) {
-                        MutableEvent event = new MutableEvent(owner, writer, writerSignedBtreeRootHash);
-                        for (Consumer<? super MutableEvent> listener : listeners) {
-                            listener.accept(event);
-                        }
+                        List<MutableEvent> events = List.of(new MutableEvent(owner, writer, writerSignedBtreeRootHash));
+                        for (Consumer<? super List<MutableEvent>> listener : listeners)
+                            listener.accept(events);
                     }
                     return res;
                 });
@@ -44,12 +45,11 @@ public class MutableEventPropagator implements MutablePointers {
         return target.setPointers(owner, updates)
                 .thenApply(res -> {
                     if (res) {
-                        for (SignedPointerUpdate u : updates) {
-                            MutableEvent event = new MutableEvent(owner, u.writer, u.signed);
-                            for (Consumer<? super MutableEvent> listener : listeners) {
-                                listener.accept(event);
-                            }
-                        }
+                        List<MutableEvent> events = updates.stream()
+                                .map(up -> new MutableEvent(owner, up.writer, up.signed))
+                                .collect(Collectors.toList());
+                        for (Consumer<? super List<MutableEvent>> listener : listeners)
+                            listener.accept(events);
                     }
                     return res;
                 });
