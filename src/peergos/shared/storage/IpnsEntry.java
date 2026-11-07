@@ -29,6 +29,10 @@ public class IpnsEntry {
     public CompletableFuture<ResolutionRecord> getValue(Multihash signer, peergos.shared.Crypto crypto) {
         ResolutionRecord result = getValue();
         // hard code legacy RSA rotations to avoid an RSA implementation in client
+        if (signer.equals(Multihash.fromBase58("QmVdFZgHnEgcedCS2G2ZNiEN59LuVrnRm7z3yXtEBv2XiF")) &&
+                result.moved && result.host.isPresent() &&
+                result.host.get().equals(Multihash.fromBase58("12D3KooWECxU4RW4PbhczgwP6dduYBTjT5Bfg2HByR3kiSDEdnUa")))
+            return Futures.of(result);
         if (signer.equals(Multihash.fromBase58("QmPqn9a1tJLpMtaCz1DSQNMAfsv6qXEx6XU2eLMTc2DVV4")) &&
                 result.moved && result.host.isPresent() &&
                 result.host.get().equals(Multihash.fromBase58("12D3KooWEnCzE4uSeniFaCGXQuV1UnYkvqvbQJnYC363S2abgknr")))

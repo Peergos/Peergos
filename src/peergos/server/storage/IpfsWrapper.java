@@ -53,6 +53,8 @@ public class IpfsWrapper implements AutoCloseable {
     public static final String DEFAULT_BOOTSTRAP_LIST = Stream.of(
             "/ip4/172.104.157.121/tcp/4001/p2p/QmVdFZgHnEgcedCS2G2ZNiEN59LuVrnRm7z3yXtEBv2XiF",
             "/ip6/2a01:7e01::f03c:92ff:fe26:f671/tcp/4001/p2p/QmVdFZgHnEgcedCS2G2ZNiEN59LuVrnRm7z3yXtEBv2XiF",
+            "/ip4/172.104.157.121/tcp/4002/p2p/12D3KooWECxU4RW4PbhczgwP6dduYBTjT5Bfg2HByR3kiSDEdnUa",
+            "/ip6/2a01:7e01::f03c:92ff:fe26:f671/tcp/4002/p2p/12D3KooWECxU4RW4PbhczgwP6dduYBTjT5Bfg2HByR3kiSDEdnUa",
             "/ip4/172.104.143.23/tcp/4001/p2p/12D3KooWFv6ZcoUKyaDBB7nR5SQg6HpmEbDXad48WyFSyEk7xrSR",
             "/ip6/2a01:7e01::f03c:92ff:fee5:154a/tcp/4001/p2p/12D3KooWFv6ZcoUKyaDBB7nR5SQg6HpmEbDXad48WyFSyEk7xrSR",
             "/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",

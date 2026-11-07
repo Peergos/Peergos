@@ -101,7 +101,10 @@ public class Main extends Builder {
             "Give it the port the old identity used, and ipfs-swarm-port a new one.", false);
     public static final String PEERGOS_IDENTITY_HASH = "z59vuwzfFDp3ZA8ZpnnmHEuMtyA1q34m3Th49DYXQVJntWpxdGrRqXi";
     /** Every peerid the pki node has had, the current one last. Saved configs naming an earlier one are migrated. */
-    public static final List<String> PKI_NODE_IDS = List.of("QmVdFZgHnEgcedCS2G2ZNiEN59LuVrnRm7z3yXtEBv2XiF");
+    public static final List<String> PKI_NODE_IDS = List.of(
+            "QmVdFZgHnEgcedCS2G2ZNiEN59LuVrnRm7z3yXtEBv2XiF",
+            "12D3KooWECxU4RW4PbhczgwP6dduYBTjT5Bfg2HByR3kiSDEdnUa"
+    );
     public static final Command.Arg ARG_HTTP_PROXY = new Command.Arg("http_proxy", "Use a http proxy for all requests, format host:port", false);
     public static final Command.Arg ARG_SERVER_URL = new Command.Arg("server-url", "Address of the remote Peergos or self-hosted server to use in app/proxy mode", false);
     public static final Command.Arg ARG_NATIVE_TWEETNACL_PATH = new Command.Arg("native-tweetnacl-path",
