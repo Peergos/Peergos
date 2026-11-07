@@ -163,7 +163,9 @@ public class JdbcIpnsAndSocial {
         if (requests == null)
             return CompletableFuture.completedFuture(new byte[4]);
 
+        // skip malformed requests stored before they were rejected on arrival
         CborObject.CborList resp = new CborObject.CborList(Arrays.asList(requests).stream()
+                .filter(req -> BlindFollowRequest.parse(req.data).isPresent())
                 .map(req -> CborObject.fromByteArray(req.data))
                 .collect(Collectors.toList()));
         return CompletableFuture.completedFuture(resp.serialize());

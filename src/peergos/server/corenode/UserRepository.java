@@ -42,6 +42,9 @@ public class UserRepository implements SocialNetwork, MutablePointers {
 
     @Override
     public CompletableFuture<Boolean> sendFollowRequest(PublicKeyHash target, byte[] encryptedPermission) {
+        // anyone can send one, and a malformed one would stop the target logging in
+        if (BlindFollowRequest.parse(encryptedPermission).isEmpty())
+            return CompletableFuture.completedFuture(false);
         return store.addFollowRequest(target, encryptedPermission);
     }
 
