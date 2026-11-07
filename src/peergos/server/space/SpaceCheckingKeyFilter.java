@@ -816,8 +816,8 @@ public class SpaceCheckingKeyFilter implements SpaceUsage, BulkCommitStorage.Com
     /** Reserve the bytes of a write that is about to be made, if it fits in the owner's quota and every cap over
      *  the writer, or refuse it.
      *
-     * @return what gives the reservation back, for a write that is then refused; one that lands is
-     *         confirmed when its pointer update is processed
+     * @return what gives the reservation back, which a refused write holds under its transaction until that is
+     *         closed; one that lands is confirmed when its pointer update is processed
      */
     private Runnable reserve(PublicKeyHash owner, PublicKeyHash writer, int size) {
         String username;
@@ -894,7 +894,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage, BulkCommitStorage.Com
      *  applied, and one that brings the user back within quota is let through.
      *
      * @param deltas computes the change in stored bytes, only called when the write would be rejected
-     * @return what gives back the bytes reserved for it, if the commit is refused after all
+     * @return what gives back the bytes reserved for it, held under the commit's transaction if it is refused
      */
     @Override
     public Runnable allowCommit(PublicKeyHash owner, PublicKeyHash writer, int written, Supplier<Map<PublicKeyHash, Long>> deltas) {
