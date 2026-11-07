@@ -1117,6 +1117,98 @@ public class WriterQuotaTests {
         assertCannotCommit(child, ownerKey, "a key a commit that never landed named under two parents");
     }
 
+    /** The sharee names a key the server won't read in the shared folder's root: the folder's own block, which needs a BAT */
+    private static void nameAnUnreadableKey(UserContext sharee, FileWrapper shared) {
+        PublicKeyHash ownerKey = shared.owner();
+        SigningPrivateKeyAndPublicHash writer = shared.signingPair();
+        OwnerProof unreadable = new OwnerProof(new PublicKeyHash((Cid) shared.getPointer().fileAccess.committedHash().get()), new byte[96]);
+        NetworkAccess net = sharee.network.clear();
+        net.synchronizer.applyComplexUpdate(ownerKey, writer, (s, committer) -> IpfsTransaction.call(ownerKey, tid -> {
+            CommittedWriterData current = s.get(writer);
+            return committer.commit(ownerKey, writer, current.props.get().addNamedKey("unreadable", unreadable), current, tid);
+        }, net.dhtClient)).join();
+    }
+
+    /** A commit creating a writer is refused, its parent's committed root naming a key the server won't read: the
+     *  registration goes with it, as that root doesn't name the writer, whatever else it names */
+    @Test
+    public void aRefusedCommitTakesBackItsWriterUnderARootNamingAnUnreadableKey() throws Exception {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        FileWrapper shared = sharee.getByPath(sharedDir(owner, "team", sharee)).join().get();
+        PublicKeyHash ownerKey = shared.owner();
+        SigningPrivateKeyAndPublicHash parent = shared.signingPair();
+        CommittedWriterData before = network.clear().synchronizer.getValue(ownerKey, parent.publicKeyHash).join().get(parent);
+        nameAnUnreadableKey(sharee, shared);
+        awaitUsageUpdate();
+
+        // named under the parent's root from before that key, which vouches for it, over a pointer that has moved on
+        SigningKeyPair pair = SigningKeyPair.random(crypto.random, crypto.signer);
+        NetworkAccess net = network.clear();
+        SigningPrivateKeyAndPublicHash[] child = new SigningPrivateKeyAndPublicHash[1];
+        try {
+            net.synchronizer.applyComplexUpdate(ownerKey, parent, (s, committer) -> IpfsTransaction.call(ownerKey, tid ->
+                    parent.secret.signMessage(pair.publicSigningKey.serialize())
+                            .thenCompose(sig -> net.dhtClient.putSigningKey(sig, ownerKey, parent.publicKeyHash, pair.publicSigningKey, tid))
+                            .thenCompose(childHash -> {
+                                child[0] = new SigningPrivateKeyAndPublicHash(childHash, pair.secretSigningKey);
+                                return OwnerProof.build(child[0], parent.publicKeyHash);
+                            })
+                            .thenCompose(proof -> before.props.get().addOwnedKeyAndCommit(ownerKey, parent, proof, before.hash, before.sequence, net, committer, tid))
+                            .thenCompose(named -> WriterData.createEmpty(ownerKey, child[0], net.dhtClient, crypto.hasher, tid)
+                                    .thenCompose(wd -> committer.commit(ownerKey, child[0], wd, new CommittedWriterData(MaybeMultihash.empty(), Optional.empty(), Optional.empty()), tid))
+                                    .thenApply(named::mergeAndOverwriteWith)), net.dhtClient)).join();
+            Assert.fail("A commit over a moved pointer landed");
+        } catch (Exception refused) {
+            String message = String.valueOf(peergos.shared.util.Exceptions.getRootCause(refused).getMessage());
+            Assert.assertTrue(message, message.contains("PointerCAS") || message.contains("Pointers changed"));
+        }
+        Assert.assertFalse(usageStore().getOwnedKeys(parent.publicKeyHash).contains(child[0].publicKeyHash));
+        assertCannotCommit(child[0], ownerKey, "a key whose creating commit was refused");
+    }
+
+    /** As above, for a registration taken back once it expires */
+    @Test
+    public void anExpiredRegistrationUnderARootNamingAnUnreadableKeyIsTakenBack() throws Exception {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        FileWrapper shared = sharee.getByPath(sharedDir(owner, "team", sharee)).join().get();
+        PublicKeyHash ownerKey = shared.owner();
+        SigningPrivateKeyAndPublicHash parent = shared.signingPair();
+        nameAnUnreadableKey(sharee, shared);
+        awaitUsageUpdate();
+        SigningPrivateKeyAndPublicHash child = newKeyUnder(ownerKey, parent);
+
+        quotaFilter().registerNewWriter(ownerKey, parent.publicKeyHash, child.publicKeyHash, Optional.empty());
+        anotherServer().takeBackExpired(Long.MAX_VALUE);
+        Assert.assertFalse(usageStore().getOwnedKeys(parent.publicKeyHash).contains(child.publicKeyHash));
+        Assert.assertTrue(usageStore().getProvisional(child.publicKeyHash).isEmpty());
+    }
+
+    /** As above, for another pointer of a writer a commit is still creating: refused, rather than failed on the parent's root */
+    @Test
+    public void aWriterStillBeingCreatedUnderARootNamingAnUnreadableKeySetsNoPointerOfItsOwn() throws Exception {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        FileWrapper shared = sharee.getByPath(sharedDir(owner, "team", sharee)).join().get();
+        PublicKeyHash ownerKey = shared.owner();
+        SigningPrivateKeyAndPublicHash parent = shared.signingPair();
+        nameAnUnreadableKey(sharee, shared);
+        awaitUsageUpdate();
+        SigningPrivateKeyAndPublicHash child = newKeyUnder(ownerKey, parent);
+
+        BulkCommitStorage.Registration creating = quotaFilter().registerNewWriter(ownerKey, parent.publicKeyHash, child.publicKeyHash, Optional.empty());
+        SignedPointerUpdate another = new SignedPointerUpdate(child.publicKeyHash, child.secret.signMessage(new byte[] {1}).join());
+        try {
+            Assert.assertFalse(quotaFilter().isOwnedWriter(ownerKey, another));
+        } finally {
+            creating.undo();
+        }
+    }
+
     /** A quota filter over the server's store with nothing in memory: another server's, or this one's after a restart */
     private static SpaceCheckingKeyFilter anotherServer() throws Exception {
         return serverOver(usageStore());

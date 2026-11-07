@@ -568,12 +568,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         // Only the proof is judged, though: a key that can't be read fails the walk, rather than
         // reading as a key nobody owns, whose space the usage accounting and the garbage collector would then free.
         BiFunction<Set<PublicKeyHash>, OwnerProof, CompletableFuture<Set<PublicKeyHash>>> proofComposer =
-                (acc, proof) -> ownedKeyBytes(owner, proof.ownedKey, ipfs)
-                        // judged inside a future, so bytes that aren't a key fail it rather than throw past it
-                        .thenCompose(raw -> Futures.of(raw)
-                                .thenCompose(bytes -> proof.verifyOwner(PublicSigningKey.fromByteArray(bytes)))
-                                .thenApply(Optional::of)
-                                .exceptionally(invalid -> Optional.empty()))
+                (acc, proof) -> provenOwner(owner, proof, ipfs)
                         .thenApply(claimedWriter -> Stream.concat(acc.stream(), claimedWriter.filter(writer::equals).isPresent() ?
                                 Stream.of(proof.ownedKey) :
                                 Stream.empty()).collect(Collectors.toSet()));
@@ -587,6 +582,39 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                         proofComposer,
                         (a, b) -> Stream.concat(a.stream(), b.stream())
                                 .collect(Collectors.toSet())));
+    }
+
+    /** Whether a writer's root names a key as one it owns, as getDirectOwnedKeys would. Only the key's own proofs are
+     *  read and judged, so other keys the root names, which may not verify or be readable, don't stop it answering. */
+    public static CompletableFuture<Boolean> namesOwnedKey(PublicKeyHash owner,
+                                                           PublicKeyHash writer,
+                                                           MaybeMultihash root,
+                                                           PublicKeyHash key,
+                                                           CommittedWriterData.Retriever retriever,
+                                                           ContentAddressedStorage ipfs,
+                                                           Hasher hasher) {
+        if (! root.isPresent())
+            return Futures.of(false);
+        return retriever.getWriterData((Cid)root.get(), Optional.empty())
+                .thenCompose(wd -> wd.props.get().applyToOwnedKeys(owner, owned -> owned.get(owner, key)
+                                .thenApply(proof -> proof.map(Set::of).orElse(Collections.emptySet())), ipfs, hasher)
+                        .thenApply(inChamp -> Stream.concat(inChamp.stream(), wd.props.get().namedOwnedKeys.values().stream())
+                                .filter(proof -> proof.ownedKey.equals(key))
+                                .collect(Collectors.toList())))
+                .thenCompose(proofs -> Futures.combineAllInOrder(proofs.stream()
+                        .map(proof -> provenOwner(owner, proof, ipfs))
+                        .collect(Collectors.toList())))
+                .thenApply(claimed -> claimed.stream().anyMatch(w -> w.filter(writer::equals).isPresent()));
+    }
+
+    /** The writer a proof says owns its key, if the proof verifies; a key that can't be read fails it */
+    private static CompletableFuture<Optional<PublicKeyHash>> provenOwner(PublicKeyHash owner, OwnerProof proof, ContentAddressedStorage ipfs) {
+        return ownedKeyBytes(owner, proof.ownedKey, ipfs)
+                // judged inside a future, so bytes that aren't a key fail it rather than throw past it
+                .thenCompose(raw -> Futures.of(raw)
+                        .thenCompose(bytes -> proof.verifyOwner(PublicSigningKey.fromByteArray(bytes)))
+                        .thenApply(Optional::of)
+                        .exceptionally(invalid -> Optional.empty()));
     }
 
     /** The encoding of an owned key: inline in its hash, or, for a key made before keys were inlined, a block of its own */
