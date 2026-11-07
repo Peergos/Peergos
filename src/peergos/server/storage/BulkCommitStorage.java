@@ -48,11 +48,11 @@ public class BulkCommitStorage extends DelegatingStorage {
     public interface CommitQuota {
         Runnable allowCommit(PublicKeyHash owner, PublicKeyHash writer, int written, Supplier<Map<PublicKeyHash, Long>> deltas);
 
-        void reservedAhead(TransactionId tid, Runnable release);
+        void reservedAhead(PublicKeyHash owner, TransactionId tid, Runnable release);
 
-        void namedAhead(TransactionId tid);
+        void namedAhead(PublicKeyHash owner, TransactionId tid);
 
-        void closed(TransactionId tid);
+        void closed(PublicKeyHash owner, TransactionId tid);
     }
 
     private final ContentAddressedStorage target;
@@ -120,7 +120,7 @@ public class BulkCommitStorage extends DelegatingStorage {
                                                         if (signed.isEmpty()) {
                                                             landed[0] = true;
                                                             // reachable only once a later commit in this transaction names them
-                                                            releases.forEach(r -> quota.reservedAhead(tid, r));
+                                                            releases.forEach(r -> quota.reservedAhead(owner, tid, r));
                                                             return Futures.of(written);
                                                         }
                                                         return pointers.setPointers(owner, signed)
@@ -129,7 +129,7 @@ public class BulkCommitStorage extends DelegatingStorage {
                                                                         landed[0] = true;
                                                                         registered.forEach(Registration::landed);
                                                                         // what came ahead in this transaction is named now, and confirmed when the pointers are processed
-                                                                        quota.namedAhead(tid);
+                                                                        quota.namedAhead(owner, tid);
                                                                         return Futures.of(written);
                                                                     }
                                                                     // the pointers moved after they were checked and none was set: the commit
@@ -145,7 +145,7 @@ public class BulkCommitStorage extends DelegatingStorage {
                                                     // open: it stays reserved under it until it is closed, or for a day
                                                     .whenComplete((written, refused) -> {
                                                         if (refused != null && ! landed[0])
-                                                            releases.forEach(r -> quota.reservedAhead(tid, r));
+                                                            releases.forEach(r -> quota.reservedAhead(owner, tid, r));
                                                     })))
                                             // a commit refused before its pointers landed takes back the writers it registered, the
                                             // last first: a writer named under two parents stays provisional until its first edge goes
@@ -161,7 +161,7 @@ public class BulkCommitStorage extends DelegatingStorage {
     public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
         return target.closeTransaction(owner, tid)
                 .thenApply(closed -> {
-                    quota.closed(tid);
+                    quota.closed(owner, tid);
                     return closed;
                 });
     }

@@ -773,40 +773,41 @@ public class SpaceCheckingKeyFilter implements SpaceUsage, BulkCommitStorage.Com
 
     /** A write ahead of the pointer update that will name its blocks: reserved until that update lands or its transaction closes */
     public boolean allowWrite(PublicKeyHash owner, PublicKeyHash writer, int size, TransactionId tid) {
-        reservedAhead(tid, reserve(owner, writer, size));
+        reservedAhead(owner, tid, reserve(owner, writer, size));
         return true;
     }
 
-    // Reservations of blocks written ahead of the pointer update naming them, by transaction. Bounded: a
-    // transaction no update ever follows loses its entry, and its reservations expire on their own.
-    private final Map<String, List<Runnable>> reservedAhead = new LinkedHashMap<String, List<Runnable>>() {
+    // Reservations of blocks written ahead of the pointer update naming them, by owner and transaction, as a
+    // transaction is the owner's. Bounded: a transaction no update ever follows loses its entry, and its
+    // reservations expire on their own.
+    private final Map<Pair<PublicKeyHash, String>, List<Runnable>> reservedAhead = new LinkedHashMap<>() {
         @Override
-        protected boolean removeEldestEntry(Map.Entry<String, List<Runnable>> eldest) {
+        protected boolean removeEldestEntry(Map.Entry<Pair<PublicKeyHash, String>, List<Runnable>> eldest) {
             return size() > 10_000;
         }
     };
 
     @Override
-    public void reservedAhead(TransactionId tid, Runnable release) {
+    public void reservedAhead(PublicKeyHash owner, TransactionId tid, Runnable release) {
         synchronized (reservedAhead) {
-            reservedAhead.computeIfAbsent(tid.id, t -> new ArrayList<>()).add(release);
+            reservedAhead.computeIfAbsent(new Pair<>(owner, tid.id), t -> new ArrayList<>()).add(release);
         }
     }
 
     /** The transaction's pointer update has landed: what was reserved ahead is confirmed when it is processed */
     @Override
-    public void namedAhead(TransactionId tid) {
+    public void namedAhead(PublicKeyHash owner, TransactionId tid) {
         synchronized (reservedAhead) {
-            reservedAhead.remove(tid.id);
+            reservedAhead.remove(new Pair<>(owner, tid.id));
         }
     }
 
     /** The transaction was closed: its blocks are no longer held, and what it still holds reserved is given back */
     @Override
-    public void closed(TransactionId tid) {
+    public void closed(PublicKeyHash owner, TransactionId tid) {
         List<Runnable> releases;
         synchronized (reservedAhead) {
-            releases = reservedAhead.remove(tid.id);
+            releases = reservedAhead.remove(new Pair<>(owner, tid.id));
         }
         if (releases != null)
             releases.forEach(Runnable::run);

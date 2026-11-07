@@ -2009,6 +2009,30 @@ public class WriterQuotaTests {
         service.storage.putRawBatch(ownerKey, writer, more, next, x -> {}, crypto.hasher).join();
     }
 
+    /** A transaction is the owner's: closing its id under another owner leaves it open, its blocks kept from collection */
+    @Test
+    public void closingATransactionUnderAnotherOwnerKeepsItsReservations() throws Exception {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        Path dir = sharedDir(owner, "team", sharee);
+        owner.setWriteShareQuota(dir, Optional.of(2048L * KiB)).join();
+        awaitUsageUpdate();
+        FileWrapper shared = sharee.getByPath(dir).join().get();
+        PublicKeyHash ownerKey = shared.owner();
+        SigningPrivateKeyAndPublicHash writer = shared.signingPair();
+
+        TransactionId tid = service.storage.startTransaction(ownerKey).join();
+        List<Cid> ahead = service.storage.putRawBatch(ownerKey, writer, randomBlocks(15, 100 * KiB), tid, x -> {}, crypto.hasher).join();
+        service.storage.closeTransaction(sharee.signer.publicKeyHash, tid).join();
+        DeletableContentAddressedStorage local = field(serverBulkCommit(service.storage), "unfiltered");
+        Assert.assertTrue("the owner's transaction is still open", local.getOpenTransactionBlocks(ownerKey).containsAll(ahead));
+
+        // 1500 KiB still held, so 700 KiB more doesn't fit under the 2 MiB cap
+        TransactionId next = service.storage.startTransaction(ownerKey).join();
+        assertRefusedForTheCap(() -> service.storage.putRawBatch(ownerKey, writer, randomBlocks(7, 100 * KiB), next, x -> {}, crypto.hasher).join());
+    }
+
     /** The server's bulk commit layer over a block store that is throttled once, refusing a raw write with the
      *  RateLimitException the server answers with a 429 */
     private static BulkCommitStorage throttledOnce() throws Exception {
