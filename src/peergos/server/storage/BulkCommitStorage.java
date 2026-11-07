@@ -290,10 +290,18 @@ public class BulkCommitStorage extends DelegatingStorage {
                     continue;
                 // the same proof the usage store's self heal walks: the owned key champ and the named
                 // owned keys, each carrying a signature by the writer claiming to own it
-                for (PublicKeyHash owned : DeletableContentAddressedStorage.getDirectOwnedKeys(owner, w.writer,
-                        updates.get(i).map(u -> u.updated).orElse(MaybeMultihash.empty()),
-                        (h, seq) -> ContentAddressedStorage.getWriterData(owner, h, seq, withCallBlocks),
-                        withCallBlocks, hasher).join())
+                // A root whose owned keys can't be walked, one naming a block this server won't read for instance,
+                // which a writer can put in its own root, vouches for nothing rather than failing every commit that
+                // carries it, the owner's revocation of that writer included. A writer nobody vouches for is still
+                // refused its blocks, so this only ever registers fewer writers.
+                Set<PublicKeyHash> ownedKeys = Futures.of(i)
+                        .thenCompose(at -> DeletableContentAddressedStorage.getDirectOwnedKeys(owner, w.writer,
+                                updates.get(at).map(u -> u.updated).orElse(MaybeMultihash.empty()),
+                                (h, seq) -> ContentAddressedStorage.getWriterData(owner, h, seq, withCallBlocks),
+                                withCallBlocks, hasher))
+                        .exceptionally(unwalkable -> Collections.emptySet())
+                        .join();
+                for (PublicKeyHash owned : ownedKeys)
                     ownedBy.computeIfAbsent(owned, k -> new ArrayList<>()).add(w.writer);
             }
             List<PublicKeyHash> vouched = remaining.stream()

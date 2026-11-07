@@ -5,6 +5,7 @@ import peergos.server.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
@@ -14,6 +15,7 @@ import peergos.shared.util.*;
 
 import java.nio.file.*;
 import java.util.*;
+import java.util.function.*;
 
 /** Revoking write access leaves the old key's signature valid, but nothing owns it any more, so the server must not
  *  take writes from it: they would land in space the owner can't reach but pays for.
@@ -123,5 +125,54 @@ public class RevokedWriterTests {
         assertRefused("A write with a revoked key", () -> keptFolder.uploadOrReplaceFile("added",
                 AsyncReader.build(data), data.length, kept.network, crypto, () -> false, x -> {}).join());
         Assert.assertTrue(signIn(owner.username).getByPath(dir.resolve("added")).join().isEmpty());
+    }
+
+    @Test
+    public void aForgedOwnerProofDoesntStopARevocation() {
+        assertRevocableDespite("p", shared -> new OwnerProof(shared.signingPair().publicKeyHash, new byte[96]));
+    }
+
+    @Test
+    public void aProofNamingNoKeyDoesntStopARevocation() {
+        PublicKeyHash notAKey = new PublicKeyHash(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.id, new byte[0]));
+        assertRevocableDespite("k", shared -> new OwnerProof(notAKey, new byte[96]));
+    }
+
+    /** A block that needs a BAT to be read is no key either, but the walk can't read it to find that out */
+    @Test
+    public void aProofNamingAProtectedBlockDoesntStopARevocation() {
+        assertRevocableDespite("b", shared -> new OwnerProof(
+                new PublicKeyHash((Cid) shared.getPointer().fileAccess.committedHash().get()), new byte[96]));
+    }
+
+    /** The sharee names a key in the shared folder's root with a proof that doesn't verify, or one the server can't read */
+    private void assertRevocableDespite(String prefix, Function<FileWrapper, OwnerProof> forge) {
+        String suffix = "" + Math.abs(random.nextInt() % 1_000_000);
+        UserContext owner = signIn(prefix + "o" + suffix);
+        UserContext sharee = signIn(prefix + "s" + suffix);
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        owner.getUserRoot().join().mkdir("dir", owner.network, false, owner.mirrorBatId(), crypto).join();
+        Path dir = PathUtil.get(owner.username, "dir");
+        owner.shareWriteAccessWith(dir, Set.of(sharee.username)).join();
+
+        FileWrapper shared = sharee.getByPath(dir).join().get();
+        PublicKeyHash ownerKey = shared.owner();
+        SigningPrivateKeyAndPublicHash writer = shared.signingPair();
+        NetworkAccess net = sharee.network.clear();
+        OwnerProof forged = forge.apply(shared);
+        net.synchronizer.applyComplexUpdate(ownerKey, writer, (s, committer) -> IpfsTransaction.call(ownerKey, tid -> {
+            CommittedWriterData current = s.get(writer);
+            return committer.commit(ownerKey, writer, current.props.get().addNamedKey("forged", forged), current, tid);
+        }, net.dhtClient)).join();
+        awaitUsageUpdate();
+
+        // the owner can still revoke them, and the old key writes no more
+        UserContext kept = signIn(sharee.username);
+        FileWrapper keptFolder = kept.getByPath(dir).join().get();
+        owner.unShareWriteAccessWith(dir, Set.of(sharee.username)).join();
+        awaitUsageUpdate();
+        byte[] data = randomData(3000);
+        assertRefused("A write with a revoked key", () -> keptFolder.uploadOrReplaceFile("added",
+                AsyncReader.build(data), data.length, kept.network, crypto, () -> false, x -> {}).join());
     }
 }

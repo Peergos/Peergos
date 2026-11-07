@@ -1020,10 +1020,19 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         }
     }
 
-    /** Whether the parent's committed root names the writer as one it owns */
+    /** Whether the parent's committed root names the writer as one it owns. Only the writer's own proof is read: the
+     *  parent may be a sharee's, whose root can name a key this server won't read, and that mustn't keep a
+     *  registration whose commit was refused. A root whose way to that proof can't be read, its owned key champ
+     *  pointed at such a block for instance, names nothing, as it vouches for nothing when a commit registers one. */
     private boolean namesWriter(PublicKeyHash owner, PublicKeyHash parent, PublicKeyHash writer) {
         MaybeMultihash root = mutable.getPointerTarget(owner, parent, dht).join().updated;
-        return directOwnedKeys(owner, parent, root, List.of(ourId.bareMultihash()), ourId, dht, hasher).contains(writer);
+        List<Multihash> us = List.of(ourId.bareMultihash());
+        try {
+            return DeletableContentAddressedStorage.directlyOwnsKey(owner, parent, root, writer,
+                    (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht), dht, hasher).join();
+        } catch (Exception unreadable) {
+            return false;
+        }
     }
 
     /** A write was attempted with a writer that is absent from the usage store. If the writer is reachable through
