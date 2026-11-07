@@ -666,7 +666,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         List<ProvisionalWriter> creating = new ArrayList<>();
         for (ProvisionalWriter p : usageStore.getProvisional(update.writer)) {
             // one expired, but not taken back yet, still holds its writer back
-            if (p.expires() <= now && takeBack(p))
+            if (p.expires() <= now && takeBack(p, now))
                 continue;
             if (p.newWriter())
                 creating.add(p);
@@ -692,7 +692,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
      *  restarted, or failed to, before the commit landed or was refused */
     public void takeBackExpired(long now) {
         for (ProvisionalWriter p : usageStore.getExpiredProvisional(now))
-            takeBack(p);
+            takeBack(p, now);
     }
 
     /** As an undo: the edge goes unless the committed parent names the writer, then the writer unless something owns
@@ -700,7 +700,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
      *
      * @return whether it was taken back
      */
-    private boolean takeBack(ProvisionalWriter p) {
+    private boolean takeBack(ProvisionalWriter p, long now) {
         Object lock = healLocks.computeIfAbsent(p.owner(), o -> new Object());
         synchronized (lock) {
             try {
@@ -716,9 +716,22 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 if (p.newWriter())
                     for (ProvisionalWriter other : usageStore.getProvisional(p.writer()))
                         if (! other.newWriter() && Arrays.equals(other.signed().orElse(null), p.signed().orElse(null))
-                                && ! takeBack(other))
+                                && ! takeBack(other, now))
                             return false;
-                if (! namesWriter(p.owner(), p.parent(), p.writer()))
+                MaybeMultihash root = mutable.getPointerTarget(p.owner(), p.parent(), dht).join().updated;
+                boolean named;
+                try {
+                    named = rootOwnsWriter(p.owner(), p.parent(), root, p.writer());
+                } catch (Exception unreadable) {
+                    // A read may fail only for now, and a writer whose commit landed mustn't be forgotten for that, its
+                    // cap with it, so the row stays to be tried again. One still failing once the row has been expired
+                    // as long again is taken as the root's own doing, its owned key champ pointed at a block this
+                    // server won't read for instance, and names nothing.
+                    if (now < p.expires() + PROVISIONAL_MILLIS)
+                        return false;
+                    named = false;
+                }
+                if (! named)
                     usageStore.removeOwnedKey(p.parent(), p.writer());
                 if (! owned(usageStore, p.owner(), p.writer()))
                     forgetWriter(usernameOf(p.owner()), p.owner(), p.writer());
@@ -1026,13 +1039,18 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
      *  pointed at such a block for instance, names nothing, as it vouches for nothing when a commit registers one. */
     private boolean namesWriter(PublicKeyHash owner, PublicKeyHash parent, PublicKeyHash writer) {
         MaybeMultihash root = mutable.getPointerTarget(owner, parent, dht).join().updated;
-        List<Multihash> us = List.of(ourId.bareMultihash());
         try {
-            return DeletableContentAddressedStorage.directlyOwnsKey(owner, parent, root, writer,
-                    (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht), dht, hasher).join();
+            return rootOwnsWriter(owner, parent, root, writer);
         } catch (Exception unreadable) {
             return false;
         }
+    }
+
+    /** Whether a root of the parent directly owns the writer, failing if the way to the writer's proof can't be read */
+    private boolean rootOwnsWriter(PublicKeyHash owner, PublicKeyHash parent, MaybeMultihash root, PublicKeyHash writer) {
+        List<Multihash> us = List.of(ourId.bareMultihash());
+        return DeletableContentAddressedStorage.directlyOwnsKey(owner, parent, root, writer,
+                (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht), dht, hasher).join();
     }
 
     /** A write was attempted with a writer that is absent from the usage store. If the writer is reachable through

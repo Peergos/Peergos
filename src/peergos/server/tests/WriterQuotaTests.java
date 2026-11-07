@@ -1232,14 +1232,71 @@ public class WriterQuotaTests {
         Assert.assertTrue(usageStore().getProvisional(child.publicKeyHash).isEmpty());
     }
 
+    /** A writer whose commit landed, its row left behind by a server that stopped before removing it, isn't forgotten,
+     *  its cap with it, because its parent's root can't be read for a moment as the row is found expired */
+    @Test
+    public void aReadFailingAsALandedWritersRowExpiresKeepsItsCap() throws Exception {
+        UserContext owner = signUp();
+        UserContext sharee = signUp();
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(sharee));
+        Path dir = sharedDir(owner, "team", sharee);
+        owner.setWriteShareQuota(dir, Optional.of(256L * KiB)).join();
+        awaitUsageUpdate();
+        FileWrapper shared = sharee.getByPath(dir).join().get();
+        PublicKeyHash ownerKey = shared.owner();
+        PublicKeyHash writer = shared.signingPair().publicKeyHash;
+        Set<PublicKeyHash> parents = usageStore().getParents(writer);
+        Assert.assertEquals(1, parents.size());
+        PublicKeyHash parent = parents.iterator().next();
+        long now = System.currentTimeMillis();
+        usageStore().addProvisional(new WriterUsageStore.ProvisionalWriter(writer, parent, ownerKey, true, Optional.empty(), now - 1));
+
+        Cid parentRoot = (Cid) service.mutable.getPointerTarget(ownerKey, parent, service.storage).join().updated.get();
+        boolean[] fail = {true};
+        serverOver(usageStore(), unreadable(parentRoot, fail)).takeBackExpired(now);
+        fail[0] = false;
+
+        Assert.assertTrue(anotherServer().isOwnedWriter(ownerKey, writer));
+        Assert.assertEquals(Optional.of(256L * KiB), usageStore().getWriterQuota(writer));
+        assertRefusedForTheCap(() -> upload(sharee, dir, "big", 1024 * KiB));
+        // and its row goes once the root can be read
+        anotherServer().takeBackExpired(now);
+        Assert.assertTrue(usageStore().getProvisional(writer).isEmpty());
+        Assert.assertTrue(usageStore().getOwnedKeys(parent).contains(writer));
+    }
+
+    /** The server's blocks, with one of them failing to be read while the flag is set */
+    private static DeletableContentAddressedStorage unreadable(Cid block, boolean[] fail) throws Exception {
+        DeletableContentAddressedStorage dht = (DeletableContentAddressedStorage) filterField("dht");
+        return (DeletableContentAddressedStorage) java.lang.reflect.Proxy.newProxyInstance(
+                DeletableContentAddressedStorage.class.getClassLoader(), new Class<?>[] {DeletableContentAddressedStorage.class},
+                (proxy, m, args) -> {
+                    if (fail[0] && args != null && Arrays.asList(args).contains(block)) {
+                        IllegalStateException unreachable = new IllegalStateException("Storage unreachable");
+                        if (m.getReturnType() == java.util.concurrent.CompletableFuture.class)
+                            return Futures.errored(unreachable);
+                        throw unreachable;
+                    }
+                    try {
+                        return m.invoke(dht, args);
+                    } catch (java.lang.reflect.InvocationTargetException e) {
+                        throw e.getCause();
+                    }
+                });
+    }
+
     /** A quota filter over the server's store with nothing in memory: another server's, or this one's after a restart */
     private static SpaceCheckingKeyFilter anotherServer() throws Exception {
         return serverOver(usageStore());
     }
 
     private static SpaceCheckingKeyFilter serverOver(UsageStore store) throws Exception {
+        return serverOver(store, (DeletableContentAddressedStorage) filterField("dht"));
+    }
+
+    private static SpaceCheckingKeyFilter serverOver(UsageStore store, DeletableContentAddressedStorage dht) throws Exception {
         SpaceCheckingKeyFilter filter = new SpaceCheckingKeyFilter((peergos.shared.corenode.CoreNode) filterField("core"),
-                (MutablePointers) filterField("mutable"), (DeletableContentAddressedStorage) filterField("dht"),
+                (MutablePointers) filterField("mutable"), dht,
                 (Hasher) filterField("hasher"), (QuotaAdmin) filterField("quotaAdmin"), store,
                 (Long) filterField("quotaUploadLimitSeconds"));
         // its sweep stopped, so that only what a test does here takes registrations back
