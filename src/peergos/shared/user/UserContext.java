@@ -3513,8 +3513,6 @@ public class UserContext {
         return entry.pointer != null && entry.ownerName != null && ! entry.ownerName.equals(username);
     }
 
-    /** Requests we can't decrypt or that are malformed would otherwise be skipped on every login without ever
-     *  being removed, filling our queue and stopping the post-quantum upgrade, which waits for an empty one. */
     private CompletableFuture<Boolean> removeUnusableFollowRequests(List<BlindFollowRequest> unusable) {
         return Futures.reduceAll(unusable, true,
                 (b, req) -> signer.secret.signMessage(req.serialize())
