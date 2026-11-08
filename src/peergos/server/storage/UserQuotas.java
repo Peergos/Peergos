@@ -92,8 +92,9 @@ public class UserQuotas implements QuotaAdmin {
     @Override
     public CompletableFuture<PaymentProperties> requestQuota(PublicKeyHash owner, byte[] signedRequest, long usage) {
         SpaceUsage.SpaceRequest req = QuotaAdmin.parseQuotaRequest(owner, signedRequest, dht);
-        // TODO check user is signed up to this server
         String username = core.getUsername(owner).join();
+        if (! quotas.hasUser(username))
+            throw new IllegalStateException("User " + username + " is not signed up to this server");
         // it is filed under the name it carries, which the admin's client then verifies against that user's key
         if (! req.username.equals(username))
             throw new IllegalStateException("Space request for " + req.username + " signed by " + username);

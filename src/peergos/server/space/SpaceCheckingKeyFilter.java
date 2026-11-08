@@ -553,6 +553,8 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     public CompletableFuture<PaymentProperties> requestQuota(PublicKeyHash owner, byte[] signedRequest, long claimedUsage) {
         String username = core.getUsername(owner).join();
         UserUsage usage = usageStore.getUsage(username);
+        if (usage == null)
+            return Futures.errored(new IllegalStateException("User " + username + " is not signed up to this server"));
         return quotaAdmin.requestQuota(owner, signedRequest,  usage.totalUsage());
     }
 

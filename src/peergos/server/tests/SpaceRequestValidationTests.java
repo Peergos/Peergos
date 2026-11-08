@@ -64,6 +64,14 @@ public class SpaceRequestValidationTests {
             Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("in the future"));
         }
 
+        // the victim has no quota here, so isn't one of this server's users
+        try {
+            quotas.requestQuota(victim.signer.publicKeyHash, sign(victim, victim.username, now), 0).join();
+            Assert.fail("accepted a request from a user of another server");
+        } catch (Exception expected) {
+            Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("not signed up to this server"));
+        }
+
         quotas.requestQuota(attacker.signer.publicKeyHash, sign(attacker, attacker.username, now), 0).join();
         byte[] latest = sign(attacker, attacker.username, now + 1);
         quotas.requestQuota(attacker.signer.publicKeyHash, latest, 0).join();
