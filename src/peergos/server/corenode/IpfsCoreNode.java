@@ -392,17 +392,22 @@ public class IpfsCoreNode implements CoreNode {
                                                                                             ProofOfWork proof) {
         if (chains.containsKey(username))
             return Futures.errored(new IllegalStateException("User already exists!"));
+        if (! chain.claim.username.equals(username))
+            return Futures.errored(new IllegalStateException("Username different from that in claim!"));
+        // a repeat changes nothing, so isn't rate limited: counting it let one proof be replayed to raise the
+        // difficulty for everyone
+        if (chain.owner.equals(reservedUsernames.get(username)))
+            return Futures.of(Either.a(new PaymentProperties(0)));
         // reserve the username after checking proof of work is sufficient
-        Optional<RequiredDifficulty> retry = enforceRateLimit(proof, Arrays.asList(chain));
+        Optional<RequiredDifficulty> retry = checkProofOfWork(proof, Arrays.asList(chain));
         if (retry.isPresent())
             return Futures.of(Either.b(retry.get()));
 
-        if (! chain.claim.username.equals(username))
-            return Futures.errored(new IllegalStateException("Username different from that in claim!"));
-        PublicKeyHash identity = reservedUsernames.get(username);
+        PublicKeyHash identity = reservedUsernames.putIfAbsent(username, chain.owner);
         if (identity != null && ! identity.equals(chain.owner))
             return Futures.errored(new IllegalStateException("Username already reserved!"));
-        reservedUsernames.put(username, chain.owner);
+        if (identity == null)
+            difficultyGenerator.addEvent();
         return Futures.of(Either.a(new PaymentProperties(0)));
     }
 
@@ -445,7 +450,10 @@ public class IpfsCoreNode implements CoreNode {
         throw new IllegalStateException("Unimplemented!");
     }
 
-    private Optional<RequiredDifficulty> enforceRateLimit(ProofOfWork proof, List<UserPublicKeyLink> updatedChain) {
+    /** The caller counts the event only once the request has changed something, so a proof replayed with a request
+     *  that fails, or changes nothing, can't raise the difficulty for everyone.
+     */
+    private Optional<RequiredDifficulty> checkProofOfWork(ProofOfWork proof, List<UserPublicKeyLink> updatedChain) {
         byte[] hash = hasher.sha256(ArrayOps.concat(proof.prefix, new CborObject.CborList(updatedChain).serialize())).join();
         difficultyGenerator.updateTime(System.currentTimeMillis());
         int requiredDifficulty = difficultyGenerator.currentDifficulty();
@@ -454,7 +462,6 @@ public class IpfsCoreNode implements CoreNode {
                     requiredDifficulty + " and username " + updatedChain.get(updatedChain.size() - 1).claim.username);
             return Optional.of(new RequiredDifficulty(requiredDifficulty));
         }
-        difficultyGenerator.addEvent();
         return Optional.empty();
     }
 
@@ -503,12 +510,11 @@ public class IpfsCoreNode implements CoreNode {
                     .orElse(Collections.emptyList());
 
             // Check proof of work is sufficient, unless it is an identity change
-            if (rateLimit) {
-                if (existingChain.isEmpty() || existingChain.size() > MAX_FREE_IDENTITY_CHANGES) {
-                    Optional<RequiredDifficulty> retry = enforceRateLimit(proof, updatedChain);
-                    if (retry.isPresent())
-                        return Futures.of(retry);
-                }
+            boolean rateLimited = rateLimit && (existingChain.isEmpty() || existingChain.size() > MAX_FREE_IDENTITY_CHANGES);
+            if (rateLimited) {
+                Optional<RequiredDifficulty> retry = checkProofOfWork(proof, updatedChain);
+                if (retry.isPresent())
+                    return Futures.of(retry);
             }
 
             List<UserPublicKeyLink> mergedChain = UserPublicKeyLink.merge(username, existingChain, updatedChain, ipfs).get();
@@ -534,6 +540,8 @@ public class IpfsCoreNode implements CoreNode {
                     chains.put(username, mergedChain);
                     currentRoot = committed.get(signer).hash;
                     currentSequence = committed.get(signer).sequence;
+                    if (rateLimited)
+                        difficultyGenerator.addEvent();
                     return Optional.empty();
                 });
             }
