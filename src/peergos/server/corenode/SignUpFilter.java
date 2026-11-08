@@ -18,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 import java.util.logging.*;
 
 public class SignUpFilter implements CoreNode {
@@ -33,6 +34,17 @@ public class SignUpFilter implements CoreNode {
     private final DifficultyGenerator startPaidMirrorRateLimiter;
     private final int maxPaidSignupsPerDay;
     private final boolean isPki;
+    private static final int MAX_PENDING_COMPLETIONS = 100;
+    private static final int COMPLETION_RETRIES = 3;
+    private static final long COMPLETION_RETRY_MILLIS = 3_000;
+    private final Semaphore pendingCompletions = new Semaphore(MAX_PENDING_COMPLETIONS);
+    private final Set<String> completing = ConcurrentHashMap.newKeySet();
+    private final ScheduledExecutorService completionScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "paid-completions");
+        t.setDaemon(true);
+        return t;
+    });
+    private final ExecutorService completionFinisher = Threads.newBoundedPool(MAX_PENDING_COMPLETIONS, "paid-completion-finish-");
 
     public SignUpFilter(CoreNode target,
                         QuotaAdmin quotaStore,
@@ -124,29 +136,21 @@ public class SignUpFilter implements CoreNode {
         QuotaAdmin.parseQuotaRequest(username, chain.owner, signedSpaceRequest, dht);
         // take payment, and if successful, finalise account creation
         quotaStore.getQuota(username); // This will throw if the user doesn't exist in quota store
-        PaymentProperties result = quotaStore.requestQuota(username, chain.owner, signedSpaceRequest, 0).join();
-        long quota = quotaStore.getQuota(username);
-        if (quota == 0 && ! result.hasError()) {// try again if no card showed up yet
-            for (int i = 0; i < 3; i++) {
-                LOG.info("Paid signup: no cards available, sleeping for 3s...");
-                try {Thread.sleep(3_000);} catch (InterruptedException e) {}
-                result = quotaStore.requestQuota(username, chain.owner, signedSpaceRequest,0).join();
-                quota = quotaStore.getQuota(username);
-                if (quota > 0 || result.hasError())
-                    break;
-            }
-        }
-        LOG.info("Paid signup: quota="+quota + ", username=" + username);
-        if (quota >= result.desiredQuota && quota > 1024*1024) {// 1 MiB is the deletion quota
-            LOG.info("Successful Paid signup!");
-            AggregatedMetrics.PAID_SIGNUP_SUCCESS.inc();
-            return target.completePaidSignup(username, chain, setupOperations, signedSpaceRequest, proof);
-        } else if (result.hasError()) {
-            LOG.info("Payment error during Paid signup! username=" + username);
-            // payment failed, set desired quota to 0 to prevent future payment attempts
-            quotaStore.removeDesiredQuota(username);
-        }
-        return Futures.of(result);
+        return queueCompletion(username,
+                () -> quotaStore.requestQuota(username, chain.owner, signedSpaceRequest, 0).join(),
+                (result, quota) -> {
+                    LOG.info("Paid signup: quota=" + quota + ", username=" + username);
+                    if (quota >= result.desiredQuota && quota > 1024 * 1024) {// 1 MiB is the deletion quota
+                        LOG.info("Successful Paid signup!");
+                        AggregatedMetrics.PAID_SIGNUP_SUCCESS.inc();
+                        return target.completePaidSignup(username, chain, setupOperations, signedSpaceRequest, proof).join();
+                    } else if (result.hasError()) {
+                        LOG.info("Payment error during Paid signup! username=" + username);
+                        // payment failed, set desired quota to 0 to prevent future payment attempts
+                        quotaStore.removeDesiredQuota(username);
+                    }
+                    return result;
+                });
     }
 
     @Override
@@ -194,31 +198,76 @@ public class SignUpFilter implements CoreNode {
                 .orElseThrow(() -> new IllegalStateException("Unknown user " + username));
         QuotaAdmin.parseQuotaRequest(username, owner, signedSpaceRequest, dht);
         quotaStore.getQuota(username); // This will throw if the user doesn't exist in quota store
-        PaymentProperties result = quotaStore.requestQuota(username, owner, signedSpaceRequest, 0).join();
-        long quota = quotaStore.getQuota(username);
-        if (quota == 0 && ! result.hasError()) {// try again if no card showed up yet
-            for (int i = 0; i < 3; i++) {
-                LOG.info("Paid mirror: no cards available, sleeping for 3s...");
-                try {Thread.sleep(3_000);} catch (InterruptedException e) {}
-                result = quotaStore.requestQuota(username, owner, signedSpaceRequest,0).join();
-                quota = quotaStore.getQuota(username);
-                if (quota > 0 || result.hasError())
-                    break;
-            }
-        }
-        LOG.info("Paid mirror: quota="+quota + ", username=" + username);
-        if (quota >= result.desiredQuota && quota > 1024*1024) {// 1 MiB is the deletion quota
-            LOG.info("Successful Paid mirror!");
-            AggregatedMetrics.PAID_MIRROR_SUCCESS.inc();
+        return queueCompletion(username,
+                () -> quotaStore.requestQuota(username, owner, signedSpaceRequest, 0).join(),
+                (result, quota) -> {
+                    LOG.info("Paid mirror: quota=" + quota + ", username=" + username);
+                    if (quota >= result.desiredQuota && quota > 1024 * 1024) {// 1 MiB is the deletion quota
+                        LOG.info("Successful Paid mirror!");
+                        AggregatedMetrics.PAID_MIRROR_SUCCESS.inc();
 
-            // start mirror
-            target.completePaidMirror(username, mirrorBat, signedSpaceRequest, proof);
-        } else if (result.hasError()) {
-            LOG.info("Payment error during Paid signup! username=" + username);
-            // payment failed, set desired quota to 0 to prevent future payment attempts
-            quotaStore.removeDesiredQuota(username);
+                        // start mirror
+                        target.completePaidMirror(username, mirrorBat, signedSpaceRequest, proof).join();
+                    } else if (result.hasError()) {
+                        LOG.info("Payment error during Paid mirror! username=" + username);
+                        // payment failed, set desired quota to 0 to prevent future payment attempts
+                        quotaStore.removeDesiredQuota(username);
+                    }
+                    return result;
+                });
+    }
+
+    /** Completing a payment can wait up to 9s for a card to show up. Waiting on an api handler let a few requests a
+     *  second hold all of them, as they share one bounded pool, so completions are queued instead, each retried on a
+     *  single thread without blocking it, and replied to when done. The client sees the same response as before.
+     */
+    private CompletableFuture<PaymentProperties> queueCompletion(String username,
+                                                                 Supplier<PaymentProperties> requestQuota,
+                                                                 BiFunction<PaymentProperties, Long, PaymentProperties> finish) {
+        if (! completing.add(username))
+            return Futures.errored(new IllegalStateException("A payment for " + username + " is already being completed"));
+        if (! pendingCompletions.tryAcquire()) {
+            completing.remove(username);
+            return Futures.errored(new IllegalStateException("The server is busy, please try again shortly"));
         }
-        return Futures.of(result);
+        CompletableFuture<PaymentProperties> res = new CompletableFuture<>();
+        res.whenComplete((r, t) -> {
+            completing.remove(username);
+            pendingCompletions.release();
+        });
+        try {
+            completionScheduler.execute(() -> attemptCompletion(username, requestQuota, finish, 0, res));
+        } catch (RejectedExecutionException e) {
+            res.completeExceptionally(e);
+        }
+        return res;
+    }
+
+    private void attemptCompletion(String username,
+                                   Supplier<PaymentProperties> requestQuota,
+                                   BiFunction<PaymentProperties, Long, PaymentProperties> finish,
+                                   int retries,
+                                   CompletableFuture<PaymentProperties> res) {
+        try {
+            PaymentProperties result = requestQuota.get();
+            long quota = quotaStore.getQuota(username);
+            if (quota == 0 && ! result.hasError() && retries < COMPLETION_RETRIES) {// try again if no card showed up yet
+                LOG.info("Paid completion for " + username + ": no cards available, retrying in 3s...");
+                completionScheduler.schedule(() -> attemptCompletion(username, requestQuota, finish, retries + 1, res),
+                        COMPLETION_RETRY_MILLIS, TimeUnit.MILLISECONDS);
+                return;
+            }
+            // finishing writes the new user's data and waits for the pki, so it doesn't hold up the queue
+            completionFinisher.execute(() -> {
+                try {
+                    res.complete(finish.apply(result, quota));
+                } catch (Throwable t) {
+                    res.completeExceptionally(t instanceof CompletionException && t.getCause() != null ? t.getCause() : t);
+                }
+            });
+        } catch (Throwable t) {
+            res.completeExceptionally(t instanceof CompletionException && t.getCause() != null ? t.getCause() : t);
+        }
     }
 
     @Override
@@ -303,6 +352,8 @@ public class SignUpFilter implements CoreNode {
 
     @Override
     public void close() throws IOException {
+        completionScheduler.shutdownNow();
+        completionFinisher.shutdownNow();
         target.close();
     }
 }

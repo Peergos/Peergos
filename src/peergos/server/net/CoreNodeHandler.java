@@ -19,6 +19,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.time.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.logging.*;
 import java.util.zip.*;
 
@@ -48,6 +49,7 @@ public class CoreNodeHandler implements HttpHandler
         String[] subComponents = path.substring(Constants.CORE_URL.length()).split("/");
         String method = subComponents[0];
 
+        boolean repliedLater = false;
         try {
             if (! HttpUtil.allowedQuery(exchange, isPublicServer)) {
                 exchange.sendResponseHeaders(405, 0);
@@ -70,8 +72,9 @@ public class CoreNodeHandler implements HttpHandler
                     break;
                 case "completePaidSignup":
                     AggregatedMetrics.PAID_SIGNUP_COMPLETE.inc();
-                    completePaidSignup(din, dout);
-                    break;
+                    replyLater(exchange, method, t1, completePaidSignup(din));
+                    repliedLater = true;
+                    return;
                 case "mirror":
                     AggregatedMetrics.MIRROR.inc();
                     mirror(din, dout);
@@ -82,8 +85,9 @@ public class CoreNodeHandler implements HttpHandler
                     break;
                 case "completePaidMirror":
                     AggregatedMetrics.PAID_MIRROR_COMPLETE.inc();
-                    completePaidMirror(din, dout);
-                    break;
+                    replyLater(exchange, method, t1, completePaidMirror(din));
+                    repliedLater = true;
+                    return;
                 case "getUserSnapshots":
                     AggregatedMetrics.GET_USER_SNAPSHOTS.inc();
                     getUserSnapshots(din, dout);
@@ -123,10 +127,34 @@ public class CoreNodeHandler implements HttpHandler
             e.printStackTrace();
             HttpUtil.replyError(exchange, e);
         } finally {
-            exchange.close();
-            long t2 = System.currentTimeMillis();
-            LOG.info("Corenode server handled " + method + " request in: " + (t2 - t1) + " mS");
+            if (! repliedLater) {
+                exchange.close();
+                long t2 = System.currentTimeMillis();
+                LOG.info("Corenode server handled " + method + " request in: " + (t2 - t1) + " mS");
+            }
         }
+    }
+
+    /** Paid completions can wait seconds for a card to show up, so they reply from whichever thread completes them,
+     *  rather than holding one of the api handlers, which share a bounded pool.
+     */
+    private static void replyLater(HttpExchange exchange, String method, long t1, CompletableFuture<PaymentProperties> result) {
+        result.whenComplete((res, err) -> {
+            try {
+                if (err != null)
+                    HttpUtil.replyError(exchange, err);
+                else {
+                    byte[] b = res.serialize();
+                    exchange.sendResponseHeaders(200, b.length);
+                    exchange.getResponseBody().write(b);
+                }
+            } catch (Exception e) {
+                LOG.log(Level.WARNING, e.getMessage(), e);
+            } finally {
+                exchange.close();
+                LOG.info("Corenode server handled " + method + " request in: " + (System.currentTimeMillis() - t1) + " mS");
+            }
+        });
     }
 
     void getChain(DataInputStream din, DataOutputStream dout) throws Exception
@@ -164,7 +192,7 @@ public class CoreNodeHandler implements HttpHandler
             dout.writeInt(res.b().requiredDifficulty);
     }
 
-    void completePaidSignup(DataInputStream din, DataOutputStream dout) throws Exception
+    CompletableFuture<PaymentProperties> completePaidSignup(DataInputStream din) throws Exception
     {
         String username = CoreNodeUtils.deserializeString(din);
         byte[] raw = Serialize.deserializeByteArray(din, 2 * UserPublicKeyLink.MAX_SIZE);
@@ -172,8 +200,7 @@ public class CoreNodeHandler implements HttpHandler
         OpLog ops = OpLog.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, 64*1024)));
         ProofOfWork proof = ProofOfWork.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, 100)));
         byte[] signedSpaceRequest = Serialize.deserializeByteArray(din, 64 * 1024);
-        PaymentProperties res = coreNode.completePaidSignup(username, chain, ops, signedSpaceRequest, proof).get();
-        dout.write(res.serialize());
+        return coreNode.completePaidSignup(username, chain, ops, signedSpaceRequest, proof);
     }
 
     void mirror(DataInputStream din, DataOutputStream dout) throws Exception
@@ -200,15 +227,14 @@ public class CoreNodeHandler implements HttpHandler
             dout.writeInt(res.b().requiredDifficulty);
     }
 
-    void completePaidMirror(DataInputStream din, DataOutputStream dout) throws Exception
+    CompletableFuture<PaymentProperties> completePaidMirror(DataInputStream din) throws Exception
     {
         String username = CoreNodeUtils.deserializeString(din);
         byte[] raw = Serialize.deserializeByteArray(din, 100);
         BatWithId mirrorBat = BatWithId.fromCbor(CborObject.fromByteArray(raw));
         ProofOfWork proof = ProofOfWork.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, 100)));
         byte[] signedSpaceRequest = Serialize.deserializeByteArray(din, 64 * 1024);
-        PaymentProperties res = coreNode.completePaidMirror(username, mirrorBat, signedSpaceRequest, proof).get();
-        dout.write(res.serialize());
+        return coreNode.completePaidMirror(username, mirrorBat, signedSpaceRequest, proof);
     }
 
     void getUserSnapshots(DataInputStream din, DataOutputStream dout) throws Exception
