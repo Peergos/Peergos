@@ -114,7 +114,7 @@ public class SignUpFilter implements CoreNode {
                 .thenApply(res -> {
                     if (res.isA()) {
                         startPaidRateLimiter.addEvent();
-                        return Either.a(quotaStore.createPaidUser(username));
+                        return Either.a(quotaStore.createPaidUser(username, Optional.of(chain.owner)));
                     }
                     return res;
                 });
@@ -137,7 +137,7 @@ public class SignUpFilter implements CoreNode {
         // take payment, and if successful, finalise account creation
         quotaStore.getQuota(username); // This will throw if the user doesn't exist in quota store
         return queueCompletion(username,
-                () -> quotaStore.requestQuota(username, chain.owner, signedSpaceRequest, 0).join(),
+                () -> quotaStore.requestQuota(username, chain.owner, signedSpaceRequest, 0, true).join(),
                 (result, quota) -> {
                     LOG.info("Paid signup: quota=" + quota + ", username=" + username);
                     if (quota >= result.desiredQuota && quota > 1024 * 1024) {// 1 MiB is the deletion quota
@@ -185,7 +185,7 @@ public class SignUpFilter implements CoreNode {
         startPaidMirrorRateLimiter.addEvent();
 
         // create user and get payment url
-        return Futures.of(Either.a(quotaStore.createPaidUser(username)));
+        return Futures.of(Either.a(quotaStore.createPaidUser(username, Optional.empty())));
     }
 
     @Override
@@ -199,7 +199,7 @@ public class SignUpFilter implements CoreNode {
         QuotaAdmin.parseQuotaRequest(username, owner, signedSpaceRequest, dht);
         quotaStore.getQuota(username); // This will throw if the user doesn't exist in quota store
         return queueCompletion(username,
-                () -> quotaStore.requestQuota(username, owner, signedSpaceRequest, 0).join(),
+                () -> quotaStore.requestQuota(username, owner, signedSpaceRequest, 0, false).join(),
                 (result, quota) -> {
                     LOG.info("Paid mirror: quota=" + quota + ", username=" + username);
                     if (quota >= result.desiredQuota && quota > 1024 * 1024) {// 1 MiB is the deletion quota

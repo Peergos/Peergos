@@ -60,8 +60,9 @@ public class HttpQuotaAdmin implements QuotaAdmin {
     }
 
     @Override
-    public PaymentProperties createPaidUser(String username) {
-        return poster.get(QUOTA_URL + CREATE_PAID + "?username=" + enc(username))
+    public PaymentProperties createPaidUser(String username, Optional<PublicKeyHash> signupOwner) {
+        return poster.get(QUOTA_URL + CREATE_PAID + "?username=" + enc(username)
+                        + signupOwner.map(owner -> "&owner=" + owner).orElse(""))
                 .thenApply(res -> PaymentProperties.fromCbor(CborObject.fromByteArray(res))).join();
     }
 
@@ -158,10 +159,15 @@ public class HttpQuotaAdmin implements QuotaAdmin {
     }
 
     @Override
-    public CompletableFuture<PaymentProperties> requestQuota(String username, PublicKeyHash owner, byte[] signedRequest, long usage) {
+    public CompletableFuture<PaymentProperties> requestQuota(String username,
+                                                             PublicKeyHash owner,
+                                                             byte[] signedRequest,
+                                                             long usage,
+                                                             boolean pendingSignup) {
         return poster.get(QUOTA_URL + REQUEST_QUOTA + "?owner="+owner
                         + "&username=" + enc(username)
-                        + "&req=" + ArrayOps.bytesToHex(signedRequest) + "&usage=" + usage)
+                        + "&req=" + ArrayOps.bytesToHex(signedRequest) + "&usage=" + usage
+                        + (pendingSignup ? "&signup=true" : ""))
                 .thenApply(res -> PaymentProperties.fromCbor(CborObject.fromByteArray(res)));
     }
 

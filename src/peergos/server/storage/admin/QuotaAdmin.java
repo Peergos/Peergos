@@ -23,7 +23,10 @@ public interface QuotaAdmin extends QuotaControl {
 
     boolean allowSignupOrUpdate(String username, String token);
 
-    PaymentProperties createPaidUser(String username);
+    /** A paid signup passes the key that reserved the username, which the quota store binds to it, as until the
+     *  signup is in the pki that's the only way to tell who started it.
+     */
+    PaymentProperties createPaidUser(String username, Optional<PublicKeyHash> signupOwner);
 
     void removeDesiredQuota(String username);
 
@@ -61,8 +64,15 @@ public interface QuotaAdmin extends QuotaControl {
 
     /** The username must be the one owner is known as here: the request is signed by owner but names its own
      *  username, so only a check against it stops a user requesting quota for someone else.
+     *
+     *  @param pendingSignup when owner is only claimed, for a paid signup not yet in the pki, so must be the key that
+     *                       started it rather than one checked against the pki
      */
-    CompletableFuture<PaymentProperties> requestQuota(String username, PublicKeyHash owner, byte[] signedRequest, long usage);
+    CompletableFuture<PaymentProperties> requestQuota(String username,
+                                                      PublicKeyHash owner,
+                                                      byte[] signedRequest,
+                                                      long usage,
+                                                      boolean pendingSignup);
 
     @Override
     default CompletableFuture<PaymentProperties> requestQuota(PublicKeyHash owner, byte[] signedRequest, long usage) {

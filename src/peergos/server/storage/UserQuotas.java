@@ -90,7 +90,12 @@ public class UserQuotas implements QuotaAdmin {
     }
 
     @Override
-    public CompletableFuture<PaymentProperties> requestQuota(String username, PublicKeyHash owner, byte[] signedRequest, long usage) {
+    public CompletableFuture<PaymentProperties> requestQuota(String username,
+                                                             PublicKeyHash owner,
+                                                             byte[] signedRequest,
+                                                             long usage,
+                                                             boolean pendingSignup) {
+        // there are no paid signups here, and owner must be username's current identity in the pki
         if (! core.getPublicKeyHash(username).join().equals(Optional.of(owner)))
             throw new IllegalStateException("Space request for " + username + " not signed by their identity");
         QuotaAdmin.parseQuotaRequest(username, owner, signedRequest, dht);
@@ -155,7 +160,7 @@ public class UserQuotas implements QuotaAdmin {
     }
 
     @Override
-    public PaymentProperties createPaidUser(String username) {
+    public PaymentProperties createPaidUser(String username, Optional<PublicKeyHash> signupOwner) {
         if (isPki)
             return new PaymentProperties(0);
         throw new IllegalStateException("Cannot create a paid user on an unpaid server!");

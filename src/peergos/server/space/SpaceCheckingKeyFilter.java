@@ -558,7 +558,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         if (! core.getPublicKeyHash(username).join().equals(Optional.of(owner)))
             return Futures.errored(new IllegalStateException("Only the current identity of " + username + " can request quota"));
         QuotaAdmin.parseQuotaRequest(username, owner, signedRequest, dht);
-        return quotaAdmin.requestQuota(username, owner, signedRequest,  usage.totalUsage());
+        return quotaAdmin.requestQuota(username, owner, signedRequest,  usage.totalUsage(), false);
     }
 
     @Override
