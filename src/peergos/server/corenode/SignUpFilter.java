@@ -27,6 +27,7 @@ public class SignUpFilter implements CoreNode {
     private final QuotaAdmin quotaStore;
     private final Multihash ourNodeId;
     private final HttpSpaceUsage space;
+    private final ContentAddressedStorage dht;
     private final Hasher hasher;
     private final DifficultyGenerator startPaidRateLimiter;
     private final DifficultyGenerator startPaidMirrorRateLimiter;
@@ -37,6 +38,7 @@ public class SignUpFilter implements CoreNode {
                         QuotaAdmin quotaStore,
                         Multihash ourNodeId,
                         HttpSpaceUsage space,
+                        ContentAddressedStorage dht,
                         Hasher hasher,
                         int maxPaidSignupsPerDay,
                         boolean isPki) {
@@ -44,6 +46,7 @@ public class SignUpFilter implements CoreNode {
         this.quotaStore = quotaStore;
         this.ourNodeId = ourNodeId;
         this.space = space;
+        this.dht = dht;
         this.hasher = hasher;
         this.maxPaidSignupsPerDay = maxPaidSignupsPerDay;
         startPaidRateLimiter = new DifficultyGenerator(System.currentTimeMillis(), maxPaidSignupsPerDay);
@@ -110,15 +113,20 @@ public class SignUpFilter implements CoreNode {
                                                                    ProofOfWork proof) {
         if (isPki)
             return target.completePaidSignup(username, chain, setupOperations, signedSpaceRequest, proof);
+        if (! chain.claim.username.equals(username))
+            return Futures.errored(new IllegalStateException("Username different from that in claim!"));
+        if (! target.getChain(username).join().isEmpty())
+            return Futures.errored(new IllegalStateException("User already exists!"));
+        QuotaAdmin.parseQuotaRequest(username, chain.owner, signedSpaceRequest, dht);
         // take payment, and if successful, finalise account creation
         quotaStore.getQuota(username); // This will throw if the user doesn't exist in quota store
-        PaymentProperties result = quotaStore.requestQuota(chain.owner, signedSpaceRequest, 0).join();
+        PaymentProperties result = quotaStore.requestQuota(username, chain.owner, signedSpaceRequest, 0).join();
         long quota = quotaStore.getQuota(username);
         if (quota == 0 && ! result.hasError()) {// try again if no card showed up yet
             for (int i = 0; i < 3; i++) {
                 LOG.info("Paid signup: no cards available, sleeping for 3s...");
                 try {Thread.sleep(3_000);} catch (InterruptedException e) {}
-                result = quotaStore.requestQuota(chain.owner, signedSpaceRequest,0).join();
+                result = quotaStore.requestQuota(username, chain.owner, signedSpaceRequest,0).join();
                 quota = quotaStore.getQuota(username);
                 if (quota > 0 || result.hasError())
                     break;
@@ -177,15 +185,17 @@ public class SignUpFilter implements CoreNode {
                                                                    byte[] signedSpaceRequest,
                                                                    ProofOfWork proof) {
         // take payment, and if successful, finalise account creation
+        PublicKeyHash owner = target.getPublicKeyHash(username).join()
+                .orElseThrow(() -> new IllegalStateException("Unknown user " + username));
+        QuotaAdmin.parseQuotaRequest(username, owner, signedSpaceRequest, dht);
         quotaStore.getQuota(username); // This will throw if the user doesn't exist in quota store
-        PublicKeyHash owner = target.getPublicKeyHash(username).join().get();
-        PaymentProperties result = quotaStore.requestQuota(owner, signedSpaceRequest, 0).join();
+        PaymentProperties result = quotaStore.requestQuota(username, owner, signedSpaceRequest, 0).join();
         long quota = quotaStore.getQuota(username);
         if (quota == 0 && ! result.hasError()) {// try again if no card showed up yet
             for (int i = 0; i < 3; i++) {
                 LOG.info("Paid mirror: no cards available, sleeping for 3s...");
                 try {Thread.sleep(3_000);} catch (InterruptedException e) {}
-                result = quotaStore.requestQuota(owner, signedSpaceRequest,0).join();
+                result = quotaStore.requestQuota(username, owner, signedSpaceRequest,0).join();
                 quota = quotaStore.getQuota(username);
                 if (quota > 0 || result.hasError())
                     break;

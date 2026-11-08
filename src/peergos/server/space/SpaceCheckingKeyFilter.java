@@ -555,7 +555,10 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         UserUsage usage = usageStore.getUsage(username);
         if (usage == null)
             return Futures.errored(new IllegalStateException("User " + username + " is not signed up to this server"));
-        return quotaAdmin.requestQuota(owner, signedRequest,  usage.totalUsage());
+        if (! core.getPublicKeyHash(username).join().equals(Optional.of(owner)))
+            return Futures.errored(new IllegalStateException("Only the current identity of " + username + " can request quota"));
+        QuotaAdmin.parseQuotaRequest(username, owner, signedRequest, dht);
+        return quotaAdmin.requestQuota(username, owner, signedRequest,  usage.totalUsage());
     }
 
     @Override

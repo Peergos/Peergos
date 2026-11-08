@@ -152,8 +152,10 @@ public class HttpQuotaAdmin implements QuotaAdmin {
     }
 
     @Override
-    public CompletableFuture<PaymentProperties> requestQuota(PublicKeyHash owner, byte[] signedRequest, long usage) {
-        return poster.get(QUOTA_URL + REQUEST_QUOTA + "?owner="+owner + "&req=" + ArrayOps.bytesToHex(signedRequest) + "&usage=" + usage)
+    public CompletableFuture<PaymentProperties> requestQuota(String username, PublicKeyHash owner, byte[] signedRequest, long usage) {
+        return poster.get(QUOTA_URL + REQUEST_QUOTA + "?owner="+owner
+                        + "&username=" + URLEncoder.encode(username, StandardCharsets.UTF_8)
+                        + "&req=" + ArrayOps.bytesToHex(signedRequest) + "&usage=" + usage)
                 .thenApply(res -> PaymentProperties.fromCbor(CborObject.fromByteArray(res)));
     }
 

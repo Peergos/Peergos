@@ -59,6 +59,16 @@ public interface QuotaAdmin extends QuotaControl {
         return getQuota(owner, signedTime);
     }
 
+    /** The username must be the one owner is known as here: the request is signed by owner but names its own
+     *  username, so only a check against it stops a user requesting quota for someone else.
+     */
+    CompletableFuture<PaymentProperties> requestQuota(String username, PublicKeyHash owner, byte[] signedRequest, long usage);
+
+    @Override
+    default CompletableFuture<PaymentProperties> requestQuota(PublicKeyHash owner, byte[] signedRequest, long usage) {
+        throw new IllegalStateException("A space request must be checked against the username of its owner");
+    }
+
     long getQuota(String username);
 
     void removeQuota(String username);
@@ -86,6 +96,13 @@ public interface QuotaAdmin extends QuotaControl {
             throw new IllegalStateException("Stale auth time in space request! " + req.utcMillis + " !< " + now + " - 30000");
         if (req.utcMillis > now + 300_000)
             throw new IllegalStateException("Space request time is in the future! " + req.utcMillis);
+        return req;
+    }
+
+    static QuotaControl.SpaceRequest parseQuotaRequest(String username, PublicKeyHash owner, byte[] signedRequest, ContentAddressedStorage dht) {
+        QuotaControl.SpaceRequest req = parseQuotaRequest(owner, signedRequest, dht);
+        if (! req.username.equals(username))
+            throw new IllegalStateException("Space request for " + req.username + " signed by " + username);
         return req;
     }
 }

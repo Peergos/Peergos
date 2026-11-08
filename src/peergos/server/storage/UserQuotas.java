@@ -90,14 +90,12 @@ public class UserQuotas implements QuotaAdmin {
     }
 
     @Override
-    public CompletableFuture<PaymentProperties> requestQuota(PublicKeyHash owner, byte[] signedRequest, long usage) {
-        SpaceUsage.SpaceRequest req = QuotaAdmin.parseQuotaRequest(owner, signedRequest, dht);
-        String username = core.getUsername(owner).join();
+    public CompletableFuture<PaymentProperties> requestQuota(String username, PublicKeyHash owner, byte[] signedRequest, long usage) {
+        if (! core.getPublicKeyHash(username).join().equals(Optional.of(owner)))
+            throw new IllegalStateException("Space request for " + username + " not signed by their identity");
+        QuotaAdmin.parseQuotaRequest(username, owner, signedRequest, dht);
         if (! quotas.hasUser(username))
             throw new IllegalStateException("User " + username + " is not signed up to this server");
-        // it is filed under the name it carries, which the admin's client then verifies against that user's key
-        if (! req.username.equals(username))
-            throw new IllegalStateException("Space request for " + req.username + " signed by " + username);
         spaceRequests.replaceSpaceRequest(username, signedRequest);
         return Futures.of(new PaymentProperties(getQuota(username)));
     }

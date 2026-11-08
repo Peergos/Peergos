@@ -51,14 +51,14 @@ public class SpaceRequestValidationTests {
 
         for (String label : List.of(victim.username, "no-such-user")) {
             try {
-                quotas.requestQuota(attacker.signer.publicKeyHash, sign(attacker, label, now), 0).join();
+                quotas.requestQuota(attacker.username, attacker.signer.publicKeyHash, sign(attacker, label, now), 0).join();
                 Assert.fail("accepted a request labelled " + label);
             } catch (Exception expected) {
                 Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("signed by " + attacker.username));
             }
         }
         try {
-            quotas.requestQuota(attacker.signer.publicKeyHash, sign(attacker, attacker.username, now + 3_600_000), 0).join();
+            quotas.requestQuota(attacker.username, attacker.signer.publicKeyHash, sign(attacker, attacker.username, now + 3_600_000), 0).join();
             Assert.fail("accepted a request from the future");
         } catch (Exception expected) {
             Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("in the future"));
@@ -66,15 +66,15 @@ public class SpaceRequestValidationTests {
 
         // the victim has no quota here, so isn't one of this server's users
         try {
-            quotas.requestQuota(victim.signer.publicKeyHash, sign(victim, victim.username, now), 0).join();
+            quotas.requestQuota(victim.username, victim.signer.publicKeyHash, sign(victim, victim.username, now), 0).join();
             Assert.fail("accepted a request from a user of another server");
         } catch (Exception expected) {
             Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("not signed up to this server"));
         }
 
-        quotas.requestQuota(attacker.signer.publicKeyHash, sign(attacker, attacker.username, now), 0).join();
+        quotas.requestQuota(attacker.username, attacker.signer.publicKeyHash, sign(attacker, attacker.username, now), 0).join();
         byte[] latest = sign(attacker, attacker.username, now + 1);
-        quotas.requestQuota(attacker.signer.publicKeyHash, latest, 0).join();
+        quotas.requestQuota(attacker.username, attacker.signer.publicKeyHash, latest, 0).join();
 
         // as stored before requests were checked on arrival
         requests.addSpaceRequest(victim.username, sign(attacker, victim.username, now));
