@@ -101,6 +101,7 @@ public class SignUpFilter implements CoreNode {
         return target.startPaidSignup(username, chain, proof)
                 .thenApply(res -> {
                     if (res.isA()) {
+                        startPaidRateLimiter.addEvent();
                         return Either.a(quotaStore.createPaidUser(username));
                     }
                     return res;
@@ -177,6 +178,7 @@ public class SignUpFilter implements CoreNode {
 
         // check auth signature
         target.startPaidMirror(username, auth, proof).join();
+        startPaidMirrorRateLimiter.addEvent();
 
         // create user and get payment url
         return Futures.of(Either.a(quotaStore.createPaidUser(username)));
