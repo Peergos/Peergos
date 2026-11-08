@@ -62,6 +62,7 @@ public class SignUpFilter implements CoreNode {
                                                                   String token) {
         if (! forUs(Arrays.asList(chain)))
             return target.signup(username, chain, setupOperations, proof, token);
+        checkUsername(username);
 
         if (quotaStore.allowSignupOrUpdate(username, token)) {
             return target.signup(username, chain, setupOperations, proof, token).thenApply(res -> {
@@ -84,6 +85,7 @@ public class SignUpFilter implements CoreNode {
             return target.startPaidSignup(username, chain, proof);
         if (maxPaidSignupsPerDay == 0)
             return Futures.of(Either.b(new RequiredDifficulty(ProofOfWork.MAX_DIFFICULTY)));
+        checkUsername(username);
         // Apply rate limiting based on IP, failures, etc.
         // Check proof of work is sufficient, unless it is a password change
         byte[] hash = hasher.sha256(ArrayOps.concat(proof.prefix, new CborObject.CborList(Arrays.asList(chain)).serialize())).join();
@@ -113,6 +115,7 @@ public class SignUpFilter implements CoreNode {
                                                                    ProofOfWork proof) {
         if (isPki)
             return target.completePaidSignup(username, chain, setupOperations, signedSpaceRequest, proof);
+        checkUsername(username);
         if (! chain.claim.username.equals(username))
             return Futures.errored(new IllegalStateException("Username different from that in claim!"));
         if (! target.getChain(username).join().isEmpty())
@@ -235,6 +238,7 @@ public class SignUpFilter implements CoreNode {
             return target.updateChain(username, chain, proof, token);
 
         // a new username with us as storage provider is a signup
+        checkUsername(username);
         if (! quotaStore.allowSignupOrUpdate(username, token)) {
             if (! token.isEmpty())
                 return Futures.errored(new IllegalStateException("Invalid signup token."));
@@ -245,6 +249,12 @@ public class SignUpFilter implements CoreNode {
                 quotaStore.consumeToken(username, token);
             return res;
         });
+    }
+
+    /** Before a new username reaches the quota store */
+    private static void checkUsername(String username) {
+        if (! UsernameValidator.isValidUsername(username))
+            throw new IllegalStateException("Invalid username");
     }
 
     private boolean forUs(List<UserPublicKeyLink> chain) {
@@ -270,6 +280,7 @@ public class SignUpFilter implements CoreNode {
                                                        long currentUsage,
                                                        boolean commitToPki) {
         if (forUs(newChain)) {
+            checkUsername(username);
             if (! quotaStore.allowSignupOrUpdate(username, ""))
                 throw new IllegalStateException("This server is not currently accepting new user migrations.");
             PublicKeyHash owner = newChain.get(newChain.size() - 1).owner;

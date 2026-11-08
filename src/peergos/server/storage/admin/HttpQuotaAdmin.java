@@ -40,6 +40,13 @@ public class HttpQuotaAdmin implements QuotaAdmin {
         this.poster = poster;
     }
 
+    /** Every free-form value is encoded, so none can add parameters of its own, e.g. a signup token of
+     *  "x&username=<an existing user>"
+     */
+    private static String enc(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
+    }
+
     @Override
     public AllowedSignups acceptingSignups() {
         return poster.get(QUOTA_URL + SIGNUPS)
@@ -48,47 +55,47 @@ public class HttpQuotaAdmin implements QuotaAdmin {
 
     @Override
     public boolean allowSignupOrUpdate(String username, String token) {
-        return poster.get(QUOTA_URL + ALLOWED + "?username=" + username + "&token="+token)
+        return poster.get(QUOTA_URL + ALLOWED + "?username=" + enc(username) + "&token=" + enc(token))
                 .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value).join();
     }
 
     @Override
     public PaymentProperties createPaidUser(String username) {
-        return poster.get(QUOTA_URL + CREATE_PAID + "?username=" + username)
+        return poster.get(QUOTA_URL + CREATE_PAID + "?username=" + enc(username))
                 .thenApply(res -> PaymentProperties.fromCbor(CborObject.fromByteArray(res))).join();
     }
 
     @Override
     public void removeDesiredQuota(String username) {
-        poster.get(QUOTA_URL + REMOVE_DESIRED + "?username=" + username).join();
+        poster.get(QUOTA_URL + REMOVE_DESIRED + "?username=" + enc(username)).join();
     }
 
     @Override
     public long getQuota(String username) {
-        return poster.get(QUOTA_URL + QUOTA_PRIVATE + "?username=" + username)
+        return poster.get(QUOTA_URL + QUOTA_PRIVATE + "?username=" + enc(username))
                 .thenApply(res -> ((CborObject.CborLong)CborObject.fromByteArray(res)).value).join();
     }
 
     @Override
     public void removeQuota(String username) {
-        poster.get(QUOTA_URL + QUOTA_PRIVATE_REMOVE + "?username=" + username).join();
+        poster.get(QUOTA_URL + QUOTA_PRIVATE_REMOVE + "?username=" + enc(username)).join();
     }
 
     @Override
     public boolean hadQuota(String username, LocalDateTime time) {
-        return poster.get(QUOTA_URL + QUOTA_PRIVATE_TIME + "?username=" + username + "&time=" + time)
+        return poster.get(QUOTA_URL + QUOTA_PRIVATE_TIME + "?username=" + enc(username) + "&time=" + enc(time.toString()))
                 .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value).join();
     }
 
     @Override
     public boolean addToken(String token) {
-        return poster.get(QUOTA_URL + TOKEN_ADD + "?token=" + token)
+        return poster.get(QUOTA_URL + TOKEN_ADD + "?token=" + enc(token))
                 .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value).join();
     }
 
     @Override
     public boolean consumeToken(String username, String token) {
-        return poster.get(QUOTA_URL + TOKEN_REMOVE + "?username=" + username + "&token=" + token)
+        return poster.get(QUOTA_URL + TOKEN_REMOVE + "?username=" + enc(username) + "&token=" + enc(token))
                 .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value).join();
     }
 
@@ -107,8 +114,7 @@ public class HttpQuotaAdmin implements QuotaAdmin {
     /** Withdraws an unused token. Unlike consumeToken, no one is given quota for it. */
     @Override
     public boolean removeToken(String token) {
-        // encoded: unlike the tokens this server makes, this one is whatever the admin sent
-        return poster.get(QUOTA_URL + TOKEN_DELETE + "?token=" + URLEncoder.encode(token, StandardCharsets.UTF_8))
+        return poster.get(QUOTA_URL + TOKEN_DELETE + "?token=" + enc(token))
                 .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value).join();
     }
 
@@ -133,7 +139,7 @@ public class HttpQuotaAdmin implements QuotaAdmin {
     @Override
     public CompletableFuture<PaymentProperties> getPaymentProperties(String username, PublicKeyHash owner, boolean newClientSecret, byte[] signedTime) {
         return poster.get(QUOTA_URL + PAYMENT_PROPERTIES + "?owner="+owner
-                        + "&username=" + username
+                        + "&username=" + enc(username)
                         + "&new-client-secret=" + newClientSecret
                         + "&auth=" + ArrayOps.bytesToHex(signedTime))
                 .thenApply(res -> PaymentProperties.fromCbor(CborObject.fromByteArray(res)));
@@ -147,14 +153,14 @@ public class HttpQuotaAdmin implements QuotaAdmin {
 
     @Override
     public CompletableFuture<Long> getQuota(String username, PublicKeyHash owner, byte[] signedTime) {
-        return poster.get(QUOTA_URL + QUOTA_PUBLIC + "?owner="+owner + "&username=" + username + "&auth=" + ArrayOps.bytesToHex(signedTime))
+        return poster.get(QUOTA_URL + QUOTA_PUBLIC + "?owner="+owner + "&username=" + enc(username) + "&auth=" + ArrayOps.bytesToHex(signedTime))
                 .thenApply(res -> ((CborObject.CborLong)CborObject.fromByteArray(res)).value);
     }
 
     @Override
     public CompletableFuture<PaymentProperties> requestQuota(String username, PublicKeyHash owner, byte[] signedRequest, long usage) {
         return poster.get(QUOTA_URL + REQUEST_QUOTA + "?owner="+owner
-                        + "&username=" + URLEncoder.encode(username, StandardCharsets.UTF_8)
+                        + "&username=" + enc(username)
                         + "&req=" + ArrayOps.bytesToHex(signedRequest) + "&usage=" + usage)
                 .thenApply(res -> PaymentProperties.fromCbor(CborObject.fromByteArray(res)));
     }
