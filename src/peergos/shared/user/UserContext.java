@@ -3505,6 +3505,22 @@ public class UserContext {
      *
      * @return initial follow requests
      */
+    /** Anyone can send us a follow request, so only accept one whose sender and capability are present. */
+    private boolean isWellFormed(FollowRequest req) {
+        if (req.entry.isEmpty())
+            return false;
+        EntryPoint entry = req.entry.get();
+        return entry.pointer != null && entry.ownerName != null && ! entry.ownerName.equals(username);
+    }
+
+    private CompletableFuture<Boolean> removeUnusableFollowRequests(List<BlindFollowRequest> unusable) {
+        return Futures.reduceAll(unusable, true,
+                (b, req) -> signer.secret.signMessage(req.serialize())
+                        .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed))
+                        .exceptionally(t -> false),
+                (a, b) -> a);
+    }
+
     public CompletableFuture<List<FollowRequestWithCipherText>> processFollowRequests() {
         return getFollowRequests().thenCompose(this::processFollowRequests);
     }
@@ -3514,10 +3530,18 @@ public class UserContext {
                 getFollowerRoots(false).thenCompose(followerRoots -> getPendingOutgoingFollowRequests()
                         .thenCompose(pendingOut -> getBlocked().thenCompose(blocked -> Futures.combineAllInOrder(all.stream()
                                         .map(b -> b.followRequest.decrypt(boxer.secretBoxingKey, b.dummySource, FollowRequest::fromCbor)
-                                                .thenApply(decrypted -> Optional.of(new FollowRequestWithCipherText(decrypted, b)))
-                                                .exceptionally(t -> Optional.empty()))
+                                                .thenApply(decrypted -> isWellFormed(decrypted) ?
+                                                        new Pair<>(b, Optional.of(new FollowRequestWithCipherText(decrypted, b))) :
+                                                        new Pair<>(b, Optional.<FollowRequestWithCipherText>empty()))
+                                                .exceptionally(t -> new Pair<>(b, Optional.empty())))
                                         .collect(Collectors.toList()))
-                                .thenApply(opts -> opts.stream().flatMap(Optional::stream).collect(Collectors.toList()))
+                                .thenCompose(decrypted -> removeUnusableFollowRequests(decrypted.stream()
+                                        .filter(p -> p.right.isEmpty())
+                                        .map(p -> p.left)
+                                        .collect(Collectors.toList()))
+                                        .thenApply(x -> decrypted.stream()
+                                                .flatMap(p -> p.right.stream())
+                                                .collect(Collectors.toList())))
                                 .thenCompose(withDecrypted -> (withDecrypted.stream()
                                         .allMatch(p -> pendingOut.pendingOutgoingFollowRequests.contains(p.req.entry.get().ownerName)) ?
                                         Futures.of(Collections.<String>emptySet()) : // only needed for requests which aren't replies
@@ -3638,7 +3662,12 @@ public class UserContext {
                                             (b, p) -> reaffirmFollowRequest(p, followerRoots.get(p.req.entry.get().ownerName))
                                                     .exceptionally(t -> false),
                                             (a, b) -> a))
-                                    .thenCompose(x -> Futures.reduceAll(latestReplies.values(), entrie, mozart, (a, b) -> a))
+                                    .thenCompose(x -> Futures.reduceAll(latestReplies.values(), entrie,
+                                            (trie, p) -> Futures.asyncExceptionally(() -> mozart.apply(trie, p), t -> {
+                                                LOG.log(Level.WARNING, "Couldn't process follow reply from " + p.req.entry.get().ownerName, t);
+                                                return Futures.of(trie);
+                                            }),
+                                            (a, b) -> a))
                                     .thenApply(newRoot -> {
                                         entrie = newRoot;
                                         return new ArrayList<>(initial.values());
