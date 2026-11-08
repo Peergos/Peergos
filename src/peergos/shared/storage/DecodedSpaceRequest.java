@@ -53,11 +53,15 @@ public class DecodedSpaceRequest {
                             PublicSigningKey pubKey = keyOpt.get();
                             return pubKey.unsignMessage(req.signedRequest).thenApply(raw -> {
                                 QuotaControl.SpaceRequest parsed = QuotaControl.SpaceRequest.fromCbor(CborObject.fromByteArray(raw));
+                                if (! parsed.username.equals(req.username))
+                                    throw new IllegalStateException("Space request for " + parsed.username + " labelled " + req.username);
                                 return Optional.of(new DecodedSpaceRequest(req, parsed));
-                            }).exceptionally(e -> {
-                                e.printStackTrace();
-                                return Optional.<DecodedSpaceRequest>empty();
                             });
+                        })
+                        // one bad request mustn't hide the rest
+                        .exceptionally(e -> {
+                            e.printStackTrace();
+                            return Optional.<DecodedSpaceRequest>empty();
                         }))
                         .collect(Collectors.toList()))
                 .thenApply(all -> all.stream()

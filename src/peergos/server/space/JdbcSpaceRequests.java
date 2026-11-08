@@ -18,6 +18,7 @@ public class JdbcSpaceRequests {
     private static final String INSERT_SPACE_REQUEST = "INSERT INTO spacerequests (name, spacerequest) VALUES(?, ?);";
     private static final String SELECT_SPACE_REQUESTS = "SELECT name, spacerequest FROM spacerequests;";
     private static final String DELETE_SPACE_REQUEST = "DELETE FROM spacerequests WHERE name = ? AND spacerequest = ?;";
+    private static final String DELETE_USER_SPACE_REQUESTS = "DELETE FROM spacerequests WHERE name = ?;";
 
     private class SpaceRequestData {
         public final String name;
@@ -116,6 +117,29 @@ public class JdbcSpaceRequests {
     public boolean addSpaceRequest(String username, byte[] signedRequest) {
         SpaceRequestData request = new SpaceRequestData(username, signedRequest);
         return request.insert();
+    }
+
+    /** A user has at most one pending request, their latest. */
+    public boolean replaceSpaceRequest(String username, byte[] signedRequest) {
+        try (Connection conn = getConnection()) {
+            conn.setAutoCommit(false);
+            try (PreparedStatement delete = conn.prepareStatement(DELETE_USER_SPACE_REQUESTS);
+                 PreparedStatement insert = conn.prepareStatement(INSERT_SPACE_REQUEST)) {
+                delete.setString(1, username);
+                delete.executeUpdate();
+                insert.setString(1, username);
+                insert.setString(2, new String(Base64.getEncoder().encode(signedRequest)));
+                insert.executeUpdate();
+                conn.commit();
+                return true;
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            }
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            return false;
+        }
     }
 
     public boolean removeSpaceRequest(String username, byte[] unsigned) {

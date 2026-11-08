@@ -84,6 +84,8 @@ public interface QuotaAdmin extends QuotaControl {
         long now = System.currentTimeMillis();
         if (req.utcMillis < now - 300_000)
             throw new IllegalStateException("Stale auth time in space request! " + req.utcMillis + " !< " + now + " - 30000");
+        if (req.utcMillis > now + 300_000)
+            throw new IllegalStateException("Space request time is in the future! " + req.utcMillis);
         return req;
     }
 }
