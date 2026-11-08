@@ -53,7 +53,28 @@ public class UserQuotas implements QuotaAdmin {
 
     @Override
     public List<QuotaControl.LabelledSignedSpaceRequest> getSpaceRequests() {
-        return spaceRequests.getSpaceRequests();
+        // requests stored before they were checked on arrival may not verify, and would otherwise stay forever
+        List<QuotaControl.LabelledSignedSpaceRequest> valid = new ArrayList<>();
+        for (QuotaControl.LabelledSignedSpaceRequest req : spaceRequests.getSpaceRequests()) {
+            if (isValid(req))
+                valid.add(req);
+            else {
+                LOG.info("Removing invalid space request labelled " + req.username);
+                spaceRequests.removeSpaceRequest(req.username, req.signedRequest);
+            }
+        }
+        return valid;
+    }
+
+    private boolean isValid(QuotaControl.LabelledSignedSpaceRequest labelled) {
+        try {
+            PublicKeyHash identity = core.getPublicKeyHash(labelled.username).join().get();
+            PublicSigningKey key = dht.getSigningKey(identity, identity).join().get();
+            byte[] raw = key.unsignMessage(labelled.signedRequest).join();
+            return QuotaControl.SpaceRequest.fromCbor(CborObject.fromByteArray(raw)).username.equals(labelled.username);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     @Override
@@ -71,9 +92,13 @@ public class UserQuotas implements QuotaAdmin {
     @Override
     public CompletableFuture<PaymentProperties> requestQuota(PublicKeyHash owner, byte[] signedRequest, long usage) {
         SpaceUsage.SpaceRequest req = QuotaAdmin.parseQuotaRequest(owner, signedRequest, dht);
-        // TODO check user is signed up to this server
-        boolean added = spaceRequests.addSpaceRequest(req.username, signedRequest);
         String username = core.getUsername(owner).join();
+        if (! quotas.hasUser(username))
+            throw new IllegalStateException("User " + username + " is not signed up to this server");
+        // it is filed under the name it carries, which the admin's client then verifies against that user's key
+        if (! req.username.equals(username))
+            throw new IllegalStateException("Space request for " + req.username + " signed by " + username);
+        spaceRequests.replaceSpaceRequest(username, signedRequest);
         return Futures.of(new PaymentProperties(getQuota(username)));
     }
 
