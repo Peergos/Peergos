@@ -493,9 +493,11 @@ public class IpfsWrapper implements AutoCloseable {
         byte[] privPb = ids.getPrivateKey(previous);
         if (privPb == null)
             throw new IllegalStateException("No private key for previous identity " + previous);
-        List<io.ipfs.multiaddr.MultiAddress> swarm = List.of(
-                new io.ipfs.multiaddr.MultiAddress("/ip6/::/tcp/" + port),
-                new io.ipfs.multiaddr.MultiAddress("/ip6/::/udp/" + port + "/quic-v1"));
+        boolean quic = config.addresses.getSwarmAddresses().stream().anyMatch(a -> a.toString().contains("/quic"));
+        List<io.ipfs.multiaddr.MultiAddress> swarm = new ArrayList<>();
+        swarm.add(new io.ipfs.multiaddr.MultiAddress("/ip6/::/tcp/" + port));
+        if (quic)
+            swarm.add(new io.ipfs.multiaddr.MultiAddress("/ip6/::/udp/" + port + "/quic-v1"));
         if (config.addresses.getSwarmAddresses().stream().anyMatch(a -> a.getPort() == port))
             throw new IllegalStateException("The previous identity needs its own swarm port, " + port + " is the current identity's");
         LOG.info("Also serving previous identity " + previous + " on port " + port);
