@@ -55,7 +55,7 @@ public class PaidCompletionQueueTests {
         QuotaAdmin quotas = stub(QuotaAdmin.class, Map.of(
                 "getQuota", 0L,
                 "requestQuota", Futures.of(new PaymentProperties(0))));
-        ContentAddressedStorage dht = stub(ContentAddressedStorage.class, Map.of());
+        ContentAddressedStorage dht = stub(ContentAddressedStorage.class, Map.of("identityKeys", peergos.shared.routing.IdentityKeys.INLINE));
         SignUpFilter filter = new SignUpFilter(pki, quotas, null, null, dht, hasher, 10, false);
         BatWithId bat = mirrorBat();
         java.util.function.Function<String, CompletableFuture<PaymentProperties>> complete = username -> {
