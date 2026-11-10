@@ -819,12 +819,10 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 }
                 reserved.add(capUsage);
             }
-            SlidingWindowCounter writeLimit = writeLimiter.get(username);
-            if (writeLimit == null) {
-                writeLimit = new SlidingWindowCounter(quotaUploadLimitSeconds, quota);
-                writeLimiter.put(username, writeLimit);
-            }
-            if (! writeLimit.allowRequest(size))
+            SlidingWindowCounter writeLimit = writeLimiter.computeIfAbsent(username,
+                    u -> new SlidingWindowCounter(quotaUploadLimitSeconds, quota));
+            // the quota can change after the limiter is created
+            if (! writeLimit.allowRequest(size, quota))
                 throw new IllegalStateException("Upload bandwidth exceeded please try again tomorrow");
         } catch (RuntimeException e) {
             // whatever refused, or failed, gives back what was reserved before it
