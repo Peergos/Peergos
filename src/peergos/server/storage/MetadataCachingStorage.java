@@ -184,7 +184,7 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
         int totalSize = 0;
         Cid us = id().join();
         for (Cid c : hashes) {
-            totalSize += target.getRaw(peerIds, owner, c, mirrorBat, us, h, false)
+            totalSize += target.getRaw(peerIds, owner, c, mirrorBat, us, h, false, false)
                     .thenApply(bopt -> bopt.map(b -> writeBlockMetadata(owner, b, c.isRaw()).size)
                             .orElse(0))
                     .join();

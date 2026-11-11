@@ -143,7 +143,7 @@ public class LocalFirstStorage extends DelegatingDeletableStorage {
 
     @Override
     public CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid block) {
-        return getRaw(Arrays.asList(ourNodeId), owner, block, Optional.empty(), ourNodeId, hasher, true)
+        return getRaw(Arrays.asList(ourNodeId), owner, block, Optional.empty(), ourNodeId, hasher, false, true)
                 .thenApply(rawOpt -> BlockMetadataStore.extractMetadata(block, rawOpt.get()));
     }
 
