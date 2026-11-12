@@ -184,7 +184,7 @@ public class ReplicationTests {
     }
 
     @Test
-    public void withoutAMajorityNewInceptionsAreRateLimitedPerBucket() {
+    public void withoutAMajorityNewInceptionsAreRateLimitedPerBucket() throws Exception {
         Network net = new Network();
         Node a = net.node(2), b = net.node(2), c = net.node(2);
         List<Server> servers = new ArrayList<>();
@@ -196,7 +196,9 @@ public class ReplicationTests {
         b.syncWith(a);
         b.syncWith(c);
         Assert.assertEquals(0, b.routing.syncRound());
-        Assert.assertEquals("the bucket's two tokens are taken at once", 3, b.routing.waitingInceptions());
+        // servers are placed in their bucket off the sync thread
+        waitFor(() -> servers.stream().filter(x -> b.replica.log(x.subject).exists()).count() == 2
+                && b.routing.waitingInceptions() == 3);
         b.routing.tick();
         Assert.assertEquals("no tokens until the clock moves", 3, b.routing.waitingInceptions());
         net.clock.addAndGet(RateLimits.DAY / 2);
