@@ -240,9 +240,10 @@ public class StorageHandler implements HttpHandler {
                     // Get the actual key, unless this is the initial write of the signing key during sign up
                     // In the initial put of a signing key during sign up the key signs itself (we still check the hash
                     // against the core node)
+                    PublicKeyHash owner = ownerHash.get();
                     Supplier<PublicSigningKey> fromDht = () -> {
                         try {
-                            return dht.getSigningKey(writerHash, writerHash).get().get();
+                            return dht.getSigningKey(owner, writerHash).get().get();
                         } catch (Exception e) {
                             throw new RuntimeException(e);
                         }

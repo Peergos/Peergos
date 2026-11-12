@@ -354,6 +354,25 @@ public interface ContentAddressedStorage {
     }
 
     /** Ed25519 keys are small enough to inline; any other key is referred to by the sha256 of its block. */
+    /** Store a new signing key, authorised by an existing writer of the owner, and return its hash.
+     *  Keys that are inlined in their hash need no block.
+     */
+    default CompletableFuture<PublicKeyHash> putSigningKey(PublicKeyHash owner,
+                                                           SigningPrivateKeyAndPublicHash parent,
+                                                           PublicSigningKey newKey,
+                                                           Hasher hasher,
+                                                           TransactionId tid) {
+        PublicKeyHash hash = hashKey(newKey);
+        if (hash.isIdentity())
+            return Futures.of(hash);
+        return put(owner, parent, newKey.serialize(), hasher, tid)
+                .thenApply(cid -> {
+                    if (! cid.equals(hash.target))
+                        throw new IllegalStateException("Stored signing key under " + cid + " but its hash is " + hash);
+                    return hash;
+                });
+    }
+
     static PublicKeyHash hashKey(PublicSigningKey key) {
         byte[] raw = key.serialize();
         if (key.type() == PublicSigningKey.Type.Ed25519)
@@ -375,10 +394,22 @@ public interface ContentAddressedStorage {
     }
 
     default CompletableFuture<Optional<PublicSigningKey>> getSigningKey(PublicKeyHash owner, PublicKeyHash hash) {
-        return (hash.isIdentity() ?
-                CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(hash.getHash()))) :
-                get(owner, hash.target, Optional.empty()))
-                .thenApply(opt -> Optional.ofNullable(opt).orElse(Optional.empty()).map(PublicSigningKey::fromCbor));
+        if (hash.isIdentity())
+            return Futures.of(Optional.of(PublicSigningKey.fromCbor(CborObject.fromByteArray(hash.getHash()))));
+        Optional<PublicSigningKey> cached = SigningKeyCache.get(hash);
+        if (cached.isPresent())
+            return Futures.of(cached);
+        return get(owner, hash.target, Optional.empty())
+                .thenApply(opt -> Optional.ofNullable(opt).orElse(Optional.empty()).map(PublicSigningKey::fromCbor))
+                .thenApply(keyOpt -> {
+                    // legacy Ed25519 keys in blocks aren't necessarily canonical cbor, so only check other types
+                    if (keyOpt.isPresent() && keyOpt.get().type() != PublicSigningKey.Type.Ed25519) {
+                        if (! hashKey(keyOpt.get()).equals(hash))
+                            throw new IllegalStateException("Signing key doesn't match its hash " + hash);
+                        SigningKeyCache.put(hash, keyOpt.get());
+                    }
+                    return keyOpt;
+                });
     }
 
     default CompletableFuture<Optional<PublicBoxingKey>> getBoxingKey(PublicKeyHash owner, PublicKeyHash hash) {

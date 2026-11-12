@@ -216,7 +216,7 @@ public class GarbageCollector {
             System.out.println("From pki:");
             while (! queue.isEmpty()) {
                 PublicKeyHash parent = queue.poll();
-                PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(null, parent).join().get());
+                PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(fromPki, parent).join().get());
                 Optional<byte[]> pointer = pointers.getPointer(parent).join();
                 if (pointer.isEmpty()) {
                     System.out.println("No pointer for " + parent);
@@ -245,7 +245,7 @@ public class GarbageCollector {
                 .filter(p -> p.right.isPresent())
                 .collect(Collectors.toMap(p -> p.left, p -> p.right.get()));
         userPointers.forEach((writerHash, signedRawCas) -> {
-            PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(null, writerHash).join().get());
+            PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(fromPki, writerHash).join().get());
             byte[] bothHashes = writer.unsignMessage(signedRawCas).join();
             PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
             MaybeMultihash updated = cas.updated;

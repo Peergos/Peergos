@@ -1867,7 +1867,7 @@ public class UserContext {
                                                                     NetworkAccess network,
                                                                     Crypto crypto) {
         long t1 = System.currentTimeMillis();
-        SigningKeyPair writer = SigningKeyPair.random(crypto.random, crypto.signer);
+        SigningKeyPair writer = SigningKeyPair.randomWriter(crypto);
         LOG.info("Random User generation took " + (System.currentTimeMillis() - t1) + " mS");
         // Steps (All in 1 transaction):
         // 1. Add signing key authorised by owner
@@ -1888,10 +1888,11 @@ public class UserContext {
         WritableAbsoluteCapability rootPointer =
                 new WritableAbsoluteCapability(owner.publicKeyHash, preHash, rootMapKey, rootBat, rootRKey, rootWKey);
         EntryPoint entry = new EntryPoint(rootPointer, directoryName);
-        return owner.secret.signMessage(writer.publicSigningKey.serialize()).thenCompose(signed -> IpfsTransaction.call(owner.publicKeyHash, tid -> network.dhtClient.putSigningKey(
-                signed,
+        return IpfsTransaction.call(owner.publicKeyHash, tid -> network.dhtClient.putSigningKey(
                 owner.publicKeyHash,
+                owner,
                 writer.publicSigningKey,
+                network.hasher,
                 tid).thenCompose(writerHash -> {
 
             // and authorise the writer key
@@ -1923,7 +1924,7 @@ public class UserContext {
                                                     .thenCompose(x -> addRootEntryPointAndCommit(x.merge(s2), entry, current, loginPublic, owner, userRootKey, committer, network, tid));
                                         });
                             }));
-        }), network.dhtClient).thenApply(s -> TrieNodeImpl.empty().put("/" + directoryName, entry)));
+        }), network.dhtClient).thenApply(s -> TrieNodeImpl.empty().put("/" + directoryName, entry));
     }
 
     public CompletableFuture<PublicSigningKey> getSigningKey(PublicKeyHash owner) {
@@ -2806,7 +2807,7 @@ public class UserContext {
                 CryptreeNode.initAndAuthoriseSigner(
                         owner,
                         parentSigner,
-                        SigningKeyPair.random(crypto.random, crypto.signer), network, initial, c) :
+                        SigningKeyPair.randomWriter(crypto), network, initial, c) :
                 Futures.of(new Pair<>(initial, file.signingPair())))
                 .thenCompose(p -> {
                     if (rotateSigners)
@@ -3284,7 +3285,7 @@ public class UserContext {
                 linkMapKey, linkBat, linkParentKey, Optional.empty());
 
         return CryptreeNode.initAndAuthoriseSigner(owner, parentSigner,
-                        SigningKeyPair.random(crypto.random, crypto.signer), network, initial, c)
+                        SigningKeyPair.randomWriter(crypto), network, initial, c)
                 .thenCompose(p -> {
                     SigningPrivateKeyAndPublicHash newSigner = p.right;
                     WritableAbsoluteCapability newCap = originalCap.withSigner(newSigner.publicKeyHash);

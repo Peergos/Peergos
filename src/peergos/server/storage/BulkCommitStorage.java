@@ -92,7 +92,7 @@ public class BulkCommitStorage extends DelegatingStorage {
         if (named > ContentAddressedStorage.MAX_BULK_COMMIT_BLOCKS)
             throw new IllegalStateException("Too many blocks in one commit: " + named);
         return hashBlocks(commit)
-                .thenCompose(hashes -> updates(owner, commit)
+                .thenCompose(hashes -> updates(owner, commit, hashes)
                         .thenCompose(updates -> verifyBlockLists(owner, commit, hashes)
                                 .thenCompose(x -> verify(owner, commit, hashes, updates))
                                 .thenCompose(inCall -> {
@@ -381,14 +381,37 @@ public class BulkCommitStorage extends DelegatingStorage {
     }
 
     /** The pointer update each writer is proposing, which also checks the signature we are relying on. */
-    private CompletableFuture<List<Optional<PointerUpdate>>> updates(PublicKeyHash owner, BulkCommit commit) {
+    private CompletableFuture<List<Optional<PointerUpdate>>> updates(PublicKeyHash owner, BulkCommit commit, List<List<Cid>> hashes) {
         return Futures.combineAllInOrder(commit.writers.stream()
                 .map(w -> w.pointer.isEmpty() ?
                         Futures.of(Optional.<PointerUpdate>empty()) :
-                        writerKey(owner, w.writer)
+                        writerKey(owner, w.writer, commit, hashes)
                                 .thenCompose(key -> key.unsignMessage(w.pointer.get().signed))
                                 .thenApply(signed -> Optional.of(PointerUpdate.fromCbor(CborObject.fromByteArray(signed)))))
                 .collect(Collectors.toList()));
+    }
+
+    /** A new writer's key block may be in the same commit as the writer's first pointer update. The key is named
+     *  by its hash, so a copy in the call is as good as a stored one.
+     */
+    private CompletableFuture<PublicSigningKey> writerKey(PublicKeyHash owner,
+                                                          PublicKeyHash writer,
+                                                          BulkCommit commit,
+                                                          List<List<Cid>> hashes) {
+        if (! writer.isIdentity()) {
+            for (int i = 0; i < commit.writers.size(); i++) {
+                List<byte[]> cbor = commit.writers.get(i).cborBlocks;
+                for (int j = 0; j < cbor.size(); j++) {
+                    if (! hashes.get(i).get(j).equals(writer.target))
+                        continue;
+                    PublicSigningKey key = PublicSigningKey.fromByteArray(cbor.get(j));
+                    if (! ContentAddressedStorage.hashKey(key).equals(writer))
+                        break;
+                    return Futures.of(key);
+                }
+            }
+        }
+        return writerKey(owner, writer);
     }
 
     private CompletableFuture<PublicSigningKey> writerKey(PublicKeyHash owner, PublicKeyHash writer) {
@@ -416,7 +439,7 @@ public class BulkCommitStorage extends DelegatingStorage {
                             return pointers.getPointerTarget(owner, w.writer, target)
                                     .thenCompose(current -> WriterCommit.blockListPayload(hashes.get(i),
                                             PointerUpdate.increment(current.sequence), hasher))
-                                    .thenCompose(expected -> writerKey(owner, w.writer)
+                                    .thenCompose(expected -> writerKey(owner, w.writer, commit, hashes)
                                             .thenCompose(key -> key.unsignMessage(w.blockListSignature.get())
                                                     .thenApply(signed -> {
                                                         if (! Arrays.equals(signed, expected))

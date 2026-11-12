@@ -1,5 +1,6 @@
 package peergos.shared.crypto;
 
+import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.PublicSigningKey;
 import peergos.shared.crypto.asymmetric.SecretSigningKey;
@@ -84,6 +85,15 @@ public class SigningKeyPair implements Cborable
         random.randombytes(secretSignBytes, 0, 32);
 
         return random(secretSignBytes, publicSignBytes, signer);
+    }
+
+    /** Whether new non-identity writers get composite Ed25519 + ML-DSA keys. */
+    public static boolean HYBRID_WRITERS = false;
+
+    public static SigningKeyPair randomWriter(Crypto crypto) {
+        return HYBRID_WRITERS ?
+                randomHybrid(crypto.random, crypto.signer, crypto.mldsa) :
+                random(crypto.random, crypto.signer);
     }
 
     public static SigningKeyPair randomHybrid(SafeRandom random, Ed25519 signer, Mldsa mldsa) {
