@@ -4,6 +4,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.PublicSigningKey;
 import peergos.shared.crypto.asymmetric.SecretSigningKey;
 import peergos.shared.crypto.asymmetric.curve25519.*;
+import peergos.shared.crypto.asymmetric.mldsa.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.io.ipfs.bases.*;
 
@@ -83,6 +84,15 @@ public class SigningKeyPair implements Cborable
         random.randombytes(secretSignBytes, 0, 32);
 
         return random(secretSignBytes, publicSignBytes, signer);
+    }
+
+    public static SigningKeyPair randomHybrid(SafeRandom random, Ed25519 signer, Mldsa mldsa) {
+        SigningKeyPair ed25519 = random(random, signer);
+        byte[] seed = new byte[Mldsa.SEED_BYTES];
+        random.randombytes(seed, 0, seed.length);
+        return new SigningKeyPair(
+                new HybridEd25519MLDSAPublicKey((Ed25519PublicKey) ed25519.publicSigningKey, mldsa.publicKey(seed), mldsa),
+                new HybridEd25519MLDSASecretKey(ed25519.secretSigningKey, seed, mldsa));
     }
 
     private static SigningKeyPair random(byte[] secretSignBytes, byte[] publicSignBytes, Ed25519 signer) {

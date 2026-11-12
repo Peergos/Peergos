@@ -3,6 +3,7 @@ package peergos.shared.crypto.asymmetric;
 import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
+import peergos.shared.crypto.asymmetric.mldsa.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -14,7 +15,8 @@ public interface PublicSigningKey extends Cborable {
     Map<Integer, Type> byValue = new HashMap<>();
     @JsType
     enum Type {
-        Ed25519(0x1);
+        Ed25519(0x1),
+        HybridEd25519MLDSA(0x2);
 
         public final int value;
 
@@ -32,8 +34,14 @@ public interface PublicSigningKey extends Cborable {
 
     Map<Type, Ed25519> PROVIDERS = new HashMap<>();
 
+    Map<Type, Mldsa> MLDSA_PROVIDERS = new HashMap<>();
+
     static void addProvider(Type t, Ed25519 provider) {
         PROVIDERS.put(t, provider);
+    }
+
+    static void addMldsaProvider(Type t, Mldsa provider) {
+        MLDSA_PROVIDERS.put(t, provider);
     }
 
     Type type();
@@ -58,6 +66,8 @@ public interface PublicSigningKey extends Cborable {
         switch (t) {
             case Ed25519:
                 return Ed25519PublicKey.fromCbor(cbor, PROVIDERS.get(t));
+            case HybridEd25519MLDSA:
+                return HybridEd25519MLDSAPublicKey.fromCbor(cbor, PROVIDERS.get(Type.Ed25519), MLDSA_PROVIDERS.get(t));
             default:
                 throw new IllegalStateException("Unknown Public Signing Key type: " + t.name());
         }

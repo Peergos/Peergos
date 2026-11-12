@@ -353,8 +353,14 @@ public interface ContentAddressedStorage {
         return CompletableFuture.completedFuture(hashKey(newKey));
     }
 
+    /** Ed25519 keys are small enough to inline; any other key is referred to by the sha256 of its block. */
     static PublicKeyHash hashKey(PublicSigningKey key) {
-        return new PublicKeyHash(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.id, key.serialize()));
+        byte[] raw = key.serialize();
+        if (key.type() == PublicSigningKey.Type.Ed25519)
+            return new PublicKeyHash(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.id, raw));
+        Sha256 sha256 = new Sha256();
+        sha256.update(raw);
+        return new PublicKeyHash(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, sha256.digest()));
     }
 
     default CompletableFuture<PublicKeyHash> putBoxingKey(PublicKeyHash owner,

@@ -1,6 +1,7 @@
 package peergos.server;
 
 import peergos.server.crypto.asymmetric.curve25519.*;
+import peergos.server.crypto.asymmetric.mldsa.JdkMldsa;
 import peergos.server.crypto.asymmetric.mlkem.JavaMlkem;
 import peergos.server.crypto.hash.*;
 import peergos.server.crypto.random.*;
@@ -16,6 +17,6 @@ public class JavaCrypto {
         Ed25519 signer = JdkEd25519.orElse(new Ed25519Java());
         Curve25519 boxer = new Curve25519Java();
         JavaMlkem javaMlkem = new JavaMlkem();
-        return Crypto.init(() -> new Crypto(random, new ScryptJava(), symmetricProvider, signer, boxer, javaMlkem));
+        return Crypto.init(() -> new Crypto(random, new ScryptJava(), symmetricProvider, signer, boxer, javaMlkem, JdkMldsa.orElseUnavailable()));
     }
 }

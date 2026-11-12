@@ -5,6 +5,7 @@ import io.libp2p.core.*;
 import peergos.server.corenode.*;
 import peergos.server.crypto.*;
 import peergos.server.crypto.asymmetric.curve25519.*;
+import peergos.server.crypto.asymmetric.mldsa.JdkMldsa;
 import peergos.server.crypto.asymmetric.mlkem.JavaMlkem;
 import peergos.server.crypto.hash.*;
 import peergos.server.crypto.random.*;
@@ -56,7 +57,7 @@ public class Builder {
 
     public static Crypto initNativeCrypto(Salsa20Poly1305 symmetric, Ed25519 signer, Curve25519 boxer, Mlkem mlkem, Hasher h) {
         SafeRandomJava random = new SafeRandomJava();
-        return Crypto.init(() -> new Crypto(random, h, symmetric, signer, boxer, mlkem));
+        return Crypto.init(() -> new Crypto(random, h, symmetric, signer, boxer, mlkem, JdkMldsa.orElseUnavailable()));
     }
 
     public static Crypto initCrypto() {
