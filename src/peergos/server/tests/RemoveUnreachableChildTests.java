@@ -6,6 +6,7 @@ import org.junit.*;
 import peergos.server.*;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.io.ipfs.Cid;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.mutable.*;
@@ -155,7 +156,9 @@ public class RemoveUnreachableChildTests {
                 .getPointerTarget(owner, signer.publicKeyHash, network.dhtClient).join();
         PointerUpdate cas = new PointerUpdate(current.updated, MaybeMultihash.empty(),
                 PointerUpdate.increment(current.sequence));
-        byte[] signed = signer.secret.signMessage(cas.serialize(), SigningDomain.POINTER).join();
+        PublicKeyHash controller = WriterData.getWriterData(owner, (Cid) current.updated.get(), current.sequence, network.dhtClient)
+                .join().props.get().controller;
+        byte[] signed = signer.pointerSigner(controller).secret.signMessage(cas.serialize(), SigningDomain.POINTER).join();
         Assert.assertTrue(network.mutable.setPointer(owner, signer.publicKeyHash, signed).join());
         network.synchronizer.clear();
     }

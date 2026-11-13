@@ -793,7 +793,7 @@ public class NetworkAccess {
                 .map(f -> hasher.sha256(f.data))
                 .collect(Collectors.toList()))
                 .thenCompose(hashes -> Futures.combineAllInOrder(hashes.stream()
-                        .map(h -> writer.secret.signMessage(h, SigningDomain.BLOCK))
+                        .map(h -> writer.blockSigner().secret.signMessage(h, SigningDomain.BLOCK))
                         .collect(Collectors.toList()))
                         .thenCompose(signedHashes -> bulkUploadFragments(
                                 fragments,

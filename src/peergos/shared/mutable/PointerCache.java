@@ -1,6 +1,6 @@
 package peergos.shared.mutable;
 
-import peergos.shared.cbor.*;
+import peergos.shared.storage.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.util.*;
@@ -14,25 +14,27 @@ public interface PointerCache {
 
     CompletableFuture<Optional<byte[]>> get(PublicKeyHash owner, PublicKeyHash writer);
 
-    default CompletableFuture<Boolean> doUpdate(Optional<byte[]> current, byte[] update, PublicSigningKey signer) {
+    default CompletableFuture<Boolean> doUpdate(PublicKeyHash owner,
+                                                PublicKeyHash writer,
+                                                Optional<byte[]> current,
+                                                byte[] update,
+                                                ContentAddressedStorage storage) {
         if (current.isPresent() && Arrays.equals(current.get(), update))
             return Futures.of(false);
-        Optional<CompletableFuture<Optional<PointerUpdate>>> currentFut = current.map(c -> signer.unsignMessage(c, SigningDomain.POINTER))
-                .map(f -> f.thenApply(CborObject::fromByteArray))
-                .map(f -> f.thenApply(PointerUpdate::fromCbor))
-                .map(f -> f.thenApply(Optional::of));
+        CompletableFuture<Optional<Pair<PublicSigningKey, PointerUpdate>>> currentFut = current
+                .map(c -> PointerKeys.pointerKey(owner, writer, c, storage)
+                        .thenCompose(k -> PointerKeys.decode(k, c).thenApply(u -> Optional.of(new Pair<>(k, u)))))
+                .orElse(Futures.of(Optional.empty()));
 
-        return signer.unsignMessage(update, SigningDomain.POINTER).thenCompose(unsigned -> {
-            PointerUpdate newVal = PointerUpdate.fromCbor(CborObject.fromByteArray(unsigned));
-
-            return currentFut.orElse(Futures.of(Optional.empty())).thenApply(currentVal -> {
-                if (currentVal.isPresent() && currentVal.get().sequence.isPresent()) {
-                    long currentSeq = currentVal.get().sequence.get();
-                    if (newVal.sequence.isEmpty() || newVal.sequence.get() < currentSeq)
-                        throw new IllegalStateException("Invalid pointer update! Sequence number must increase.");
-                }
-                return true;
-            });
-        });
+        return currentFut.thenCompose(currentVal -> PointerKeys.pointerKey(owner, writer, update, storage)
+                .thenCompose(key -> PointerKeys.decode(key, update).thenApply(newVal -> {
+                    PointerKeys.checkTransition(writer, currentVal.map(p -> p.left), key);
+                    if (currentVal.isPresent() && currentVal.get().right.sequence.isPresent()) {
+                        long currentSeq = currentVal.get().right.sequence.get();
+                        if (newVal.sequence.isEmpty() || newVal.sequence.get() < currentSeq)
+                            throw new IllegalStateException("Invalid pointer update! Sequence number must increase.");
+                    }
+                    return true;
+                })));
     }
 }

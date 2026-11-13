@@ -117,6 +117,7 @@ public class UserContext {
         this.entrie = entrie;
         this.writeSynchronizer = network.synchronizer;
         if (signer != null) {
+            writeSynchronizer.upgradeWritersOf(signer.publicKeyHash);
             writeSynchronizer.put(signer.publicKeyHash, signer.publicKeyHash, userData);
         }
         this.transactions = transactions;
@@ -1978,8 +1979,8 @@ public class UserContext {
                     SigningPrivateKeyAndPublicHash identity = user.signer;
                     PublicKeyHash owner = identity.publicKeyHash;
                     return user.getUserRoot().thenCompose(root -> {
-                        SigningPrivateKeyAndPublicHash pair = root.signingPair();
                         CommittedWriterData current = root.getVersionRoot();
+                        SigningPrivateKeyAndPublicHash pair = root.signingPair().pointerSigner(current.props.get().controller);
                         PointerUpdate cas = new PointerUpdate(current.hash, MaybeMultihash.empty(), PointerUpdate.increment(current.sequence));
                         return pair.secret.signMessage(cas.serialize(), SigningDomain.POINTER)
                                 .thenCompose(signed -> network.mutable.setPointer(this.signer.publicKeyHash, pair.publicKeyHash, signed));
@@ -3073,7 +3074,7 @@ public class UserContext {
     public CompletableFuture<WriterUsageInfo> getWriteUsageInfo(FileWrapper file) {
         if (! file.isWritable())
             return Futures.errored(new IllegalStateException("Not writable: " + file.getName()));
-        return network.spaceUsage.getWriterUsage(file.owner(), file.writer(), file.signingPair().secret);
+        return network.spaceUsage.getWriterUsage(file.owner(), file.writer(), file.signingPair().blockSigner().secret);
     }
 
     @JsMethod
@@ -3947,10 +3948,8 @@ public class UserContext {
                                                                      PublicKeyHash owner,
                                                                      PublicKeyHash writer) {
         return mutable.getPointer(owner, writer)
-                .thenCompose(casOpt -> ipfs.getSigningKey(owner, writer)
-                        .thenCompose(signer -> casOpt.map(raw -> signer.get().unsignMessage(raw, SigningDomain.POINTER)
-                                        .thenApply(unsigned -> PointerUpdate.fromCbor(CborObject.fromByteArray(unsigned))))
-                                .orElse(Futures.of(PointerUpdate.empty()))));
+                .thenCompose(casOpt -> casOpt.map(raw -> PointerKeys.verify(owner, writer, raw, ipfs))
+                        .orElse(Futures.of(PointerUpdate.empty())));
     }
 
     private static CompletableFuture<Pair<PointerUpdate, CborObject>> getWriterDataCbor(ContentAddressedStorage ipfs,

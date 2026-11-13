@@ -20,14 +20,10 @@ public class JSPointerCache implements PointerCache {
     @Override
     public CompletableFuture<Boolean> put(PublicKeyHash owner, PublicKeyHash writer, byte[] signedUpdate) {
         return cache.get(owner, writer)
-                .thenCompose(current -> storage.getSigningKey(owner, writer).thenCompose(signerOpt -> {
-                    if (signerOpt.isEmpty())
-                        throw new IllegalStateException("Couldn't retrieve signing key!");
-                    return doUpdate(current, signedUpdate, signerOpt.get()).thenCompose(res -> {
-                        if (res)
-                            return cache.put(owner, writer, signedUpdate);
-                        return Futures.of(false);
-                    });
+                .thenCompose(current -> doUpdate(owner, writer, current, signedUpdate, storage).thenCompose(res -> {
+                    if (res)
+                        return cache.put(owner, writer, signedUpdate);
+                    return Futures.of(false);
                 }));
     }
 

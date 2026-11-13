@@ -232,7 +232,8 @@ public abstract class UserTests {
 
         FileWrapper userRoot = context.getUserRoot().join();
         Assert.assertTrue("owner uses identity multihash", userRoot.getPointer().capability.owner.isIdentity());
-        Assert.assertTrue("signer uses identity multihash", userRoot.getPointer().capability.writer.isIdentity());
+        Assert.assertEquals("signer uses identity multihash unless it is a composite key",
+                ! SigningKeyPair.HYBRID_WRITERS, userRoot.getPointer().capability.writer.isIdentity());
         Assert.assertTrue("user root does not have a retrievable parent",
                 ! userRoot.retrieveParent(network).join().isPresent());
 
@@ -922,7 +923,8 @@ public abstract class UserTests {
         Cid root2 = ((BufferedStorage)network.dhtClient).target().put(bContext.signer.publicKeyHash, bContext.signer.publicKeyHash,
                 bContext.signer.secret.signMessage(crypto.hasher.sha256(rootBlock).join(), SigningDomain.BLOCK).join(), rootBlock, TransactionId.build("hey")).join();
         Assert.assertFalse(network.mutable.setPointer(bContext.signer.publicKeyHash, bRoot.writer(),
-                bRoot.signingPair().secret.signMessage(cas.serialize(), SigningDomain.POINTER).join()).join());
+                bRoot.signingPair().pointerSigner(bRoot.getVersionRoot().props.get().controller)
+                        .secret.signMessage(cas.serialize(), SigningDomain.POINTER).join()).join());
         MaybeMultihash updated = network.mutable.getPointerTarget(bContext.signer.publicKeyHash, bRoot.writer(), network.dhtClient).join().updated;
         Assert.assertTrue("Malicious pointer update failed", updated.equals(current));
     }

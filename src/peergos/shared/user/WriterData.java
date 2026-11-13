@@ -392,7 +392,7 @@ public class WriterData implements Cborable {
                     }
                     PointerUpdate cas = new PointerUpdate(currentHash, newHash, PointerUpdate.increment(currentSequence));
                     return Futures.asyncExceptionally(
-                            () -> mutable.setPointer(owner, signer, cas),
+                            () -> mutable.setPointer(owner, signer.pointerSigner(controller), cas),
                             t -> {
                                 Throwable cause = Exceptions.getRootCause(t);
                                 if (cause instanceof PointerCasException) {
@@ -410,6 +410,11 @@ public class WriterData implements Cborable {
                                 return new Snapshot(signer.publicKeyHash, committed);
                             });
                 });
+    }
+
+    /** An Ed25519 writer upgrades in place by naming its composite key as controller */
+    public WriterData withController(PublicKeyHash newController) {
+        return new WriterData(newController, generationAlgorithm, publicData, followRequestReceiver, ownedKeys, namedOwnedKeys, staticData, tree, secretLinks);
     }
 
     public static CompletableFuture<Snapshot> commitDeletion(PublicKeyHash owner,

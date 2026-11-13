@@ -17,6 +17,7 @@ import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.mutable.MutablePointers;
 import peergos.shared.mutable.PointerUpdate;
+import peergos.shared.mutable.PointerKeys;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.CommittedWriterData;
@@ -118,9 +119,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
 
             allPointers.forEach((writerHash, rawPointer) -> {
                 PublicKeyHash owner = writerHash.equals(pkiKey) ? pkiOwner : usage.getOwnerKey(writerHash);
-                PublicSigningKey writer = getSigningKey(null, writerHash).join().get();
-                byte[] bothHashes = writer.unsignMessage(rawPointer, SigningDomain.POINTER).join();
-                PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
+                PointerUpdate cas = PointerKeys.verify(owner, writerHash, rawPointer, this).join();
                 MaybeMultihash updated = cas.updated;
 
                 if (updated.isPresent())

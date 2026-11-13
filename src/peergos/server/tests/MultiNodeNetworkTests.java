@@ -24,6 +24,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
+import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
@@ -441,6 +442,54 @@ public class MultiNodeNetworkTests {
         } catch (CompletionException e) {
             if (! e.getCause().getMessage().startsWith("New claim chain expiry before existing"))
                 throw new RuntimeException(e.getCause());
+        }
+    }
+
+    /** Migration mirrors pointers before their blocks, so it has to fetch what names an upgraded writer's key */
+    @Test
+    public void migrateUpgradedWriter() {
+        if (iNode1 == 0 || iNode2 == 0)
+            return; // Don't test migration to/from pki node
+        boolean hybridBefore = SigningKeyPair.HYBRID_WRITERS;
+        try {
+            SigningKeyPair.HYBRID_WRITERS = false;
+            String username = generateUsername(random);
+            String password = randomString();
+            NetworkAccess node1 = getNode(iNode1);
+            Multihash originalNodeId = node1.dhtClient.id().join();
+            NetworkAccess node2 = getNode(iNode2);
+            Multihash newStorageNodeId = node2.dhtClient.id().join();
+            ensureSignedUp(username, password, node1, crypto);
+            updatePkis();
+
+            SigningKeyPair.HYBRID_WRITERS = true;
+            UserContext user = ensureSignedUp(username, password, node1.clear(), crypto);
+            // small enough to be inline in its cryptree node
+            byte[] data = new byte[2000];
+            random.nextBytes(data);
+            user.getUserRoot().join().uploadOrReplaceFile("data.bin", AsyncReader.build(data), data.length,
+                    user.network, crypto, () -> false, x -> {}).join();
+            PublicKeyHash root = user.getUserRoot().join().writer();
+            byte[] pointer = node1.mutable.getPointer(user.signer.publicKeyHash, root).join().get();
+            Assert.assertTrue("Root writer upgraded", PointerKeys.isCompositeSigned(pointer));
+
+            List<UserPublicKeyLink> existing = user.network.coreNode.getChain(username).join();
+            List<UserPublicKeyLink> newChain = peergos.shared.user.Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret).join();
+            UserContext userViaNewServer = ensureSignedUp(username, password, node2, crypto);
+            List<BatWithId> bats = node1.batCave.getUserBats(username, userViaNewServer.signer).join();
+            Optional<BatWithId> mirrorBat = Optional.of(bats.get(bats.size() - 1));
+            long usage = user.getSpaceUsage(false).join();
+            userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId, mirrorBat, LocalDateTime.now(), usage, true).join();
+
+            UserContext postMigration = ensureSignedUp(username, password, node2.clear(), crypto);
+            FileWrapper file = postMigration.getByPath(PathUtil.get(username, "data.bin")).join().get();
+            byte[] read = Serialize.readFully(file.getInputStream(postMigration.network, crypto, x -> {}).join(), data.length).join();
+            Assert.assertArrayEquals(data, read);
+            postMigration.getUserRoot().join().uploadOrReplaceFile("after.bin", AsyncReader.build(new byte[1000]), 1000,
+                    postMigration.network, crypto, () -> false, x -> {}).join();
+            Assert.assertTrue(PointerKeys.isCompositeSigned(node2.mutable.getPointer(user.signer.publicKeyHash, root).join().get()));
+        } finally {
+            SigningKeyPair.HYBRID_WRITERS = hybridBefore;
         }
     }
 

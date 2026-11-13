@@ -216,7 +216,8 @@ public class BufferedNetworkAccess extends NetworkAccess {
                         .thenCompose(mergedRoot -> {
                             BufferedPointers.WriterUpdate merged = new BufferedPointers.WriterUpdate(u.left.writer,
                                     actualExisting, MaybeMultihash.of(mergedRoot), cas.sequence.map(s -> s + 1));
-                            return commitWrites(owner, Collections.singletonList(new Pair<>(merged, Optional.empty())),
+                            return commitWrites(owner, Collections.singletonList(new Pair<>(merged,
+                                            Optional.of(new CommittedWriterData(merged.currentHash, Optional.of(newWD), merged.currentSequence)))),
                                     writers, tid, false);
                         }));
     }
@@ -332,6 +333,20 @@ public class BufferedNetworkAccess extends NetworkAccess {
                         }));
     }
 
+    /** The controller of the WriterData a pointer update leaves, or for a deletion the one it removes */
+    private CompletableFuture<PublicKeyHash> controller(PublicKeyHash owner,
+                                                        BufferedPointers.WriterUpdate u,
+                                                        Optional<CommittedWriterData> written) {
+        Optional<WriterData> wd = written.flatMap(c -> c.props);
+        if (wd.isPresent())
+            return Futures.of(wd.get().controller);
+        MaybeMultihash root = u.currentHash.isPresent() ? u.currentHash : u.prevHash;
+        if (! root.isPresent())
+            return Futures.of(u.writer);
+        return WriterData.getWriterData(owner, (Cid) root.get(), Optional.empty(), blockBuffer)
+                .thenApply(c -> c.props.get().controller);
+    }
+
     private CompletableFuture<BulkCommit> buildCommit(PublicKeyHash owner,
                                                       List<Pair<BufferedPointers.WriterUpdate, Optional<CommittedWriterData>>> writes,
                                                       Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers,
@@ -344,7 +359,8 @@ public class BufferedNetworkAccess extends NetworkAccess {
                             BufferedPointers.WriterUpdate u = writes.get(i).left;
                             SigningPrivateKeyAndPublicHash signer = writers.get(u.writer);
                             PointerUpdate update = new PointerUpdate(u.prevHash, u.currentHash, u.currentSequence);
-                            return signer.secret.signMessage(update.serialize(), SigningDomain.POINTER)
+                            return controller(owner, u, writes.get(i).right)
+                                    .thenCompose(controller -> signer.pointerSigner(controller).secret.signMessage(update.serialize(), SigningDomain.POINTER))
                                     .thenApply(sig -> new SignedPointerUpdate(u.writer, sig))
                                     .thenCompose(pointer -> blockBuffer.buildWriterCommit(owner, u.writer,
                                             Optional.of(pointer), signer, tid, byRoot.get(i)));
