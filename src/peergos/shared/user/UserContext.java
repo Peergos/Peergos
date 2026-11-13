@@ -405,10 +405,14 @@ public class UserContext {
                                                         Consumer<String> progressCallback) {
         if (boxer.publicBoxingKey instanceof HybridCurve25519MLKEMPublicKey)
             return Futures.of(false);
-        progressCallback.accept("Upgrading account to post-quantum encryption..");
-        return getFollowRequests().thenCompose(followReqs -> {
-            if (! followReqs.isEmpty())
+        // Offline the pending follow requests can't be checked: sign in from the local caches and
+        // leave the upgrade to the next sign-in that reaches the server
+        return Futures.asyncExceptionally(() -> getFollowRequests().thenApply(List::isEmpty),
+                t -> RetryStorage.isOffline(t) ? Futures.of(false) : Futures.errored(t))
+                .thenCompose(canUpgrade -> {
+            if (! canUpgrade)
                 return Futures.of(false);
+            progressCallback.accept("Upgrading account to post-quantum encryption..");
             return WriterData.getWriterData(this.signer.publicKeyHash, this.signer.publicKeyHash, network.mutable, network.dhtClient).thenCompose(cwd -> {
                 SecretGenerationAlgorithm algorithm = cwd.props.flatMap(wd -> wd.generationAlgorithm)
                         .orElseThrow(() -> new IllegalStateException("No login algorithm specified in user data!"));

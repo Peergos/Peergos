@@ -33,6 +33,7 @@ import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.io.ipfs.bases.Charsets;
 import peergos.shared.login.mfa.*;
 import peergos.shared.mutable.*;
+import peergos.shared.social.SocialNetwork;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.storage.controller.*;
@@ -781,6 +782,39 @@ public abstract class UserTests {
         changedPassword.changePassword(newPassword, password3, UserTests::noMfa).get();
         UserValidity.checkUserValidity(network, username);
         PeergosNetworkUtils.ensureSignedUp(username, password3, network, crypto);
+    }
+
+    /** As in the Android app offline: its caches answer the sign-in, but nothing answers for the social network */
+    @Test
+    public void offlineSignInLeavesThePostQuantumUpgradeForLater() {
+        String username = generateUsername();
+        String password = "password";
+        UserContext.signUpGeneral(username, password, "", Optional.empty(), id -> {},
+                Optional.empty(), LocalDate.now().plusMonths(2),
+                network, crypto, SecretGenerationAlgorithm.getLegacy(crypto.random), x -> {}).join();
+        SocialNetwork unreachable = new SocialNetwork() {
+            private <T> CompletableFuture<T> offline() {
+                return Futures.errored(new java.net.UnknownHostException("Unable to resolve host \"peergos.net\": No address associated with hostname"));
+            }
+            public CompletableFuture<Boolean> sendFollowRequest(PublicKeyHash target, byte[] encryptedPermission) {
+                return offline();
+            }
+            public CompletableFuture<byte[]> getFollowRequests(PublicKeyHash owner, byte[] signedTime) {
+                return offline();
+            }
+            public CompletableFuture<Boolean> removeFollowRequest(PublicKeyHash owner, byte[] data) {
+                return offline();
+            }
+        };
+        NetworkAccess offline = NetworkAccess.buildBuffered(service.storage, service.bats, service.coreNode, service.account,
+                service.mutable, 0, unreachable, service.controller, service.usage, network.serverMessager, crypto.hasher,
+                Arrays.asList("peergos"), false);
+
+        UserContext offlineLogin = UserContext.signIn(username, password, UserTests::noMfa, offline, crypto).join();
+        Assert.assertFalse(offlineLogin.isPostQuantum());
+
+        UserContext onlineLogin = UserContext.signIn(username, password, UserTests::noMfa, network, crypto).join();
+        Assert.assertTrue(onlineLogin.isPostQuantum());
     }
 
     @Test
