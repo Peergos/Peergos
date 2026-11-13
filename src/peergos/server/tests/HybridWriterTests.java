@@ -26,8 +26,11 @@ public class HybridWriterTests {
     private static NetworkAccess network;
     private static final Random random = new Random(7);
 
+    private static boolean hybridBefore;
+
     @BeforeClass
     public static void init() {
+        hybridBefore = SigningKeyPair.HYBRID_WRITERS;
         SigningKeyPair.HYBRID_WRITERS = true;
         service = Main.PKI_INIT.main(args).localApi;
         network = NetworkAccess.buildBuffered(service.storage, service.bats, service.coreNode, service.account,
@@ -37,7 +40,7 @@ public class HybridWriterTests {
 
     @AfterClass
     public static void reset() {
-        SigningKeyPair.HYBRID_WRITERS = false;
+        SigningKeyPair.HYBRID_WRITERS = hybridBefore;
     }
 
     private static void assertHybrid(PublicKeyHash writer, UserContext context) {
