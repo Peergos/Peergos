@@ -15,8 +15,8 @@ public class JdkMldsa implements Mldsa {
     private static final byte[] X509_PREFIX = ArrayOps.hexToBytes("30820532300b06096086480165030403110382052100");
     private static final byte[] PKCS8_SEED_PREFIX = ArrayOps.hexToBytes("3034020100300b0609608648016503040311042280" + "20");
 
-    /** This, if the JDK has ML-DSA-44, else a provider that refuses. Android's providers have no ML-DSA. */
-    public static Mldsa orElseUnavailable() {
+    /** This, if the JDK has ML-DSA-44 (24+), else the fallback. Android's providers have no ML-DSA. */
+    public static Mldsa orElse(Mldsa fallback) {
         try {
             JdkMldsa jdk = new JdkMldsa();
             byte[] seed = new byte[SEED_BYTES];
@@ -26,7 +26,7 @@ public class JdkMldsa implements Mldsa {
             if (jdk.verify(jdk.sign(message, seed).join(), message, pk).join())
                 return jdk;
         } catch (Throwable t) {}
-        return new Mldsa.Unavailable();
+        return fallback;
     }
 
     private static class SeedRandom extends SecureRandom {

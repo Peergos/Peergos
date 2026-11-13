@@ -24,6 +24,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.asymmetric.mlkem.Mlkem;
+import peergos.shared.crypto.asymmetric.mldsa.Mldsa;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.password.*;
 import peergos.shared.crypto.symmetric.*;
@@ -55,9 +56,9 @@ public class Builder {
         LOG.setLevel(Level.OFF);
     }
 
-    public static Crypto initNativeCrypto(Salsa20Poly1305 symmetric, Ed25519 signer, Curve25519 boxer, Mlkem mlkem, Hasher h) {
+    public static Crypto initNativeCrypto(Salsa20Poly1305 symmetric, Ed25519 signer, Curve25519 boxer, Mlkem mlkem, Mldsa mldsa, Hasher h) {
         SafeRandomJava random = new SafeRandomJava();
-        return Crypto.init(() -> new Crypto(random, h, symmetric, signer, boxer, mlkem, JdkMldsa.orElseUnavailable()));
+        return Crypto.init(() -> new Crypto(random, h, symmetric, signer, boxer, mlkem, mldsa));
     }
 
     public static Crypto initCrypto() {
@@ -68,7 +69,16 @@ public class Builder {
         return initCrypto(h, Optional.empty());
     }
 
+    /** mldsaFallback is used where the JDK has no ML-DSA, i.e. Android */
+    public static Crypto initCrypto(Hasher h, Mldsa mldsaFallback) {
+        return initCrypto(h, Optional.empty(), mldsaFallback);
+    }
+
     public static Crypto initCrypto(Hasher h, Optional<Path> libPath) {
+        return initCrypto(h, libPath, new Mldsa.Unavailable());
+    }
+
+    public static Crypto initCrypto(Hasher h, Optional<Path> libPath, Mldsa mldsaFallback) {
         // every entry point, Android included, comes through here before making a connection
         BlockedCertificates.install();
         try {
@@ -77,9 +87,9 @@ public class Builder {
             Ed25519 signer = JdkEd25519.orElse(new JniTweetNacl.Signer(nativeNacl));
             Curve25519 boxer = new Curve25519Java();
             JavaMlkem mlkem = new JavaMlkem();
-            return initNativeCrypto(symmetricProvider, signer, boxer, mlkem, h);
+            return initNativeCrypto(symmetricProvider, signer, boxer, mlkem, JdkMldsa.orElse(mldsaFallback), h);
         } catch (Throwable t) {
-            return JavaCrypto.init();
+            return JavaCrypto.init(mldsaFallback);
         }
     }
 

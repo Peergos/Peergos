@@ -8,15 +8,20 @@ import peergos.server.crypto.random.*;
 import peergos.server.crypto.symmetric.*;
 import peergos.shared.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
+import peergos.shared.crypto.asymmetric.mldsa.Mldsa;
 
 public class JavaCrypto {
 
     public static Crypto init() {
+        return init(new Mldsa.Unavailable());
+    }
+
+    public static Crypto init(Mldsa mldsaFallback) {
         SafeRandomJava random = new SafeRandomJava();
         Salsa20Poly1305Java symmetricProvider = new Salsa20Poly1305Java();
         Ed25519 signer = JdkEd25519.orElse(new Ed25519Java());
         Curve25519 boxer = new Curve25519Java();
         JavaMlkem javaMlkem = new JavaMlkem();
-        return Crypto.init(() -> new Crypto(random, new ScryptJava(), symmetricProvider, signer, boxer, javaMlkem, JdkMldsa.orElseUnavailable()));
+        return Crypto.init(() -> new Crypto(random, new ScryptJava(), symmetricProvider, signer, boxer, javaMlkem, JdkMldsa.orElse(mldsaFallback)));
     }
 }
