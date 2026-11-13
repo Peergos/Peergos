@@ -262,6 +262,35 @@ public class RoutingLogTests {
         Assert.assertFalse("a relay without a direct address", valid(addresses(srv, Collections.emptyList(), Collections.emptyList(), true)));
     }
 
+    @Test
+    public void nothingOutsideTheBodyEscapesTheSizeBounds() {
+        Identity id = new Identity(2);
+        SigningKeyPair srv = key();
+        IdentityInception inc = id.inception(Arrays.asList(server()));
+        Admission admission = Admission.build(id.keys.get(0).publicSigningKey, GOOD_PROOF, srv.secretSigningKey).join();
+        Assert.assertTrue(valid(inc.withAdmission(admission)));
+        Assert.assertFalse("a 900 kB admission proof",
+                valid(inc.withAdmission(new Admission(new byte[900_000], admission.signature))));
+        Assert.assertFalse("a 900 kB admission signature",
+                valid(inc.withAdmission(new Admission(GOOD_PROOF, new byte[900_000]))));
+        Assert.assertFalse("a signature with more after it",
+                valid(new IdentityInception(inc.identity, inc.providers, inc.next, Arrays.copyOf(inc.signature, 65), Optional.empty())));
+
+        ServerInception server = ServerInception.build(srv, key().publicSigningKey, crypto.hasher).join();
+        Assert.assertTrue(valid(server.withProof(GOOD_PROOF)));
+        Assert.assertFalse("a 900 kB server proof", valid(server.withProof(new byte[900_000])));
+
+        Address ok = new Address(Address.IROH, new byte[6]);
+        Assert.assertTrue(valid(ServerAddresses.build(srv, srv.publicSigningKey, Optional.of(new byte[Bounds.MAX_KEM_BYTES]),
+                Arrays.asList(ok), Collections.emptyList(), ServerAddresses.Mode.Light, false, 1).join()));
+        Assert.assertFalse("a 900 kB kem key", valid(ServerAddresses.build(srv, srv.publicSigningKey, Optional.of(new byte[900_000]),
+                Arrays.asList(ok), Collections.emptyList(), ServerAddresses.Mode.Light, false, 1).join()));
+
+        PublicSigningKey padded = new peergos.shared.crypto.asymmetric.curve25519.Ed25519PublicKey(new byte[900_000],
+                PublicSigningKey.PROVIDERS.get(PublicSigningKey.Type.Ed25519));
+        Assert.assertFalse("a 900 kB key", valid(new IdentityMove(padded, Arrays.asList(server()), 1, new byte[64])));
+    }
+
     private static ServerAddresses addresses(SigningKeyPair server, List<Address> addrs, List<Multihash> relays, boolean relaying) {
         return ServerAddresses.build(server, server.publicSigningKey, Optional.empty(), addrs, relays,
                 ServerAddresses.Mode.Light, relaying, 1).join();

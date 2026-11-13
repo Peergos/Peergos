@@ -34,7 +34,12 @@ public abstract class SignedRecord implements Cborable {
 
     public final void checkBounds() {
         checkFields();
+        for (Cborable key : keys())
+            if (key instanceof PublicSigningKey)
+                Bounds.checkKey((PublicSigningKey) key);
+        Bounds.checkSignature(signer(), signature);
         Bounds.checkBody(body(), keys());
+        Bounds.checkTotal(this);
     }
 
     /** The bytes a record's hash is over: its body and signature. */

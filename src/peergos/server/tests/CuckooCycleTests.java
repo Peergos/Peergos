@@ -49,6 +49,15 @@ public class CuckooCycleTests {
         }
         Assert.assertFalse("unsorted", params.check(subject, new CuckooCycle.Proof(16, proof.nonce, reversed)));
         Assert.assertFalse("garbage", params.verify(subject, new byte[]{1, 2, 3}).join());
+
+        Map<String, peergos.shared.cbor.Cborable> padded = new TreeMap<>();
+        peergos.shared.cbor.CborObject.CborMap canonical = (peergos.shared.cbor.CborObject.CborMap) proof.toCbor();
+        for (String k : canonical.keySet())
+            padded.put(k, canonical.get(k));
+        padded.put("z", new peergos.shared.cbor.CborObject.CborByteArray(new byte[900_000]));
+        Assert.assertFalse("a proof carrying anything else",
+                params.verify(subject, peergos.shared.cbor.CborObject.CborMap.build(padded).serialize()).join());
+        Assert.assertTrue(proof.serialize().length <= Bounds.MAX_PROOF_BYTES);
     }
 
     @Test
