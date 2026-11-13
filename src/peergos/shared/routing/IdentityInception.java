@@ -87,6 +87,7 @@ public class IdentityInception extends SignedRecord implements Establishment {
     protected void checkFields() {
         Bounds.checkProviders(providers);
         Bounds.checkCommitment(next);
+        admission.ifPresent(Bounds::checkAdmission);
     }
 
     @Override

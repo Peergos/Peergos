@@ -124,6 +124,8 @@ public class ServerAddresses extends SignedRecord implements Update {
             if (a.transport.isEmpty() || a.transport.length() > Bounds.MAX_TRANSPORT_NAME)
                 throw new IllegalStateException("Invalid transport name");
         }
+        if (kem.map(k -> k.length > Bounds.MAX_KEM_BYTES).orElse(false))
+            throw new IllegalStateException("KEM key too large");
         if (relays.size() > Bounds.MAX_RELAYS)
             throw new IllegalStateException("Too many relays: " + relays.size());
         Bounds.checkPeerIds(relays);

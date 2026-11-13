@@ -79,7 +79,9 @@ public final class CuckooCycle implements Work {
     @Override
     public CompletableFuture<Boolean> verify(byte[] subject, byte[] proof) {
         try {
-            return Futures.of(check(subject, Proof.fromCbor(CborObject.fromByteArray(proof))));
+            Proof p = Proof.fromCbor(CborObject.fromByteArray(proof));
+            // only the one encoding, so a proof can't carry anything else
+            return Futures.of(Arrays.equals(p.serialize(), proof) && check(subject, p));
         } catch (RuntimeException e) {
             return Futures.of(false);
         }

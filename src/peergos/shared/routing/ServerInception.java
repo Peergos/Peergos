@@ -75,6 +75,7 @@ public class ServerInception extends SignedRecord implements Establishment {
     @Override
     protected void checkFields() {
         Bounds.checkCommitment(next);
+        proof.ifPresent(Bounds::checkProof);
     }
 
     @Override
