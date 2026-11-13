@@ -163,15 +163,18 @@ public class LocalFirstStorage extends DelegatingDeletableStorage {
         List<Cid> remoteHashes = blocks.stream()
                 .filter(c -> !localHashes.contains(c))
                 .collect(Collectors.toList());
+        // fetched raw, as re-serializing a raw block parsed as cbor would store different bytes under another hash
         List<BlockMetadata> remoteMeta = remoteHashes.stream()
-                .map(c -> p2pGets.get(peerIds.get(0), owner, c, mirrorBat).thenApply(res -> {
-                    if (res.isPresent()) {
-                        return (c.isRaw() ?
-                                local.putRaw(owner, owner, new byte[0], res.get().serialize(), new TransactionId(""), x -> {}) :
-                                local.put(owner, owner, new byte[0], res.get().serialize(), new TransactionId("")))
-                                .thenApply(x -> BlockMetadataStore.extractMetadata(c, res.get().serialize())).join();
-                    }
-                    throw new IllegalStateException("Couldn't retrieve " + c);
+                .map(c -> p2pGets.getRaw(peerIds.get(0), owner, c, mirrorBat).thenApply(res -> {
+                    if (res.isEmpty())
+                        throw new IllegalStateException("Couldn't retrieve " + c);
+                    byte[] bytes = res.get();
+                    if (! h.hash(bytes, c.isRaw()).join().equals(c))
+                        throw new IllegalStateException("Received block with incorrect hash!");
+                    return (c.isRaw() ?
+                            local.putRaw(owner, owner, new byte[0], bytes, new TransactionId(""), x -> {}) :
+                            local.put(owner, owner, new byte[0], bytes, new TransactionId("")))
+                            .thenApply(x -> BlockMetadataStore.extractMetadata(c, bytes)).join();
                 }).join())
                 .collect(Collectors.toList());
         return Stream.concat(localMeta.stream(), remoteMeta.stream())
