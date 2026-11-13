@@ -13,10 +13,27 @@ import java.util.*;
 public class SigningPrivateKeyAndPublicHash implements Cborable {
     public final PublicKeyHash publicKeyHash;
     public final SecretSigningKey secret;
+    // the writer of the directory this signer was reached through, which usually owns it; not serialized
+    private Optional<PublicKeyHash> parentHint = Optional.empty();
 
     public SigningPrivateKeyAndPublicHash(PublicKeyHash publicKeyHash, SecretSigningKey secret) {
         this.publicKeyHash = publicKeyHash;
         this.secret = secret;
+    }
+
+    @SuppressWarnings("unusable-by-js")
+    public Optional<PublicKeyHash> parentHint() {
+        return parentHint;
+    }
+
+    @SuppressWarnings("unusable-by-js")
+    public SigningPrivateKeyAndPublicHash withParentHint(PublicKeyHash parent) {
+        return new SigningPrivateKeyAndPublicHash(publicKeyHash, secret).hinted(Optional.of(parent));
+    }
+
+    private SigningPrivateKeyAndPublicHash hinted(Optional<PublicKeyHash> parent) {
+        this.parentHint = parent;
+        return this;
     }
 
     /** Whether this is an Ed25519 writer holding the composite key it can upgrade to in place, keeping its hash */
@@ -37,7 +54,7 @@ public class SigningPrivateKeyAndPublicHash implements Cborable {
      */
     public SigningPrivateKeyAndPublicHash blockSigner() {
         return isUpgradable() ?
-                new SigningPrivateKeyAndPublicHash(publicKeyHash, ((HybridEd25519MLDSASecretKey) secret).ed25519) :
+                new SigningPrivateKeyAndPublicHash(publicKeyHash, ((HybridEd25519MLDSASecretKey) secret).ed25519).hinted(parentHint) :
                 this;
     }
 

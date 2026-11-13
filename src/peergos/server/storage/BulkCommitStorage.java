@@ -298,6 +298,11 @@ public class BulkCommitStorage extends DelegatingStorage {
                         .thenCompose(at -> DeletableContentAddressedStorage.getDirectOwnedKeys(owner, w.writer,
                                 updates.get(at).map(u -> u.updated).orElse(MaybeMultihash.empty()),
                                 (h, seq) -> ContentAddressedStorage.getWriterData(owner, h, seq, withCallBlocks),
+                                child -> commit.writers.stream()
+                                        .filter(c -> c.writer.equals(child) && c.pointer.isPresent())
+                                        .findFirst()
+                                        .map(c -> Futures.of(Optional.of(c.pointer.get().signed)))
+                                        .orElseGet(() -> pointers.getPointer(owner, child)),
                                 withCallBlocks, hasher))
                         .exceptionally(unwalkable -> Collections.emptySet())
                         .join();

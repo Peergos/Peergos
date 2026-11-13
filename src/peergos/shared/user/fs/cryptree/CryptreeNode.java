@@ -289,7 +289,8 @@ public class CryptreeNode implements Cborable {
                                                     SymmetricKey wBaseKey,
                                                     Optional<SigningPrivateKeyAndPublicHash> entrySigner) {
         return getBaseBlock(rBaseKey).signer
-                .map(link -> link.target(wBaseKey))
+                .map(link -> entrySigner.map(parent -> link.target(wBaseKey).withParentHint(parent.publicKeyHash))
+                        .orElseGet(() -> link.target(wBaseKey)))
                 .orElseGet(() -> entrySigner.orElseThrow(() ->
                         new IllegalStateException("No link to private signing key present on directory!")));
     }

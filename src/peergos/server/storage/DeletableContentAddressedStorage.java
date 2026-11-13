@@ -565,13 +565,19 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                                                                            ContentAddressedStorage ipfs,
                                                                            Hasher hasher) {
         return mutable.getPointerTarget(owner, writer, ipfs)
-                .thenCompose(h -> getDirectOwnedKeys(owner, writer, h.updated, retriever, ipfs, hasher));
+                .thenCompose(h -> getDirectOwnedKeys(owner, writer, h.updated, retriever, w -> mutable.getPointer(owner, w), ipfs, hasher));
+    }
+
+    /** Where a writer's current signed pointer is read from */
+    interface PointerSource {
+        CompletableFuture<Optional<byte[]>> get(PublicKeyHash writer);
     }
 
     public static CompletableFuture<Set<PublicKeyHash>> getDirectOwnedKeys(PublicKeyHash owner,
                                                                            PublicKeyHash writer,
                                                                            MaybeMultihash root,
                                                                            CommittedWriterData.Retriever retriever,
+                                                                           PointerSource pointers,
                                                                            ContentAddressedStorage ipfs,
                                                                            Hasher hasher) {
         if (! root.isPresent())
@@ -586,7 +592,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         // Only the proof is judged, though: a key that can't be read fails the walk, rather than
         // reading as a key nobody owns, whose space the usage accounting and the garbage collector would then free.
         BiFunction<Set<PublicKeyHash>, OwnerProof, CompletableFuture<Set<PublicKeyHash>>> proofComposer =
-                (acc, proof) -> provenOwner(owner, proof, ipfs)
+                (acc, proof) -> provenOwner(owner, proof, pointers, ipfs)
                         .thenApply(claimedWriter -> Stream.concat(acc.stream(), claimedWriter.filter(writer::equals).isPresent() ?
                                 Stream.of(proof.ownedKey) :
                                 Stream.empty()).collect(Collectors.toSet()));
@@ -610,6 +616,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                                                              MaybeMultihash root,
                                                              PublicKeyHash key,
                                                              CommittedWriterData.Retriever retriever,
+                                                             PointerSource pointers,
                                                              ContentAddressedStorage ipfs,
                                                              Hasher hasher) {
         if (! root.isPresent())
@@ -621,19 +628,48 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                                 .filter(proof -> proof.ownedKey.equals(key))
                                 .collect(Collectors.toList())))
                 .thenCompose(proofs -> Futures.combineAllInOrder(proofs.stream()
-                        .map(proof -> provenOwner(owner, proof, ipfs))
+                        .map(proof -> provenOwner(owner, proof, pointers, ipfs))
                         .collect(Collectors.toList())))
                 .thenApply(claimed -> claimed.stream().anyMatch(w -> w.filter(writer::equals).isPresent()));
     }
 
     /** The writer a proof says owns its key, if the proof verifies; a key that can't be read fails it */
-    private static CompletableFuture<Optional<PublicKeyHash>> provenOwner(PublicKeyHash owner, OwnerProof proof, ContentAddressedStorage ipfs) {
+    private static CompletableFuture<Optional<PublicKeyHash>> provenOwner(PublicKeyHash owner,
+                                                                          OwnerProof proof,
+                                                                          PointerSource pointers,
+                                                                          ContentAddressedStorage ipfs) {
         return ownedKeyBytes(owner, proof.ownedKey, ipfs)
                 // judged inside a future, so bytes that aren't a key fail it rather than throw past it
                 .thenCompose(raw -> Futures.of(raw)
                         .thenCompose(bytes -> proof.verifyOwner(PublicSigningKey.fromByteArray(bytes)))
-                        .thenApply(Optional::of)
+                        .thenCompose(claimed -> upgradedParent(owner, proof.ownedKey, pointers, ipfs)
+                                .thenApply(named -> named.isEmpty() || named.get().equals(Optional.of(claimed)) ?
+                                        Optional.of(claimed) :
+                                        Optional.<PublicKeyHash>empty()))
                         .exceptionally(invalid -> Optional.empty()));
+    }
+
+    /** An Ed25519 owner proof is forgeable with a CRQC, so once a writer has upgraded to a composite key, the parent
+     *  its own WriterData names is the only one that can claim it.
+     *
+     * @return empty if the writer hasn't upgraded, otherwise the parent it names, if any
+     */
+    private static CompletableFuture<Optional<Optional<PublicKeyHash>>> upgradedParent(PublicKeyHash owner,
+                                                                                       PublicKeyHash writer,
+                                                                                       PointerSource pointers,
+                                                                                       ContentAddressedStorage ipfs) {
+        if (! writer.isIdentity())
+            return Futures.of(Optional.empty());
+        return pointers.get(writer).thenCompose(signed -> {
+            if (signed.isEmpty() || ! PointerKeys.isCompositeSigned(signed.get()))
+                return Futures.of(Optional.empty());
+            return PointerKeys.verify(owner, writer, signed.get(), ipfs)
+                    .thenCompose(update -> {
+                        MaybeMultihash root = update.updated.isPresent() ? update.updated : update.original;
+                        return ContentAddressedStorage.getWriterData(owner, (Cid) root.get(), update.sequence, ipfs);
+                    })
+                    .thenApply(wd -> Optional.of(wd.props.get().parent));
+        });
     }
 
     /** The encoding of an owned key: inline in its hash, or, for a key made before keys were inlined, a block of its own */

@@ -8,8 +8,10 @@ import peergos.shared.mutable.MutablePointers;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -125,9 +127,38 @@ public class WriteSynchronizer {
                     signer.publicKeyHash.equals(o) || ! signer.isUpgradable() ||
                     ! wd.get().controller.equals(signer.publicKeyHash))
                 return c.commit(o, signer, wd, existing, tid);
-            return dht.putSigningKey(o, signer, signer.upgradedKey().get(), hasher, tid)
-                    .thenCompose(key -> c.commit(o, signer, Optional.of(wd.get().withController(key)), existing, tid));
+            return parent(o, signer).thenCompose(parent -> {
+                if (parent.isEmpty())
+                    return c.commit(o, signer, wd, existing, tid);
+                return dht.putSigningKey(o, signer, signer.upgradedKey().get(), hasher, tid)
+                        .thenCompose(key -> c.commit(o, signer, Optional.of(wd.get().withController(key).withParent(parent.get())), existing, tid));
+            });
         };
+    }
+
+    /** The writer whose owned keys hold the proof that it owns this one: usually the directory it was reached
+     *  through, or the identity for a top level writer
+     */
+    private CompletableFuture<Optional<PublicKeyHash>> parent(PublicKeyHash owner, SigningPrivateKeyAndPublicHash child) {
+        List<PublicKeyHash> candidates = new ArrayList<>();
+        child.parentHint().filter(p -> ! p.equals(child.publicKeyHash)).ifPresent(candidates::add);
+        if (! candidates.contains(owner))
+            candidates.add(owner);
+        return Futures.findFirst(candidates, p -> getWriterData(owner, p)
+                .thenCompose(s -> s.contains(p) && s.get(p).props.isPresent() ?
+                        owns(owner, s.get(p).props.get(), child.publicKeyHash) :
+                        Futures.of(false))
+                .thenApply(owns -> owns ? Optional.of(p) : Optional.<PublicKeyHash>empty()));
+    }
+
+    private CompletableFuture<Boolean> owns(PublicKeyHash owner, WriterData parent, PublicKeyHash child) {
+        if (parent.namedOwnedKeys.values().stream().anyMatch(proof -> proof.ownedKey.equals(child)))
+            return Futures.of(true);
+        if (parent.ownedKeys.isEmpty())
+            return Futures.of(false);
+        return parent.getOwnedKeyChamp(owner, dht, hasher)
+                .thenCompose(champ -> champ.get(owner, child))
+                .thenApply(Optional::isPresent);
     }
 
     public void put(PublicKeyHash owner, PublicKeyHash writer, CommittedWriterData val) {

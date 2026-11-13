@@ -224,7 +224,8 @@ public class GarbageCollector {
                 List<Multihash> peerIds = ids.stream().map(m -> (Multihash) m).collect(Collectors.toList());
                 Set<PublicKeyHash> kids = DeletableContentAddressedStorage.getDirectOwnedKeys(fromPki, parent,
                         cas.updated,
-                        (c, s) -> DeletableContentAddressedStorage.getWriterData(peerIds, fromPki, c, s, false, ids.get(ids.size() - 1), h, storage), storage, h).join();
+                        (c, s) -> DeletableContentAddressedStorage.getWriterData(peerIds, fromPki, c, s, false, ids.get(ids.size() - 1), h, storage),
+                        pointers::getPointer, storage, h).join();
                 for (PublicKeyHash kid : kids) {
                     System.out.println(parent + " owns " + kid);
                     queue.add(kid);

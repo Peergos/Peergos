@@ -3346,6 +3346,14 @@ public class UserContext {
                                                                     v2.get(newParent).hash, v2.get(newParent).sequence,
                                                                     network, c, tid)
                                                             .thenApply(v2::mergeAndOverwriteWith)))
+                                            .thenCompose(v3 -> {
+                                                // an upgraded writer names its parent itself, so that has to move too
+                                                CommittedWriterData childData = v3.get(childSigner.publicKeyHash);
+                                                if (childData.props.isEmpty() || childData.props.get().parent.isEmpty())
+                                                    return Futures.of(v3);
+                                                return c.commit(owner, childSigner, childData.props.get().withParent(newParent.publicKeyHash), childData, tid)
+                                                        .thenApply(v3::mergeAndOverwriteWith);
+                                            })
                                             .thenCompose(v3 -> CryptreeNode.deAuthoriseSigner(owner, oldParent,
                                                     childSigner.publicKeyHash, network, v3, c));
                                 })),

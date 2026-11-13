@@ -242,7 +242,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     public void accept(List<MutableEvent> landed) {
         for (MutableEvent event : landed) {
             try {
-                prepareMutablePointerChange(event, dht, usageStore, hasher);
+                prepareMutablePointerChange(event, mutable, dht, usageStore, hasher);
             } catch (Exception e) {
                 LOG.log(Level.WARNING, "Error registering owned keys for writer " + event.writer + ": " + e.getMessage(), e);
             }
@@ -283,13 +283,14 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     }
 
     private static void prepareMutablePointerChange(MutableEvent event,
+                                                    MutablePointers mutable,
                                                     DeletableContentAddressedStorage dht,
                                                     UsageStore usageStore,
                                                     Hasher hasher) {
         Cid ourId = dht.id().join();
         List<Multihash> us = List.of(ourId.bareMultihash());
         PointerUpdate pointerUpdate = PointerKeys.verify(event.owner, event.writer, event.writerSignedBtreeRootHash, dht).join();
-        Set<PublicKeyHash> updatedOwned = directOwnedKeys(event.owner, event.writer, pointerUpdate.updated, us, ourId, dht, hasher);
+        Set<PublicKeyHash> updatedOwned = directOwnedKeys(event.owner, event.writer, pointerUpdate.updated, us, ourId, mutable, dht, hasher);
         if (updatedOwned.isEmpty())
             return;
         // Only the keys not linked under this writer yet. A linked key is a registered writer, so registering and
@@ -323,6 +324,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                                                      MaybeMultihash root,
                                                      List<Multihash> us,
                                                      Cid ourId,
+                                                     MutablePointers mutable,
                                                      DeletableContentAddressedStorage dht,
                                                      Hasher hasher) {
         if (! root.isPresent())
@@ -334,7 +336,8 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 return cached;
         }
         Set<PublicKeyHash> named = Set.copyOf(DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, root,
-                (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht), dht, hasher).join());
+                (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht),
+                w -> mutable.getPointer(owner, w), dht, hasher).join());
         synchronized (ownedKeysByRoot) {
             Set<PublicKeyHash> replaced = ownedKeysByRoot.put(key, named);
             cachedOwnedKeys += named.size() - (replaced == null ? -1 : replaced.size());
@@ -429,7 +432,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 Set<PublicKeyHash> orphaned = new HashSet<>(current.ownedKeys());
                 if (existingRoot.isPresent()) {
                     try {
-                        orphaned.addAll(directOwnedKeys(owner, writer, existingRoot, us, ourId, dht, hasher));
+                        orphaned.addAll(directOwnedKeys(owner, writer, existingRoot, us, ourId, mutable, dht, hasher));
                     } catch (Exception e) {
                         LOG.log(Level.WARNING, e.getMessage(), e);
                     }
@@ -443,7 +446,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 long changeInStorage = dht.getChangeInWriterSize(owner, writer, current.target().toOptional().map(c -> (Cid) c), (Cid) newRoot.get()).get();
                 long t1 = System.nanoTime();
                 LOG.info("Calculating change in used space for (" + owner + ", " + writer + ") took " + (t1-t0)/1_000_000 + "mS");
-                Set<PublicKeyHash> updatedOwned = directOwnedKeys(owner, writer, newRoot, us, ourId, dht, hasher);
+                Set<PublicKeyHash> updatedOwned = directOwnedKeys(owner, writer, newRoot, us, ourId, mutable, dht, hasher);
                 // a key linked under this writer is registered already
                 for (PublicKeyHash owned : updatedOwned) {
                     if (! current.ownedKeys().contains(owned))
@@ -452,7 +455,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 Set<PublicKeyHash> ownedHere = ownKeys(state, current.owner, writer, updatedOwned);
                 // What the replaced root named. A child's edge can be recorded ahead of its parent's update, so the
                 // store's edges alone don't say which children this update adds or drops.
-                Set<PublicKeyHash> namedBefore = directOwnedKeys(owner, writer, current.target(), us, ourId, dht, hasher);
+                Set<PublicKeyHash> namedBefore = directOwnedKeys(owner, writer, current.target(), us, ourId, mutable, dht, hasher);
                 UserUsage usage = state.getUsage(current.owner);
                 boolean initialErrored = usage.isErrored();
                 String username = current.owner;
@@ -1049,7 +1052,8 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     private boolean rootOwnsWriter(PublicKeyHash owner, PublicKeyHash parent, MaybeMultihash root, PublicKeyHash writer) {
         List<Multihash> us = List.of(ourId.bareMultihash());
         return DeletableContentAddressedStorage.directlyOwnsKey(owner, parent, root, writer,
-                (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht), dht, hasher).join();
+                (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht),
+                w -> mutable.getPointer(owner, w), dht, hasher).join();
     }
 
     /** A write was attempted with a writer that is absent from the usage store. If the writer is reachable through

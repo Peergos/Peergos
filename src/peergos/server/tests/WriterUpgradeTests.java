@@ -11,6 +11,8 @@ import peergos.shared.crypto.asymmetric.mldsa.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.mutable.*;
+import peergos.server.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -70,6 +72,75 @@ public class WriterUpgradeTests {
         WriterData wd = WriterData.getWriterData(owner, (Cid) target.updated.get(), target.sequence, service.storage).join().props.get();
         Assert.assertEquals(ContentAddressedStorage.hashKey(key), wd.controller);
         return Optional.of((HybridEd25519MLDSAPublicKey) key);
+    }
+
+    private static WriterData writerData(PublicKeyHash owner, PublicKeyHash writer) {
+        PointerUpdate target = service.mutable.getPointerTarget(owner, writer, service.storage).join();
+        return WriterData.getWriterData(owner, (Cid) target.updated.get(), target.sequence, service.storage).join().props.get();
+    }
+
+    private static Set<PublicKeyHash> ownedBy(PublicKeyHash owner, PublicKeyHash parent) {
+        return DeletableContentAddressedStorage.getDirectOwnedKeys(owner, parent, service.mutable,
+                (h, s) -> ContentAddressedStorage.getWriterData(owner, h, s, service.storage), service.storage, crypto.hasher).join();
+    }
+
+    /** A CRQC can forge an Ed25519 owner proof, so only the parent an upgraded writer names can claim it */
+    private static Set<PublicKeyHash> claimedVia(PublicKeyHash owner, PublicKeyHash claimant, SigningPrivateKeyAndPublicHash child) {
+        WriterData root = new WriterData(claimant, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+                Map.of("child", OwnerProof.build(child, claimant).join()), Optional.empty(), Optional.empty(), Optional.empty());
+        Cid rootHash = crypto.hasher.hash(root.serialize(), false).join();
+        return DeletableContentAddressedStorage.getDirectOwnedKeys(owner, claimant, MaybeMultihash.of(rootHash),
+                (h, seq) -> Futures.of(new CommittedWriterData(MaybeMultihash.of(h), root, seq)),
+                w -> service.mutable.getPointer(owner, w), service.storage, crypto.hasher).join();
+    }
+
+    @Test
+    public void upgradedWriterNamesItsParent() {
+        SigningKeyPair.HYBRID_WRITERS = false;
+        String password = generatePassword();
+        UserContext before = ensureSignedUp(generateUsername(random), password, network.clear(), crypto);
+        PublicKeyHash owner = before.signer.publicKeyHash;
+        Path home = PathUtil.get(before.username);
+        Path a = home.resolve("a");
+        Path b = a.resolve("b");
+        before.getUserRoot().join().mkdir("a", before.network, false, before.mirrorBatId(), crypto).join();
+        before.getByPath(a).join().get().mkdir("b", before.network, false, before.mirrorBatId(), crypto).join();
+        before.shareWriteAccessWith(b, Collections.emptySet()).join();
+        PublicKeyHash root = before.getUserRoot().join().writer();
+        PublicKeyHash bWriter = before.getByPath(b).join().get().writer();
+        Assert.assertNotEquals(root, bWriter);
+        SigningPrivateKeyAndPublicHash notUpgraded = before.getByPath(b).join().get().signingPair();
+        Assert.assertTrue("a valid Ed25519 proof counts before the upgrade",
+                claimedVia(owner, owner, notUpgraded.blockSigner()).contains(bWriter));
+
+        SigningKeyPair.HYBRID_WRITERS = true;
+        UserContext context = ensureSignedUp(before.username, password, network.clear(), crypto);
+        upload(context, home, "r.bin", 100);
+        byte[] inB = upload(context, b, "b.bin", 100);
+        Assert.assertTrue(upgradedKey(owner, root).isPresent());
+        Assert.assertTrue(upgradedKey(owner, bWriter).isPresent());
+        Assert.assertEquals(Optional.of(owner), writerData(owner, root).parent);
+        Assert.assertEquals(Optional.of(root), writerData(owner, bWriter).parent);
+        Assert.assertTrue(ownedBy(owner, owner).contains(root));
+        Assert.assertTrue(ownedBy(owner, root).contains(bWriter));
+
+        // once upgraded, the same kind of proof under any other writer is ignored
+        SigningPrivateKeyAndPublicHash bSigner = context.getByPath(b).join().get().signingPair();
+        Assert.assertFalse(claimedVia(owner, owner, bSigner.blockSigner()).contains(bWriter));
+
+        // granting write access to a moves b's writing space under a's new writer, and b names it
+        context.shareWriteAccessWith(a, Collections.emptySet()).join();
+        PublicKeyHash aWriter = context.getByPath(a).join().get().writer();
+        Assert.assertNotEquals(root, aWriter);
+        Assert.assertEquals(bWriter, context.getByPath(b).join().get().writer());
+        Assert.assertEquals(Optional.of(aWriter), writerData(owner, bWriter).parent);
+        Assert.assertTrue(ownedBy(owner, aWriter).contains(bWriter));
+        Assert.assertFalse(ownedBy(owner, root).contains(bWriter));
+
+        byte[] after = upload(context, b, "after.bin", 100);
+        UserContext again = ensureSignedUp(before.username, password, network.clear(), crypto);
+        Assert.assertArrayEquals(inB, read(again, b.resolve("b.bin")));
+        Assert.assertArrayEquals(after, read(again, b.resolve("after.bin")));
     }
 
     @Test

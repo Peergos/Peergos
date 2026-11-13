@@ -45,7 +45,8 @@ public class OwnedKeysWalkTests {
         Cid rootHash = storage.put(owner, writer, List.of(new byte[0]), List.of(root.serialize()),
                 tid).join().get(0);
         return DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, MaybeMultihash.of(rootHash),
-                (h, seq) -> Futures.of(new CommittedWriterData(MaybeMultihash.of(h), root, seq)), from, crypto.hasher);
+                (h, seq) -> Futures.of(new CommittedWriterData(MaybeMultihash.of(h), root, seq)),
+                w -> Futures.of(Optional.empty()), from, crypto.hasher);
     }
 
     @Test
