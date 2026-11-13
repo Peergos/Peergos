@@ -4,6 +4,7 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.PublicSigningKey;
 import peergos.shared.crypto.asymmetric.SecretSigningKey;
+import peergos.shared.crypto.asymmetric.SigningDomain;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.asymmetric.mldsa.*;
 import peergos.shared.crypto.random.*;
@@ -23,9 +24,9 @@ public class SigningKeyPair implements Cborable
         this.secretSigningKey = secretSigningKey;
     }
 
-    public CompletableFuture<byte[]> signMessage(byte[] message)
+    public CompletableFuture<byte[]> signMessage(byte[] message, SigningDomain domain)
     {
-        return secretSigningKey.signMessage(message);
+        return secretSigningKey.signMessage(message, domain);
     }
 
     @Override

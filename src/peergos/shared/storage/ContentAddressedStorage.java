@@ -117,7 +117,7 @@ public interface ContentAddressedStorage {
                                                   TransactionId tid,
                                                   Hasher hasher) {
         return Futures.combineAllInOrder(blocks.stream()
-                        .map(b -> hasher.sha256(b).thenCompose(h -> signer.secret.signMessage(h)))
+                        .map(b -> hasher.sha256(b).thenCompose(h -> signer.secret.signMessage(h, SigningDomain.BLOCK)))
                         .collect(Collectors.toList()))
                 .thenCompose(sigs -> put(owner, signer.publicKeyHash, sigs, blocks, tid));
     }
@@ -129,7 +129,7 @@ public interface ContentAddressedStorage {
                                                      ProgressConsumer<Long> progress,
                                                      Hasher hasher) {
         return Futures.combineAllInOrder(blocks.stream()
-                        .map(b -> hasher.sha256(b).thenCompose(h -> signer.secret.signMessage(h)))
+                        .map(b -> hasher.sha256(b).thenCompose(h -> signer.secret.signMessage(h, SigningDomain.BLOCK)))
                         .collect(Collectors.toList()))
                 .thenCompose(sigs -> putRaw(owner, signer.publicKeyHash, sigs, blocks, tid, progress));
     }
@@ -693,7 +693,7 @@ public interface ContentAddressedStorage {
                                     .map(b -> hasher.hash(b, isRaw))
                                     .collect(Collectors.toList()))
                             .thenCompose(hashes -> BlockWriteAuth.payload(owner, hashes, hasher)
-                                    .thenCompose(payload -> signer.secret.signMessage(payload)))
+                                    .thenCompose(payload -> signer.secret.signMessage(payload, SigningDomain.BLOCK_WRITE_AUTH)))
                             .thenCompose(sig -> putBatch(owner, signer.publicKeyHash,
                                     new BlockWriteBatch(group, (byte[]) sig), isRaw ? "raw" : "dag-cbor", tid))
                             .thenApply(cids -> {

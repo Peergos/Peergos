@@ -1,5 +1,7 @@
 package peergos.server.tests.linux;
 
+import peergos.shared.crypto.asymmetric.SigningDomain;
+
 import org.junit.*;
 import peergos.server.*;
 import peergos.server.space.*;
@@ -129,7 +131,7 @@ public class S3WriterOwnershipTests {
     private BlockWriteAuth authFor(PublicKeyHash owner, SigningPrivateKeyAndPublicHash signer, Cid block, int size) {
         List<Cid> hashes = List.of(block);
         byte[] payload = BlockWriteAuth.payload(owner, hashes, hasher).join();
-        byte[] signature = signer.secret.signMessage(payload).join();
+        byte[] signature = signer.secret.signMessage(payload, SigningDomain.BLOCK_WRITE_AUTH).join();
         return new BlockWriteAuth(hashes, List.of((long) size), List.of(Collections.emptyList()), signature);
     }
 

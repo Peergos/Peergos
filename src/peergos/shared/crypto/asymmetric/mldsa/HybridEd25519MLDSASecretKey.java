@@ -30,15 +30,17 @@ public class HybridEd25519MLDSASecretKey implements SecretSigningKey {
     }
 
     @Override
-    public CompletableFuture<byte[]> signMessage(byte[] message) {
-        return signatureOnly(message)
+    @SuppressWarnings("unusable-by-js")
+    public CompletableFuture<byte[]> signMessage(byte[] message, SigningDomain domain) {
+        return signatureOnly(message, domain)
                 .thenApply(sig -> ArrayOps.concat(sig, message));
     }
 
     @Override
-    public CompletableFuture<byte[]> signatureOnly(byte[] message) {
-        byte[] separated = HybridEd25519MLDSAPublicKey.domainSeparated(message);
-        return ed25519.signatureOnly(separated)
+    @SuppressWarnings("unusable-by-js")
+    public CompletableFuture<byte[]> signatureOnly(byte[] message, SigningDomain domain) {
+        byte[] separated = HybridEd25519MLDSAPublicKey.domainSeparated(message, domain);
+        return ed25519.signatureOnly(separated, domain)
                 .thenCompose(edSig -> provider.sign(separated, mldsaSeed)
                         .thenApply(mldsaSig -> {
                             if (mldsaSig.length != Mldsa.SIGNATURE_BYTES)

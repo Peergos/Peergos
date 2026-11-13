@@ -98,7 +98,7 @@ public interface QuotaAdmin extends QuotaControl {
         Optional<PublicSigningKey> ownerOpt = dht.getSigningKey(owner, owner).join();
         if (!ownerOpt.isPresent())
             throw new IllegalStateException("Couldn't retrieve owner key!");
-        byte[] raw = ownerOpt.get().unsignMessage(signedRequest).join();
+        byte[] raw = ownerOpt.get().unsignMessage(signedRequest, SigningDomain.SPACE_REQUEST).join();
         CborObject cbor = CborObject.fromByteArray(raw);
         QuotaControl.SpaceRequest req = QuotaControl.SpaceRequest.fromCbor(cbor);
         long now = System.currentTimeMillis();

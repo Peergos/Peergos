@@ -17,14 +17,16 @@ public interface SecretSigningKey extends Cborable {
      * @param message
      * @return The signature + message
      */
-    CompletableFuture<byte[]> signMessage(byte[] message);
+    @SuppressWarnings("unusable-by-js")
+    CompletableFuture<byte[]> signMessage(byte[] message, SigningDomain domain);
 
     /**
      *
      * @param message
      * @return Only the signature, excluding the original message
      */
-    CompletableFuture<byte[]> signatureOnly(byte[] message);
+    @SuppressWarnings("unusable-by-js")
+    CompletableFuture<byte[]> signatureOnly(byte[] message, SigningDomain domain);
 
     @SuppressWarnings("unusable-by-js")
     static SecretSigningKey fromCbor(Cborable cbor) {

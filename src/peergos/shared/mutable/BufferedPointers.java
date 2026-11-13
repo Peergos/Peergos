@@ -1,5 +1,7 @@
 package peergos.shared.mutable;
 
+import peergos.shared.crypto.asymmetric.SigningDomain;
+
 import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
@@ -218,7 +220,7 @@ public class BufferedPointers implements MutablePointers {
     public CompletableFuture<Boolean> commit(PublicKeyHash owner,
                                              SigningPrivateKeyAndPublicHash signer,
                                              PointerUpdate casUpdate) {
-        return signer.secret.signMessage(casUpdate.serialize())
+        return signer.secret.signMessage(casUpdate.serialize(), SigningDomain.POINTER)
                 .thenCompose(signed -> target.setPointer(owner, signer.publicKeyHash, signed))
                 .thenApply(b -> {
                     if (b)

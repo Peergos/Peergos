@@ -290,7 +290,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         List<Multihash> us = List.of(ourId.bareMultihash());
         PointerUpdate pointerUpdate = dht.getSigningKey(event.owner, event.writer)
                 .thenApply(signer -> PointerUpdate.fromCbor(CborObject.fromByteArray(signer.get()
-                        .unsignMessage(event.writerSignedBtreeRootHash).join()))).join();
+                        .unsignMessage(event.writerSignedBtreeRootHash, SigningDomain.POINTER).join()))).join();
         Set<PublicKeyHash> updatedOwned = directOwnedKeys(event.owner, event.writer, pointerUpdate.updated, us, ourId, dht, hasher);
         if (updatedOwned.isEmpty())
             return;
@@ -387,7 +387,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         try {
             PointerUpdate pointerUpdate = dht.getSigningKey(event.owner, event.writer)
                     .thenApply(signer -> PointerUpdate.fromCbor(CborObject.fromByteArray(signer.get()
-                            .unsignMessage(event.writerSignedBtreeRootHash).join()))).join();
+                            .unsignMessage(event.writerSignedBtreeRootHash, SigningDomain.POINTER).join()))).join();
             processMutablePointerEvent(usageStore, event.owner, event.writer, pointerUpdate.original, pointerUpdate.updated,
                     mutable, quotaAdmin, dht, hasher);
             // a writing space that is merely orphaned may have been moved, so only drop its cap once its pointer is empty

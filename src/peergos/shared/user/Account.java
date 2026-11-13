@@ -22,7 +22,7 @@ public interface Account {
     default CompletableFuture<Boolean> setLoginData(LoginData login,
                                                     SigningPrivateKeyAndPublicHash identity,
                                                     boolean forceLocal) {
-        return identity.secret.signatureOnly(login.serialize())
+        return identity.secret.signatureOnly(login.serialize(), SigningDomain.LOGIN)
                 .thenCompose(auth -> setLoginData(login, auth, forceLocal));
     }
 

@@ -46,8 +46,8 @@ public interface PublicSigningKey extends Cborable {
 
     Type type();
 
-    @JsMethod
-    CompletableFuture<byte[]> unsignMessage(byte[] signed);
+    @SuppressWarnings("unusable-by-js")
+    CompletableFuture<byte[]> unsignMessage(byte[] signed, SigningDomain domain);
 
     static PublicSigningKey fromString(String b64) {
         return fromByteArray(Base64.getDecoder().decode(b64));

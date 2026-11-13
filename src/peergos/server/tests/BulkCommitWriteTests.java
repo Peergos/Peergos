@@ -1,5 +1,7 @@
 package peergos.server.tests;
 
+import peergos.shared.crypto.asymmetric.SigningDomain;
+
 import org.junit.*;
 import peergos.server.*;
 import peergos.server.storage.*;
@@ -136,7 +138,7 @@ public class BulkCommitWriteTests {
         PublicKeyHash owner = user.signer.publicKeyHash;
         byte[] block = new CborObject.CborLong(4).serialize();
         // a signature over the wrong list
-        byte[] wrong = user.signer.secret.signMessage(crypto.hasher.sha256(randomBytes(32)).join()).join();
+        byte[] wrong = user.signer.secret.signMessage(crypto.hasher.sha256(randomBytes(32)).join(), SigningDomain.BLOCK_WRITE_AUTH).join();
 
         BulkCommit commit = new BulkCommit(Optional.of(new TransactionId("1")), Arrays.asList(
                 new WriterCommit(user.signer.publicKeyHash, Arrays.asList(block), Collections.emptyList(),
@@ -153,7 +155,7 @@ public class BulkCommitWriteTests {
         Optional<Long> next = PointerUpdate.increment(service.mutable
                 .getPointerTarget(owner, user.signer.publicKeyHash, service.storage).join().sequence);
         byte[] sig = WriterCommit.blockListPayload(Arrays.asList(hash), next, crypto.hasher)
-                .thenCompose(payload -> user.signer.secret.signMessage(payload)).join();
+                .thenCompose(payload -> user.signer.secret.signMessage(payload, SigningDomain.BLOCK_WRITE_AUTH)).join();
 
         TransactionId tid = service.storage.startTransaction(owner).join();
         BulkCommit commit = new BulkCommit(Optional.of(tid), Arrays.asList(
@@ -178,7 +180,7 @@ public class BulkCommitWriteTests {
         PointerUpdate before = service.mutable.getPointerTarget(owner, owner, service.storage).join();
         byte[] sig = WriterCommit.blockListPayload(Arrays.asList(childHash),
                         PointerUpdate.increment(before.sequence), crypto.hasher)
-                .thenCompose(payload -> user.signer.secret.signMessage(payload)).join();
+                .thenCompose(payload -> user.signer.secret.signMessage(payload, SigningDomain.BLOCK_WRITE_AUTH)).join();
         TransactionId tid = service.storage.startTransaction(owner).join();
         service.storage.bulkCommit(owner, new BulkCommit(Optional.of(tid), Arrays.asList(
                 new WriterCommit(owner, Arrays.asList(child), Collections.emptyList(),
@@ -192,7 +194,7 @@ public class BulkCommitWriteTests {
         PointerUpdate update = new PointerUpdate(before.updated, MaybeMultihash.of(rootHash),
                 PointerUpdate.increment(before.sequence));
         SignedPointerUpdate signedUpdate = new SignedPointerUpdate(owner,
-                user.signer.secret.signMessage(update.serialize()).join());
+                user.signer.secret.signMessage(update.serialize(), SigningDomain.POINTER).join());
         service.storage.bulkCommit(owner, new BulkCommit(Optional.empty(), Arrays.asList(
                 new WriterCommit(owner, Arrays.asList(root), Collections.emptyList(),
                         Collections.emptyList(), Optional.of(signedUpdate), Optional.empty())))).join();
@@ -227,7 +229,7 @@ public class BulkCommitWriteTests {
                 .getPointerTarget(user.signer.publicKeyHash, user.signer.publicKeyHash, service.storage).join();
         PointerUpdate update = new PointerUpdate(current.updated, newRoot, PointerUpdate.increment(current.sequence));
         return Optional.of(new SignedPointerUpdate(user.signer.publicKeyHash,
-                user.signer.secret.signMessage(update.serialize()).join()));
+                user.signer.secret.signMessage(update.serialize(), SigningDomain.POINTER).join()));
     }
 
     private static WriterCommit writerCommit(UserContext user, List<byte[]> cborBlocks, MaybeMultihash newRoot) {
@@ -319,14 +321,14 @@ public class BulkCommitWriteTests {
         Cid theirChildHash = service.storage.put(owner, user.signer, theirChild, crypto.hasher, theirs).join();
         Cid theirRoot = service.storage.put(owner, user.signer, current.withChamp(theirChildHash).serialize(), crypto.hasher, theirs).join();
         byte[] competing = user.signer.secret.signMessage(new PointerUpdate(before.updated, MaybeMultihash.of(theirRoot),
-                PointerUpdate.increment(before.sequence)).serialize()).join();
+                PointerUpdate.increment(before.sequence)).serialize(), SigningDomain.POINTER).join();
 
         byte[] child = new CborObject.CborLong(random.nextLong()).serialize();
         Cid childHash = crypto.hasher.hash(child, false).join();
         byte[] root = current.withChamp(childHash).serialize();
         Cid rootHash = crypto.hasher.hash(root, false).join();
         SignedPointerUpdate ours = new SignedPointerUpdate(owner, user.signer.secret.signMessage(new PointerUpdate(
-                before.updated, MaybeMultihash.of(rootHash), PointerUpdate.increment(before.sequence)).serialize()).join());
+                before.updated, MaybeMultihash.of(rootHash), PointerUpdate.increment(before.sequence)).serialize(), SigningDomain.POINTER).join());
 
         BulkCommitStorage server = serverBulkCommit();
         MutablePointers inner = field(server, "pointers");
@@ -355,7 +357,7 @@ public class BulkCommitWriteTests {
         SigningPrivateKeyAndPublicHash home = user.getUserRoot().join().signingPair();
         Threads.sleep(2_000); // the home writer's edge from the identity is recorded
         SigningKeyPair pair = SigningKeyPair.random(crypto.random, crypto.signer);
-        PublicKeyHash childHash = network.dhtClient.putSigningKey(user.signer.secret.signMessage(pair.publicSigningKey.serialize()).join(),
+        PublicKeyHash childHash = network.dhtClient.putSigningKey(user.signer.secret.signMessage(pair.publicSigningKey.serialize(), SigningDomain.SIGNING_KEY).join(),
                 owner, owner, pair.publicSigningKey, network.dhtClient.startTransaction(owner).join()).join();
         SigningPrivateKeyAndPublicHash child = new SigningPrivateKeyAndPublicHash(childHash, pair.secretSigningKey);
 
@@ -366,7 +368,7 @@ public class BulkCommitWriteTests {
             byte[] root = current.props.get().addNamedKey("child", OwnerProof.build(child, parent.publicKeyHash).join()).serialize();
             Cid rootHash = crypto.hasher.hash(root, false).join();
             byte[] signed = parent.secret.signMessage(new PointerUpdate(current.hash, MaybeMultihash.of(rootHash),
-                    PointerUpdate.increment(current.sequence)).serialize()).join();
+                    PointerUpdate.increment(current.sequence)).serialize(), SigningDomain.POINTER).join();
             writers.add(new WriterCommit(parent.publicKeyHash, List.of(root), Collections.emptyList(), Collections.emptyList(),
                     Optional.of(new SignedPointerUpdate(parent.publicKeyHash, signed)), Optional.empty()));
         }
@@ -375,10 +377,10 @@ public class BulkCommitWriteTests {
         Cid childRootHash = crypto.hasher.hash(childRoot, false).join();
         writers.add(new WriterCommit(childHash, List.of(childRoot), Collections.emptyList(), Collections.emptyList(),
                 Optional.of(new SignedPointerUpdate(childHash, child.secret.signMessage(new PointerUpdate(MaybeMultihash.empty(),
-                        MaybeMultihash.of(childRootHash), PointerUpdate.increment(Optional.empty())).serialize()).join())), Optional.empty()));
+                        MaybeMultihash.of(childRootHash), PointerUpdate.increment(Optional.empty())).serialize(), SigningDomain.POINTER).join())), Optional.empty()));
         // another update of the child than the commit's own
         SignedPointerUpdate another = new SignedPointerUpdate(childHash, child.secret.signMessage(new PointerUpdate(MaybeMultihash.empty(),
-                MaybeMultihash.of(childRootHash), Optional.of(7L)).serialize()).join());
+                MaybeMultihash.of(childRootHash), Optional.of(7L)).serialize(), SigningDomain.POINTER).join());
 
         // after each registration is taken back, whether that other update could land
         java.lang.reflect.Field local = ProxyingSpaceUsage.class.getDeclaredField("local");

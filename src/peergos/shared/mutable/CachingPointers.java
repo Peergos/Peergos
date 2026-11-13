@@ -1,5 +1,7 @@
 package peergos.shared.mutable;
 
+import peergos.shared.crypto.asymmetric.SigningDomain;
+
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.*;
@@ -56,7 +58,7 @@ public class CachingPointers implements MutablePointers {
 
     @Override
     public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, PointerUpdate casUpdate) {
-        return writer.secret.signMessage(casUpdate.serialize())
+        return writer.secret.signMessage(casUpdate.serialize(), SigningDomain.POINTER)
                 .thenCompose(signed -> setPointer(owner, writer.publicKeyHash, signed).thenApply(res -> {
                     if (res) {
                         synchronized (targetCache) {

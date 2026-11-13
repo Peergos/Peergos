@@ -1,5 +1,7 @@
 package peergos.server.tests;
 
+import peergos.shared.crypto.asymmetric.SigningDomain;
+
 import org.junit.*;
 import org.junit.runner.*;
 import org.junit.runners.*;
@@ -641,7 +643,7 @@ public class ChampTests {
             PublicKeyHash ownerHash = ContentAddressedStorage.hashKey(random.publicSigningKey);
             TransactionId tid = storage.startTransaction(ownerHash).get();
             PublicKeyHash publicHash = storage.putSigningKey(
-                    random.secretSigningKey.signMessage(random.publicSigningKey.serialize()).join(),
+                    random.secretSigningKey.signMessage(random.publicSigningKey.serialize(), SigningDomain.SIGNING_KEY).join(),
                     ownerHash,
                     random.publicSigningKey, tid).get();
             return new SigningPrivateKeyAndPublicHash(publicHash, random.secretSigningKey);

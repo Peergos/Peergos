@@ -335,7 +335,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     LOG.info("Partitioning blocks from remaining pointers..");
                     allPointers.forEach((writerHash, rawPointer) -> {
                         PublicSigningKey writer = getSigningKey(null, writerHash).join().get();
-                        byte[] bothHashes = writer.unsignMessage(rawPointer).join();
+                        byte[] bothHashes = writer.unsignMessage(rawPointer, SigningDomain.POINTER).join();
                         PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
                         MaybeMultihash updated = cas.updated;
                         if (updated.isPresent() && doneRoots.contains(updated.get()))
@@ -749,7 +749,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 Cid.Codec codec = isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor;
                 if (! isRaw)
                     throw new IllegalStateException("Only raw blocks can be pre-authed for writes");
-                Cid cid = new Cid(1, codec, Multihash.Type.sha2_256, writer.unsignMessage(signedHashes.get(i)).join());
+                Cid cid = new Cid(1, codec, Multihash.Type.sha2_256, writer.unsignMessage(signedHashes.get(i), SigningDomain.BLOCK).join());
                 blockProps.add(new Pair<>(cid, new BlockMetadata(blockSizes.get(i), Collections.emptyList(), batIds.get(i))));
             }
             return Futures.of(preSignPuts(owner, blockProps, isRaw, tid));
@@ -776,7 +776,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 throw new IllegalStateException("Only raw blocks can be pre-authed for writes");
             PublicSigningKey writer = getSigningKey(owner, writerHash).get().get();
             byte[] expected = BlockWriteAuth.payload(owner, auth.hashes, hasher).join();
-            byte[] signed = writer.unsignMessage(auth.signature).join();
+            byte[] signed = writer.unsignMessage(auth.signature, SigningDomain.BLOCK_WRITE_AUTH).join();
             if (! Arrays.equals(signed, expected))
                 throw new IllegalStateException("Invalid signature for block write auth!");
             List<Pair<Cid, BlockMetadata>> blockProps = new ArrayList<>();

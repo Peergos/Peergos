@@ -1,5 +1,7 @@
 package peergos.server;
 
+import peergos.shared.crypto.asymmetric.SigningDomain;
+
 import peergos.server.util.Args;
 import peergos.shared.Crypto;
 import peergos.shared.MaybeMultihash;
@@ -48,7 +50,7 @@ public class LoginUpdate {
         WriterData wd = WriterData.getWriterData(idHash, idHash, network.mutable, network.dhtClient).join().props.get();
 
         byte[] boxerSha256 = crypto.hasher.sha256(boxer.publicBoxingKey.serialize()).join();
-        byte[] signedBoxerSha256 = identity.secret.signMessage(boxerSha256).join();
+        byte[] signedBoxerSha256 = identity.secret.signMessage(boxerSha256, SigningDomain.BOXING_KEY).join();
         PublicKeyHash boxerHash = network.dhtClient.putBoxingKey(idHash, signedBoxerSha256, boxer.publicBoxingKey, new TransactionId("12345")).join();
 
         SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(idHash, identity.secret);
@@ -66,15 +68,15 @@ public class LoginUpdate {
         if (! boxerHash.equals(wd.followRequestReceiver.get())) {
             System.out.println("Supplied social keypair doesn't match remote: " + boxerHash + " != " + wd.followRequestReceiver.get());
             System.out.println("Updating to supplied social keypair and updating login data...");
-            byte[] signedBoxerHash = identity.secret.signMessage(boxerSha256).join();
+            byte[] signedBoxerHash = identity.secret.signMessage(boxerSha256, SigningDomain.BOXING_KEY).join();
             PublicKeyHash kh = network.dhtClient.putBoxingKey(identity.publicKeyHash, signedBoxerHash, boxer.publicBoxingKey, new TransactionId("12345")).join();
             WriterData updatedWd = wd.withBoxer(Optional.of(kh));
             byte[] rawWd = updatedWd.serialize();
             Cid blockHash = crypto.hasher.hash(rawWd, false).join();
-            byte[] signedHash = identity.secret.signMessage(blockHash.getHash()).join();
+            byte[] signedHash = identity.secret.signMessage(blockHash.getHash(), SigningDomain.BLOCK).join();
             OpLog.BlockWrite blockWrite = new OpLog.BlockWrite(identity.publicKeyHash, signedHash, rawWd, false, Optional.empty());
             PointerUpdate pointerCas = new PointerUpdate(currentPointer.updated, MaybeMultihash.of(blockHash), PointerUpdate.increment(currentPointer.sequence));
-            byte[] signedPointer = identity.secret.signMessage(pointerCas.serialize()).join();
+            byte[] signedPointer = identity.secret.signMessage(pointerCas.serialize(), SigningDomain.POINTER).join();
             OpLog.PointerWrite pointerWrite = new OpLog.PointerWrite(identity.publicKeyHash, signedPointer);
             LoginData newLoginData = new LoginData(username, entryPoints, loginSigner.publicSigningKey, Optional.of(new Pair<>(blockWrite, pointerWrite)));
             network.account.setLoginData(newLoginData, identity, false).join();

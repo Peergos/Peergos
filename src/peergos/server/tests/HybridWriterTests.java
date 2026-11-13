@@ -11,6 +11,7 @@ import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
+import java.net.*;
 import java.nio.file.*;
 import java.util.*;
 
@@ -53,6 +54,18 @@ public class HybridWriterTests {
 
     @Test
     public void signUpWriteShareAndRevoke() {
+        signUpWriteShareAndRevoke(network);
+    }
+
+    /** Over http, so the server checks the signatures on every block write, not just on pointers */
+    @Test
+    public void signUpWriteShareAndRevokeOverHttp() throws Exception {
+        NetworkAccess http = Builder.buildJavaNetworkAccess(new URI("http://localhost:" + args.getArg("port")).toURL(),
+                false, Optional.empty(), Optional.empty()).join();
+        signUpWriteShareAndRevoke(http);
+    }
+
+    private void signUpWriteShareAndRevoke(NetworkAccess network) {
         String password = generatePassword();
         UserContext owner = ensureSignedUp(generateUsername(random), password, network.clear(), crypto);
         UserContext sharee = ensureSignedUp(generateUsername(random), generatePassword(), network.clear(), crypto);

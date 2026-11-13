@@ -60,7 +60,7 @@ public class UserRepository implements SocialNetwork, MutablePointers {
     public CompletableFuture<Boolean> removeFollowRequest(PublicKeyHash owner, byte[] data) {
         return ipfs.getSigningKey(owner, owner).thenCompose(signerOpt -> {
             try {
-                byte[] unsigned = signerOpt.get().unsignMessage(data).join();
+                byte[] unsigned = signerOpt.get().unsignMessage(data, SigningDomain.FOLLOW_REQUEST_REMOVAL).join();
                 return store.removeFollowRequest(owner, unsigned);
             } catch (TweetNaCl.InvalidSignatureException e) {
                 return CompletableFuture.completedFuture(false);
@@ -84,7 +84,7 @@ public class UserRepository implements SocialNetwork, MutablePointers {
                                 PublicSigningKey writerKey = writerOpt.get();
                                 if (writerSignedBtreeRootHash.length > maxPointerSize(writerKey))
                                     throw new IllegalStateException("Pointer update too big! " + writerSignedBtreeRootHash.length);
-                                byte[] bothHashes = writerKey.unsignMessage(writerSignedBtreeRootHash).join();
+                                byte[] bothHashes = writerKey.unsignMessage(writerSignedBtreeRootHash, SigningDomain.POINTER).join();
                                 PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
                                 MaybeMultihash claimedCurrentHash = cas.original;
 
@@ -129,7 +129,7 @@ public class UserRepository implements SocialNetwork, MutablePointers {
                                 PublicSigningKey writerKey = writerOpt.get();
                                 if (u.signed.length > maxPointerSize(writerKey))
                                     throw new IllegalStateException("Pointer update too big! " + u.signed.length);
-                                byte[] bothHashes = writerKey.unsignMessage(u.signed).join();
+                                byte[] bothHashes = writerKey.unsignMessage(u.signed, SigningDomain.POINTER).join();
                                 PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
                                 return MutablePointers.isValidUpdate(writerKey, current, cas.original, cas.sequence)
                                         .thenCompose(x -> {

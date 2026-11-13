@@ -159,7 +159,7 @@ public class BulkCommitTests {
                         .map(b -> crypto.hasher.hash(b, false).join())
                         .collect(Collectors.toList());
                 byte[] expected = WriterCommit.blockListPayload(hashes, Optional.of(7L), crypto.hasher).join();
-                byte[] signed = keys.publicSigningKey.unsignMessage(w.blockListSignature.get()).join();
+                byte[] signed = keys.publicSigningKey.unsignMessage(w.blockListSignature.get(), SigningDomain.BLOCK_LIST).join();
                 Assert.assertArrayEquals("block list signature", expected, signed);
             }
         }

@@ -158,7 +158,7 @@ public class BulkCommitStorage extends DelegatingStorage {
                         .collect(Collectors.toList()))
                 .thenCompose(hashes -> BlockWriteAuth.payload(owner, hashes, hasher)
                         .thenCompose(expected -> writerKey(owner, writer)
-                                .thenCompose(key -> key.unsignMessage(batch.signature)
+                                .thenCompose(key -> key.unsignMessage(batch.signature, SigningDomain.BLOCK_WRITE_AUTH)
                                         .thenApply(signed -> {
                                             if (! Arrays.equals(signed, expected))
                                                 throw new IllegalStateException("Invalid signature for block write batch!");
@@ -369,7 +369,7 @@ public class BulkCommitStorage extends DelegatingStorage {
                             Optional.of(new PointerCasException(MaybeMultihash.empty(), Optional.empty(), claimed.original)) :
                             Optional.empty());
                 return writerKey(owner, writer)
-                        .thenCompose(key -> key.unsignMessage(current.get()))
+                        .thenCompose(key -> key.unsignMessage(current.get(), SigningDomain.POINTER))
                         .thenApply(msg -> PointerUpdate.fromCbor(CborObject.fromByteArray(msg)))
                         .thenApply(now -> now.updated.equals(claimed.original) ?
                                 Optional.empty() :
@@ -386,7 +386,7 @@ public class BulkCommitStorage extends DelegatingStorage {
                 .map(w -> w.pointer.isEmpty() ?
                         Futures.of(Optional.<PointerUpdate>empty()) :
                         writerKey(owner, w.writer, commit, hashes)
-                                .thenCompose(key -> key.unsignMessage(w.pointer.get().signed))
+                                .thenCompose(key -> key.unsignMessage(w.pointer.get().signed, SigningDomain.POINTER))
                                 .thenApply(signed -> Optional.of(PointerUpdate.fromCbor(CborObject.fromByteArray(signed)))))
                 .collect(Collectors.toList()));
     }
@@ -440,7 +440,7 @@ public class BulkCommitStorage extends DelegatingStorage {
                                     .thenCompose(current -> WriterCommit.blockListPayload(hashes.get(i),
                                             PointerUpdate.increment(current.sequence), hasher))
                                     .thenCompose(expected -> writerKey(owner, w.writer, commit, hashes)
-                                            .thenCompose(key -> key.unsignMessage(w.blockListSignature.get())
+                                            .thenCompose(key -> key.unsignMessage(w.blockListSignature.get(), SigningDomain.BLOCK_LIST)
                                                     .thenApply(signed -> {
                                                         if (! Arrays.equals(signed, expected))
                                                             throw new IllegalStateException("Invalid block list signature for " + w.writer);

@@ -253,7 +253,7 @@ public class StorageHandler implements HttpHandler {
                             PublicSigningKey candidateKey = PublicSigningKey.fromByteArray(writes.blocks.get(0));
                             PublicKeyHash calculatedHash = ContentAddressedStorage.hashKey(candidateKey);
                             if (calculatedHash.equals(writerHash)) {
-                                candidateKey.unsignMessage(writes.signatures.get(0));
+                                candidateKey.unsignMessage(writes.signatures.get(0), SigningDomain.BLOCK).join();
                                 return candidateKey;
                             }
                         } catch (Throwable e) {
@@ -268,7 +268,7 @@ public class StorageHandler implements HttpHandler {
                     for (int i = 0; i < writes.blocks.size(); i++) {
                         byte[] signature = writes.signatures.get(i);
                         byte[] hash = hasher.sha256(writes.blocks.get(i)).join();
-                        byte[] unsigned = writer.unsignMessage(signature).join();
+                        byte[] unsigned = writer.unsignMessage(signature, SigningDomain.BLOCK).join();
                         if (! Arrays.equals(unsigned, hash))
                             throw new IllegalStateException("Invalid signature for block!");
                     }

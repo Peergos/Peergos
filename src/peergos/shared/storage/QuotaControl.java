@@ -1,5 +1,7 @@
 package peergos.shared.storage;
 
+import peergos.shared.crypto.asymmetric.SigningDomain;
+
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
@@ -21,7 +23,7 @@ public interface QuotaControl {
 
     default CompletableFuture<PaymentProperties> requestQuota(String username, SigningPrivateKeyAndPublicHash identity, long space, boolean annual) {
         SpaceUsage.SpaceRequest req = new SpaceUsage.SpaceRequest(username, space, annual, System.currentTimeMillis(), Optional.empty());
-        return identity.secret.signMessage(req.serialize())
+        return identity.secret.signMessage(req.serialize(), SigningDomain.SPACE_REQUEST)
                 .thenCompose(signedRequest -> requestQuota(identity.publicKeyHash, signedRequest, 0));
     }
 
