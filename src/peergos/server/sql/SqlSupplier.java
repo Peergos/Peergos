@@ -251,6 +251,9 @@ public interface SqlSupplier {
                 "subject " + getByteArrayType() + " NOT NULL, " +
                 "keyed " + sqlInteger() + " NOT NULL);" +
                 "CREATE INDEX IF NOT EXISTS routingpeers_subject ON routingpeers (subject);" +
+                "CREATE TABLE IF NOT EXISTS routingmirrored (" +
+                "identity " + getByteArrayType() + " PRIMARY KEY NOT NULL, " +
+                "home " + getByteArrayType() + " NOT NULL);" +
                 "CREATE TABLE IF NOT EXISTS routingmeta (" +
                 "name varchar(64) PRIMARY KEY NOT NULL, " +
                 "value " + getByteArrayType() + " NOT NULL);" +

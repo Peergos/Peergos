@@ -51,6 +51,11 @@ public class JdbcRoutingStore {
             "ON CONFLICT (peer) DO UPDATE SET subject = excluded.subject, keyed = excluded.keyed " +
             "WHERE routingpeers.keyed = 0 OR excluded.keyed = 1;";
     private static final String GET_PEER = "SELECT subject FROM routingpeers WHERE peer = ?;";
+    private static final String MIRRORED = "SELECT identity, home FROM routingmirrored;";
+    private static final String PUT_MIRRORED = "INSERT INTO routingmirrored (identity, home) VALUES (?, ?) " +
+            "ON CONFLICT (identity) DO UPDATE SET home = excluded.home;";
+    private static final String REMOVE_MIRRORED = "DELETE FROM routingmirrored WHERE identity = ?;";
+    private static final String CLEAR_MIRRORED = "DELETE FROM routingmirrored;";
     private static final String GET_META = "SELECT value FROM routingmeta WHERE name = ?;";
     private static final String SET_META = "INSERT INTO routingmeta (name, value) VALUES (?, ?) " +
             "ON CONFLICT (name) DO UPDATE SET value = excluded.value;";
@@ -594,6 +599,45 @@ public class JdbcRoutingStore {
             select.setBytes(1, peer.bareMultihash().toBytes());
             ResultSet rs = select.executeQuery();
             return rs.next() ? Optional.of(Subject.server(Multihash.decode(rs.getBytes(1)))) : Optional.empty();
+        } catch (SQLException e) {
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    /** The identities listing this server as a mirror, each with its home server: few, and kept so that a restart
+     *  doesn't read every identity to find them again.
+     */
+    public Map<Multihash, Multihash> mirrored() {
+        try (Connection c = getConnection();
+             PreparedStatement select = c.prepareStatement(MIRRORED)) {
+            Map<Multihash, Multihash> res = new HashMap<>();
+            ResultSet rs = select.executeQuery();
+            while (rs.next())
+                res.put(Multihash.decode(rs.getBytes(1)), Multihash.decode(rs.getBytes(2)));
+            return res;
+        } catch (SQLException e) {
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void setMirrored(Multihash identity, Optional<Multihash> home) {
+        try (Connection c = getConnection();
+             PreparedStatement update = c.prepareStatement(home.isPresent() ? PUT_MIRRORED : REMOVE_MIRRORED)) {
+            update.setBytes(1, identity.toBytes());
+            if (home.isPresent())
+                update.setBytes(2, home.get().toBytes());
+            update.executeUpdate();
+        } catch (SQLException e) {
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void clearMirrored() {
+        try (Connection c = getConnection()) {
+            execute(c, CLEAR_MIRRORED);
         } catch (SQLException e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
             throw new RuntimeException(e);
