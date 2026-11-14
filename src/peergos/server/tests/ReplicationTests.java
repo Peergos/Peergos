@@ -248,6 +248,142 @@ public class ReplicationTests {
         Assert.assertTrue(b.replica.log(s).inception().isEmpty());
     }
 
+    /** A chain of rotations, each to the key the one before committed to. */
+    private static List<SignedRecord> chain(Server admitter, int rotations) {
+        List<SigningKeyPair> keys = new ArrayList<>();
+        for (int i = 0; i < rotations + 2; i++)
+            keys.add(key());
+        List<SignedRecord> res = new ArrayList<>();
+        res.add(IdentityInception.build(keys.get(0), List.of(admitter.peerId), keys.get(1).publicSigningKey, crypto.hasher).join()
+                .withAdmission(Admission.build(keys.get(0).publicSigningKey, GOOD_PROOF, admitter.key.secretSigningKey).join()));
+        for (int i = 1; i <= rotations; i++)
+            res.add(IdentityRotation.build(keys.get(i - 1).publicSigningKey, keys.get(i), List.of(admitter.peerId),
+                    keys.get(i + 1).publicSigningKey, crypto.hasher).join());
+        return res;
+    }
+
+    @Test
+    public void aLongListOfRecordsHandedInUnaskedIsLeftWithItsSender() {
+        Network net = new Network();
+        Node a = net.node(100), sender = net.node(100);
+        Server x = new Server();
+        a.replica.add(x.subject, x.inception);
+
+        List<SignedRecord> unknown = chain(x, RoutingNode.MAX_UNSOLICITED_RECORDS);
+        Subject s = Subject.identity(((IdentityInception) unknown.get(0)).identityHash());
+        Assert.assertEquals(Outcome.Limited, a.routing.offered(sender.id, s, unknown));
+        Assert.assertTrue(a.routing.lookup(s).isEmpty());
+        Assert.assertEquals(0, a.routing.waitingInceptions());
+
+        SigningKeyPair owner = key();
+        IdentityInception held = x.admit(owner);
+        Subject h = Subject.identity(held.identityHash());
+        a.replica.add(h, held);
+        List<SignedRecord> moves = new ArrayList<>(List.of(held));
+        for (int i = 1; i <= RoutingNode.MAX_UNSOLICITED_RECORDS + 1; i++)
+            moves.add(IdentityMove.build(owner, List.of(x.peerId), i).join());
+        Assert.assertEquals(Outcome.Limited, a.routing.offered(sender.id, h, moves));
+        Assert.assertTrue(a.replica.identity(h).get().records.update.isEmpty());
+        Assert.assertEquals("records already held don't count", Outcome.Added,
+                a.routing.offered(sender.id, h, moves.subList(0, RoutingNode.MAX_UNSOLICITED_RECORDS + 1)));
+    }
+
+    @Test
+    public void aPullBringsAnOldIdentitysWholeChain() {
+        Network net = new Network();
+        Node a = net.node(100), b = net.node(100);
+        Server x = new Server();
+        a.replica.add(x.subject, x.inception);
+        b.replica.add(x.subject, x.inception);
+        List<SignedRecord> old = chain(x, 100);
+        Subject s = Subject.identity(((IdentityInception) old.get(0)).identityHash());
+        for (SignedRecord r : old)
+            Assert.assertEquals(Outcome.Added, a.replica.add(s, r));
+
+        Optional<SubjectLog> pulled = b.routing.pull(new LocalPeer(b.id, a), s);
+        Assert.assertEquals(a.replica.identity(s).get().currentKey(), ((IdentityLog) pulled.get()).currentKey());
+    }
+
+    @Test
+    public void anIdentityNamingAServerNobodyHoldsIsNotQueued() throws Exception {
+        Network net = new Network();
+        Node a = net.node(100), sender = net.node(100);
+        sender.routing.syncRound();
+        Server madeUp = new Server();
+        IdentityInception inc = madeUp.admit(key());
+        Subject s = Subject.identity(inc.identityHash());
+        // it waits only while the sender is asked for the server it names
+        Assert.assertNotEquals(Outcome.Added, a.routing.offered(sender.id, s, List.of(inc)));
+        waitFor(() -> a.routing.outstandingFetches() == 0);
+        Assert.assertEquals(0, a.routing.waitingInceptions());
+        a.routing.tick();
+        Assert.assertTrue(a.replica.log(s).inception().isEmpty());
+
+        Server real = new Server();
+        sender.replica.add(real.subject, real.inception);
+        IdentityInception signup = real.admit(key());
+        Subject u = Subject.identity(signup.identityHash());
+        sender.replica.add(u, signup);
+        a.routing.offered(sender.id, u, List.of(signup));
+        waitFor(() -> a.replica.log(u).inception().isPresent());
+        Assert.assertTrue(a.replica.log(real.subject).inception().isPresent());
+    }
+
+    @Test
+    public void announcersThatNeverAnswerHoldNoThreadAndFreshKeysShareOneBudget() throws Exception {
+        Network net = new Network();
+        List<CompletableFuture<List<SignedRecord>>> asked = Collections.synchronizedList(new ArrayList<>());
+        RoutingReplica replica = new RoutingReplica(new JdbcRoutingStore(Builder.buildEphemeralSqlite(), new SqliteCommands()),
+                new RecordValidator(crypto.hasher, TEST_WORK, TEST_WORK), TEST_WORK, TEST_WORK);
+        Node placeholder = net.node(100);
+        RoutingNode node = new RoutingNode(replica, crypto.hasher, net.clock::get, 100, server -> AddressBucket.UNVERIFIED,
+                peer -> new LocalPeer(placeholder.id, placeholder) {
+                    @Override
+                    public Multihash id() {
+                        return peer.bareMultihash();
+                    }
+
+                    @Override
+                    public CompletableFuture<List<SignedRecord>> records(Subject s) {
+                        CompletableFuture<List<SignedRecord>> never = new CompletableFuture<>();
+                        asked.add(never);
+                        return never;
+                    }
+                }, work);
+        boolean all = true;
+        for (int caller = 0; caller < 5; caller++) {
+            List<JdbcRoutingStore.State> states = new ArrayList<>();
+            for (int i = 0; i < RoutingNode.MAX_FETCHING_PER_PEER; i++)
+                states.add(new JdbcRoutingStore.State(Subject.identity(
+                        peergos.shared.storage.ContentAddressedStorage.hashKey(key().publicSigningKey)), new byte[32]));
+            all &= node.announced(ServerKeys.peerId(key().publicSigningKey), states);
+        }
+        Assert.assertFalse("those not taken are announced again later", all);
+        Assert.assertEquals(RoutingNode.MAX_FETCHING_PER_PEER, node.outstandingFetches());
+        Assert.assertEquals(RoutingNode.MAX_FETCHING_PER_PEER, asked.size());
+        for (int i = 0; i < 8; i++)
+            Assert.assertEquals("free", work.submit(() -> "free").get(5, TimeUnit.SECONDS));
+        new ArrayList<>(asked).forEach(f -> f.complete(List.of()));
+        waitFor(() -> node.outstandingFetches() == 0);
+    }
+
+    @Test
+    public void aFloodFillsItsOwnBucketsQueueOnly() {
+        AtomicLong clock = new AtomicLong(0);
+        RateLimits.Inceptions<String> limits = new RateLimits.Inceptions<>(5, 2, clock::get);
+        AddressBucket flooded = AddressBucket.of(addr("10.1.2.3")), other = AddressBucket.of(addr("10.2.2.3"));
+        int queued = 0;
+        for (int i = 0; i < 100; i++)
+            if (limits.offer(flooded, ServerKeys.peerId(key().publicSigningKey), "flood " + i))
+                queued++;
+        Assert.assertEquals(5, queued);
+        Assert.assertTrue(limits.offer(other, ServerKeys.peerId(key().publicSigningKey), "signup"));
+        Assert.assertTrue(limits.isWaiting("signup"));
+        Assert.assertFalse("the same offer twice", limits.offer(other, ServerKeys.peerId(key().publicSigningKey), "signup"));
+        Assert.assertEquals(6, limits.take().size() + limits.waiting());
+        Assert.assertFalse(limits.isWaiting("flood 0"));
+    }
+
     @Test
     public void roundRobinByAdmittingServerWithinABucket() {
         AtomicLong clock = new AtomicLong(0);
@@ -445,6 +581,57 @@ public class ReplicationTests {
     }
 
     @Test
+    public void aCompactReplicaAsksAProviderOnceForAStateHoweverManyAskIt() throws Exception {
+        Network net = new Network();
+        Server x = new Server();
+        Node provider = net.node(100, x.peerId), compact = net.node(100);
+        compact.replica.compact(compact.id);
+        IdentityInception alice = x.admit(key()), bob = x.admit(key());
+        Subject aliceSubject = Subject.identity(alice.identityHash()), bobSubject = Subject.identity(bob.identityHash());
+        provider.replica.add(x.subject, x.inception);
+        provider.replica.add(aliceSubject, alice);
+        provider.replica.add(bobSubject, bob);
+        compact.syncWith(provider);
+        compact.routing.syncRound();
+        Assert.assertFalse(compact.replica.servesAtOnce(aliceSubject));
+
+        AtomicInteger dials = new AtomicInteger();
+        AtomicBoolean offline = new AtomicBoolean();
+        java.util.function.Function<Multihash, RoutingPeer> dial = target -> new LocalPeer(compact.id, provider) {
+            @Override
+            public CompletableFuture<List<SignedRecord>> records(Subject s) {
+                dials.incrementAndGet();
+                if (offline.get())
+                    return CompletableFuture.failedFuture(new IllegalStateException("Connection refused"));
+                return CompletableFuture.supplyAsync(() -> {
+                    try {
+                        Thread.sleep(300);
+                    } catch (InterruptedException e) {}
+                    return target.routing.records(s);
+                });
+            }
+        };
+        List<Future<List<SignedRecord>>> asking = new ArrayList<>();
+        ExecutorService askers = Executors.newFixedThreadPool(8);
+        for (int i = 0; i < 8; i++)
+            asking.add(askers.submit(() -> compact.replica.records(aliceSubject, dial)));
+        for (Future<List<SignedRecord>> f : asking)
+            Assert.assertEquals(provider.routing.records(aliceSubject), f.get(10, TimeUnit.SECONDS));
+        Assert.assertEquals("one fetch for everyone waiting on a state", 1, dials.get());
+        Assert.assertTrue(compact.replica.servesAtOnce(aliceSubject));
+
+        offline.set(true);
+        for (int i = 0; i < 5; i++) {
+            try {
+                compact.replica.records(bobSubject, dial);
+                Assert.fail("Its provider is offline");
+            } catch (IllegalStateException expected) {}
+        }
+        Assert.assertEquals("a provider that failed isn't asked again at once", 2, dials.get());
+        askers.shutdown();
+    }
+
+    @Test
     public void aCompactReplicaVerifiesBeforeStrippingAndKeepsItsOwnInFull() {
         Network net = new Network();
         Server x = new Server(), y = new Server();
@@ -464,6 +651,61 @@ public class ReplicationTests {
         Assert.assertTrue("a user it hosts", noneStripped(compact, hostedSubject));
         Assert.assertTrue(allStripped(compact, y.subject));
         Assert.assertTrue(allStripped(compact, elsewhereSubject));
+    }
+
+    @Test
+    public void aSyncPeerClaimingWhatItCantDeliverCostsAFewCallsAndDoesntKeepANodeUnsynced() {
+        Network net = new Network();
+        Node victim = net.node(100), evil = net.node(100);
+        Server x = new Server();
+        IdentityInception alice = x.admit(key());
+        Subject aliceSubject = Subject.identity(alice.identityHash());
+        for (int i = 0; i < 3; i++) {
+            Node honest = net.node(100);
+            honest.replica.add(x.subject, x.inception);
+            honest.replica.add(aliceSubject, alice);
+            victim.syncWith(honest);
+        }
+        List<JdbcRoutingStore.State> madeUp = new ArrayList<>();
+        for (int i = 0; i < 500; i++)
+            madeUp.add(new JdbcRoutingStore.State(Subject.identity(
+                    peergos.shared.storage.ContentAddressedStorage.hashKey(key().publicSigningKey)), new byte[32]));
+        madeUp.sort(Comparator.comparing(st -> st.subject));
+        AtomicInteger asked = new AtomicInteger();
+        victim.routing.addSyncPeer(new LocalPeer(victim.id, evil) {
+            @Override
+            public CompletableFuture<List<Reconciliation.Summary>> summaries(int kind, List<Reconciliation.Range> ranges) {
+                if (kind != Subject.IDENTITY)
+                    return super.summaries(kind, ranges);
+                byte[] fingerprint = new byte[32];
+                fingerprint[0] = 1;
+                return CompletableFuture.completedFuture(Collections.nCopies(ranges.size(), new Reconciliation.Summary(1, fingerprint)));
+            }
+
+            @Override
+            public CompletableFuture<List<JdbcRoutingStore.State>> states(int kind, Reconciliation.Range range, int limit) {
+                if (kind != Subject.IDENTITY)
+                    return super.states(kind, range, limit);
+                return CompletableFuture.completedFuture(madeUp.stream()
+                        .filter(st -> range.contains(st.subject.idBytes()))
+                        .limit(limit)
+                        .toList());
+            }
+
+            @Override
+            public CompletableFuture<List<SignedRecord>> records(Subject s) {
+                asked.incrementAndGet();
+                return CompletableFuture.failedFuture(new IllegalStateException("Timed out"));
+            }
+        });
+
+        Assert.assertTrue(victim.routing.syncRound() > 0);
+        Assert.assertEquals(RoutingNode.MAX_FAILURES_PER_PEER, asked.get());
+        Assert.assertTrue(victim.replica.log(aliceSubject).inception().isPresent());
+        Assert.assertEquals(0, victim.routing.syncRound());
+        Assert.assertTrue("what one drawn peer alone claims doesn't keep a node unsynced", victim.routing.isSynced());
+        Assert.assertEquals(2 * RoutingNode.MAX_FAILURES_PER_PEER, asked.get());
+        Assert.assertTrue("it failed two rounds running", victim.routing.unreachable().contains(evil.id));
     }
 
     @Test

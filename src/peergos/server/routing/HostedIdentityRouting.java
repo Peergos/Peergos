@@ -29,6 +29,9 @@ public class HostedIdentityRouting implements IdentityRouting {
     /** Lookups on other servers, which anyone can ask for, so they aren't a way to make this server call others. */
     public static final RateLimits.Rate REMOTE_LOOKUPS = new RateLimits.Rate(120, 500);
     private final RateLimits.TokenBuckets<String> remoteLookups = new RateLimits.TokenBuckets<>(REMOTE_LOOKUPS, System::currentTimeMillis);
+    /** Requests, which anyone can make, that may wait at once on other servers for an identity's signatures. */
+    public static final int MAX_WAITING_ON_PROVIDERS = 16;
+    private final Semaphore waitingOnProviders = new Semaphore(MAX_WAITING_ON_PROVIDERS);
 
     private final CoreNode core;
     private final QuotaAdmin quotas;
@@ -289,7 +292,17 @@ public class HostedIdentityRouting implements IdentityRouting {
                     return Futures.errored(new IllegalStateException(RoutingNode.NOT_SYNCED));
                 return Futures.of(Collections.emptyList());
             }
-            return Futures.of(running().replica.records(Subject.identity(identity), dial));
+            RoutingReplica replica = running().replica;
+            Subject s = Subject.identity(identity);
+            if (replica.servesAtOnce(s))
+                return Futures.of(replica.records(s, dial));
+            if (! waitingOnProviders.tryAcquire())
+                return Futures.errored(new IllegalStateException("Too many requests for records held elsewhere, try again shortly"));
+            try {
+                return Futures.of(replica.records(s, dial));
+            } finally {
+                waitingOnProviders.release();
+            }
         } catch (Exception e) {
             return Futures.errored(e);
         }

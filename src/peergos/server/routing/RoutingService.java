@@ -84,16 +84,15 @@ public class RoutingService {
     public final RoutingNode node;
     public final RoutingLookup lookup;
     public final SyncPeers syncPeers;
-    private final ScheduledExecutorService timer, peerTimer;
+    private final List<ScheduledExecutorService> timers;
 
     private RoutingService(ServerRouting server, RoutingNode node, RoutingLookup lookup, SyncPeers syncPeers,
-                           ScheduledExecutorService timer, ScheduledExecutorService peerTimer) {
+                           List<ScheduledExecutorService> timers) {
         this.server = server;
         this.node = node;
         this.lookup = lookup;
         this.syncPeers = syncPeers;
-        this.timer = timer;
-        this.peerTimer = peerTimer;
+        this.timers = timers;
     }
 
     public static Optional<RoutingService> start(Args a,
@@ -158,7 +157,9 @@ public class RoutingService {
         SyncPeers syncPeers = new SyncPeers(node, buckets, peers, server.peerId, light, new Random());
         RoutingLookup lookup;
         if (light) {
-            LightLookup lightLookup = new LightLookup(node, server.peerId, peers, System::currentTimeMillis, new Random(), work);
+            // its own threads: a lookup waits on a full node, and must not wait behind replication either
+            LightLookup lightLookup = new LightLookup(node, server.peerId, peers, System::currentTimeMillis, new Random(),
+                    Executors.newFixedThreadPool(4, daemon("Routing lookups")));
             lightLookup.sampleFrom(syncPeers::drawn);
             server.replica.onChange((s, log) -> work.submit(() -> lightLookup.publish(s, log)));
             lookup = lightLookup;
@@ -167,8 +168,12 @@ public class RoutingService {
             node.setConfigured(peers.stream().map(RoutingPeer::id).collect(Collectors.toList()));
             lookup = RoutingLookup.full(server.replica, node::isSynced);
         }
-        ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor(daemon("Routing timer"));
-        timer.scheduleWithFixedDelay(() -> run(node::tick), TICK_MILLIS, TICK_MILLIS, TimeUnit.MILLISECONDS);
+        // Each on its own thread: a sync round waits on peers, and must not hold up the rate limits' clock or this
+        // server's own address updates.
+        ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor(daemon("Routing sync"));
+        ScheduledExecutorService ticker = Executors.newSingleThreadScheduledExecutor(daemon("Routing tick"));
+        ScheduledExecutorService addressTimer = Executors.newSingleThreadScheduledExecutor(daemon("Routing addresses"));
+        ticker.scheduleWithFixedDelay(() -> run(node::tick), TICK_MILLIS, TICK_MILLIS, TimeUnit.MILLISECONDS);
         ScheduledExecutorService peerTimer = Executors.newSingleThreadScheduledExecutor(daemon("Routing peer choice"));
         peerTimer.scheduleWithFixedDelay(() -> run(syncPeers::refresh), SYNC_MILLIS / 2, PEERS_MILLIS, TimeUnit.MILLISECONDS);
         if (light) {
@@ -181,12 +186,12 @@ public class RoutingService {
                     if (node.syncRound() == 0 && node.isSynced())
                         return;
             }), 0, SYNC_MILLIS, TimeUnit.MILLISECONDS);
-        timer.scheduleWithFixedDelay(() -> run(addresses::refresh), 0, ADDRESS_MILLIS, TimeUnit.MILLISECONDS);
-        reachability.ifPresent(r -> r.addListener(state -> timer.execute(() -> run(addresses::refresh))));
+        addressTimer.scheduleWithFixedDelay(() -> run(addresses::refresh), 0, ADDRESS_MILLIS, TimeUnit.MILLISECONDS);
+        reachability.ifPresent(r -> r.addListener(state -> addressTimer.execute(() -> run(addresses::refresh))));
         LOG.info("Routing log started for " + server.peerId + (light ?
                 " as a light server asking " + peers.size() + " full nodes" :
                 " with " + node.syncPeers().size() + " sync peers"));
-        return Optional.of(new RoutingService(server, node, lookup, syncPeers, timer, peerTimer));
+        return Optional.of(new RoutingService(server, node, lookup, syncPeers, List.of(timer, ticker, addressTimer, peerTimer)));
     }
 
     private static void run(Runnable r) {
@@ -252,8 +257,7 @@ public class RoutingService {
     }
 
     public void stop() {
-        timer.shutdownNow();
-        peerTimer.shutdownNow();
+        timers.forEach(ExecutorService::shutdownNow);
         server.stop();
     }
 }

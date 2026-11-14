@@ -137,11 +137,15 @@ public class RateLimits {
         private final int maxOffersPerServer;
         private final LongSupplier clock;
         private final Map<AddressBucket, Long> busyUntil = new HashMap<>();
+        private final Map<AddressBucket, Integer> waitingIn = new HashMap<>();
+        private final Set<O> all = new HashSet<>();
+        private final int maxPerBucket;
         private int waiting;
 
         public Inceptions(int perDay, int maxOffersPerServer, LongSupplier clock) {
             this.rate = new TokenBuckets<>(new Rate(perDay, DAY / perDay), clock);
             this.maxOffersPerServer = maxOffersPerServer;
+            this.maxPerBucket = Math.max(perDay, maxOffersPerServer);
             this.clock = clock;
         }
 
@@ -159,23 +163,31 @@ public class RateLimits {
             return true;
         }
 
-        /** Queues an offer; false if the admitting server already has as many waiting as are kept. */
+        /** Queues an offer; false if it is waiting already, or its admitting server or its bucket has as many
+         *  waiting as are kept: a day's worth for a bucket, so a flood fills its own range's queue, not everyone's.
+         */
         public synchronized boolean offer(AddressBucket bucket, Multihash admittingServer, O offer) {
-            if (waiting() >= MAX_WAITING)
+            if (waiting >= MAX_WAITING || all.contains(offer) || waitingIn.getOrDefault(bucket, 0) >= maxPerBucket)
                 return false;
-            ArrayDeque<O> queue = offers.computeIfAbsent(bucket, b -> new LinkedHashMap<>())
-                    .computeIfAbsent(admittingServer.bareMultihash(), s -> new ArrayDeque<>());
-            if (queue.size() >= maxOffersPerServer || queue.contains(offer))
+            LinkedHashMap<Multihash, ArrayDeque<O>> servers = offers.computeIfAbsent(bucket, b -> new LinkedHashMap<>());
+            ArrayDeque<O> queue = servers.get(admittingServer.bareMultihash());
+            if (queue != null && queue.size() >= maxOffersPerServer)
                 return false;
+            if (queue == null)
+                servers.put(admittingServer.bareMultihash(), queue = new ArrayDeque<>());
             queue.add(offer);
+            all.add(offer);
+            waitingIn.merge(bucket, 1, Integer::sum);
             waiting++;
             return true;
         }
 
-        /** Across every bucket: an inception naming an admitting server no one holds yet waits under that name, and
-         *  names cost nothing, so the total is bounded too. Nothing is lost: the sender keeps it and offers it again.
-         */
-        public static final int MAX_WAITING = 100_000;
+        public synchronized boolean isWaiting(O offer) {
+            return all.contains(offer);
+        }
+
+        /** Across every bucket, to bound memory. Nothing is lost: the sender keeps it and offers it again. */
+        public static final int MAX_WAITING = 1_000_000;
 
         /** The offers that may be taken now, each charged to its bucket. */
         public synchronized List<O> take() {
@@ -186,7 +198,10 @@ public class RateLimits {
                 while (! servers.isEmpty() && rate.tryTake(e.getKey())) {
                     Multihash next = servers.keySet().iterator().next();
                     ArrayDeque<O> queue = servers.remove(next);
-                    res.add(queue.poll());
+                    O taken = queue.poll();
+                    res.add(taken);
+                    all.remove(taken);
+                    waitingIn.computeIfPresent(e.getKey(), (b, n) -> n > 1 ? n - 1 : null);
                     waiting--;
                     if (! queue.isEmpty())
                         servers.put(next, queue);
