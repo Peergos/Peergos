@@ -360,6 +360,17 @@ public class HybridMigrationTests {
         old.assertMigrated();
     }
 
+    /** A share that can't be sent again, here to someone with no sharing folder, doesn't stop the others */
+    @Test
+    public void aShareThatCantBeSentAgainIsSkipped() {
+        OldAccount old = new OldAccount();
+        UserContext owner = login(old.owner.username, old.password);
+        owner.network.synchronizer.applyComplexUpdate(owner.signer.publicKeyHash, owner.getUserRoot().join().signingPair(),
+                (s, c) -> owner.sharedWithCache.addSharedWith(SharedWithCache.Access.READ, old.home.resolve("small.bin"),
+                        Collections.singleton("nosuchfriend"), s, c, owner.network)).join();
+        old.assertMigrated();
+    }
+
     /** A session from before the move can't write into a space that has moved: its update is from the old writer's
      *  version, which is gone, and merging onto the link left there conflicts
      */

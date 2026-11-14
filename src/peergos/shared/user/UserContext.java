@@ -197,8 +197,9 @@ public class UserContext {
                                     LOG.log(Level.WARNING, "Couldn't move our home to a hybrid writer", t);
                                     return Futures.of(false);
                                 })
+                                // silent, so the upgrade message stays up until the login finishes
                                 .thenCompose(switched -> switched ?
-                                        signIn(username, password, mfa, false, forceProxy, network, crypto, progressCallback) :
+                                        signIn(username, password, mfa, false, forceProxy, network, crypto, t -> {}) :
                                         Futures.of(ctx)) :
                         ctx.isMovingToHybridWriters().thenCompose(moving -> ! moving ?
                                 Futures.of(ctx) :
@@ -207,7 +208,7 @@ public class UserContext {
                                             return Futures.of(false);
                                         })
                                         .thenCompose(finished -> finished ?
-                                                signIn(username, password, mfa, false, forceProxy, network, crypto, progressCallback) :
+                                                signIn(username, password, mfa, false, forceProxy, network, crypto, t -> {}) :
                                                 Futures.of(ctx)))))
                 .exceptionally(Futures::logAndThrow);
     }
@@ -465,6 +466,8 @@ public class UserContext {
                 .thenCompose(byCap -> byCap.isPresent() ? Futures.of(byCap) : getByPath(ref.path));
     }
 
+    public static final String UPGRADING_MESSAGE = "Upgrading to post-quantum signatures, please wait.";
+
     /** Whether our home directory's writer still has an Ed25519 key, so our writing spaces need moving to hybrid writers */
     public CompletableFuture<Boolean> hasEd25519Home() {
         if (! SigningKeyPair.HYBRID_WRITERS)
@@ -488,7 +491,7 @@ public class UserContext {
      *  a CRQC can't forge our pointers. The next login finishes with finishMoveToHybridWriters.
      */
     public CompletableFuture<Boolean> switchHomeToHybridWriter(Consumer<String> progressCallback) {
-        progressCallback.accept("Upgrading account to post-quantum signatures..");
+        progressCallback.accept(UPGRADING_MESSAGE);
         return getUserRoot().thenCompose(home -> getSharingFolder()
                 .thenCompose(sharing -> sharing.getChildren(crypto.hasher, network))
                 // friends hold entry points to their sharing folders, which nothing re-sends
@@ -522,7 +525,7 @@ public class UserContext {
     public CompletableFuture<Boolean> finishMoveToHybridWriters(String password,
                                                                Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa,
                                                                Consumer<String> progressCallback) {
-        progressCallback.accept("Finishing upgrade to post-quantum signatures..");
+        progressCallback.accept(UPGRADING_MESSAGE);
         PublicKeyHash owner = signer.publicKeyHash;
         return getUserRoot().thenCompose(home -> getWriterQuotas(owner)
                 .thenCompose(quotas -> switchNestedSpaces(home, quotas))
@@ -728,22 +731,33 @@ public class UserContext {
      */
     private CompletableFuture<Snapshot> reshareAfterMove(Path dir, SharedWithState state, Snapshot in, Committer c) {
         return Futures.<Snapshot, Map.Entry<String, Set<String>>>reduceAll(state.readShares().entrySet(), in,
-                        (s, e) -> shareReadAccessWith(dir.resolve(e.getKey()), e.getValue(), s, c).thenApply(r -> s.mergeAndOverwriteWith(r)),
+                        (s, e) -> orSkip(s, "read share of " + dir.resolve(e.getKey()),
+                                () -> shareReadAccessWith(dir.resolve(e.getKey()), e.getValue(), s, c).thenApply(r -> s.mergeAndOverwriteWith(r))),
                         (a, b) -> b)
                 .thenCompose(s2 -> Futures.<Snapshot, Map.Entry<String, Set<String>>>reduceAll(state.writeShares().entrySet(), s2,
-                        (s, e) -> sendWriteCapToAll(dir.resolve(e.getKey()), e.getValue(), s, c).thenApply(r -> s.mergeAndOverwriteWith(r)),
+                        (s, e) -> orSkip(s, "write share of " + dir.resolve(e.getKey()),
+                                () -> sendWriteCapToAll(dir.resolve(e.getKey()), e.getValue(), s, c).thenApply(r -> s.mergeAndOverwriteWith(r))),
                         (a, b) -> b))
                 .thenCompose(s3 -> Futures.<Snapshot, Map.Entry<String, Set<LinkProperties>>>reduceAll(state.links().entrySet(), s3,
                         (s, e) -> Futures.<Snapshot, LinkProperties>reduceAll(e.getValue(), s,
-                                (v, link) -> v.withWriter(signer.publicKeyHash, signer.publicKeyHash, network)
+                                (v, link) -> orSkip(v, "secret link to " + dir.resolve(e.getKey()),
+                                        () -> v.withWriter(signer.publicKeyHash, signer.publicKeyHash, network)
                                         .thenCompose(withId -> withId.get(signer).props.get()
                                                 .getSecretLinkChamp(signer.publicKeyHash, mirrorBat, network.dhtClient, crypto.hasher)
                                                 .thenCompose(champ -> champ.getValueHash(link.label))
                                                 .thenCompose(current -> updateSecretLink(dir.resolve(e.getKey()).toString(),
                                                         link.withExisting(current), withId, c))
-                                                .thenApply(r -> withId.mergeAndOverwriteWith(r))),
+                                                .thenApply(r -> withId.mergeAndOverwriteWith(r)))),
                                 (a, b) -> b),
                         (a, b) -> b));
+    }
+
+    /** A share that can't be sent again, e.g. to a former friend or of a file that is gone, mustn't stop the others */
+    private static CompletableFuture<Snapshot> orSkip(Snapshot in, String what, Supplier<CompletableFuture<Snapshot>> step) {
+        return Futures.asyncExceptionally(step, t -> {
+            LOG.log(Level.WARNING, "Couldn't send the " + what + " again after moving to hybrid writers", t);
+            return Futures.of(in);
+        });
     }
 
     /** Publish each published file again, with its cap under its new writer */
