@@ -128,7 +128,8 @@ public class ConfigHandler implements HttpHandler {
             if (path.startsWith("/"))
                 path = path.substring(1);
             String action = path.substring(Constants.CONFIG.length());
-            Map<String, List<String>> params = HttpUtil.parseQuery(exchange.getRequestURI().getQuery());
+            // the raw query: a decoded one cannot be split, since a value may contain & or =
+            Map<String, List<String>> params = HttpUtil.parseQuery(exchange.getRequestURI().getRawQuery());
             Function<String, String> last = key -> params.get(key).get(params.get(key).size() - 1);
 
             if (action.equals("cache/set-size-mb")) {
