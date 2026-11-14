@@ -4109,28 +4109,39 @@ public class UserContext {
      *  or it is dropped (remove-pki §8). */
     private CompletableFuture<Optional<FollowRequestWithCipherText>> openFollowRequest(BlindFollowRequest b, FriendLinkStore links) {
         if (b.linkId.isEmpty())
-            return b.followRequest.decrypt(boxer.secretBoxingKey, b.dummySource, FollowRequest::fromCbor)
-                    .thenCompose(decrypted -> (decrypted.linked.isEmpty() ?
+            return openFollowRequest(b, boxer.secretBoxingKey, Optional.empty(),
+                    decrypted -> decrypted.linked.isEmpty() ?
                             Futures.of(isWellFormed(decrypted)) :
-                            isValidLinked(decrypted, Optional.empty(), Optional.empty()))
-                            .thenApply(valid -> valid ? Optional.of(new FollowRequestWithCipherText(decrypted, b)) : Optional.<FollowRequestWithCipherText>empty()))
-                    .exceptionally(t -> Optional.empty())
-                    .thenCompose(res -> res.isPresent() ?
-                            Futures.of(res) :
-                            discardFollowRequest(b).thenApply(x -> Optional.empty()));
+                            isValidLinked(decrypted, Optional.empty(), Optional.empty()));
         Optional<FriendLinkStore.Entry> link = links.get(b.linkId.get());
         if (link.isEmpty())
             return discardFollowRequest(b).thenApply(x -> Optional.empty());
         Optional<String> introducedBy = link.get().kind == FriendLinkStore.Kind.INTRODUCTION ?
                 Optional.of(link.get().label) :
                 Optional.empty();
-        return b.followRequest.decrypt(link.get().boxer.secretBoxingKey, b.dummySource, FollowRequest::fromCbor)
-                .thenCompose(decrypted -> isValidLinked(decrypted, b.linkId, link)
-                        .thenApply(valid -> valid ? Optional.of(new FollowRequestWithCipherText(decrypted, b, introducedBy)) : Optional.<FollowRequestWithCipherText>empty()))
+        return openFollowRequest(b, link.get().boxer.secretBoxingKey, introducedBy, decrypted -> isValidLinked(decrypted, b.linkId, link));
+    }
+
+    /** A request that can't be decrypted, or isn't valid, is removed from the server. One whose checks couldn't be
+     *  made, as when a lookup fails, is left there for the next time: it may be a friend's.
+     */
+    private CompletableFuture<Optional<FollowRequestWithCipherText>> openFollowRequest(BlindFollowRequest b,
+                                                                                       SecretBoxingKey key,
+                                                                                       Optional<String> introducedBy,
+                                                                                       Function<FollowRequest, CompletableFuture<Boolean>> isValid) {
+        return b.followRequest.decrypt(key, b.dummySource, FollowRequest::fromCbor)
+                .thenApply(Optional::of)
                 .exceptionally(t -> Optional.empty())
-                .thenCompose(res -> res.isPresent() ?
-                        Futures.of(res) :
-                        discardFollowRequest(b).thenApply(x -> Optional.empty()));
+                .thenCompose(decrypted -> decrypted.isEmpty() ?
+                        discardFollowRequest(b).thenApply(x -> Optional.<FollowRequestWithCipherText>empty()) :
+                        Futures.asyncExceptionally(
+                                () -> isValid.apply(decrypted.get()).thenCompose(valid -> valid ?
+                                        Futures.of(Optional.of(new FollowRequestWithCipherText(decrypted.get(), b, introducedBy))) :
+                                        discardFollowRequest(b).thenApply(x -> Optional.<FollowRequestWithCipherText>empty())),
+                                t -> {
+                                    LOG.log(Level.WARNING, "Couldn't check a follow request, leaving it for later: " + t.getMessage(), t);
+                                    return Futures.of(Optional.<FollowRequestWithCipherText>empty());
+                                }));
     }
 
     private CompletableFuture<Boolean> isValidLinked(FollowRequest req, Optional<byte[]> linkId, Optional<FriendLinkStore.Entry> link) {
