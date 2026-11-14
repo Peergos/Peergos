@@ -88,12 +88,16 @@ public class HttpRoutingPeer implements RoutingPeer {
         Map<String, Cborable> m = new TreeMap<>();
         m.put("r", recordsBySubject(page.records));
         page.next.ifPresent(n -> m.put("n", n));
+        m.put("x", new CborObject.CborLong(page.skipped));
         return CborObject.CborMap.build(m);
     }
 
     static Page page(Cborable cbor) {
         CborObject.CborMap m = (CborObject.CborMap) cbor;
-        return new Page(recordsBySubject(m.get("r")), m.getOptional("n", Reconciliation.Cursor::fromCbor));
+        long skipped = m.getLong("x");
+        if (skipped < 0 || skipped > RoutingNode.PAGE)
+            throw new IllegalStateException("A page is at most " + RoutingNode.PAGE + " subjects");
+        return new Page(recordsBySubject(m.get("r")), m.getOptional("n", Reconciliation.Cursor::fromCbor), (int) skipped);
     }
 
     @Override

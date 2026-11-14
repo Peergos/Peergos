@@ -275,6 +275,54 @@ public class ReplicationTests {
     }
 
     @Test
+    public void aCompactPeersLogIsNotReadEndToEndAndAnArchivalOnesStillIs() {
+        Network net = new Network();
+        Server x = new Server();
+        Node provider = net.node(100, x.peerId), compact = net.node(100), archival = net.node(100), b = net.node(100);
+        compact.replica.compact(compact.id);
+        provider.replica.add(x.subject, x.inception);
+        archival.replica.add(x.subject, x.inception);
+        for (int j = 0; j < 2500; j++) {
+            IdentityInception inc = x.admit(key());
+            provider.replica.add(Subject.identity(inc.identityHash()), inc);
+            archival.replica.add(Subject.identity(inc.identityHash()), inc);
+        }
+        compact.syncWith(provider);
+        compact.routing.syncRound();
+        Reconciliation.Summary all = archival.replica.store().summary(Subject.IDENTITY, Reconciliation.Range.ALL);
+        Assert.assertEquals(all, compact.replica.store().summary(Subject.IDENTITY, Reconciliation.Range.ALL));
+        net.nodes.remove(provider.id);
+
+        AtomicInteger compactPages = new AtomicInteger(), archivalPages = new AtomicInteger();
+        b.routing.addSyncPeer(new LocalPeer(b.id, compact) {
+            @Override
+            public CompletableFuture<Page> page(int kind, Reconciliation.Cursor after, int limit) {
+                compactPages.incrementAndGet();
+                return super.page(kind, after, limit);
+            }
+        });
+        b.routing.setConfigured(List.of(compact.id));
+        b.routing.snapshotBelow(100);
+        b.routing.syncRound();
+        Assert.assertEquals("a page with nothing in it is enough to tell", 1, compactPages.get());
+        Assert.assertFalse(b.routing.isBootstrapping());
+        b.routing.syncRound();
+        Assert.assertEquals(1, compactPages.get());
+
+        b.routing.addSyncPeer(new LocalPeer(b.id, archival) {
+            @Override
+            public CompletableFuture<Page> page(int kind, Reconciliation.Cursor after, int limit) {
+                archivalPages.incrementAndGet();
+                return super.page(kind, after, limit);
+            }
+        });
+        b.routing.setConfigured(List.of(compact.id, archival.id));
+        b.routing.syncRound();
+        Assert.assertEquals("a page of servers and three of identities", 4, archivalPages.get());
+        Assert.assertEquals(all, b.replica.store().summary(Subject.IDENTITY, Reconciliation.Range.ALL));
+    }
+
+    @Test
     public void reconcilingCostsByWhatDiffersNotByWhatIsHeld() {
         Network net = new Network();
         Node a = net.node(1), b = net.node(1);

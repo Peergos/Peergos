@@ -47,7 +47,7 @@ public class RoutingService {
 
     public static final Command.Arg ARG_ROUTING_MODE = new Command.Arg("routing-mode",
             "compact, verifying every record and keeping it without its signature, archival, keeping every record " +
-                    "in full, or light, asking the routing-peers as its full nodes", false, "compact");
+                    "in full, or light, asking the routing-peers as its full nodes", false, "archival");
     public static final Command.Arg ARG_ROUTING_RELAYS = new Command.Arg("routing-relays",
             "Comma separated peerids of relays to prefer when this server has no direct address", false);
     public static final Command.Arg ARG_ROUTING_RELAY_CLIENTS = new Command.Arg("routing-relay-clients",
