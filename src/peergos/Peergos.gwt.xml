@@ -1,7 +1,6 @@
 <module rename-to='peergoslib'>
 
   <set-property name="compiler.useSourceMaps" value="false"/>
-  <set-property name="user.agent" value="safari"/>
   
   <entry-point class='peergos.client.Start'/>
   <public path="gwt/resources"/>

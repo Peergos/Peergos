@@ -1,23 +1,5 @@
-Built using the instructions on: http://www.gwtproject.org/makinggwtbetter.html#compiling
-built from githash c5fd90c6d 6/nov/2019 with the commit 62e0d9a92 1/nov/2017 reversed
+GWT 2.13.1 with Peergos' changes (byte[] as Int8Array, no erasure casts on lambda arguments):
 
-build command:
-ant -Dgwt.version=2.8.3
+    https://github.com/Peergos/gwt  tag 2.13.1-peergos.3  (branch peergos-2.13.1)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-.
+The jars are JitPack's build of that tag (jitpack.sh): com.github.Peergos:<jar>:2.13.1-peergos.3
