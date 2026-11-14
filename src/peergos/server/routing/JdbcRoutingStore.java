@@ -51,6 +51,11 @@ public class JdbcRoutingStore {
             "ON CONFLICT (peer) DO UPDATE SET subject = excluded.subject, keyed = excluded.keyed " +
             "WHERE routingpeers.keyed = 0 OR excluded.keyed = 1;";
     private static final String GET_PEER = "SELECT subject FROM routingpeers WHERE peer = ?;";
+    private static final String GET_TOKENS = "SELECT tokens, credited FROM routingtokens WHERE kind = ? AND subject = ? AND type = ?;";
+    private static final String PUT_TOKENS = "INSERT INTO routingtokens (kind, subject, type, tokens, credited) VALUES (?, ?, ?, ?, ?) " +
+            "ON CONFLICT (kind, subject, type) DO UPDATE SET tokens = excluded.tokens, credited = excluded.credited;";
+    private static final String REMOVE_TOKENS = "DELETE FROM routingtokens WHERE type = ? AND credited <= ?;";
+    private static final String COUNT_TOKENS = "SELECT COUNT(*) FROM routingtokens;";
     private static final String MIRRORED = "SELECT identity, home FROM routingmirrored;";
     private static final String PUT_MIRRORED = "INSERT INTO routingmirrored (identity, home) VALUES (?, ?) " +
             "ON CONFLICT (identity) DO UPDATE SET home = excluded.home;";
@@ -599,6 +604,63 @@ public class JdbcRoutingStore {
             select.setBytes(1, peer.bareMultihash().toBytes());
             ResultSet rs = select.executeQuery();
             return rs.next() ? Optional.of(Subject.server(Multihash.decode(rs.getBytes(1)))) : Optional.empty();
+        } catch (SQLException e) {
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    /** A subject's bucket of tokens for one type of update, [tokens, when the last was credited], if it isn't full.
+     *  Kept here rather than in memory: there is one for every subject updated in the last few months.
+     */
+    public Optional<long[]> tokens(Subject s, int type) {
+        try (Connection c = getConnection();
+             PreparedStatement select = c.prepareStatement(GET_TOKENS)) {
+            select.setInt(1, s.kind);
+            select.setBytes(2, s.idBytes());
+            select.setInt(3, type);
+            ResultSet rs = select.executeQuery();
+            return rs.next() ? Optional.of(new long[]{rs.getLong(1), rs.getLong(2)}) : Optional.empty();
+        } catch (SQLException e) {
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void setTokens(Subject s, int type, long tokens, long credited) {
+        try (Connection c = getConnection();
+             PreparedStatement insert = c.prepareStatement(PUT_TOKENS)) {
+            insert.setInt(1, s.kind);
+            insert.setBytes(2, s.idBytes());
+            insert.setInt(3, type);
+            insert.setLong(4, tokens);
+            insert.setLong(5, credited);
+            insert.executeUpdate();
+        } catch (SQLException e) {
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    /** Drops the buckets of one type last credited by a time, which have since filled. */
+    public void removeTokens(int type, long creditedBy) {
+        try (Connection c = getConnection();
+             PreparedStatement delete = c.prepareStatement(REMOVE_TOKENS)) {
+            delete.setInt(1, type);
+            delete.setLong(2, creditedBy);
+            delete.executeUpdate();
+        } catch (SQLException e) {
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    public long countTokens() {
+        try (Connection c = getConnection();
+             PreparedStatement select = c.prepareStatement(COUNT_TOKENS)) {
+            ResultSet rs = select.executeQuery();
+            rs.next();
+            return rs.getLong(1);
         } catch (SQLException e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
             throw new RuntimeException(e);
