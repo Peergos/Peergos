@@ -110,14 +110,14 @@ public class Relays {
                 mirrored(subject, (IdentityLog) log);
         });
         background.submit(() -> {
-            byte[] after = new byte[0];
+            Reconciliation.Cursor after = Reconciliation.Cursor.START;
             while (true) {
-                List<JdbcRoutingStore.State> page = replica.store().states(Subject.IDENTITY, after, 1_000);
+                List<JdbcRoutingStore.State> page = replica.store().states(Subject.IDENTITY, Reconciliation.Range.ALL, after, 1_000);
                 if (page.isEmpty())
                     return;
                 for (JdbcRoutingStore.State st : page)
                     replica.identity(st.subject).ifPresent(l -> mirrored(st.subject, l));
-                after = page.get(page.size() - 1).subject.idBytes();
+                after = Reconciliation.Cursor.after(page.get(page.size() - 1).subject);
             }
         });
     }
@@ -176,22 +176,13 @@ public class Relays {
         for (Multihash peer : configured)
             if (! named.contains(peer) && ! failed.contains(peer))
                 lookup.get().server(peer).flatMap(this::candidate).ifPresent(preferred::add);
-        byte[] after = new byte[0];
-        int scanned = 0;
-        while (scanned < MAX_SCANNED) {
-            List<JdbcRoutingStore.State> page = replica.store().states(Subject.SERVER, after, 1_000);
-            if (page.isEmpty())
-                break;
-            for (JdbcRoutingStore.State st : page) {
-                Multihash id = st.subject.id.bareMultihash();
-                if (configured.contains(id) || named.contains(id) || failed.contains(id))
-                    continue;
-                replica.server(st.subject).filter(l -> replica.isProven(st.subject, false))
-                        .flatMap(this::candidate)
-                        .ifPresent(others::add);
-            }
-            scanned += page.size();
-            after = page.get(page.size() - 1).subject.idBytes();
+        for (JdbcRoutingStore.State st : SyncPeers.someServers(replica, random, MAX_SCANNED)) {
+            Multihash id = st.subject.id.bareMultihash();
+            if (configured.contains(id) || named.contains(id) || failed.contains(id))
+                continue;
+            replica.server(st.subject).filter(l -> replica.isProven(st.subject, false))
+                    .flatMap(this::candidate)
+                    .ifPresent(others::add);
         }
         Collections.shuffle(others, random);
         List<CandidateRelay> rest = new ArrayList<>(preferred);

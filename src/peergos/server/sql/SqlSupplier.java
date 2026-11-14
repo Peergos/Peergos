@@ -216,6 +216,19 @@ public interface SqlSupplier {
                 "records " + getByteArrayType() + " NOT NULL, " +
                 "statehash " + getByteArrayType() + " NOT NULL, " +
                 "PRIMARY KEY (kind, subject));" +
+                "CREATE TABLE IF NOT EXISTS routingstates (" +
+                "kind " + sqlInteger() + " NOT NULL, " +
+                "slot " + sqlInteger() + " NOT NULL, " +
+                "subject " + getByteArrayType() + " NOT NULL, " +
+                "statehash " + getByteArrayType() + " NOT NULL, " +
+                "PRIMARY KEY (kind, slot, subject));" +
+                "CREATE TABLE IF NOT EXISTS routingsums (" +
+                "kind " + sqlInteger() + " NOT NULL, " +
+                "depth " + sqlInteger() + " NOT NULL, " +
+                "prefix " + sqlInteger() + " NOT NULL, " +
+                "count " + sqlInteger() + " NOT NULL, " +
+                "sum " + getByteArrayType() + " NOT NULL, " +
+                "PRIMARY KEY (kind, depth, prefix));" +
                 "CREATE TABLE IF NOT EXISTS routingpending (" +
                 "kind " + sqlInteger() + " NOT NULL, " +
                 "subject " + getByteArrayType() + " NOT NULL, " +

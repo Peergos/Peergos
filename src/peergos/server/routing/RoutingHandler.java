@@ -24,15 +24,21 @@ public class RoutingHandler implements HttpHandler {
     private static final Logger LOG = Logging.LOG();
     public static final int MAX_BODY = 1024 * 1024;
     public static final int MAX_ITEMS = 1024;
-    public static final RateLimits.Rate SCANS = new RateLimits.Rate(200, 3_000), RECORDS = new RateLimits.Rate(10_000, 10),
+    /** A scan reads a bounded number of rows whatever the log's size, so a peer may make enough to find everything
+     *  that changed between rounds.
+     */
+    public static final RateLimits.Rate SCANS = new RateLimits.Rate(2_000, 100), RECORDS = new RateLimits.Rate(10_000, 10),
             OFFERS = new RateLimits.Rate(1_000, 100);
+    /** Pages of the log with records, a thousand subjects each, for a node starting from little. */
+    public static final RateLimits.Rate PAGES = new RateLimits.Rate(600, 100), UNPROVEN_PAGES = new RateLimits.Rate(60, 1_000);
     public static final RateLimits.Rate UNPROVEN_SCANS = new RateLimits.Rate(100, 1_000),
             UNPROVEN_RECORDS = new RateLimits.Rate(1_000, 50), UNPROVEN_OFFERS = new RateLimits.Rate(100, 1_000);
     private static final Multihash POOL = new Multihash(Multihash.Type.id, new byte[0]);
 
     private final RoutingNode node;
     private final Predicate<Multihash> vouches;
-    private final RateLimits.TokenBuckets<Multihash> scans, records, offers, unprovenScans, unprovenRecords, unprovenOffers;
+    private final RateLimits.TokenBuckets<Multihash> scans, records, offers, unprovenScans, unprovenRecords, unprovenOffers,
+            pages, unprovenPages;
 
     public RoutingHandler(RoutingNode node) {
         this(node, server -> false);
@@ -52,18 +58,29 @@ public class RoutingHandler implements HttpHandler {
         unprovenScans = new RateLimits.TokenBuckets<>(UNPROVEN_SCANS, clock);
         unprovenRecords = new RateLimits.TokenBuckets<>(UNPROVEN_RECORDS, clock);
         unprovenOffers = new RateLimits.TokenBuckets<>(UNPROVEN_OFFERS, clock);
+        pages = new RateLimits.TokenBuckets<>(PAGES, clock);
+        unprovenPages = new RateLimits.TokenBuckets<>(UNPROVEN_PAGES, clock);
     }
 
     /** Whether the caller may make this call now. */
     public boolean allow(String method, Multihash caller) {
+        return allow(method, caller, 1);
+    }
+
+    /** @param cost what the call asks for: the subjects whose records it wants, or one */
+    public boolean allow(String method, Multihash caller, int cost) {
         boolean proven = node.isProvenServer(caller);
         Multihash key = proven ? caller : POOL;
         switch (method) {
             case "summaries":
+            case "children":
             case "states":
                 return (proven ? scans : unprovenScans).tryTake(key);
+            case "page":
+                return (proven ? pages : unprovenPages).tryTake(key);
             case "records":
-                return (proven ? records : unprovenRecords).tryTake(key);
+            case "records-of":
+                return (proven ? records : unprovenRecords).tryTake(key, cost);
             default:
                 return (proven ? offers : unprovenOffers).tryTake(key);
         }
@@ -83,11 +100,14 @@ public class RoutingHandler implements HttpHandler {
                 HttpUtil.replyErrorWithCode(exchange, 403, "Routing is only served to authenticated peers");
                 return;
             }
-            if (! allow(method, caller.get())) {
+            Cborable body = CborObject.fromByteArray(Serialize.readFully(exchange.getRequestBody(), MAX_BODY));
+            int cost = method.equals("records-of") ? ((CborObject.CborMap) body).getList("s", Subject::fromCbor).size() : 1;
+            if (cost > RoutingNode.FETCH_BATCH)
+                throw new IllegalStateException("Too many subjects");
+            if (! allow(method, caller.get(), Math.max(1, cost))) {
                 HttpUtil.replyErrorWithCode(exchange, 429, "Too many routing requests");
                 return;
             }
-            Cborable body = CborObject.fromByteArray(Serialize.readFully(exchange.getRequestBody(), MAX_BODY));
             Cborable res = handle(method, caller.get(), body);
             byte[] raw = res.serialize();
             exchange.sendResponseHeaders(200, raw.length);
@@ -111,15 +131,27 @@ public class RoutingHandler implements HttpHandler {
                 return new CborObject.CborList(node.records(Subject.fromCbor(m.get("s"))).stream()
                         .map(RecordType::tag)
                         .collect(Collectors.toList()));
+            case "records-of":
+                return HttpRoutingPeer.recordsBySubject(node.recordsOf(m.getList("s", Subject::fromCbor)));
+            case "page":
+                return HttpRoutingPeer.page(node.page((int) m.getLong("k"), Reconciliation.Cursor.fromCbor(m.get("a")), (int) m.getLong("l")));
             case "summaries": {
                 List<Reconciliation.Range> ranges = m.getList("r", Reconciliation.Range::fromCbor);
                 if (ranges.size() > RoutingNode.BATCH)
                     throw new IllegalStateException("Too many ranges");
                 return new CborObject.CborList(node.summaries((int) m.getLong("k"), ranges));
             }
+            case "children": {
+                List<Reconciliation.Range> parents = m.getList("r", Reconciliation.Range::fromCbor);
+                if (parents.size() > RoutingNode.BATCH)
+                    throw new IllegalStateException("Too many ranges");
+                return new CborObject.CborList(node.children((int) m.getLong("k"), parents).stream()
+                        .map(Reconciliation::children)
+                        .collect(Collectors.toList()));
+            }
             case "states":
                 return new CborObject.CborList(node.states((int) m.getLong("k"), Reconciliation.Range.fromCbor(m.get("r")),
-                        (int) m.getLong("l")).stream()
+                        Reconciliation.Cursor.fromCbor(m.get("a")), (int) m.getLong("l")).stream()
                         .map(Reconciliation::state)
                         .collect(Collectors.toList()));
             case "offer": {

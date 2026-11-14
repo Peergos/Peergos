@@ -84,8 +84,16 @@ public class ReplicationTests {
             return CompletableFuture.completedFuture(target.routing.summaries(kind, ranges));
         }
 
-        public CompletableFuture<List<JdbcRoutingStore.State>> states(int kind, Reconciliation.Range range, int limit) {
-            return CompletableFuture.completedFuture(target.routing.states(kind, range, limit));
+        public CompletableFuture<List<Map<Integer, Reconciliation.Summary>>> children(int kind, List<Reconciliation.Range> parents) {
+            return CompletableFuture.completedFuture(target.routing.children(kind, parents));
+        }
+
+        public CompletableFuture<Page> page(int kind, Reconciliation.Cursor after, int limit) {
+            return CompletableFuture.completedFuture(target.routing.page(kind, after, limit));
+        }
+
+        public CompletableFuture<List<JdbcRoutingStore.State>> states(int kind, Reconciliation.Range range, Reconciliation.Cursor after, int limit) {
+            return CompletableFuture.completedFuture(target.routing.states(kind, range, after, limit));
         }
 
         public CompletableFuture<Outcome> offer(Subject s, List<SignedRecord> records) {
@@ -181,6 +189,166 @@ public class ReplicationTests {
         Assert.assertEquals(Set.of(movedSubject, extraSubject), new HashSet<>(diff.stream().map(st -> st.subject).toList()));
         Assert.assertEquals(2, b.routing.syncRound());
         Assert.assertEquals(1, b.replica.identity(movedSubject).get().records.update.get().record.counter);
+    }
+
+    @Test
+    public void aBusySecondsChangesAreAnnouncedAndFetchedInAFewCalls() throws Exception {
+        Network net = new Network();
+        Node a = net.node(10_000), b = net.node(10_000);
+        Server x = new Server();
+        a.replica.add(x.subject, x.inception);
+        b.replica.add(x.subject, x.inception);
+        AtomicInteger announcements = new AtomicInteger(), fetches = new AtomicInteger();
+        Node source = a;
+        RoutingNode receiver = new RoutingNode(b.replica, crypto.hasher, net.clock::get, 10_000, server -> AddressBucket.UNVERIFIED,
+                peer -> new LocalPeer(b.id, source) {
+                    @Override
+                    public CompletableFuture<Map<Subject, List<SignedRecord>>> recordsOf(List<Subject> subjects) {
+                        fetches.incrementAndGet();
+                        return CompletableFuture.completedFuture(source.routing.recordsOf(subjects));
+                    }
+                }, work);
+        a.routing.addSyncPeer(new LocalPeer(a.id, b) {
+            @Override
+            public CompletableFuture<Boolean> announce(List<JdbcRoutingStore.State> changed) {
+                announcements.incrementAndGet();
+                return CompletableFuture.completedFuture(receiver.announced(caller, changed));
+            }
+        });
+        ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor();
+        a.routing.announceEvery(timer, 500);
+        List<Subject> signups = new ArrayList<>();
+        for (int i = 0; i < 300; i++) {
+            IdentityInception inc = x.admit(key());
+            signups.add(Subject.identity(inc.identityHash()));
+            a.replica.add(signups.get(i), inc);
+        }
+        waitFor(() -> signups.stream().allMatch(s -> b.replica.log(s).inception().isPresent()));
+        Assert.assertTrue("300 changes went in a few announcements: " + announcements.get(), announcements.get() <= 5);
+        Assert.assertTrue("and were fetched a batch to a call: " + fetches.get(), fetches.get() <= 10);
+        timer.shutdownNow();
+    }
+
+    @Test
+    public void aNodeStartingFromLittleReadsAConfiguredPeersLogInPages() {
+        Network net = new Network();
+        Node a = net.node(100), b = net.node(100);
+        List<Subject> all = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            Server x = new Server();
+            a.replica.add(x.subject, x.inception);
+            all.add(x.subject);
+            for (int j = 0; j < 300; j++) {
+                IdentityInception inc = x.admit(key());
+                all.add(Subject.identity(inc.identityHash()));
+                a.replica.add(all.get(all.size() - 1), inc);
+            }
+        }
+        AtomicInteger pages = new AtomicInteger(), fetches = new AtomicInteger();
+        b.routing.addSyncPeer(new LocalPeer(b.id, a) {
+            @Override
+            public CompletableFuture<Page> page(int kind, Reconciliation.Cursor after, int limit) {
+                pages.incrementAndGet();
+                return super.page(kind, after, limit);
+            }
+
+            @Override
+            public CompletableFuture<List<SignedRecord>> records(Subject s) {
+                fetches.incrementAndGet();
+                return super.records(s);
+            }
+        });
+        b.routing.setConfigured(List.of(a.id));
+        b.routing.snapshotBelow(100);
+
+        Assert.assertEquals(all.size(), b.routing.syncRound());
+        for (Subject s : all)
+            Assert.assertArrayEquals(a.replica.stateHash(s), b.replica.stateHash(s));
+        for (int kind : new int[]{Subject.SERVER, Subject.IDENTITY})
+            Assert.assertEquals(a.replica.store().summary(kind, Reconciliation.Range.ALL), b.replica.store().summary(kind, Reconciliation.Range.ALL));
+        Assert.assertEquals("a page of servers and two of identities", 3, pages.get());
+        Assert.assertEquals("nothing is fetched a subject at a time", 0, fetches.get());
+        Assert.assertEquals("far more than the day's rate, as from any configured peer when starting", 0, b.routing.waitingInceptions());
+        Assert.assertEquals(0, b.routing.syncRound());
+        Assert.assertTrue(b.routing.isSynced());
+        Assert.assertEquals("it isn't read again", 3, pages.get());
+    }
+
+    @Test
+    public void reconcilingCostsByWhatDiffersNotByWhatIsHeld() {
+        Network net = new Network();
+        Node a = net.node(1), b = net.node(1);
+        Server x = new Server();
+        a.replica.add(x.subject, x.inception);
+        b.replica.add(x.subject, x.inception);
+        for (int i = 0; i < 1500; i++) {
+            IdentityInception inc = x.admit(key());
+            Subject s = Subject.identity(inc.identityHash());
+            a.replica.add(s, inc);
+            b.replica.add(s, inc);
+        }
+        AtomicInteger calls = new AtomicInteger(), listed = new AtomicInteger();
+        RoutingPeer counted = new LocalPeer(b.id, a) {
+            @Override
+            public CompletableFuture<List<Reconciliation.Summary>> summaries(int kind, List<Reconciliation.Range> ranges) {
+                calls.incrementAndGet();
+                return super.summaries(kind, ranges);
+            }
+
+            @Override
+            public CompletableFuture<List<Map<Integer, Reconciliation.Summary>>> children(int kind, List<Reconciliation.Range> parents) {
+                calls.incrementAndGet();
+                return super.children(kind, parents);
+            }
+
+            @Override
+            public CompletableFuture<List<JdbcRoutingStore.State>> states(int kind, Reconciliation.Range range, Reconciliation.Cursor after, int limit) {
+                calls.incrementAndGet();
+                return super.states(kind, range, after, limit).thenApply(res -> {
+                    listed.addAndGet(res.size());
+                    return res;
+                });
+            }
+        };
+        Assert.assertEquals(List.of(), b.routing.differences(counted, Subject.IDENTITY));
+        Assert.assertEquals("in the same state, one fingerprint is compared", 1, calls.get());
+        Assert.assertEquals(0, listed.get());
+
+        Set<Subject> added = new HashSet<>();
+        for (int i = 0; i < 3; i++) {
+            IdentityInception inc = x.admit(key());
+            added.add(Subject.identity(inc.identityHash()));
+            a.replica.add(Subject.identity(inc.identityHash()), inc);
+        }
+        calls.set(0);
+        List<JdbcRoutingStore.State> diff = b.routing.differences(counted, Subject.IDENTITY);
+        Assert.assertEquals(added, new HashSet<>(diff.stream().map(st -> st.subject).toList()));
+        Assert.assertTrue("a call to compare, one to descend, and one for each range that differs: " + calls.get(), calls.get() <= 5);
+        Assert.assertTrue("only the ranges that differ are listed: " + listed.get(), listed.get() < 100);
+    }
+
+    @Test
+    public void syncPeersAndRelaysAreDrawnFromARandomStretchOfTheServers() {
+        Network net = new Network();
+        Node a = net.node(100);
+        Set<Subject> all = new HashSet<>();
+        for (int i = 0; i < 40; i++) {
+            Server x = new Server();
+            a.replica.add(x.subject, x.inception);
+            all.add(x.subject);
+        }
+        Set<Subject> drawn = new HashSet<>();
+        Random random = new Random(1);
+        for (int i = 0; i < 30; i++) {
+            List<JdbcRoutingStore.State> some = SyncPeers.someServers(a.replica, random, 10);
+            Assert.assertEquals(10, some.size());
+            Assert.assertEquals(10, some.stream().map(st -> st.subject).distinct().count());
+            some.forEach(st -> drawn.add(st.subject));
+        }
+        Assert.assertTrue("no ten servers are everyone's choice: " + drawn.size(), drawn.size() > 30);
+        List<JdbcRoutingStore.State> every = SyncPeers.someServers(a.replica, new Random(1), 100);
+        Assert.assertEquals(40, every.size());
+        Assert.assertEquals(all, new HashSet<>(every.stream().map(st -> st.subject).toList()));
     }
 
     @Test
@@ -332,7 +500,7 @@ public class ReplicationTests {
     @Test
     public void announcersThatNeverAnswerHoldNoThreadAndFreshKeysShareOneBudget() throws Exception {
         Network net = new Network();
-        List<CompletableFuture<List<SignedRecord>>> asked = Collections.synchronizedList(new ArrayList<>());
+        List<CompletableFuture<Map<Subject, List<SignedRecord>>>> asked = Collections.synchronizedList(new ArrayList<>());
         RoutingReplica replica = new RoutingReplica(new JdbcRoutingStore(Builder.buildEphemeralSqlite(), new SqliteCommands()),
                 new RecordValidator(crypto.hasher, TEST_WORK, TEST_WORK), TEST_WORK, TEST_WORK);
         Node placeholder = net.node(100);
@@ -344,8 +512,8 @@ public class ReplicationTests {
                     }
 
                     @Override
-                    public CompletableFuture<List<SignedRecord>> records(Subject s) {
-                        CompletableFuture<List<SignedRecord>> never = new CompletableFuture<>();
+                    public CompletableFuture<Map<Subject, List<SignedRecord>>> recordsOf(List<Subject> subjects) {
+                        CompletableFuture<Map<Subject, List<SignedRecord>>> never = new CompletableFuture<>();
                         asked.add(never);
                         return never;
                     }
@@ -360,10 +528,10 @@ public class ReplicationTests {
         }
         Assert.assertFalse("those not taken are announced again later", all);
         Assert.assertEquals(RoutingNode.MAX_FETCHING_PER_PEER, node.outstandingFetches());
-        Assert.assertEquals(RoutingNode.MAX_FETCHING_PER_PEER, asked.size());
+        Assert.assertEquals(RoutingNode.MAX_FETCHING_PER_PEER / RoutingNode.FETCH_BATCH, asked.size());
         for (int i = 0; i < 8; i++)
             Assert.assertEquals("free", work.submit(() -> "free").get(5, TimeUnit.SECONDS));
-        new ArrayList<>(asked).forEach(f -> f.complete(List.of()));
+        new ArrayList<>(asked).forEach(f -> f.complete(Map.of()));
         waitFor(() -> node.outstandingFetches() == 0);
     }
 
@@ -667,10 +835,11 @@ public class ReplicationTests {
             victim.syncWith(honest);
         }
         List<JdbcRoutingStore.State> madeUp = new ArrayList<>();
-        for (int i = 0; i < 500; i++)
+        for (int i = 0; i < 10 * RoutingNode.FETCH_BATCH; i++)
             madeUp.add(new JdbcRoutingStore.State(Subject.identity(
                     peergos.shared.storage.ContentAddressedStorage.hashKey(key().publicSigningKey)), new byte[32]));
-        madeUp.sort(Comparator.comparing(st -> st.subject));
+        madeUp.sort(Comparator.comparingInt((JdbcRoutingStore.State st) -> Reconciliation.slot(st.subject.idBytes()))
+                .thenComparing(st -> st.subject));
         AtomicInteger asked = new AtomicInteger();
         victim.routing.addSyncPeer(new LocalPeer(victim.id, evil) {
             @Override
@@ -683,17 +852,17 @@ public class ReplicationTests {
             }
 
             @Override
-            public CompletableFuture<List<JdbcRoutingStore.State>> states(int kind, Reconciliation.Range range, int limit) {
+            public CompletableFuture<List<JdbcRoutingStore.State>> states(int kind, Reconciliation.Range range, Reconciliation.Cursor after, int limit) {
                 if (kind != Subject.IDENTITY)
-                    return super.states(kind, range, limit);
+                    return super.states(kind, range, after, limit);
                 return CompletableFuture.completedFuture(madeUp.stream()
-                        .filter(st -> range.contains(st.subject.idBytes()))
+                        .filter(st -> range.contains(st.subject.idBytes()) && after.isBefore(st.subject))
                         .limit(limit)
                         .toList());
             }
 
             @Override
-            public CompletableFuture<List<SignedRecord>> records(Subject s) {
+            public CompletableFuture<Map<Subject, List<SignedRecord>>> recordsOf(List<Subject> subjects) {
                 asked.incrementAndGet();
                 return CompletableFuture.failedFuture(new IllegalStateException("Timed out"));
             }

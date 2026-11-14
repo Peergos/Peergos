@@ -45,6 +45,88 @@ public class RoutingReplicaTests {
         }
     }
 
+    private static Reconciliation.Summary read(JdbcRoutingStore store, int kind, Reconciliation.Range range) {
+        Reconciliation.Summary res = Reconciliation.Summary.EMPTY;
+        Reconciliation.Cursor after = Reconciliation.Cursor.at(range.from());
+        while (true) {
+            List<JdbcRoutingStore.State> page = store.states(kind, range, after, 100);
+            for (JdbcRoutingStore.State st : page) {
+                Assert.assertTrue(range.contains(st.subject.idBytes()));
+                Assert.assertTrue("in order", after.isBefore(st.subject));
+                after = Reconciliation.Cursor.after(st.subject);
+                res = res.plus(st);
+            }
+            if (page.size() < 100)
+                return res;
+        }
+    }
+
+    /** Every range's kept summary is what reading the range gives. */
+    private static void assertSumsMatch(JdbcRoutingStore store, int kind) {
+        Deque<Reconciliation.Range> todo = new ArrayDeque<>(List.of(Reconciliation.Range.ALL));
+        int checked = 0;
+        while (! todo.isEmpty() && checked++ < 400) {
+            Reconciliation.Range range = todo.poll();
+            Reconciliation.Summary kept = store.summary(kind, range);
+            Assert.assertEquals("range " + range, read(store, kind, range), kept);
+            if (range.depth == Reconciliation.MAX_DEPTH)
+                continue;
+            Map<Integer, Reconciliation.Summary> children = store.children(kind, range);
+            Assert.assertEquals(kept.count, children.values().stream().mapToLong(c -> c.count).sum());
+            for (Map.Entry<Integer, Reconciliation.Summary> e : children.entrySet()) {
+                Assert.assertEquals(e.getValue(), store.summary(kind, range.child(e.getKey())));
+                todo.add(range.child(e.getKey()));
+            }
+        }
+    }
+
+    @Test
+    public void rangeSummariesFollowEveryChange() throws Exception {
+        Supplier<java.sql.Connection> db = Builder.buildEphemeralSqlite();
+        JdbcRoutingStore store = new JdbcRoutingStore(db, new SqliteCommands());
+        RoutingReplica replica = replica(store);
+        Multihash server = ServerKeys.peerId(key().publicSigningKey);
+        Assert.assertEquals(Reconciliation.Summary.EMPTY, store.summary(Subject.IDENTITY, Reconciliation.Range.ALL));
+        List<SigningKeyPair> owners = new ArrayList<>();
+        List<Subject> subjects = new ArrayList<>();
+        for (int i = 0; i < 300; i++) {
+            SigningKeyPair owner = key();
+            IdentityInception inception = IdentityInception.build(owner, List.of(server), key().publicSigningKey, crypto.hasher).join();
+            owners.add(owner);
+            subjects.add(Subject.identity(inception.identityHash()));
+            Assert.assertEquals(Outcome.Added, replica.add(subjects.get(i), inception));
+        }
+        Assert.assertEquals(300, store.summary(Subject.IDENTITY, Reconciliation.Range.ALL).count);
+        Assert.assertEquals(0, store.summary(Subject.SERVER, Reconciliation.Range.ALL).count);
+        assertSumsMatch(store, Subject.IDENTITY);
+
+        Reconciliation.Summary before = store.summary(Subject.IDENTITY, Reconciliation.Range.ALL);
+        Assert.assertEquals(Outcome.Added, replica.add(subjects.get(7), IdentityMove.build(owners.get(7), List.of(server), 1).join()));
+        Assert.assertEquals(300, store.summary(Subject.IDENTITY, Reconciliation.Range.ALL).count);
+        Assert.assertNotEquals("a changed state changes the fingerprint", before, store.summary(Subject.IDENTITY, Reconciliation.Range.ALL));
+        assertSumsMatch(store, Subject.IDENTITY);
+
+        store.addPending(subjects.get(9));
+        Assert.assertEquals("reconciliation doesn't see an inception whose proof of work is owed",
+                299, store.summary(Subject.IDENTITY, Reconciliation.Range.ALL).count);
+        Assert.assertEquals(Outcome.Added, replica.add(subjects.get(9), IdentityMove.build(owners.get(9), List.of(server), 1).join()));
+        Assert.assertEquals(299, store.summary(Subject.IDENTITY, Reconciliation.Range.ALL).count);
+        assertSumsMatch(store, Subject.IDENTITY);
+        store.removePending(subjects.get(9));
+        Assert.assertEquals(300, store.summary(Subject.IDENTITY, Reconciliation.Range.ALL).count);
+        assertSumsMatch(store, Subject.IDENTITY);
+
+        Reconciliation.Summary kept = store.summary(Subject.IDENTITY, Reconciliation.Range.ALL);
+        try (java.sql.Statement s = db.get().createStatement()) {
+            s.execute("DELETE FROM routingstates");
+            s.execute("DELETE FROM routingsums");
+            s.execute("DELETE FROM routingmeta WHERE name = 'index'");
+        }
+        JdbcRoutingStore older = new JdbcRoutingStore(db, new SqliteCommands());
+        Assert.assertEquals("a store written before summaries were kept builds them", kept, older.summary(Subject.IDENTITY, Reconciliation.Range.ALL));
+        assertSumsMatch(older, Subject.IDENTITY);
+    }
+
     @Test
     public void stateSurvivesARestart() {
         JdbcRoutingStore store = store();
@@ -69,7 +151,7 @@ public class RoutingReplicaTests {
         Assert.assertEquals(List.of(server), log.providers());
         Assert.assertArrayEquals(replica.stateHash(s), restarted.stateHash(s));
         Assert.assertEquals(1, store.count(Subject.IDENTITY));
-        Assert.assertEquals(1, store.states(Subject.IDENTITY, new byte[0], 10).size());
+        Assert.assertEquals(1, store.states(Subject.IDENTITY, Reconciliation.Range.ALL, Reconciliation.Cursor.START, 10).size());
     }
 
     @Test

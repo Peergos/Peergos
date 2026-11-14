@@ -62,6 +62,20 @@ public class RateLimits {
             return true;
         }
 
+        /** Takes a token only if more than a floor are left. */
+        public synchronized boolean tryTakeAbove(K key, long floor) {
+            long[] b = current(key, clock.getAsLong());
+            if (b[0] <= floor)
+                return false;
+            b[0]--;
+            buckets.put(key, b);
+            return true;
+        }
+
+        public int burst() {
+            return rate.burst;
+        }
+
         public synchronized boolean has(K key) {
             return current(key, clock.getAsLong())[0] > 0;
         }
@@ -180,6 +194,13 @@ public class RateLimits {
             waitingIn.merge(bucket, 1, Integer::sum);
             waiting++;
             return true;
+        }
+
+        /** Takes a token for an inception that needn't then queue: from a bucket with nothing waiting and more than
+         *  half its tokens left. Below that they go by turns, so a burst from one server leaves some for the others.
+         */
+        public synchronized boolean tryTakeNow(AddressBucket bucket) {
+            return waitingIn.getOrDefault(bucket, 0) == 0 && rate.tryTakeAbove(bucket, rate.burst() / 2);
         }
 
         public synchronized boolean isWaiting(O offer) {

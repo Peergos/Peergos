@@ -1,6 +1,7 @@
 package peergos.server.routing;
 
 import peergos.server.util.*;
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.routing.*;
@@ -19,8 +20,14 @@ import java.util.stream.*;
  */
 public class RoutingNode {
     private static final Logger LOG = Logging.LOG();
-    public static final int ITEMS = 32, SPLIT = 8, PAGE = 1000, BATCH = 16;
-    public static final int MAX_FETCHING_PER_PEER = 64, UNPROVEN_CACHE = 1000, MAX_OFFERS_PER_SERVER = 1000;
+    public static final int PAGE = 1000, BATCH = 16;
+    /** A range in which a peer holds no more than this is listed rather than descended into. */
+    public static final int LIST_BELOW = 512;
+    /** Subjects being fetched from one announcer at once, as many as it may announce in a call, and how many are
+     *  asked for in one call.
+     */
+    public static final int MAX_FETCHING_PER_PEER = 1024, FETCH_BATCH = 256;
+    public static final int UNPROVEN_CACHE = 1000, MAX_OFFERS_PER_SERVER = 1000;
     public static final long MAX_BYTES_PER_PEER = 64 * 1024 * 1024;
     /** Records new to this node taken for one subject at once, unless most of its sync peers hold them: what a
      *  subject can add within its rate limits is far fewer, and each costs a signature check. A pull, for a lookup
@@ -56,6 +63,10 @@ public class RoutingNode {
     public static final long FETCH_TIMEOUT_SECONDS = 15;
     private static final Multihash POOL = new Multihash(Multihash.Type.id, new byte[0]);
     private static final byte[] ANY_STATE = new byte[0];
+    /** Changes not yet announced to each peer, the latest state per subject, sent together. */
+    private final Map<Multihash, Map<Subject, JdbcRoutingStore.State>> outbox = new ConcurrentHashMap<>();
+    private final AtomicBoolean flushing = new AtomicBoolean();
+    private volatile Consumer<Runnable> flushLater;
     /** Announcements a peer didn't take, the latest state per subject, sent again next round. */
     private final Map<Multihash, Map<Subject, JdbcRoutingStore.State>> unannounced = new ConcurrentHashMap<>();
     public static final int MAX_UNANNOUNCED_PER_PEER = 10_000;
@@ -67,6 +78,17 @@ public class RoutingNode {
     private final AtomicBoolean taking = new AtomicBoolean();
     private volatile Set<Multihash> configured = Set.of();
     private volatile boolean synced;
+    /** Behind a configured peer by more than this, a node that has never been synced reads that peer's log end to
+     *  end, a page at a time, before it reconciles: reconciliation finds what differs, and is no way to fetch
+     *  everything.
+     */
+    private volatile int snapshotBelow = 5_000;
+    public static final int SNAPSHOT_PAGES_PER_ROUND = 1_000;
+    private static final String SNAPSHOT = "snapshot";
+    private static final byte[] SNAPSHOT_DONE = {1};
+    private volatile boolean bootstrapping;
+    /** Set while a page of a peer's log is taken in: every node holds those records, so they aren't announced. */
+    private final ThreadLocal<Boolean> quiet = ThreadLocal.withInitial(() -> false);
     /** When this node's state of each recently changed subject changed, and the states it moved on from. */
     private final Map<Subject, Past> past = Collections.synchronizedMap(new LRUCache<>(100_000));
     private final Map<Multihash, Tally> tallies = new ConcurrentHashMap<>();
@@ -86,9 +108,13 @@ public class RoutingNode {
      */
     public static final int MAX_FAILURES_PER_PEER = 8;
     public static final long PEER_ROUND_MILLIS = 2 * 60_000L;
+    /** Subjects a peer may claim in a round and then answer that it can't serve: a compact peer can't when a
+     *  provider is offline, which is no failure of its own, but nor may it claim without end.
+     */
+    public static final int MAX_UNDELIVERED_PER_PEER = 1024;
 
     private static final class Budget {
-        int failures;
+        int failures, undelivered;
         long waitedNanos;
 
         boolean failing() {
@@ -96,7 +122,30 @@ public class RoutingNode {
         }
 
         boolean spent() {
-            return failing() || waitedNanos > PEER_ROUND_MILLIS * 1_000_000;
+            return failing() || undelivered >= MAX_UNDELIVERED_PER_PEER || waitedNanos > PEER_ROUND_MILLIS * 1_000_000;
+        }
+    }
+
+    /** A state some sync peers hold of a subject and this node doesn't, to fetch from one of them. */
+    private static final class Claim {
+        final Subject subject;
+        final byte[] state;
+        final List<RoutingPeer> holders;
+        int next;
+
+        Claim(Subject subject, byte[] state, List<RoutingPeer> holders) {
+            this.subject = subject;
+            this.state = state;
+            this.holders = holders;
+        }
+
+        Optional<RoutingPeer> nextHolder(Predicate<RoutingPeer> usable) {
+            while (next < holders.size()) {
+                RoutingPeer holder = holders.get(next++);
+                if (usable.test(holder))
+                    return Optional.of(holder);
+            }
+            return Optional.empty();
         }
     }
 
@@ -185,6 +234,7 @@ public class RoutingNode {
         this.placer = (server, claimed) -> buckets.apply(server);
         this.dial = dial;
         this.work = work;
+        this.flushLater = work::submit;
         this.charged = new RateLimits.TokenBuckets<>(new RateLimits.Rate((int) (MAX_BYTES_PER_PEER / 1024),
                 RateLimits.DAY / (MAX_BYTES_PER_PEER / 1024)), clock);
         this.rejections = new RateLimits.TokenBuckets<>(new RateLimits.Rate(REJECTIONS, RateLimits.DAY / REJECTIONS), clock);
@@ -200,7 +250,7 @@ public class RoutingNode {
                     superseded.remove(superseded.keySet().iterator().next());
                 past.put(s, new Past(now, superseded, new ByteArrayWrapper(hash)));
             }
-            if (replica.isProven(s, true))
+            if (! quiet.get() && replica.isProven(s, true))
                 announce(new JdbcRoutingStore.State(s, hash));
         });
     }
@@ -264,14 +314,63 @@ public class RoutingNode {
         return replica.records(s, dial);
     }
 
+    /** Several subjects' records, leaving out any that can't be served, within one deadline and a bound on size. */
+    public Map<Subject, List<SignedRecord>> recordsOf(List<Subject> subjects) {
+        Map<Subject, List<SignedRecord>> res = new LinkedHashMap<>();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(FETCH_TIMEOUT_SECONDS);
+        long bytes = 0;
+        for (Subject s : subjects) {
+            if (System.nanoTime() > deadline)
+                break;
+            try {
+                List<SignedRecord> records = records(s);
+                for (SignedRecord r : records)
+                    bytes += r.serialize().length;
+                if (bytes > HttpRoutingPeer.MAX_RESPONSE / 2)
+                    break;
+                res.put(s, records);
+            } catch (RuntimeException e) {
+                LOG.log(Level.FINE, "Couldn't serve " + s + ": " + e.getMessage());
+            }
+        }
+        return res;
+    }
+
+    /** A page of this node's log from a place in it, with the records of each subject it can serve at once. */
+    public RoutingPeer.Page page(int kind, Reconciliation.Cursor after, int limit) {
+        int max = Math.min(limit, PAGE);
+        List<JdbcRoutingStore.State> states = replica.store().states(kind, Reconciliation.Range.ALL, after, max);
+        Map<Subject, List<SignedRecord>> res = new LinkedHashMap<>();
+        long bytes = 0;
+        Optional<Reconciliation.Cursor> next = Optional.empty();
+        for (JdbcRoutingStore.State st : states) {
+            if (replica.servesAtOnce(st.subject)) {
+                List<SignedRecord> records = replica.records(st.subject, dial);
+                for (SignedRecord r : records)
+                    bytes += r.serialize().length;
+                res.put(st.subject, records);
+            }
+            next = Optional.of(Reconciliation.Cursor.after(st.subject));
+            if (bytes > HttpRoutingPeer.MAX_RESPONSE / 2)
+                return new RoutingPeer.Page(res, next);
+        }
+        return new RoutingPeer.Page(res, states.size() < max ? Optional.empty() : next);
+    }
+
     public List<Reconciliation.Summary> summaries(int kind, List<Reconciliation.Range> ranges) {
         return ranges.stream()
-                .map(r -> summary(kind, r))
+                .map(r -> replica.store().summary(kind, r))
                 .collect(Collectors.toList());
     }
 
-    public List<JdbcRoutingStore.State> states(int kind, Reconciliation.Range range, int limit) {
-        return replica.store().states(kind, range.after, range.upTo, Math.min(limit, PAGE));
+    public List<Map<Integer, Reconciliation.Summary>> children(int kind, List<Reconciliation.Range> parents) {
+        return parents.stream()
+                .map(r -> replica.store().children(kind, r))
+                .collect(Collectors.toList());
+    }
+
+    public List<JdbcRoutingStore.State> states(int kind, Reconciliation.Range range, Reconciliation.Cursor after, int limit) {
+        return replica.store().states(kind, range, after, Math.min(limit, PAGE));
     }
 
     /** A server in the log with its proof of work done. Any other peer id costs nothing to make, so wherever a
@@ -292,63 +391,82 @@ public class RoutingNode {
      */
     public boolean announced(Multihash caller, List<JdbcRoutingStore.State> changed) {
         RoutingPeer from = dial.apply(caller);
-        Multihash chargedTo = budgetKey(caller);
         boolean isSyncPeer = syncPeers.containsKey(caller.bareMultihash());
-        boolean all = true;
+        List<JdbcRoutingStore.State> wanted = new ArrayList<>();
         for (JdbcRoutingStore.State st : changed) {
             Subject s = replica.canonical(st.subject);
             // only a sync peer's claims count towards catch-up, so no one else's are kept
             if (isSyncPeer)
                 saw(s, st.hash, caller);
-            if (Arrays.equals(replica.stateHash(s), st.hash))
-                continue;
-            all &= fetchLater(chargedTo, from, s, st.hash);
+            if (! Arrays.equals(replica.stateHash(s), st.hash))
+                wanted.add(new JdbcRoutingStore.State(s, st.hash));
         }
-        return all;
+        return fetchLater(budgetKey(caller), from, wanted);
     }
 
-    /** Asks a peer for a subject without waiting, so one that answers slowly holds no thread of ours, only a place
-     *  among those outstanding for it. What it answers is taken on the work pool.
+    /** Asks a peer for subjects without waiting, a batch to a call, so one that answers slowly holds no thread of
+     *  ours, only places among those outstanding for it. What it answers is taken on the work pool, servers first,
+     *  as identities' admissions are checked against them.
      *
-     * @return false if the peer has too many outstanding
+     * @return false if the peer has too many outstanding for all of these
      */
-    private boolean fetchLater(Multihash chargedTo, RoutingPeer from, Subject s, byte[] hash) {
-        JdbcRoutingStore.State wanted = new JdbcRoutingStore.State(s, hash);
-        if (inFlight.contains(wanted))
-            return true;
+    private boolean fetchLater(Multihash chargedTo, RoutingPeer from, List<JdbcRoutingStore.State> wanted) {
         AtomicInteger outstanding = fetching.computeIfAbsent(chargedTo, c -> new AtomicInteger());
-        if (outstanding.incrementAndGet() > MAX_FETCHING_PER_PEER || ! inFlight.add(wanted)) {
-            boolean over = outstanding.decrementAndGet() >= MAX_FETCHING_PER_PEER;
-            return ! over;
-        }
-        if (! s.isIdentity())
-            fetchingServers.merge(s, 1, Integer::sum);
-        CompletableFuture<List<SignedRecord>> asked;
-        try {
-            asked = from.records(s).orTimeout(FETCH_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        } catch (Throwable t) {
-            asked = Futures.errored(t);
-        }
-        asked.whenCompleteAsync((records, t) -> {
-            try {
-                if (t != null)
-                    LOG.log(Level.FINE, "Fetching " + s + " from " + from.id() + " failed: " + t.getMessage());
-                else
-                    accept(from, s, records, false, false, true);
-            } catch (Throwable e) {
-                LOG.log(Level.FINE, "Taking " + s + " from " + from.id() + " failed: " + e.getMessage());
-            } finally {
-                inFlight.remove(wanted);
-                if (outstanding.decrementAndGet() == 0)
-                    fetching.remove(chargedTo, outstanding);
-                if (! s.isIdentity()) {
-                    fetchingServers.computeIfPresent(s, (x, n) -> n > 1 ? n - 1 : null);
-                    if (! isOnItsWay(s))
-                        release(s.id);
-                }
+        List<JdbcRoutingStore.State> taking = new ArrayList<>();
+        boolean all = true;
+        for (JdbcRoutingStore.State w : wanted) {
+            if (inFlight.contains(w))
+                continue;
+            if (outstanding.incrementAndGet() > MAX_FETCHING_PER_PEER) {
+                outstanding.decrementAndGet();
+                all = false;
+                continue;
             }
-        }, work);
-        return true;
+            if (! inFlight.add(w)) {
+                outstanding.decrementAndGet();
+                continue;
+            }
+            if (! w.subject.isIdentity())
+                fetchingServers.merge(w.subject, 1, Integer::sum);
+            taking.add(w);
+        }
+        if (taking.isEmpty() && outstanding.get() == 0)
+            fetching.remove(chargedTo, outstanding);
+        taking.sort(Comparator.comparingInt(w -> w.subject.isIdentity() ? 1 : 0));
+        for (int i = 0; i < taking.size(); i += FETCH_BATCH) {
+            List<JdbcRoutingStore.State> batch = new ArrayList<>(taking.subList(i, Math.min(taking.size(), i + FETCH_BATCH)));
+            CompletableFuture<Map<Subject, List<SignedRecord>>> asked;
+            try {
+                asked = from.recordsOf(batch.stream().map(w -> w.subject).collect(Collectors.toList()))
+                        .orTimeout(FETCH_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            } catch (Throwable t) {
+                asked = Futures.errored(t);
+            }
+            asked.whenCompleteAsync((got, t) -> {
+                if (t != null)
+                    LOG.log(Level.FINE, "Fetching " + batch.size() + " subjects from " + from.id() + " failed: " + t.getMessage());
+                for (JdbcRoutingStore.State w : batch) {
+                    Subject s = w.subject;
+                    try {
+                        List<SignedRecord> records = t != null ? null : got.get(s);
+                        if (records != null)
+                            accept(from, s, records, false, false, true);
+                    } catch (Throwable e) {
+                        LOG.log(Level.FINE, "Taking " + s + " from " + from.id() + " failed: " + e.getMessage());
+                    } finally {
+                        inFlight.remove(w);
+                        if (outstanding.decrementAndGet() == 0)
+                            fetching.remove(chargedTo, outstanding);
+                        if (! s.isIdentity()) {
+                            fetchingServers.computeIfPresent(s, (x, n) -> n > 1 ? n - 1 : null);
+                            if (! isOnItsWay(s))
+                                release(s.id);
+                        }
+                    }
+                }
+            }, work);
+        }
+        return all;
     }
 
     public Outcome offered(Multihash caller, Subject s, List<SignedRecord> records) {
@@ -359,8 +477,34 @@ public class RoutingNode {
 
     /** Runs off the caller's thread: change listeners are called while the replica holds the subject's lock. */
     private void announce(JdbcRoutingStore.State st) {
-        for (RoutingPeer peer : syncPeers.values())
-            work.submit(() -> send(peer, List.of(st)));
+        for (RoutingPeer peer : syncPeers.values()) {
+            Map<Subject, JdbcRoutingStore.State> pending = outbox.computeIfAbsent(peer.id().bareMultihash(), p -> new ConcurrentHashMap<>());
+            if (pending.size() < MAX_UNANNOUNCED_PER_PEER || pending.containsKey(st.subject))
+                pending.put(st.subject, st);
+        }
+        if (flushing.compareAndSet(false, true))
+            flushLater.accept(this::flush);
+    }
+
+    /** Sends each peer what has changed since the last time, in as few calls as hold it: a peer allows each caller
+     *  only so many calls, however much is in them.
+     */
+    private void flush() {
+        flushing.set(false);
+        for (RoutingPeer peer : new ArrayList<>(syncPeers.values())) {
+            Map<Subject, JdbcRoutingStore.State> pending = outbox.remove(peer.id().bareMultihash());
+            if (pending == null)
+                continue;
+            List<JdbcRoutingStore.State> states = new ArrayList<>(pending.values());
+            for (int i = 0; i < states.size(); i += RoutingHandler.MAX_ITEMS)
+                send(peer, states.subList(i, Math.min(states.size(), i + RoutingHandler.MAX_ITEMS)));
+        }
+        outbox.keySet().retainAll(syncPeers.keySet());
+    }
+
+    /** Announces changes this often rather than as each happens, so those of a busy second go in one call. */
+    public void announceEvery(ScheduledExecutorService timer, long millis) {
+        flushLater = flush -> timer.schedule(() -> work.submit(flush), millis, TimeUnit.MILLISECONDS);
     }
 
     private void send(RoutingPeer peer, List<JdbcRoutingStore.State> states) {
@@ -490,7 +634,7 @@ public class RoutingNode {
                 if (! unasked)
                     fetch(from, server, fromQueue);
                 else if (! isOnItsWay(server))
-                    fetchLater(budgetKey(sender), from, server, ANY_STATE);
+                    fetchLater(budgetKey(sender), from, List.of(new JdbcRoutingStore.State(server, ANY_STATE)));
                 if (replica.log(server).inception().isEmpty()) {
                     if (pulled)
                         unproven.put(s, replica.preview(s, records));
@@ -511,11 +655,17 @@ public class RoutingNode {
             if (! catchUp && ! fromQueue) {
                 if (pulled)
                     unproven.put(s, replica.preview(s, records));
-                if (admitter.isEmpty())
+                if (admitter.isEmpty()) {
                     place(from, s, turn, records);
-                else if (inceptions.offer(buckets.apply(chargedTo), turn, new Offer(from, s)))
-                    takeSoon();
-                return Outcome.Limited;
+                    return Outcome.Limited;
+                }
+                // With a token to spare and nothing ahead of it, it is taken as it is rather than fetched again.
+                // Not a pull, which is used whole from the cache until its records have all passed their limits.
+                if (pulled || ! inceptions.tryTakeNow(buckets.apply(chargedTo))) {
+                    if (inceptions.offer(buckets.apply(chargedTo), turn, new Offer(from, s)))
+                        takeSoon();
+                    return Outcome.Limited;
+                }
             }
         }
         RoutingReplica.Gate gate = (subject, record, isNewInception) -> {
@@ -672,15 +822,33 @@ public class RoutingNode {
         takeSoon();
     }
 
+    /** Fetches the inceptions whose turn has come, those from one peer together. */
     private void takeInceptions() {
-        for (Offer o : inceptions.take()) {
-            try {
-                fetch(o.from, o.subject, true);
-            } catch (Throwable t) {
-                LOG.log(Level.FINE, "Fetching " + o.subject + " failed: " + t.getMessage());
+        Map<Multihash, List<Offer>> byPeer = new LinkedHashMap<>();
+        for (Offer o : inceptions.take())
+            byPeer.computeIfAbsent(o.from.id().bareMultihash(), p -> new ArrayList<>()).add(o);
+        for (List<Offer> offers : byPeer.values()) {
+            RoutingPeer from = offers.get(0).from;
+            for (int i = 0; i < offers.size(); i += FETCH_BATCH) {
+                List<Offer> batch = offers.subList(i, Math.min(offers.size(), i + FETCH_BATCH));
+                Map<Subject, List<SignedRecord>> got = Map.of();
+                try {
+                    got = from.recordsOf(batch.stream().map(o -> o.subject).collect(Collectors.toList())).join();
+                } catch (Throwable t) {
+                    LOG.log(Level.FINE, "Fetching " + batch.size() + " subjects from " + from.id() + " failed: " + t.getMessage());
+                }
+                for (Offer o : batch) {
+                    try {
+                        List<SignedRecord> records = got.get(o.subject);
+                        if (records != null)
+                            accept(from, o.subject, records, true);
+                    } catch (Throwable t) {
+                        LOG.log(Level.FINE, "Taking " + o.subject + " failed: " + t.getMessage());
+                    }
+                    if (! o.subject.isIdentity())
+                        release(o.subject.id);
+                }
             }
-            if (! o.subject.isIdentity())
-                release(o.subject.id);
         }
     }
 
@@ -772,25 +940,20 @@ public class RoutingNode {
 
     // ---- reconciliation
 
-    private Reconciliation.Summary summary(int kind, Reconciliation.Range range) {
-        Reconciliation.Accumulator acc = new Reconciliation.Accumulator(hasher);
-        scan(kind, range, acc::add);
-        return acc.summary();
-    }
+    /** A range that differs from a peer's, with what the peer says it holds there. */
+    private static final class Differing {
+        final Reconciliation.Range range;
+        final Reconciliation.Summary theirs;
 
-    private void scan(int kind, Reconciliation.Range range, Consumer<JdbcRoutingStore.State> each) {
-        byte[] after = range.after;
-        while (true) {
-            List<JdbcRoutingStore.State> page = replica.store().states(kind, after, range.upTo, PAGE);
-            page.forEach(each);
-            if (page.size() < PAGE)
-                return;
-            after = page.get(page.size() - 1).subject.idBytes();
+        Differing(Reconciliation.Range range, Reconciliation.Summary theirs) {
+            this.range = range;
+            this.theirs = theirs;
         }
     }
 
-    /** The peer's states that differ from ours, found by comparing range fingerprints and splitting those that
-     *  differ by our own subject ids. Each is also recorded as held by that peer.
+    /** The peer's states that differ from ours, found by comparing range fingerprints, descending into those that
+     *  differ and listing the small ones. Each is also recorded as held by that peer. Both sides answer from sums
+     *  they keep, so the cost is by what differs, not by what is held.
      */
     public List<JdbcRoutingStore.State> differences(RoutingPeer peer, int kind) {
         return differences(peer, kind, new Budget());
@@ -798,24 +961,43 @@ public class RoutingNode {
 
     private List<JdbcRoutingStore.State> differences(RoutingPeer peer, int kind, Budget budget) {
         List<JdbcRoutingStore.State> res = new ArrayList<>();
-        Deque<Reconciliation.Range> todo = new ArrayDeque<>(List.of(Reconciliation.Range.ALL));
+        JdbcRoutingStore store = replica.store();
+        Reconciliation.Summary all = ask(peer, budget, () -> peer.summaries(kind, List.of(Reconciliation.Range.ALL))).get(0);
+        Deque<Differing> todo = new ArrayDeque<>();
+        if (! store.summary(kind, Reconciliation.Range.ALL).equals(all))
+            todo.add(new Differing(Reconciliation.Range.ALL, all));
         while (! todo.isEmpty()) {
-            List<Reconciliation.Range> batch = new ArrayList<>();
-            while (! todo.isEmpty() && batch.size() < BATCH)
-                batch.add(todo.poll());
-            List<Reconciliation.Range> asked = batch;
-            List<Reconciliation.Summary> remote = ask(peer, budget, () -> peer.summaries(kind, asked));
-            for (int i = 0; i < batch.size(); i++) {
-                Reconciliation.Range range = batch.get(i);
-                Reconciliation.Summary local = summary(kind, range);
-                if (local.equals(remote.get(i)))
+            List<Reconciliation.Range> descend = new ArrayList<>();
+            while (! todo.isEmpty() && descend.size() < BATCH) {
+                Differing d = todo.poll();
+                if (d.range.depth < Reconciliation.MAX_DEPTH && d.theirs.count > LIST_BELOW) {
+                    descend.add(d.range);
                     continue;
-                if (remote.get(i).count <= ITEMS || local.count < 2L * SPLIT) {
-                    res.addAll(differing(peer, kind, range, MAX_DIFFERENCES - res.size(), budget));
-                    if (res.size() >= MAX_DIFFERENCES)
-                        return res;
-                } else
-                    todo.addAll(split(kind, range, local.count));
+                }
+                if (d.theirs.count == 0)
+                    tally(peer, kind, d.range, Map.of());
+                else
+                    res.addAll(differing(peer, kind, d.range, MAX_DIFFERENCES - res.size(), budget));
+                if (res.size() >= MAX_DIFFERENCES)
+                    return res;
+            }
+            if (descend.isEmpty())
+                continue;
+            List<Map<Integer, Reconciliation.Summary>> remote = ask(peer, budget, () -> peer.children(kind, descend));
+            if (remote.size() != descend.size())
+                throw new IllegalStateException("Peer " + peer.id() + " answered for other ranges than asked");
+            for (int i = 0; i < descend.size(); i++) {
+                Reconciliation.Range parent = descend.get(i);
+                Map<Integer, Reconciliation.Summary> theirs = remote.get(i), ours = store.children(kind, parent);
+                Set<Integer> either = new TreeSet<>(theirs.keySet());
+                either.addAll(ours.keySet());
+                for (int child : either) {
+                    if (child < 0 || child >= Reconciliation.FANOUT)
+                        throw new IllegalStateException("Peer " + peer.id() + " answered with a range not asked for");
+                    Reconciliation.Summary held = theirs.getOrDefault(child, Reconciliation.Summary.EMPTY);
+                    if (! held.equals(ours.getOrDefault(child, Reconciliation.Summary.EMPTY)))
+                        todo.add(new Differing(parent.child(child), held));
+                }
             }
         }
         return res;
@@ -828,17 +1010,19 @@ public class RoutingNode {
     private List<JdbcRoutingStore.State> differing(RoutingPeer peer, int kind, Reconciliation.Range range, int max, Budget budget) {
         List<JdbcRoutingStore.State> res = new ArrayList<>();
         Map<ByteArrayWrapper, byte[]> theirs = new HashMap<>();
-        byte[] after = range.after;
+        Reconciliation.Cursor after = Reconciliation.Cursor.at(range.from());
         while (res.size() < max) {
-            Reconciliation.Range rest = new Reconciliation.Range(after, range.upTo);
-            List<JdbcRoutingStore.State> page = ask(peer, budget, () -> peer.states(kind, rest, PAGE));
+            Reconciliation.Cursor from = after;
+            List<JdbcRoutingStore.State> page = ask(peer, budget, () -> peer.states(kind, range, from, PAGE));
             if (page.size() > PAGE)
                 throw new IllegalStateException("Peer " + peer.id() + " sent more states than asked for");
             for (JdbcRoutingStore.State st : page) {
                 byte[] id = st.subject.idBytes();
-                if (st.subject.kind != kind || order(id, after) <= 0 || range.upTo.map(u -> order(id, u) > 0).orElse(false))
+                int slot = Reconciliation.slot(id);
+                boolean forward = slot > after.slot || (slot == after.slot && Subject.compareBytes(id, after.id) > 0);
+                if (st.subject.kind != kind || ! forward || ! range.contains(slot))
                     throw new IllegalStateException("Peer " + peer.id() + " sent states out of order or range");
-                after = id;
+                after = new Reconciliation.Cursor(slot, id);
                 saw(st.subject, st.hash, peer.id());
                 theirs.put(new ByteArrayWrapper(id), st.hash);
                 if (! Arrays.equals(replica.stateHash(st.subject), st.hash))
@@ -871,11 +1055,11 @@ public class RoutingNode {
         Tally t = tallies.computeIfAbsent(peer.id().bareMultihash(), p -> new Tally());
         long cutoff = clock.getAsLong() - BEHIND_GRACE_MILLIS;
         Set<ByteArrayWrapper> ours = new HashSet<>();
-        byte[] after = range.after;
+        Reconciliation.Cursor after = Reconciliation.Cursor.at(range.from());
         int scanned = 0;
         boolean complete = false;
         while (scanned < LACK_SCAN) {
-            List<JdbcRoutingStore.State> page = replica.store().states(kind, after, range.upTo, PAGE);
+            List<JdbcRoutingStore.State> page = replica.store().states(kind, range, after, PAGE);
             for (JdbcRoutingStore.State st : page) {
                 ByteArrayWrapper id = new ByteArrayWrapper(st.subject.idBytes());
                 ours.add(id);
@@ -895,7 +1079,7 @@ public class RoutingNode {
                 complete = true;
                 break;
             }
-            after = page.get(page.size() - 1).subject.idBytes();
+            after = Reconciliation.Cursor.after(page.get(page.size() - 1).subject);
         }
         if (complete)
             for (ByteArrayWrapper id : theirs.keySet())
@@ -905,28 +1089,96 @@ public class RoutingNode {
 
     public static final int MAX_DIFFERENCES = 100_000;
 
-    /** The store's order of subject ids: bytes unsigned, and a prefix first. */
-    static int order(byte[] a, byte[] b) {
-        int c = ArrayOps.compare(a, b);
-        return c != 0 ? c : Integer.compare(a.length, b.length);
+    /** Whether this node is still reading a configured peer's log end to end, so rounds should follow one another. */
+    public boolean isBootstrapping() {
+        return bootstrapping;
     }
 
-    private List<Reconciliation.Range> split(int kind, Reconciliation.Range range, long count) {
-        long step = Math.max(1, count / SPLIT);
-        List<byte[]> bounds = new ArrayList<>();
-        long[] i = {0};
-        scan(kind, range, st -> {
-            if (++i[0] % step == 0 && bounds.size() < SPLIT - 1)
-                bounds.add(st.subject.idBytes());
-        });
-        List<Reconciliation.Range> res = new ArrayList<>();
-        byte[] after = range.after;
-        for (byte[] b : bounds) {
-            res.add(new Reconciliation.Range(after, Optional.of(b)));
-            after = b;
+    public void snapshotBelow(int subjects) {
+        snapshotBelow = subjects;
+    }
+
+    /** Reads on through a configured peer's log, servers and then identities, in the order every node keeps, taking
+     *  each page as catch-up: its operator chose that peer to start from, every record is checked, and nothing here
+     *  is passed on unasked. Where it has got to is kept, so a restart carries on.
+     *
+     * @return how many subjects changed
+     */
+    private int snapshot() {
+        JdbcRoutingStore store = replica.store();
+        Optional<byte[]> progress = store.getMeta(SNAPSHOT);
+        if (synced || progress.map(p -> Arrays.equals(p, SNAPSHOT_DONE)).orElse(false)) {
+            bootstrapping = false;
+            return 0;
         }
-        res.add(new Reconciliation.Range(after, range.upTo));
-        return res;
+        Optional<RoutingPeer> seed = syncPeers.values().stream()
+                .filter(p -> configured.contains(p.id().bareMultihash()) && ! unreachable.containsKey(p.id().bareMultihash()))
+                .findFirst();
+        if (seed.isEmpty()) {
+            bootstrapping = false;
+            return 0;
+        }
+        RoutingPeer from = seed.get();
+        int changed = 0;
+        try {
+            int kind = Subject.SERVER;
+            Reconciliation.Cursor after = Reconciliation.Cursor.START;
+            if (progress.isPresent()) {
+                CborObject.CborMap m = (CborObject.CborMap) CborObject.fromByteArray(progress.get());
+                kind = (int) m.getLong("k");
+                after = Reconciliation.Cursor.fromCbor(m.get("a"));
+            } else {
+                long behind = 0;
+                for (int k : new int[]{Subject.SERVER, Subject.IDENTITY})
+                    behind += from.summaries(k, List.of(Reconciliation.Range.ALL)).join().get(0).count
+                            - store.summary(k, Reconciliation.Range.ALL).count;
+                if (behind < snapshotBelow) {
+                    store.setMeta(SNAPSHOT, SNAPSHOT_DONE);
+                    bootstrapping = false;
+                    return 0;
+                }
+                LOG.info("Reading the routing log of " + from.id() + ", which holds " + behind + " more subjects");
+            }
+            bootstrapping = true;
+            quiet.set(true);
+            for (int pages = 0; pages < SNAPSHOT_PAGES_PER_ROUND; pages++) {
+                RoutingPeer.Page page = from.page(kind, after, PAGE).join();
+                if (page.records.size() > PAGE)
+                    throw new IllegalStateException("Peer " + from.id() + " sent a longer page than asked for");
+                for (Subject s : page.records.keySet())
+                    if (s.kind != kind || ! after.isBefore(s))
+                        throw new IllegalStateException("Peer " + from.id() + " sent a page out of order");
+                if (page.next.isPresent() && ! isForward(after, page.next.get()))
+                    throw new IllegalStateException("Peer " + from.id() + " sent a page that doesn't move on");
+                changed += replica.takeAll(page.records);
+                if (page.next.isPresent())
+                    after = page.next.get();
+                else if (kind == Subject.SERVER) {
+                    kind = Subject.IDENTITY;
+                    after = Reconciliation.Cursor.START;
+                } else {
+                    store.setMeta(SNAPSHOT, SNAPSHOT_DONE);
+                    bootstrapping = false;
+                    LOG.info("Read the routing log of " + from.id() + " to its end");
+                    return changed;
+                }
+                Map<String, Cborable> m = new TreeMap<>();
+                m.put("k", new CborObject.CborLong(kind));
+                m.put("a", after);
+                store.setMeta(SNAPSHOT, CborObject.CborMap.build(m).serialize());
+            }
+        } catch (Throwable t) {
+            // this round reconciles instead, and the next carries on from where this got to
+            bootstrapping = false;
+            LOG.log(Level.INFO, "Reading the routing log of " + from.id() + " failed: " + t.getMessage());
+        } finally {
+            quiet.set(false);
+        }
+        return changed;
+    }
+
+    private static boolean isForward(Reconciliation.Cursor from, Reconciliation.Cursor to) {
+        return to.slot != from.slot ? to.slot > from.slot : Subject.compareBytes(to.id, from.id) > 0;
     }
 
     /** A sync peer that didn't answer, or kept failing, this round: after two such rounds it isn't drawn for a while. */
@@ -946,6 +1198,9 @@ public class RoutingNode {
     public int syncRound() {
         Map<Subject, Map<ByteArrayWrapper, List<RoutingPeer>>> wanted = new TreeMap<>(
                 Comparator.comparingInt((Subject s) -> s.isIdentity() ? 1 : 0).thenComparing(s -> s));
+        int read = snapshot();
+        if (bootstrapping)
+            return read;
         reannounce();
         tallies.clear();
         List<RoutingPeer> peers = new ArrayList<>(syncPeers.values());
@@ -971,44 +1226,76 @@ public class RoutingNode {
                 missed(peer);
         }
         int changed = 0, failed = 0;
-        for (Map.Entry<Subject, Map<ByteArrayWrapper, List<RoutingPeer>>> e : wanted.entrySet()) {
-            Subject s = e.getKey();
-            List<Map.Entry<ByteArrayWrapper, List<RoutingPeer>>> claims = new ArrayList<>(e.getValue().entrySet());
-            claims.sort(Comparator.comparingInt((Map.Entry<ByteArrayWrapper, List<RoutingPeer>> c) -> c.getValue().size()).reversed());
-            // Every claimed state, not only the most widely held: peers that agree on a state may be one operator's
-            // hiding a newer one that a single honest peer has.
-            for (Map.Entry<ByteArrayWrapper, List<RoutingPeer>> claim : claims) {
-                byte[] claimed = claim.getKey().data;
-                if (Arrays.equals(replica.stateHash(s), claimed))
+        Predicate<RoutingPeer> usable = h -> ! isSuspect(h.id()) && ! budgets.get(h.id().bareMultihash()).spent()
+                && rejections.has(h.id().bareMultihash());
+        for (int kind : new int[]{Subject.SERVER, Subject.IDENTITY}) {
+            List<Claim> claims = new ArrayList<>();
+            for (Map.Entry<Subject, Map<ByteArrayWrapper, List<RoutingPeer>>> e : wanted.entrySet()) {
+                if (e.getKey().kind != kind)
                     continue;
-                List<RoutingPeer> holders = claim.getValue();
-                boolean delivered = false, attempted = false;
-                for (RoutingPeer holder : holders) {
-                    Multihash id = holder.id().bareMultihash();
-                    if (isSuspect(id))
+                List<Map.Entry<ByteArrayWrapper, List<RoutingPeer>>> states = new ArrayList<>(e.getValue().entrySet());
+                states.sort(Comparator.comparingInt((Map.Entry<ByteArrayWrapper, List<RoutingPeer>> c) -> c.getValue().size()).reversed());
+                // Every claimed state, not only the most widely held: peers that agree on a state may be one
+                // operator's hiding a newer one that a single honest peer has.
+                for (Map.Entry<ByteArrayWrapper, List<RoutingPeer>> state : states)
+                    claims.add(new Claim(e.getKey(), state.getKey().data, state.getValue()));
+            }
+            // Each claim is asked of its first holder, a batch to a call, and those not delivered of the next.
+            while (! claims.isEmpty()) {
+                Map<Multihash, List<Claim>> byHolder = new LinkedHashMap<>();
+                Map<Multihash, RoutingPeer> holders = new HashMap<>();
+                for (Claim c : claims) {
+                    if (Arrays.equals(replica.stateHash(c.subject), c.state))
                         continue;
-                    attempted = true;
-                    try {
-                        if (! rejections.has(id))
-                            throw new IllegalStateException("Peer " + id + " has sent too many invalid records");
-                        List<SignedRecord> records = ask(holder, budgets.get(id), () -> holder.records(s));
-                        if (accept(holder, s, records, false) == Outcome.Added)
-                            changed++;
-                        if (misrepresented(s, claimed, records)) {
-                            suspect(holder.id(), "it served a state of " + s + " other than the one it claimed");
-                            continue;
+                    Optional<RoutingPeer> holder = c.nextHolder(usable);
+                    if (holder.isPresent()) {
+                        Multihash id = holder.get().id().bareMultihash();
+                        holders.put(id, holder.get());
+                        byHolder.computeIfAbsent(id, h -> new ArrayList<>()).add(c);
+                        continue;
+                    }
+                    // What a single drawn peer claims and then can't deliver may not exist, so it doesn't keep
+                    // this node from being synced; anything real it alone holds comes in a later round.
+                    boolean corroborated = c.holders.size() > 1 || c.holders.stream().anyMatch(h -> configured.contains(h.id().bareMultihash()));
+                    if (corroborated && c.holders.stream().anyMatch(h -> ! isSuspect(h.id())))
+                        failed++;
+                }
+                List<Claim> undelivered = new ArrayList<>();
+                for (Map.Entry<Multihash, List<Claim>> e : byHolder.entrySet()) {
+                    RoutingPeer holder = holders.get(e.getKey());
+                    Budget budget = budgets.get(e.getKey());
+                    for (int i = 0; i < e.getValue().size(); i += FETCH_BATCH) {
+                        List<Claim> batch = e.getValue().subList(i, Math.min(e.getValue().size(), i + FETCH_BATCH));
+                        List<Subject> subjects = batch.stream().map(c -> c.subject).distinct().collect(Collectors.toList());
+                        Map<Subject, List<SignedRecord>> got = null;
+                        try {
+                            got = ask(holder, budget, () -> holder.recordsOf(subjects));
+                        } catch (Throwable t) {
+                            LOG.log(Level.FINE, "Fetching " + subjects.size() + " subjects from " + holder.id() + " failed: " + t.getMessage());
                         }
-                        delivered = true;
-                        break;
-                    } catch (Throwable t) {
-                        LOG.log(Level.FINE, "Fetching " + s + " failed: " + t.getMessage());
+                        for (Claim c : batch) {
+                            List<SignedRecord> records = got == null ? null : got.get(c.subject);
+                            if (records == null) {
+                                if (got != null)
+                                    budget.undelivered++;
+                                undelivered.add(c);
+                                continue;
+                            }
+                            try {
+                                if (accept(holder, c.subject, records, false) == Outcome.Added)
+                                    changed++;
+                                if (misrepresented(c.subject, c.state, records)) {
+                                    suspect(holder.id(), "it served a state of " + c.subject + " other than the one it claimed");
+                                    undelivered.add(c);
+                                }
+                            } catch (Throwable t) {
+                                LOG.log(Level.FINE, "Taking " + c.subject + " failed: " + t.getMessage());
+                                undelivered.add(c);
+                            }
+                        }
                     }
                 }
-                // What a single drawn peer claims and then can't deliver may not exist, so it doesn't keep this
-                // node from being synced; anything real it alone holds comes in a later round.
-                boolean corroborated = holders.size() > 1 || holders.stream().anyMatch(h -> configured.contains(h.id().bareMultihash()));
-                if (attempted && ! delivered && corroborated)
-                    failed++;
+                claims = undelivered;
             }
         }
         for (Iterator<RoutingPeer> it = answered.iterator(); it.hasNext(); ) {
@@ -1024,8 +1311,10 @@ public class RoutingNode {
         judge(answered);
         boolean enough = reached >= Math.min(SYNCED_PEERS, peers.size())
                 && (reachedConfigured || peers.stream().noneMatch(p -> configured.contains(p.id().bareMultihash())));
+        changed += read;
         if (! synced && changed == 0 && failed == 0 && enough) {
             synced = true;
+            replica.store().setMeta(SNAPSHOT, SNAPSHOT_DONE);
             LOG.info("The routing log is synced, after a round with " + reached + " peers found nothing new");
         }
         return changed;

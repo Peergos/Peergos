@@ -284,20 +284,16 @@ public class RoutingSimulation {
             return claim == null ? st : new JdbcRoutingStore.State(st.subject, claim);
         }
 
-        boolean frozenIn(int kind, Reconciliation.Range r) {
-            return frozen.keySet().stream().anyMatch(s -> s.kind == kind && r.contains(s.idBytes()));
-        }
-
-        Reconciliation.Summary summary(int kind, Reconciliation.Range r) {
-            Reconciliation.Accumulator acc = new Reconciliation.Accumulator(crypto.hasher);
-            byte[] after = r.after;
-            while (true) {
-                List<JdbcRoutingStore.State> page = replica.store().states(kind, after, r.upTo, 1000);
-                page.forEach(st -> acc.add(answer(st)));
-                if (page.size() < 1000)
-                    return acc.summary();
-                after = page.get(page.size() - 1).subject.idBytes();
+        /** A range's summary as this node answers it: with the state it claims for each subject it froze. */
+        Reconciliation.Summary claim(int kind, Reconciliation.Range r, Reconciliation.Summary real) {
+            Reconciliation.Summary res = real;
+            for (Subject s : frozen.keySet()) {
+                if (s.kind != kind || ! r.contains(s.idBytes()) || ! replica.log(s).exists())
+                    continue;
+                JdbcRoutingStore.State held = new JdbcRoutingStore.State(s, replica.stateHash(s));
+                res = res.minus(held).plus(answer(held));
             }
+            return res;
         }
     }
 
@@ -361,18 +357,31 @@ public class RoutingSimulation {
         public CompletableFuture<List<Reconciliation.Summary>> summaries(int kind, List<Reconciliation.Range> ranges) {
             return call(() -> {
                 SimNode n = node();
-                if (n.frozen.isEmpty())
-                    return n.routing.summaries(kind, ranges);
-                return ranges.stream()
-                        .map(r -> n.frozenIn(kind, r) ? n.summary(kind, r) : n.routing.summaries(kind, List.of(r)).get(0))
-                        .collect(Collectors.toList());
+                List<Reconciliation.Summary> real = n.routing.summaries(kind, ranges);
+                List<Reconciliation.Summary> res = new ArrayList<>();
+                for (int i = 0; i < ranges.size(); i++)
+                    res.add(n.claim(kind, ranges.get(i), real.get(i)));
+                return res;
             });
         }
 
-        public CompletableFuture<List<JdbcRoutingStore.State>> states(int kind, Reconciliation.Range range, int limit) {
+        public CompletableFuture<List<Map<Integer, Reconciliation.Summary>>> children(int kind, List<Reconciliation.Range> parents) {
             return call(() -> {
                 SimNode n = node();
-                return n.routing.states(kind, range, limit).stream().map(n::answer).collect(Collectors.toList());
+                List<Map<Integer, Reconciliation.Summary>> res = new ArrayList<>();
+                for (Reconciliation.Range parent : parents) {
+                    Map<Integer, Reconciliation.Summary> children = new TreeMap<>(n.routing.children(kind, List.of(parent)).get(0));
+                    children.replaceAll((i, real) -> n.claim(kind, parent.child(i), real));
+                    res.add(children);
+                }
+                return res;
+            });
+        }
+
+        public CompletableFuture<List<JdbcRoutingStore.State>> states(int kind, Reconciliation.Range range, Reconciliation.Cursor after, int limit) {
+            return call(() -> {
+                SimNode n = node();
+                return n.routing.states(kind, range, after, limit).stream().map(n::answer).collect(Collectors.toList());
             });
         }
 

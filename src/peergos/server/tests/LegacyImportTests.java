@@ -208,7 +208,7 @@ public class LegacyImportTests {
                 r -> LegacyImport.run(raw, LegacyImport.hash(raw, crypto), Map.of(), KEYS, r, crypto), s -> {});
         Assert.assertTrue(routing.replica.log(Subject.server(old)).inception().isPresent());
         Assert.assertEquals(1, store.count(Subject.SERVER));
-        Assert.assertEquals(Subject.server(old), store.states(Subject.SERVER, new byte[0], 10).get(0).subject);
+        Assert.assertEquals(Subject.server(old), store.states(Subject.SERVER, peergos.server.routing.Reconciliation.Range.ALL, peergos.server.routing.Reconciliation.Cursor.START, 10).get(0).subject);
         routing.stop();
     }
 

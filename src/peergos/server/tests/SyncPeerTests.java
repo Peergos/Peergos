@@ -64,8 +64,8 @@ public class SyncPeerTests {
             return Futures.of(target.records(s));
         }
 
-        public CompletableFuture<List<JdbcRoutingStore.State>> states(int kind, Reconciliation.Range range, int limit) {
-            return Futures.of(target.states(kind, range, limit));
+        public CompletableFuture<List<JdbcRoutingStore.State>> states(int kind, Reconciliation.Range range, Reconciliation.Cursor after, int limit) {
+            return Futures.of(target.states(kind, range, after, limit));
         }
     }
 
@@ -92,7 +92,11 @@ public class SyncPeerTests {
             return Futures.errored(new IllegalStateException());
         }
 
-        public CompletableFuture<List<JdbcRoutingStore.State>> states(int kind, Reconciliation.Range range, int limit) {
+        public CompletableFuture<List<Map<Integer, Reconciliation.Summary>>> children(int kind, List<Reconciliation.Range> parents) {
+            return Futures.errored(new IllegalStateException());
+        }
+
+        public CompletableFuture<List<JdbcRoutingStore.State>> states(int kind, Reconciliation.Range range, Reconciliation.Cursor after, int limit) {
             return Futures.of(List.of());
         }
 

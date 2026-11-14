@@ -75,7 +75,7 @@ public class RoutingService {
                 .orElse(Collections.emptyList());
     }
 
-    private static final long TICK_MILLIS = 60_000, SYNC_MILLIS = 10 * 60_000, ADDRESS_MILLIS = 10 * 60_000,
+    private static final long ANNOUNCE_MILLIS = 1_000, TICK_MILLIS = 60_000, SYNC_MILLIS = 10 * 60_000, ADDRESS_MILLIS = 10 * 60_000,
             PEERS_MILLIS = 60 * 60_000;
     /** Until synced, rounds run back to back, so a node catches up in minutes rather than one round per period. */
     private static final int CATCH_UP_ROUNDS = 5;
@@ -174,6 +174,7 @@ public class RoutingService {
         ScheduledExecutorService ticker = Executors.newSingleThreadScheduledExecutor(daemon("Routing tick"));
         ScheduledExecutorService addressTimer = Executors.newSingleThreadScheduledExecutor(daemon("Routing addresses"));
         ticker.scheduleWithFixedDelay(() -> run(node::tick), TICK_MILLIS, TICK_MILLIS, TimeUnit.MILLISECONDS);
+        node.announceEvery(ticker, ANNOUNCE_MILLIS);
         ScheduledExecutorService peerTimer = Executors.newSingleThreadScheduledExecutor(daemon("Routing peer choice"));
         peerTimer.scheduleWithFixedDelay(() -> run(syncPeers::refresh), SYNC_MILLIS / 2, PEERS_MILLIS, TimeUnit.MILLISECONDS);
         if (light) {
@@ -182,7 +183,7 @@ public class RoutingService {
                     0, SYNC_MILLIS, TimeUnit.MILLISECONDS);
         } else
             timer.scheduleWithFixedDelay(() -> run(() -> {
-                for (int i = 0; i < CATCH_UP_ROUNDS; i++)
+                for (int i = 0; i < CATCH_UP_ROUNDS || node.isBootstrapping(); i++)
                     if (node.syncRound() == 0 && node.isSynced())
                         return;
             }), 0, SYNC_MILLIS, TimeUnit.MILLISECONDS);
