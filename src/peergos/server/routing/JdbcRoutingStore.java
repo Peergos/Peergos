@@ -22,6 +22,7 @@ public class JdbcRoutingStore {
     private static final String UNINDEXED = "SELECT subject, statehash FROM routingrecords r WHERE kind = ? AND subject > ? " +
             "AND NOT EXISTS (SELECT 1 FROM routingpending p WHERE p.kind = r.kind AND p.subject = r.subject) " +
             "ORDER BY subject LIMIT ?;";
+    private static final String SUBJECTS = "SELECT subject FROM routingrecords WHERE kind = ? AND subject > ? ORDER BY subject LIMIT ?;";
     private static final String GET_STATEHASH = "SELECT statehash FROM routingrecords WHERE kind = ? AND subject = ?;";
     private static final String IS_PENDING = "SELECT 1 FROM routingpending WHERE kind = ? AND subject = ?;";
     private static final String STATES = "SELECT subject, statehash FROM routingstates WHERE kind = ? AND slot >= ? AND slot <= ? " +
@@ -343,6 +344,24 @@ public class JdbcRoutingStore {
             sums.write(c);
         });
         setMeta(INDEXED, new byte[]{1});
+    }
+
+    /** Every subject of a kind with records, in order of id. */
+    public List<Subject> subjects(int kind, byte[] afterId, int limit) {
+        try (Connection c = getConnection();
+             PreparedStatement select = c.prepareStatement(SUBJECTS)) {
+            select.setInt(1, kind);
+            select.setBytes(2, afterId);
+            select.setInt(3, limit);
+            ResultSet rs = select.executeQuery();
+            List<Subject> res = new ArrayList<>();
+            while (rs.next())
+                res.add(subject(kind, rs.getBytes(1)));
+            return res;
+        } catch (SQLException e) {
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
     }
 
     private static byte[] encode(List<Stored> records) {

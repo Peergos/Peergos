@@ -751,6 +751,35 @@ public class ReplicationTests {
     }
 
     @Test
+    public void aStoreWithStateHashesComputedAnotherWayHasThemComputedAgain() {
+        Network net = new Network();
+        Node a = net.node(100), b = net.node(100);
+        Server x = new Server();
+        List<Subject> all = new ArrayList<>(List.of(x.subject));
+        a.replica.add(x.subject, x.inception);
+        b.replica.add(x.subject, x.inception);
+        for (int i = 0; i < 20; i++) {
+            IdentityInception inc = x.admit(key());
+            all.add(Subject.identity(inc.identityHash()));
+            a.replica.add(all.get(all.size() - 1), inc);
+            b.replica.add(all.get(all.size() - 1), inc);
+        }
+        JdbcRoutingStore store = a.replica.store();
+        for (Subject s : all)
+            store.put(s, store.get(s), new byte[32]);
+        store.setMeta("statehash", new byte[]{1});
+        Assert.assertNotEquals(b.replica.store().summary(Subject.IDENTITY, Reconciliation.Range.ALL),
+                store.summary(Subject.IDENTITY, Reconciliation.Range.ALL));
+
+        RoutingReplica reopened = new RoutingReplica(store, new RecordValidator(crypto.hasher, TEST_WORK, TEST_WORK), TEST_WORK, TEST_WORK);
+        for (int kind : new int[]{Subject.SERVER, Subject.IDENTITY})
+            Assert.assertEquals(b.replica.store().summary(kind, Reconciliation.Range.ALL), store.summary(kind, Reconciliation.Range.ALL));
+        for (Subject s : all)
+            Assert.assertArrayEquals(b.replica.stateHash(s), reopened.stateHash(s));
+        Assert.assertEquals(List.of(), b.routing.differences(new LocalPeer(b.id, a), Subject.IDENTITY));
+    }
+
+    @Test
     public void updateBucketsAreKeptInTheStoreUntilTheyFill() {
         AtomicLong clock = new AtomicLong(1_000_000_000L);
         JdbcRoutingStore store = new JdbcRoutingStore(Builder.buildEphemeralSqlite(), new SqliteCommands());
