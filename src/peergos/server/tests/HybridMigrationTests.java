@@ -16,6 +16,7 @@ import peergos.shared.social.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
 import java.nio.file.*;
@@ -537,6 +538,90 @@ public class HybridMigrationTests {
     }
 
     /** An account with no friends, shares or nested writing spaces */
+    /** Writing spaces nested four deep, with plain directories between them, and a file that is its own writing
+     *  space at the bottom, all move, including those held in a directory's later chunks
+     */
+    @Test
+    public void deeplyNestedWritingSpacesMove() {
+        int chunkSize = CryptreeNode.getMaxChildLinksPerBlob();
+        CryptreeNode.setMaxChildLinkPerBlob(2);
+        try {
+            moveDeeplyNestedWritingSpaces();
+        } finally {
+            CryptreeNode.setMaxChildLinkPerBlob(chunkSize);
+        }
+    }
+
+    private void moveDeeplyNestedWritingSpaces() {
+        SigningKeyPair.HYBRID_WRITERS = false;
+        String password = generatePassword(), sharePassword = generatePassword();
+        UserContext owner = login(generateUsername(random), password);
+        UserContext sharee = login(generateUsername(random), sharePassword);
+        friendBetweenGroups(Arrays.asList(owner), Arrays.asList(sharee));
+        Path home = PathUtil.get(owner.username);
+        mkdir(owner, home, "plain");
+        mkdir(owner, home.resolve("plain"), "x");
+        mkdir(owner, home.resolve("plain").resolve("x"), "y");
+        Path s1 = home.resolve("plain").resolve("x").resolve("y").resolve("s1");
+        // ahead of the spaces, so their caps are in later chunks
+        Map<Path, byte[]> fillers = new HashMap<>();
+        for (int i = 0; i < 5; i++)
+            fillers.put(s1.getParent().resolve("pad" + i), upload(owner, s1.getParent(), "pad" + i, 100));
+        mkdir(owner, s1.getParent(), "s1");
+        mkdir(owner, s1, "mid");
+        Path s2 = s1.resolve("mid").resolve("s2");
+        mkdir(owner, s2.getParent(), "s2");
+        Path s3 = s2.resolve("s3");
+        mkdir(owner, s2, "s3");
+        Path s4 = s3.resolve("s4");
+        for (int i = 0; i < 5; i++)
+            fillers.put(s3.resolve("pad" + i), upload(owner, s3, "pad" + i, 100));
+        mkdir(owner, s3, "s4");
+        Map<Path, byte[]> files = new HashMap<>(fillers);
+        for (Path dir : Arrays.asList(s1, s2, s3, s4))
+            files.put(dir.resolve("f.bin"), upload(owner, dir, "f.bin", 1200));
+        Path fileSpace = s4.resolve("own.bin");
+        files.put(fileSpace, upload(owner, s4, "own.bin", 900));
+        List<Path> spaces = Arrays.asList(s1, s2, s3, s4, fileSpace);
+        for (Path space : spaces)
+            owner.shareWriteAccessWith(space, Collections.singleton(sharee.username)).join();
+
+        UserContext before = login(owner.username, password);
+        Set<PublicKeyHash> oldWriters = new HashSet<>();
+        oldWriters.add(writer(before, home));
+        for (Path space : spaces) {
+            Assert.assertTrue(writer(before, space).isIdentity());
+            oldWriters.add(writer(before, space));
+        }
+        Assert.assertEquals(spaces.size() + 1, oldWriters.size());
+
+        SigningKeyPair.HYBRID_WRITERS = true;
+        UserContext after = login(owner.username, password);
+        assertAllHybrid(after, after.getUserRoot().join(), home);
+        Set<PublicKeyHash> newWriters = new HashSet<>();
+        newWriters.add(writer(after, home));
+        for (Path space : spaces) {
+            assertHybrid(after, writer(after, space));
+            newWriters.add(writer(after, space));
+        }
+        Assert.assertEquals(spaces.size() + 1, newWriters.size());
+        for (Map.Entry<Path, byte[]> e : files.entrySet())
+            Assert.assertArrayEquals(e.getKey().toString(), e.getValue(), read(after, e.getKey()));
+
+        // the sharee still writes at the bottom
+        UserContext shareeNow = login(sharee.username, sharePassword);
+        Assert.assertEquals(writer(after, s4), writer(shareeNow, s4));
+        byte[] later = upload(shareeNow, s4, "later.bin", 700);
+        byte[] rewritten = new byte[1000];
+        random.nextBytes(rewritten);
+        shareeNow.getByPath(fileSpace).join().get()
+                .overwriteFile(AsyncReader.build(rewritten), rewritten.length, shareeNow.network, crypto, x -> {}).join();
+        UserContext again = login(owner.username, password);
+        Assert.assertArrayEquals(later, read(again, s4.resolve("later.bin")));
+        Assert.assertArrayEquals(rewritten, read(again, fileSpace));
+        Assert.assertFalse(again.isMovingToHybridWriters().join());
+    }
+
     @Test
     public void loneAccountMoves() {
         SigningKeyPair.HYBRID_WRITERS = false;
