@@ -924,6 +924,72 @@ public class ReplicationTests {
     }
 
     @Test
+    public void identitiesNamingServersTheirSenderWontServeCostItsBudgetNotTheRound() {
+        Network net = new Network();
+        Node victim = net.node(100), evil = net.node(100);
+        Server x = new Server();
+        for (int i = 0; i < 3; i++) {
+            Node honest = net.node(100);
+            honest.replica.add(x.subject, x.inception);
+            victim.syncWith(honest);
+        }
+        Map<Subject, List<SignedRecord>> orphans = new HashMap<>();
+        for (int i = 0; i < 40; i++) {
+            IdentityInception orphan = new Server().admit(key());
+            orphans.put(Subject.identity(orphan.identityHash()), List.of(orphan));
+        }
+        List<JdbcRoutingStore.State> claimed = orphans.entrySet().stream()
+                .map(e -> new JdbcRoutingStore.State(e.getKey(), victim.replica.stateHash(e.getValue())))
+                .sorted(Comparator.comparingInt((JdbcRoutingStore.State st) -> Reconciliation.slot(st.subject.idBytes()))
+                        .thenComparing(st -> st.subject))
+                .toList();
+        AtomicInteger askedForServers = new AtomicInteger();
+        victim.routing.addSyncPeer(new LocalPeer(victim.id, evil) {
+            @Override
+            public CompletableFuture<List<Reconciliation.Summary>> summaries(int kind, List<Reconciliation.Range> ranges) {
+                if (kind != Subject.IDENTITY)
+                    return super.summaries(kind, ranges);
+                byte[] fingerprint = new byte[32];
+                fingerprint[0] = 1;
+                return CompletableFuture.completedFuture(Collections.nCopies(ranges.size(), new Reconciliation.Summary(1, fingerprint)));
+            }
+
+            @Override
+            public CompletableFuture<List<JdbcRoutingStore.State>> states(int kind, Reconciliation.Range range, Reconciliation.Cursor after, int limit) {
+                if (kind != Subject.IDENTITY)
+                    return super.states(kind, range, after, limit);
+                return CompletableFuture.completedFuture(claimed.stream()
+                        .filter(st -> range.contains(st.subject.idBytes()) && after.isBefore(st.subject))
+                        .limit(limit)
+                        .toList());
+            }
+
+            @Override
+            public CompletableFuture<Map<Subject, List<SignedRecord>>> recordsOf(List<Subject> subjects) {
+                Map<Subject, List<SignedRecord>> res = new HashMap<>();
+                for (Subject s : subjects)
+                    if (orphans.containsKey(s))
+                        res.put(s, orphans.get(s));
+                return CompletableFuture.completedFuture(res);
+            }
+
+            @Override
+            public CompletableFuture<List<SignedRecord>> records(Subject s) {
+                askedForServers.incrementAndGet();
+                return CompletableFuture.failedFuture(new IllegalStateException("Timed out"));
+            }
+        });
+
+        victim.routing.syncRound();
+        Assert.assertEquals(RoutingNode.MAX_FAILURES_PER_PEER, askedForServers.get());
+        Assert.assertTrue(victim.replica.log(x.subject).inception().isPresent());
+        victim.routing.syncRound();
+        Assert.assertEquals(2 * RoutingNode.MAX_FAILURES_PER_PEER, askedForServers.get());
+        Assert.assertTrue("it failed two rounds running", victim.routing.unreachable().contains(evil.id));
+        Assert.assertTrue(victim.routing.isSynced());
+    }
+
+    @Test
     public void aNodeAnswersNotSyncedYetUntilARoundFindsNothingNew() throws Exception {
         Network net = new Network();
         Node a = net.node(100), b = net.node(100), lonely = net.node(100);
