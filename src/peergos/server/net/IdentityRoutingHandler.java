@@ -20,12 +20,29 @@ public class IdentityRoutingHandler implements HttpHandler {
     private static final Logger LOG = Logging.LOG();
     private static final int MAX_BODY = 64 * 1024;
 
+    /** Record requests from one address: anyone can make them, and one for an identity hosted elsewhere may make
+     *  this server ask that identity's providers.
+     */
+    public static final peergos.server.routing.RateLimits.Rate RECORDS_PER_ADDRESS = new peergos.server.routing.RateLimits.Rate(120, 500);
+
     private final IdentityRouting routing;
     private final boolean isPublicServer;
+    private final peergos.server.routing.RateLimits.TokenBuckets<String> recordRequests =
+            new peergos.server.routing.RateLimits.TokenBuckets<>(RECORDS_PER_ADDRESS, System::currentTimeMillis);
 
     public IdentityRoutingHandler(IdentityRouting routing, boolean isPublicServer) {
         this.routing = routing;
         this.isPublicServer = isPublicServer;
+    }
+
+    /** The address a request came from, or one name for all of those from this machine, as behind a reverse proxy. */
+    private static String client(HttpExchange exchange) {
+        java.net.InetAddress addr = exchange.getRemoteAddress().getAddress();
+        if (addr == null || addr.isLoopbackAddress())
+            return "local";
+        byte[] raw = addr.getAddress();
+        // one IPv6 customer holds a /64 at least
+        return ArrayOps.bytesToHex(raw.length == 16 ? Arrays.copyOf(raw, 8) : raw);
     }
 
     public void handle(HttpExchange exchange) {
@@ -45,6 +62,10 @@ public class IdentityRoutingHandler implements HttpHandler {
                     result = routing.status(identity(params)).join();
                     break;
                 case "records":
+                    if (! recordRequests.tryTake(client(exchange))) {
+                        HttpUtil.replyErrorWithCode(exchange, 429, "Too many requests for routing records");
+                        return;
+                    }
                     result = new CborObject.CborList(routing.records(identity(params)).join().stream()
                             .map(RecordType::tag)
                             .collect(Collectors.toList()));

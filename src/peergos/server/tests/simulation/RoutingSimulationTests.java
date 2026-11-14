@@ -379,7 +379,7 @@ public class RoutingSimulationTests {
 
         List<SignedRecord> forged = new ArrayList<>();
         IdentityMove real = IdentityMove.build(owner, List.of(attacker), 6).join();
-        for (int i = 0; i < RoutingHandler.MAX_ITEMS; i++) {
+        for (int i = 0; i < RoutingNode.MAX_UNSOLICITED_RECORDS; i++) {
             byte[] sig = real.signature.clone();
             sig[i % sig.length] ^= (byte) (1 + i / sig.length);
             forged.add(RecordType.withSignature(new IdentityMove(owner.publicSigningKey, List.of(attacker), 6 + i, real.signature), sig));

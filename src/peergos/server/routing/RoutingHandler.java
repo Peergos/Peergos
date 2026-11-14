@@ -56,8 +56,7 @@ public class RoutingHandler implements HttpHandler {
 
     /** Whether the caller may make this call now. */
     public boolean allow(String method, Multihash caller) {
-        RoutingReplica replica = node.replica();
-        boolean proven = replica.serverForPeer(caller).filter(log -> replica.isProven(log.subject(), false)).isPresent();
+        boolean proven = node.isProvenServer(caller);
         Multihash key = proven ? caller : POOL;
         switch (method) {
             case "summaries":
@@ -106,8 +105,7 @@ public class RoutingHandler implements HttpHandler {
         switch (method) {
             case "announce": {
                 List<JdbcRoutingStore.State> changed = m.getList("c", Reconciliation::state);
-                node.announced(caller, changed.stream().limit(MAX_ITEMS).collect(Collectors.toList()));
-                return new CborObject.CborBoolean(true);
+                return new CborObject.CborBoolean(node.announced(caller, changed.stream().limit(MAX_ITEMS).collect(Collectors.toList())));
             }
             case "records":
                 return new CborObject.CborList(node.records(Subject.fromCbor(m.get("s"))).stream()

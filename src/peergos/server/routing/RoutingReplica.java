@@ -36,6 +36,11 @@ public class RoutingReplica {
     private final Map<ByteArrayWrapper, Integer> ranks = Collections.synchronizedMap(new LRUCache<>(100_000));
     /** Full records fetched for a state, so serving it again doesn't ask its provider again. */
     private final Map<ByteArrayWrapper, List<SignedRecord>> filled = Collections.synchronizedMap(new LRUCache<>(1_000));
+    /** States being fetched, so everyone asking for one waits on the same fetch. */
+    private final Map<ByteArrayWrapper, CompletableFuture<List<SignedRecord>>> filling = new ConcurrentHashMap<>();
+    /** States whose providers couldn't supply them, and when to ask again. */
+    private final Map<ByteArrayWrapper, Long> unfillable = Collections.synchronizedMap(new LRUCache<>(10_000));
+    private static final long UNFILLABLE_MILLIS = 60_000;
 
     public RoutingReplica(JdbcRoutingStore store, RecordValidator validator, Work identityWork, Work serverWork) {
         this.store = store;
@@ -168,6 +173,20 @@ public class RoutingReplica {
         return records.stream().allMatch(r -> isHeld(s, r));
     }
 
+    /** Those of the records this node doesn't hold, found by their hashes. */
+    public List<SignedRecord> notHeld(Subject s, List<SignedRecord> records) {
+        Set<ByteArrayWrapper> held = new HashSet<>();
+        for (Verified<? extends SignedRecord> v : log(s).held())
+            held.add(new ByteArrayWrapper(ArrayOps.concat(v.hash, RecordType.extras(v.record).serialize())));
+        if (held.isEmpty())
+            return records;
+        List<SignedRecord> res = new ArrayList<>();
+        for (SignedRecord r : records)
+            if (! held.contains(new ByteArrayWrapper(ArrayOps.concat(hash(r), RecordType.extras(r).serialize()))))
+                res.add(r);
+        return res;
+    }
+
     /** Already held with the same proofs, so a record sent again costs a hash, not a signature check. */
     private boolean isHeld(Subject s, SignedRecord record) {
         byte[] hash = hash(record);
@@ -254,43 +273,83 @@ public class RoutingReplica {
         Subject s = canonical(requested);
         SubjectLog log = log(s);
         List<Verified<? extends SignedRecord>> held = log.held();
+        if (held.stream().noneMatch(v -> v.record.isStripped())) {
+            List<SignedRecord> res = new ArrayList<>();
+            for (Verified<? extends SignedRecord> v : held)
+                res.add(v.record);
+            return res;
+        }
+        ByteArrayWrapper state = new ByteArrayWrapper(digest(held));
+        List<SignedRecord> cached = filled.get(state);
+        if (cached != null)
+            return cached;
+        Long retryAt = unfillable.get(state);
+        if (retryAt != null && retryAt > System.currentTimeMillis())
+            throw new IllegalStateException("Couldn't fetch the full records of " + s);
+        CompletableFuture<List<SignedRecord>> mine = new CompletableFuture<>();
+        CompletableFuture<List<SignedRecord>> running = filling.putIfAbsent(state, mine);
+        if (running != null) {
+            try {
+                return running.get(FETCH_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                throw new IllegalStateException("Couldn't fetch the full records of " + s);
+            }
+        }
+        try {
+            List<SignedRecord> res = fill(s, log, held, dial);
+            filled.put(state, res);
+            if (compactFor.map(self -> keepsFull(self, log)).orElse(false))
+                restore(s, held, res);
+            mine.complete(res);
+            return res;
+        } catch (RuntimeException e) {
+            unfillable.put(state, System.currentTimeMillis() + UNFILLABLE_MILLIS);
+            mine.completeExceptionally(e);
+            throw e;
+        } finally {
+            filling.remove(state, mine);
+        }
+    }
+
+    /** Whether a subject's full records are here to hand out, without asking its providers. */
+    public boolean servesAtOnce(Subject requested) {
+        List<Verified<? extends SignedRecord>> held = log(canonical(requested)).held();
+        return held.stream().noneMatch(v -> v.record.isStripped())
+                || filled.containsKey(new ByteArrayWrapper(digest(held)));
+    }
+
+    /** Asks each source in turn for the signatures dropped, all within one deadline. */
+    private List<SignedRecord> fill(Subject s, SubjectLog log, List<Verified<? extends SignedRecord>> held, Function<Multihash, RoutingPeer> dial) {
         Map<ByteArrayWrapper, byte[]> signatures = new HashMap<>();
         for (Verified<? extends SignedRecord> v : held)
             if (v.record.isStripped())
                 signatures.put(new ByteArrayWrapper(v.hash), null);
-        ByteArrayWrapper state = new ByteArrayWrapper(digest(held));
-        if (! signatures.isEmpty()) {
-            List<SignedRecord> cached = filled.get(state);
-            if (cached != null)
-                return cached;
-            for (Multihash source : sources(log)) {
-                if (compactFor.map(self -> self.equals(source.bareMultihash())).orElse(false))
-                    continue;
-                try {
-                    for (SignedRecord r : dial.apply(source).records(s).get(FETCH_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-                        ByteArrayWrapper h = new ByteArrayWrapper(hash(r));
-                        if (! r.isStripped() && signatures.containsKey(h))
-                            signatures.put(h, r.signature);
-                    }
-                } catch (Exception e) {
-                    LOG.log(Level.FINE, "Couldn't fetch " + s + " from " + source + ": " + e.getMessage());
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(FETCH_TIMEOUT_SECONDS);
+        for (Multihash source : sources(log)) {
+            if (compactFor.map(self -> self.equals(source.bareMultihash())).orElse(false))
+                continue;
+            long left = deadline - System.nanoTime();
+            if (left <= 0)
+                break;
+            try {
+                for (SignedRecord r : dial.apply(source).records(s).get(left, TimeUnit.NANOSECONDS)) {
+                    ByteArrayWrapper h = new ByteArrayWrapper(hash(r));
+                    if (! r.isStripped() && signatures.containsKey(h))
+                        signatures.put(h, r.signature);
                 }
-                if (! signatures.containsValue(null))
-                    break;
+            } catch (Exception e) {
+                LOG.log(Level.FINE, "Couldn't fetch " + s + " from " + source + ": " + e.getMessage());
             }
-            if (signatures.containsValue(null))
-                throw new IllegalStateException("Couldn't fetch the full records of " + s);
+            if (! signatures.containsValue(null))
+                break;
         }
+        if (signatures.containsValue(null))
+            throw new IllegalStateException("Couldn't fetch the full records of " + s);
         List<SignedRecord> res = new ArrayList<>();
         for (Verified<? extends SignedRecord> v : held)
             res.add(v.record.isStripped() ?
                     RecordType.withSignature(v.record, signatures.get(new ByteArrayWrapper(v.hash))) :
                     v.record);
-        if (! signatures.isEmpty()) {
-            filled.put(state, res);
-            if (compactFor.map(self -> keepsFull(self, log)).orElse(false))
-                restore(s, held, res);
-        }
         return res;
     }
 
