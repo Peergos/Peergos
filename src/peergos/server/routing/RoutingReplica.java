@@ -236,6 +236,9 @@ public class RoutingReplica {
      */
     public int takeAll(Map<Subject, List<SignedRecord>> page) {
         Map<Subject, List<Verified<? extends SignedRecord>>> verified = new ConcurrentHashMap<>();
+        // Inceptions whose proof and admission were checked here, on every thread, not again one at a time below.
+        // By instance: records are equal when their signed bytes are, whatever admission they carry.
+        Set<SignedRecord> proven = Collections.newSetFromMap(Collections.synchronizedMap(new IdentityHashMap<>()));
         page.entrySet().parallelStream().forEach(e -> {
             Subject s = canonical(e.getKey());
             List<Verified<? extends SignedRecord>> ok = new ArrayList<>();
@@ -244,8 +247,8 @@ public class RoutingReplica {
                     continue;
                 try {
                     ok.add(validator.verify(r).join());
-                    if (isInception(r))
-                        isProven(s, r, true); // remembered, for when the page is stored
+                    if (isInception(r) && isProven(s, r, true))
+                        proven.add(r);
                 } catch (RuntimeException invalid) {}
             }
             if (! ok.isEmpty())
@@ -261,7 +264,10 @@ public class RoutingReplica {
                 Subject s = e.getKey();
                 SubjectLog before = log(s);
                 SubjectLog log = SubjectLog.build(before, e.getValue());
-                if (log.inception().isEmpty() || ! isProven(s, log.inception().get().record, true))
+                if (log.inception().isEmpty())
+                    continue;
+                SignedRecord inception = log.inception().get().record;
+                if (! proven.contains(inception) && ! isProven(s, inception, true))
                     continue;
                 if (Arrays.equals(digest(log.held()), digest(before.held())))
                     continue;
@@ -531,9 +537,16 @@ public class RoutingReplica {
         return legacy ? (subject, proof) -> CompletableFuture.completedFuture(true) : identityWork;
     }
 
+    private final java.util.concurrent.atomic.AtomicLong admissionChecks = new java.util.concurrent.atomic.AtomicLong();
+
+    public long admissionChecks() {
+        return admissionChecks.get();
+    }
+
     private int admittingKeyIndex(Subject s, IdentityInception ii) {
         if (ii.admission.isEmpty())
             return -1;
+        admissionChecks.incrementAndGet();
         Work work = admissionWork(s);
         Optional<ServerLog> admitter = server(Subject.server(ii.admittingServer()));
         if (admitter.isEmpty())
