@@ -20,8 +20,8 @@ import peergos.shared.util.Constants;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -193,7 +193,12 @@ public class AndroidFileReflector implements HttpHandler {
     }
 
     private static String decode(String value) {
-        return URLDecoder.decode(value, StandardCharsets.UTF_8);
+        // not the Charset overload: Android has that only from API 33, and the app runs from API 30
+        try {
+            return URLDecoder.decode(value, "UTF-8");
+        } catch (UnsupportedEncodingException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     /** Write an entry, or a whole directory of them, into a zip being streamed to the download

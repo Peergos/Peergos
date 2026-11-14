@@ -161,7 +161,8 @@ public class ConfigHandler implements HttpHandler {
                     return;
                 }
                 String encoded = params.containsKey("url") ? last.apply("url") : "";
-                String newServerUrl = validateServerUrl(URLDecoder.decode(encoded, StandardCharsets.UTF_8));
+                // not the Charset overload: Android has that only from API 33, and the app runs from API 30
+                String newServerUrl = validateServerUrl(URLDecoder.decode(encoded, "UTF-8"));
                 UserService.LocalAppProperties props = localAppProps.get();
                 saveServerUrl(props.peergosDir.resolve("config"), newServerUrl);
                 Map<String, Object> json = new LinkedHashMap<>();
