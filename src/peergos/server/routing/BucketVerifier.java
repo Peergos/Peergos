@@ -40,7 +40,10 @@ public class BucketVerifier {
     private final Voucher voucher;
     private final LongSupplier clock;
     private final ExecutorService background;
-    private final LRUCache<Multihash, Checked> checked = new LRUCache<>(100_000);
+    /** Every server that admits identities is asked for, so one falling out of this would be charged to the
+     *  shared bucket until it is reached again.
+     */
+    private final LRUCache<Multihash, Checked> checked = new LRUCache<>(1_000_000);
     private final Set<Multihash> verifying = ConcurrentHashMap.newKeySet();
 
     private static final class Checked {
