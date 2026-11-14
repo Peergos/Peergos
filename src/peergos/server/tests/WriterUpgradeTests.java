@@ -9,6 +9,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.mldsa.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.mutable.*;
 import peergos.server.storage.*;
@@ -92,6 +93,31 @@ public class WriterUpgradeTests {
         return DeletableContentAddressedStorage.getDirectOwnedKeys(owner, claimant, MaybeMultihash.of(rootHash),
                 (h, seq) -> Futures.of(new CommittedWriterData(MaybeMultihash.of(h), root, seq)),
                 w -> service.mutable.getPointer(owner, w), service.storage, crypto.hasher).join();
+    }
+
+    /** A re-linked signer stays readable by clients without composite keys, and keeps its upgrade */
+    @Test
+    public void relinkedSignerKeepsEd25519Secret() {
+        SigningKeyPair pair = SigningKeyPair.random(crypto.random, crypto.signer);
+        SigningPrivateKeyAndPublicHash ed = new SigningPrivateKeyAndPublicHash(
+                ContentAddressedStorage.hashKey(pair.publicSigningKey), pair.secretSigningKey);
+        SymmetricKey first = SymmetricKey.random(), second = SymmetricKey.random();
+        SigningPrivateKeyAndPublicHash upgradable = SymmetricLinkToSigner.fromPair(first, ed).target(first);
+        Assert.assertTrue(upgradable.isUpgradable());
+
+        byte[] relinked = SymmetricLinkToSigner.fromPair(second, upgradable).serialize();
+        CborObject.CborMap stored = (CborObject.CborMap) CipherText.fromCbor(CborObject.fromByteArray(relinked))
+                .decrypt(second, c -> c);
+        Assert.assertEquals(pair.secretSigningKey, edSecret(stored.get("s")));
+
+        SigningPrivateKeyAndPublicHash again = SymmetricLinkToSigner.fromCbor(CborObject.fromByteArray(relinked)).target(second);
+        Assert.assertEquals(upgradable.upgradedKey().get(), again.upgradedKey().get());
+    }
+
+    private static SecretSigningKey edSecret(Cborable cbor) {
+        SecretSigningKey key = SecretSigningKey.fromCbor(cbor);
+        Assert.assertEquals(PublicSigningKey.Type.Ed25519, key.type());
+        return key;
     }
 
     @Test

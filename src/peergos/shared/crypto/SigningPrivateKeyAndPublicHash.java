@@ -69,7 +69,13 @@ public class SigningPrivateKeyAndPublicHash implements Cborable {
     public CborObject toCbor() {
         Map<String, Cborable> result = new TreeMap<>();
         result.put("p", publicKeyHash.toCbor());
-        result.put("s", secret.toCbor());
+        // an upgradable writer keeps its Ed25519 secret where clients without composite keys can read it
+        if (isUpgradable()) {
+            HybridEd25519MLDSASecretKey composite = (HybridEd25519MLDSASecretKey) secret;
+            result.put("s", composite.ed25519.toCbor());
+            result.put("m", new CborObject.CborByteArray(composite.mldsaSeed()));
+        } else
+            result.put("s", secret.toCbor());
         return CborObject.CborMap.build(result);
     }
 
@@ -80,6 +86,9 @@ public class SigningPrivateKeyAndPublicHash implements Cborable {
         CborObject.CborMap map = (CborObject.CborMap) cbor;
         PublicKeyHash publicKeyHash = PublicKeyHash.fromCbor(map.get("p"));
         SecretSigningKey secretKey = SecretSigningKey.fromCbor(map.get("s"));
+        Mldsa mldsa = PublicSigningKey.MLDSA_PROVIDERS.get(PublicSigningKey.Type.HybridEd25519MLDSA);
+        if (map.containsKey("m") && mldsa != null && secretKey.type() == PublicSigningKey.Type.Ed25519)
+            secretKey = new HybridEd25519MLDSASecretKey(secretKey, map.getByteArray("m"), mldsa);
         return new SigningPrivateKeyAndPublicHash(publicKeyHash, secretKey);
     }
 

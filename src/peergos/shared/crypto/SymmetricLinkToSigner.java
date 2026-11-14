@@ -32,7 +32,8 @@ public class SymmetricLinkToSigner implements Cborable
 
     /** An Ed25519 writer upgrades to a composite key that keeps its Ed25519 half and takes its ML-DSA seed from the
      *  key protecting this link. Everyone who can sign as the writer has that key and a CRQC can't recover it, so
-     *  they all derive the same upgrade and nothing in the cryptree has to change to hold it.
+     *  they all derive the same upgrade and nothing in the cryptree has to change to hold it. A link written since
+     *  carries the seed, so the upgrade survives re-linking under a new key.
      */
     private static SigningPrivateKeyAndPublicHash withUpgrade(SigningPrivateKeyAndPublicHash signer, SymmetricKey from) {
         if (! signer.publicKeyHash.isIdentity() || signer.secret.type() != PublicSigningKey.Type.Ed25519)
