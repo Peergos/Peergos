@@ -51,6 +51,30 @@ public class RoutingReplica {
         this.serverWork = serverWork;
         for (int i = 0; i < LOCKS; i++)
             locks[i] = new Object();
+        if (! store.getMeta(STATE_HASH).map(v -> Arrays.equals(v, STATE_HASH_VERSION)).orElse(false))
+            rehash();
+    }
+
+    private static final String STATE_HASH = "statehash";
+    private static final byte[] STATE_HASH_VERSION = {2};
+
+    /** A store written when state hashes were computed another way has them computed again, once. */
+    private void rehash() {
+        for (int kind : new int[]{Subject.SERVER, Subject.IDENTITY}) {
+            byte[] after = new byte[0];
+            while (true) {
+                List<Subject> page = store.subjects(kind, after, 1_000);
+                List<JdbcRoutingStore.Put> puts = new ArrayList<>();
+                for (Subject s : page)
+                    puts.add(new JdbcRoutingStore.Put(s, store.get(s), digest(log(s).held())));
+                if (! puts.isEmpty())
+                    store.putAll(puts);
+                if (page.size() < 1_000)
+                    break;
+                after = page.get(page.size() - 1).idBytes();
+            }
+        }
+        store.setMeta(STATE_HASH, STATE_HASH_VERSION);
     }
 
     public JdbcRoutingStore store() {
@@ -314,7 +338,8 @@ public class RoutingReplica {
     }
 
     /** What reconciliation compares, and a compact replica can compute without signatures: the hash of each record
-     *  held, with its proofs, in canonical order.
+     *  held and the hash of its proofs, in canonical order. The proofs go in by their hash so that a replica could
+     *  keep that in place of an admission, whose signature is the server's and may be far larger than the record.
      */
     /** Of the records as a set: two nodes that saw an identity's two inceptions in opposite orders keep different
      *  ones first, but hold the same records, and must not refetch them from each other every round.
@@ -324,7 +349,8 @@ public class RoutingReplica {
         List<Verified<? extends SignedRecord>> sorted = new ArrayList<>(held);
         sorted.sort((a, b) -> ArrayOps.compare(a.hash, b.hash));
         for (Verified<? extends SignedRecord> v : sorted)
-            entries.add(new CborObject.CborList(Arrays.asList(new CborObject.CborByteArray(v.hash), RecordType.extras(v.record))));
+            entries.add(new CborObject.CborList(Arrays.asList(new CborObject.CborByteArray(v.hash),
+                    new CborObject.CborByteArray(validator.hasher().sha256(RecordType.extras(v.record).serialize()).join()))));
         return validator.hasher().sha256(new CborObject.CborList(entries).toByteArray()).join();
     }
 
