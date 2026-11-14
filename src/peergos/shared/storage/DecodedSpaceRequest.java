@@ -51,7 +51,7 @@ public class DecodedSpaceRequest {
                             if (! keyOpt.isPresent())
                                 throw new IllegalStateException("Couldn't retrieve public key for " + req.username);
                             PublicSigningKey pubKey = keyOpt.get();
-                            return pubKey.unsignMessage(req.signedRequest).thenApply(raw -> {
+                            return pubKey.unsignMessage(req.signedRequest, SigningDomain.SPACE_REQUEST).thenApply(raw -> {
                                 QuotaControl.SpaceRequest parsed = QuotaControl.SpaceRequest.fromCbor(CborObject.fromByteArray(raw));
                                 if (! parsed.username.equals(req.username))
                                     throw new IllegalStateException("Space request for " + parsed.username + " labelled " + req.username);

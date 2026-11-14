@@ -152,7 +152,7 @@ public class GarbageCollector {
         allPointers.forEach((writerHash, signedRawCas) -> {
             PublicKeyHash owner = usage.getOwnerKey(writerHash);
             PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(owner, writerHash).join().get());
-            byte[] bothHashes = writer.unsignMessage(signedRawCas).join();
+            byte[] bothHashes = writer.unsignMessage(signedRawCas, SigningDomain.POINTER).join();
             PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
             MaybeMultihash updated = cas.updated;
             if (updated.isPresent() && !done.contains(updated.get())) {
@@ -216,13 +216,13 @@ public class GarbageCollector {
             System.out.println("From pki:");
             while (! queue.isEmpty()) {
                 PublicKeyHash parent = queue.poll();
-                PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(null, parent).join().get());
+                PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(fromPki, parent).join().get());
                 Optional<byte[]> pointer = pointers.getPointer(parent).join();
                 if (pointer.isEmpty()) {
                     System.out.println("No pointer for " + parent);
                     continue;
                 }
-                byte[] bothHashes = writer.unsignMessage(pointer.get()).join();
+                byte[] bothHashes = writer.unsignMessage(pointer.get(), SigningDomain.POINTER).join();
                 PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
                 List<Cid> ids = storage.ids().join();
                 List<Multihash> peerIds = ids.stream().map(m -> (Multihash) m).collect(Collectors.toList());
@@ -245,8 +245,8 @@ public class GarbageCollector {
                 .filter(p -> p.right.isPresent())
                 .collect(Collectors.toMap(p -> p.left, p -> p.right.get()));
         userPointers.forEach((writerHash, signedRawCas) -> {
-            PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(null, writerHash).join().get());
-            byte[] bothHashes = writer.unsignMessage(signedRawCas).join();
+            PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(fromPki, writerHash).join().get());
+            byte[] bothHashes = writer.unsignMessage(signedRawCas, SigningDomain.POINTER).join();
             PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
             MaybeMultihash updated = cas.updated;
             if (updated.isPresent() && !done.contains(updated.get())) {
@@ -580,7 +580,7 @@ public class GarbageCollector {
                                                      byte[] signedRawCas,
                                                      DeletableContentAddressedStorage storage) {
         PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(owner, writerHash).join().get());
-        byte[] bothHashes = writer.unsignMessage(signedRawCas).join();
+        byte[] bothHashes = writer.unsignMessage(signedRawCas, SigningDomain.POINTER).join();
         PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
         return cas.updated;
     }

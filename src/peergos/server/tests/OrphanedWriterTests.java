@@ -1,5 +1,7 @@
 package peergos.server.tests;
 
+import peergos.shared.crypto.asymmetric.SigningDomain;
+
 import org.junit.*;
 import peergos.server.*;
 import peergos.server.storage.*;
@@ -168,7 +170,7 @@ public class OrphanedWriterTests {
         SigningKeyPair pair = SigningKeyPair.random(crypto.random, crypto.signer);
         List<PublicKeyHash> result = new ArrayList<>();
         network.synchronizer.applyComplexUpdate(owner, parent, (v, c) -> parent.secret
-                .signMessage(pair.publicSigningKey.serialize())
+                .signMessage(pair.publicSigningKey.serialize(), SigningDomain.SIGNING_KEY)
                 .thenCompose(signature -> IpfsTransaction.call(owner, tid -> network.dhtClient
                         .putSigningKey(signature, owner, parent.publicKeyHash, pair.publicSigningKey, tid)
                         .thenCompose(hash -> {

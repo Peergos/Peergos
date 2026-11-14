@@ -6,6 +6,7 @@ import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.asymmetric.mldsa.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
@@ -20,7 +21,16 @@ import java.util.concurrent.*;
 import java.util.stream.*;
 
 public class UserRepository implements SocialNetwork, MutablePointers {
-    public static final int MAX_POINTER_SIZE = TweetNaCl.SIGNATURE_SIZE_BYTES + 2 + 2*36 + 9; // Signature overhead + 2 cids + 2 (cbor list[3]) + cbor long
+    private static final int MAX_POINTER_PAYLOAD = 2 + 2*36 + 9; // 2 cids + 2 (cbor list[3]) + cbor long
+    public static final int MAX_POINTER_SIZE = TweetNaCl.SIGNATURE_SIZE_BYTES + MAX_POINTER_PAYLOAD;
+
+    public static final int MAX_HYBRID_POINTER_SIZE = HybridEd25519MLDSAPublicKey.SIGNATURE_SIZE_BYTES + MAX_POINTER_PAYLOAD;
+
+    public static int maxPointerSize(PublicSigningKey writer) {
+        return writer.type() == PublicSigningKey.Type.HybridEd25519MLDSA ?
+                MAX_HYBRID_POINTER_SIZE :
+                MAX_POINTER_SIZE;
+    }
 
     private final DeletableContentAddressedStorage ipfs;
     private final JdbcIpnsAndSocial store;
@@ -52,7 +62,7 @@ public class UserRepository implements SocialNetwork, MutablePointers {
     public CompletableFuture<Boolean> removeFollowRequest(PublicKeyHash owner, byte[] data) {
         return ipfs.getSigningKey(owner, owner).thenCompose(signerOpt -> {
             try {
-                byte[] unsigned = signerOpt.get().unsignMessage(data).join();
+                byte[] unsigned = signerOpt.get().unsignMessage(data, SigningDomain.FOLLOW_REQUEST_REMOVAL).join();
                 return store.removeFollowRequest(owner, unsigned);
             } catch (TweetNaCl.InvalidSignatureException e) {
                 return CompletableFuture.completedFuture(false);
@@ -71,12 +81,12 @@ public class UserRepository implements SocialNetwork, MutablePointers {
                 .thenCompose(current -> ipfs.getSigningKey(owner, writer)
                         .thenCompose(writerOpt -> {
                             try {
-                                if (writerSignedBtreeRootHash.length > MAX_POINTER_SIZE)
-                                    throw new IllegalStateException("Pointer update too big! " + writerSignedBtreeRootHash.length);
                                 if (! writerOpt.isPresent())
                                     throw new IllegalStateException("Couldn't retrieve writer key from ipfs with hash " + writer);
                                 PublicSigningKey writerKey = writerOpt.get();
-                                byte[] bothHashes = writerKey.unsignMessage(writerSignedBtreeRootHash).join();
+                                if (writerSignedBtreeRootHash.length > maxPointerSize(writerKey))
+                                    throw new IllegalStateException("Pointer update too big! " + writerSignedBtreeRootHash.length);
+                                byte[] bothHashes = writerKey.unsignMessage(writerSignedBtreeRootHash, SigningDomain.POINTER).join();
                                 PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
                                 MaybeMultihash claimedCurrentHash = cas.original;
 
@@ -116,12 +126,12 @@ public class UserRepository implements SocialNetwork, MutablePointers {
                 .thenCompose(current -> ipfs.getSigningKey(owner, u.writer)
                         .thenCompose(writerOpt -> {
                             try {
-                                if (u.signed.length > MAX_POINTER_SIZE)
-                                    throw new IllegalStateException("Pointer update too big! " + u.signed.length);
                                 if (!writerOpt.isPresent())
                                     throw new IllegalStateException("Couldn't retrieve writer key from ipfs with hash " + u.writer);
                                 PublicSigningKey writerKey = writerOpt.get();
-                                byte[] bothHashes = writerKey.unsignMessage(u.signed).join();
+                                if (u.signed.length > maxPointerSize(writerKey))
+                                    throw new IllegalStateException("Pointer update too big! " + u.signed.length);
+                                byte[] bothHashes = writerKey.unsignMessage(u.signed, SigningDomain.POINTER).join();
                                 PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
                                 return MutablePointers.isValidUpdate(writerKey, current, cas.original, cas.sequence)
                                         .thenCompose(x -> {

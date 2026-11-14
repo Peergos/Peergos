@@ -146,9 +146,9 @@ public class HttpSpaceUsage implements SpaceUsageProxy {
     }
 
     private CompletableFuture<WriterUsageInfo> getWriterUsage(String urlPrefix, HttpPoster poster, PublicKeyHash owner, PublicKeyHash writer, byte[] signedRequest) {
-        return poster.get(urlPrefix + Constants.SPACE_USAGE_URL + "writer-usage?owner=" + encode(owner.toString())
-                + "&writer=" + encode(writer.toString())
-                + "&auth=" + ArrayOps.bytesToHex(signedRequest))
+        // in the body, as a composite key's signature is too big for a url
+        return poster.post(urlPrefix + Constants.SPACE_USAGE_URL + "writer-usage?owner=" + encode(owner.toString())
+                + "&writer=" + encode(writer.toString()), signedRequest, false)
                 .thenApply(res -> WriterUsageInfo.fromCbor(CborObject.fromByteArray(res)));
     }
 

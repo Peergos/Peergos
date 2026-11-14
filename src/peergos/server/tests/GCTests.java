@@ -1,5 +1,7 @@
 package peergos.server.tests;
 
+import peergos.shared.crypto.asymmetric.SigningDomain;
+
 import org.junit.*;
 import org.peergos.*;
 import peergos.server.JavaCrypto;
@@ -80,7 +82,7 @@ public class GCTests {
         storage.add(writer, leaf);
         BlockVersion rootV1 = storage.add(writer, root);
         metadb.put(writer, root, rootV1.version, raw);
-        byte[] signedCas = signer.signMessage(new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(root), Optional.of(1L)).serialize()).join();
+        byte[] signedCas = signer.signMessage(new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(root), Optional.of(1L)).serialize(), SigningDomain.POINTER).join();
         pointers.setPointer(writer, Optional.empty(), signedCas).join();
         String username = "user";
         usage.addUserIfAbsent(username);
@@ -112,7 +114,7 @@ public class GCTests {
         storage.add(writer, leaf2);
         BlockVersion rootV1b = storage.add(writer, root2);
         metadb.put(writer, root2, rootV1b.version, raw2);
-        byte[] signedCas2 = signer.signMessage(new PointerUpdate(MaybeMultihash.of(root), MaybeMultihash.of(root2), Optional.of(1L)).serialize()).join();
+        byte[] signedCas2 = signer.signMessage(new PointerUpdate(MaybeMultihash.of(root), MaybeMultihash.of(root2), Optional.of(1L)).serialize(), SigningDomain.POINTER).join();
         pointers.setPointer(writer, Optional.of(signedCas), signedCas2).join();
         usage.updateWriterUsageAtomically(writer, MaybeMultihash.of(root), MaybeMultihash.of(root2),
                 Collections.emptySet(), Collections.emptySet(), 1024*1024, 0, false);
@@ -182,7 +184,7 @@ public class GCTests {
         Cid root = generateTree(42, 1000, blocks -> blocks
                         .forEach(b -> storage.storage.get(writer).put(b, true)),
                 (b, kids) -> metadb.put(writer, b, null, new BlockMetadata(10, kids, Collections.emptyList())));
-        byte[] signedCas = signer.signMessage(new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(root), Optional.of(1L)).serialize()).join();
+        byte[] signedCas = signer.signMessage(new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(root), Optional.of(1L)).serialize(), SigningDomain.POINTER).join();
         pointers.setPointer(writer, Optional.empty(), signedCas).join();
         usage.updateWriterUsageAtomically(writer, MaybeMultihash.of(randomCbor(new Random(42))), MaybeMultihash.of(root),
                 Collections.emptySet(), Collections.emptySet(), 1024*1024, 0, false);
@@ -226,7 +228,7 @@ public class GCTests {
         // Remove root so everything is GC'd and test db file size decreases
         usage.updateWriterUsageAtomically(writer, MaybeMultihash.of(root), MaybeMultihash.empty(),
                 Collections.emptySet(), Collections.emptySet(), 1024*1024, 0, false);
-        boolean setPointer = pointers.setPointer(writer, Optional.of(signedCas), signer.signMessage(new PointerUpdate(MaybeMultihash.of(root), MaybeMultihash.empty(), Optional.of(2L)).serialize()).join()).join();
+        boolean setPointer = pointers.setPointer(writer, Optional.of(signedCas), signer.signMessage(new PointerUpdate(MaybeMultihash.of(root), MaybeMultihash.empty(), Optional.of(2L)).serialize(), SigningDomain.POINTER).join()).join();
         gc.collect(s -> Futures.of(true));
         long emptySize = Files.size(dbFile);
         Assert.assertTrue(emptySize < 32*1024);
@@ -238,7 +240,7 @@ public class GCTests {
         Cid root2 = generateTree(42, 1000, blocks -> blocks
                         .forEach(b -> storage.storage.get(writer2).put(b, true)),
                 (b, kids) -> metadb.put(writer2, b, null, new BlockMetadata(10, kids, Collections.emptyList())));
-        byte[] signedCas2 = signer2.signMessage(new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(root2), Optional.of(1L)).serialize()).join();
+        byte[] signedCas2 = signer2.signMessage(new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(root2), Optional.of(1L)).serialize(), SigningDomain.POINTER).join();
         pointers.setPointer(writer2, Optional.empty(), signedCas2).join();
         usage.addWriter("user2", writer2);
         usage.updateWriterUsageAtomically(writer2, MaybeMultihash.empty(), MaybeMultihash.of(root2),
@@ -255,7 +257,7 @@ public class GCTests {
         for (Map.Entry<PublicKeyHash, byte[]> e : roots.entrySet()) {
             PublicKeyHash writerHash = e.getKey();
             PublicSigningKey writer = storage.getSigningKey(null, writerHash).join().get();
-            byte[] bothHashes = writer.unsignMessage(e.getValue()).join();
+            byte[] bothHashes = writer.unsignMessage(e.getValue(), SigningDomain.POINTER).join();
             PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
             if (cas.updated.isPresent()) {
                 Cid root = (Cid) cas.updated.get();
@@ -350,7 +352,7 @@ public class GCTests {
                 blocks -> blocks.forEach(b -> storage.storage.get(writer).put(b, true)),
                 (b, kids) -> metadb.put(writer, b, null, new BlockMetadata(10, kids, Collections.emptyList())));
         byte[] signedCas = signer.signMessage(new PointerUpdate(MaybeMultihash.empty(),
-                MaybeMultihash.of(root), Optional.of(1L)).serialize()).join();
+                MaybeMultihash.of(root), Optional.of(1L)).serialize(), SigningDomain.POINTER).join();
         pointers.setPointer(writer, Optional.empty(), signedCas).join();
         usage.updateWriterUsageAtomically(writer, MaybeMultihash.empty(), MaybeMultihash.of(root),
                 Collections.emptySet(), Collections.emptySet(), 1024*1024, 0, false);
@@ -398,7 +400,7 @@ public class GCTests {
                     metadb.put(writer, b, null, new BlockMetadata(10, kids, Collections.emptyList()));
                 });
         byte[] signedCas = signer.signMessage(new PointerUpdate(MaybeMultihash.empty(),
-                MaybeMultihash.of(root), Optional.of(1L)).serialize()).join();
+                MaybeMultihash.of(root), Optional.of(1L)).serialize(), SigningDomain.POINTER).join();
         pointers.setPointer(writer, Optional.empty(), signedCas).join();
         usage.updateWriterUsageAtomically(writer, MaybeMultihash.empty(), MaybeMultihash.of(root),
                 Collections.emptySet(), Collections.emptySet(), 1024*1024, 0, false);
@@ -498,7 +500,7 @@ public class GCTests {
         // a pointer to a block that was never uploaded - costs the user nothing to create
         Cid neverUploaded = randomCbor(new Random(99));
         byte[] signedCas = signer.signMessage(new PointerUpdate(MaybeMultihash.empty(),
-                MaybeMultihash.of(neverUploaded), Optional.of(1L)).serialize()).join();
+                MaybeMultihash.of(neverUploaded), Optional.of(1L)).serialize(), SigningDomain.POINTER).join();
         pointers.setPointer(writer, Optional.empty(), signedCas).join();
 
         GarbageCollector gc = new GarbageCollector(storage, pointers, usage, new RamPki(), dir,

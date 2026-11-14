@@ -22,7 +22,7 @@ public interface ServerMessager {
     }
 
     default CompletableFuture<Boolean> sendMessage(String username, ServerMessage message, SecretSigningKey signer) {
-        return signer.signMessage(message.serialize())
+        return signer.signMessage(message.serialize(), SigningDomain.SERVER_MESSAGE)
                 .thenCompose(signedBody -> sendMessage(username, signedBody));
     }
 

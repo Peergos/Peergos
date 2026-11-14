@@ -94,7 +94,7 @@ public class UserPublicKeyLink implements Cborable {
         // sign new claim to username, with provided expiry
         return Claim.build(username, newUser.secret, expiry, storageProviders).thenCompose(newClaim ->
                 // sign new key with old
-                oldUser.secret.signMessage(newUser.publicKeyHash.serialize()).thenCompose(link -> {
+                oldUser.secret.signMessage(newUser.publicKeyHash.serialize(), SigningDomain.KEY_CHANGE).thenCompose(link -> {
 
                     // create link from old that never expires
                     return Claim.build(username, oldUser.secret, LocalDate.MAX, Collections.emptyList())
@@ -156,7 +156,7 @@ public class UserPublicKeyLink implements Cborable {
                     Serialize.serialize(storageProvider.toBytes(), dout);
                 }
                 byte[] payload = bout.toByteArray();
-                return from.signMessage(payload)
+                return from.signMessage(payload, SigningDomain.USERNAME_CLAIM)
                         .thenApply(signed -> new Claim(username, expiryDate, storageProviders, signed));
             } catch (IOException e) {
                 throw new RuntimeException(e);
@@ -164,7 +164,7 @@ public class UserPublicKeyLink implements Cborable {
         }
 
         public static CompletableFuture<Claim> deserialize(byte[] signedContents, PublicSigningKey signer) throws IOException {
-            return signer.unsignMessage(signedContents).thenApply(contents -> {
+            return signer.unsignMessage(signedContents, SigningDomain.USERNAME_CLAIM).thenApply(contents -> {
                 try {
                     ByteArrayInputStream bin = new ByteArrayInputStream(contents);
                     DataInputStream din = new DataInputStream(bin);
@@ -315,7 +315,7 @@ public class UserPublicKeyLink implements Cborable {
             return ipfs.getSigningKey(from.owner, from.owner).thenCompose(ownerKeyOpt -> {
                 if (!ownerKeyOpt.isPresent())
                     return Futures.of(false);
-                return ownerKeyOpt.get().unsignMessage(keyChangeProof.get()).thenApply(unsigned -> {
+                return ownerKeyOpt.get().unsignMessage(keyChangeProof.get(), SigningDomain.KEY_CHANGE).thenApply(unsigned -> {
                     PublicKeyHash targetKey = PublicKeyHash.fromCbor(CborObject.fromByteArray(unsigned));
                     if (!Arrays.equals(targetKey.serialize(), target.serialize()))
                         return false;

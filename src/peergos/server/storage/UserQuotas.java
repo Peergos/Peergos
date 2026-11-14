@@ -70,7 +70,7 @@ public class UserQuotas implements QuotaAdmin {
         try {
             PublicKeyHash identity = core.getPublicKeyHash(labelled.username).join().get();
             PublicSigningKey key = dht.getSigningKey(identity, identity).join().get();
-            byte[] raw = key.unsignMessage(labelled.signedRequest).join();
+            byte[] raw = key.unsignMessage(labelled.signedRequest, SigningDomain.SPACE_REQUEST).join();
             return QuotaControl.SpaceRequest.fromCbor(CborObject.fromByteArray(raw)).username.equals(labelled.username);
         } catch (Exception e) {
             return false;
@@ -111,7 +111,7 @@ public class UserQuotas implements QuotaAdmin {
             Optional<PublicSigningKey> adminOpt = dht.getSigningKey(adminIdentity, adminIdentity).join();
             if (!adminOpt.isPresent())
                 throw new IllegalStateException("Couldn't retrieve admin key!");
-            byte[] rawFromAdmin = adminOpt.get().unsignMessage(signedRequest).join();
+            byte[] rawFromAdmin = adminOpt.get().unsignMessage(signedRequest, SigningDomain.SPACE_REQUEST_APPROVAL).join();
             SpaceUsage.LabelledSignedSpaceRequest withName = QuotaControl.LabelledSignedSpaceRequest
                     .fromCbor(CborObject.fromByteArray(rawFromAdmin));
 
@@ -123,7 +123,7 @@ public class UserQuotas implements QuotaAdmin {
             if (! userKey.isPresent())
                 throw new IllegalStateException("Couldn't retrieve user key!");
 
-            CborObject cbor = CborObject.fromByteArray(userKey.get().unsignMessage(withName.signedRequest).join());
+            CborObject cbor = CborObject.fromByteArray(userKey.get().unsignMessage(withName.signedRequest, SigningDomain.SPACE_REQUEST).join());
             SpaceUsage.SpaceRequest req = QuotaControl.SpaceRequest.fromCbor(cbor);
             setQuota(req.username, req.bytes);
             removeSpaceRequest(req.username, withName.signedRequest);

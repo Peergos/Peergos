@@ -1,5 +1,7 @@
 package peergos.server.tests;
 
+import peergos.shared.crypto.asymmetric.SigningDomain;
+
 import com.sun.net.httpserver.*;
 import org.junit.*;
 import peergos.server.*;
@@ -61,7 +63,7 @@ public class PaidCompletionQueueTests {
         java.util.function.Function<String, CompletableFuture<PaymentProperties>> complete = username -> {
             QuotaControl.SpaceRequest req = new QuotaControl.SpaceRequest(username, 1_000_000_000L, false,
                     System.currentTimeMillis(), Optional.empty());
-            byte[] signed = keys.secretSigningKey.signMessage(req.serialize()).join();
+            byte[] signed = keys.secretSigningKey.signMessage(req.serialize(), SigningDomain.SPACE_REQUEST).join();
             return filter.completePaidMirror(username, bat, signed, ProofOfWork.empty());
         };
 

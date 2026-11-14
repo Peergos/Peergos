@@ -1,5 +1,7 @@
 package peergos.server.tests;
 
+import peergos.shared.crypto.asymmetric.SigningDomain;
+
 import org.junit.*;
 import peergos.server.*;
 import peergos.server.util.*;
@@ -153,7 +155,7 @@ public class RemoveUnreachableChildTests {
                 .getPointerTarget(owner, signer.publicKeyHash, network.dhtClient).join();
         PointerUpdate cas = new PointerUpdate(current.updated, MaybeMultihash.empty(),
                 PointerUpdate.increment(current.sequence));
-        byte[] signed = signer.secret.signMessage(cas.serialize()).join();
+        byte[] signed = signer.secret.signMessage(cas.serialize(), SigningDomain.POINTER).join();
         Assert.assertTrue(network.mutable.setPointer(owner, signer.publicKeyHash, signed).join());
         network.synchronizer.clear();
     }

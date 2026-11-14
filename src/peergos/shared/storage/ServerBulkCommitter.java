@@ -1,5 +1,7 @@
 package peergos.shared.storage;
 
+import peergos.shared.crypto.asymmetric.SigningDomain;
+
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
@@ -228,7 +230,7 @@ public class ServerBulkCommitter implements BulkCommitter {
         List<Cid> inOrder = new ArrayList<>(cbor);
         inOrder.addAll(raw);
         return WriterCommit.blockListPayload(inOrder, context.nextSequence(writer), hasher)
-                .thenCompose(payload -> signer.secret.signMessage(payload))
+                .thenCompose(payload -> signer.secret.signMessage(payload, SigningDomain.BLOCK_LIST))
                 .thenApply(sig -> new WriterCommit(writer,
                         group.stream().filter(b -> ! b.isRaw).map(b -> b.data).collect(Collectors.toList()),
                         group.stream().filter(b -> b.isRaw).map(b -> b.data).collect(Collectors.toList()),

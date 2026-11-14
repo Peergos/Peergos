@@ -3,6 +3,7 @@ package peergos.shared;
 import jsinterop.annotations.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
+import peergos.shared.crypto.asymmetric.mldsa.Mldsa;
 import peergos.shared.crypto.asymmetric.mlkem.Mlkem;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
@@ -21,14 +22,16 @@ public class Crypto {
     public final Ed25519 signer;
     public final Curve25519 boxer;
     public final Mlkem mlkem;
+    public final Mldsa mldsa;
 
-    public Crypto(SafeRandom random, Hasher hasher, Salsa20Poly1305 symmetricProvider, Ed25519 signer, Curve25519 boxer, Mlkem mlkem) {
+    public Crypto(SafeRandom random, Hasher hasher, Salsa20Poly1305 symmetricProvider, Ed25519 signer, Curve25519 boxer, Mlkem mlkem, Mldsa mldsa) {
         this.random = random;
         this.hasher = hasher;
         this.symmetricProvider = symmetricProvider;
         this.signer = signer;
         this.boxer = boxer;
         this.mlkem = mlkem;
+        this.mldsa = mldsa;
     }
 
     public static synchronized Crypto init(Supplier<Crypto> instanceCreator) {
@@ -38,6 +41,7 @@ public class Crypto {
         INSTANCE = instance;
         SymmetricKey.addProvider(SymmetricKey.Type.TweetNaCl, instance.symmetricProvider);
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, instance.signer);
+        PublicSigningKey.addMldsaProvider(PublicSigningKey.Type.HybridEd25519MLDSA, instance.mldsa);
         SymmetricKey.setRng(SymmetricKey.Type.TweetNaCl, instance.random);
         PublicBoxingKey.addProvider(PublicBoxingKey.Type.Curve25519, instance.boxer);
         PublicBoxingKey.addMlkemProvider(PublicBoxingKey.Type.HybridCurve25519MLKEM, instance);
@@ -52,6 +56,7 @@ public class Crypto {
         Ed25519.Javascript signer = new Ed25519.Javascript();
         Curve25519.Javascript boxer = new Curve25519.Javascript();
         Mlkem mlkem = new Mlkem.Javascript();
-        return init(() -> new Crypto(random, new ScryptJS(), symmetricProvider, signer, boxer, mlkem));
+        Mldsa mldsa = new Mldsa.Javascript();
+        return init(() -> new Crypto(random, new ScryptJS(), symmetricProvider, signer, boxer, mlkem, mldsa));
     }
 }

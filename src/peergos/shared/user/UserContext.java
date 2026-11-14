@@ -71,7 +71,7 @@ public class UserContext {
     private final TransactionService transactions;
     private final IncomingCapCache capCache;
     private final Optional<BatWithId> mirrorBat;
-    public final SharedWithCache sharedWithCache;
+    public SharedWithCache sharedWithCache;
     // when we last checked whether each friend we can't see has removed us, as it waits on their server
     private final Map<String, Long> lastUnfollowCheck = new HashMap<>();
 
@@ -190,6 +190,26 @@ public class UserContext {
                         .thenCompose(updated -> updated ?
                                 signIn(username, password, mfa, false, forceProxy, network, crypto, t -> {}):
                                 Futures.of(ctx)))
+                // moving to hybrid writers: the home first, then the rest from a fresh login, which reaches the
+                // new home through the link the old one holds until our entry point names it
+                .thenCompose(ctx -> ctx.hasEd25519Home().thenCompose(legacy -> legacy ?
+                        Futures.asyncExceptionally(() -> ctx.switchHomeToHybridWriter(progressCallback), t -> {
+                                    LOG.log(Level.WARNING, "Couldn't move our home to a hybrid writer", t);
+                                    return Futures.of(false);
+                                })
+                                // silent, so the upgrade message stays up until the login finishes
+                                .thenCompose(switched -> switched ?
+                                        signIn(username, password, mfa, false, forceProxy, network, crypto, t -> {}) :
+                                        Futures.of(ctx)) :
+                        ctx.isMovingToHybridWriters().thenCompose(moving -> ! moving ?
+                                Futures.of(ctx) :
+                                Futures.asyncExceptionally(() -> ctx.finishMoveToHybridWriters(password, mfa, progressCallback), t -> {
+                                            LOG.log(Level.WARNING, "Couldn't finish moving to hybrid writers, which the next login retries", t);
+                                            return Futures.of(false);
+                                        })
+                                        .thenCompose(finished -> finished ?
+                                                signIn(username, password, mfa, false, forceProxy, network, crypto, t -> {}) :
+                                                Futures.of(ctx)))))
                 .exceptionally(Futures::logAndThrow);
     }
 
@@ -435,6 +455,391 @@ public class UserContext {
         });
     }
 
+    /** The file a social post refers to. Its cap names a writer, which stops resolving once the file's owner moves
+     *  to hybrid writers, but the file is still at its path.
+     */
+    @JsMethod
+    public CompletableFuture<Optional<FileWrapper>> getFile(peergos.shared.display.FileRef ref) {
+        String path = ref.path.startsWith("/") ? ref.path.substring(1) : ref.path;
+        String owner = path.split("/")[0];
+        return network.getFile(ref.cap, owner)
+                .thenCompose(byCap -> byCap.isPresent() ? Futures.of(byCap) : getByPath(ref.path));
+    }
+
+    public static final String UPGRADING_MESSAGE = "Upgrading to post-quantum signatures, please wait.";
+
+    /** Whether our home directory's writer still has an Ed25519 key, so our writing spaces need moving to hybrid writers */
+    public CompletableFuture<Boolean> hasEd25519Home() {
+        if (! SigningKeyPair.HYBRID_WRITERS)
+            return Futures.of(false);
+        return getUserRoot().thenApply(root -> root.writer().isIdentity());
+    }
+
+    /** A writing space nested in another, and the directory or link in the other holding its cap */
+    private static class NestedSpace {
+        final AbsoluteCapability cap, holder;
+        final SigningPrivateKeyAndPublicHash holderSigner;
+
+        NestedSpace(AbsoluteCapability cap, AbsoluteCapability holder, SigningPrivateKeyAndPublicHash holderSigner) {
+            this.cap = cap;
+            this.holder = holder;
+            this.holderSigner = holderSigner;
+        }
+    }
+
+    /** Move our home directory's writing space to a new hybrid writer: the first step of moving to hybrid writers, so
+     *  a CRQC can't forge our pointers. The next login finishes with finishMoveToHybridWriters.
+     */
+    public CompletableFuture<Boolean> switchHomeToHybridWriter(Consumer<String> progressCallback) {
+        progressCallback.accept(UPGRADING_MESSAGE);
+        return getUserRoot().thenCompose(home -> getSharingFolder()
+                .thenCompose(sharing -> sharing.getChildren(crypto.hasher, network))
+                // friends hold entry points to their sharing folders, which nothing re-sends
+                .thenApply(children -> children.stream()
+                        .filter(d -> d.isDirectory() && ! d.isLink() && d.writer().equals(home.writer()))
+                        .map(FileWrapper::writableFilePointer)
+                        .collect(Collectors.toList()))
+                .thenCompose(sharingDirs -> switchSpace(home, signer, Optional.empty(), sharingDirs, Collections.emptyMap())))
+                .thenApply(x -> true);
+    }
+
+    /** Whether our home has moved to a hybrid writer, but the move isn't finished: we reach it through the link its
+     *  old writer holds
+     */
+    public CompletableFuture<Boolean> isMovingToHybridWriters() {
+        Optional<EntryPoint> entry = homeEntryPoint();
+        if (entry.isEmpty() || ! entry.get().pointer.writer.isIdentity())
+            return Futures.of(false);
+        return getUserRoot().thenApply(home -> ! home.writer().isIdentity());
+    }
+
+    private Optional<EntryPoint> homeEntryPoint() {
+        TrieNode home = entrie.getChildNode(username);
+        return home == null ? Optional.empty() : home.getValue();
+    }
+
+    /** Move each writing space nested in our home to a new hybrid writer, send shares and links again and republish
+     *  with the new caps, then point our entry point at the new home. Each step can be redone, and the entry point
+     *  goes last, so a login that stops part way is finished by the next.
+     */
+    public CompletableFuture<Boolean> finishMoveToHybridWriters(String password,
+                                                               Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa,
+                                                               Consumer<String> progressCallback) {
+        progressCallback.accept(UPGRADING_MESSAGE);
+        PublicKeyHash owner = signer.publicKeyHash;
+        return getUserRoot().thenCompose(home -> getWriterQuotas(owner)
+                .thenCompose(quotas -> switchNestedSpaces(home, quotas))
+                .thenCompose(x -> writeSynchronizer.applyComplexUpdate(owner, home.signingPair(),
+                        (s, c) -> sharedWithCache.getAllShares(username, s)
+                                .thenCompose(shares -> Futures.reduceAll(shares.entrySet(), s,
+                                        (v, e) -> reshareAfterMove(e.getKey(), e.getValue(), v, c),
+                                        (a, b) -> b))))
+                .thenCompose(x -> republish())
+                .thenCompose(x -> replaceHomeEntryPoint(password, mfa,
+                        (WritableAbsoluteCapability) homeEntryPoint().get().pointer, home.writableFilePointer())));
+    }
+
+    /** Switch the Ed25519 writing spaces nested in a space to hybrid writers, top down, including those nested in
+     *  spaces that are hybrid already
+     */
+    private CompletableFuture<Boolean> switchNestedSpaces(FileWrapper space, Map<PublicKeyHash, Long> quotas) {
+        return FileWrapper.findNestedWritingSpaces(space.getPointer().capability, network, new FileWrapper.MovedSubtree(), space.version)
+                .thenCompose(found -> Futures.reduceAll(IntStream.range(0, found.nestedWritingSpaces.size())
+                                .mapToObj(i -> new NestedSpace(found.nestedWritingSpaces.get(i), found.nestedHolders.get(i), space.signingPair()))
+                                .collect(Collectors.toList()), true,
+                        (b, n) -> network.getFile(n.cap, username).thenCompose(nested -> {
+                            if (nested.isEmpty() || ! nested.get().isWritable())
+                                return Futures.of(b);
+                            if (! n.cap.writer.isIdentity())
+                                return switchNestedSpaces(nested.get(), quotas);
+                            return switchSpace(nested.get(), n.holderSigner, Optional.of(n), Collections.emptyList(), quotas)
+                                    .thenCompose(newCap -> network.getFile(newCap, username))
+                                    .thenCompose(moved -> moved.isPresent() ?
+                                            switchNestedSpaces(moved.get(), quotas) :
+                                            Futures.of(b));
+                        }),
+                        (a, b) -> a && b));
+    }
+
+    /** Move a writing space to a new hybrid writer in one atomic commit to the writers involved: the new writer is
+     *  owned by the given one and takes the old writer's champ, the space's root is rewritten with its new signer
+     *  link, its holder points at it, and the old writer's champ is replaced by a link to it in place of its root
+     *  (and of any of the given directories in it). Old caps to the space still lead to it. The old writer's update
+     *  is from the version the new writer was built from, so a concurrent write to it makes the commit fail and
+     *  the move is tried again, rather than losing the write. A space that has moved already is left alone.
+     *
+     * @return the new cap of the space
+     */
+    private CompletableFuture<WritableAbsoluteCapability> switchSpace(FileWrapper space,
+                                                                      SigningPrivateKeyAndPublicHash parent,
+                                                                      Optional<NestedSpace> from,
+                                                                      List<WritableAbsoluteCapability> alsoLinked,
+                                                                      Map<PublicKeyHash, Long> quotas) {
+        return switchSpace(space, parent, from, alsoLinked, quotas, 5);
+    }
+
+    private CompletableFuture<WritableAbsoluteCapability> switchSpace(FileWrapper space,
+                                                                      SigningPrivateKeyAndPublicHash parent,
+                                                                      Optional<NestedSpace> from,
+                                                                      List<WritableAbsoluteCapability> alsoLinked,
+                                                                      Map<PublicKeyHash, Long> quotas,
+                                                                      int attempts) {
+        PublicKeyHash owner = signer.publicKeyHash;
+        WritableAbsoluteCapability oldCap = space.writableFilePointer();
+        SigningPrivateKeyAndPublicHash oldSigner = space.signingPair();
+        // everything in one bulk commit, so none of it can land without the rest
+        Optional<BufferedNetworkAccess> buffered = network instanceof BufferedNetworkAccess ?
+                Optional.of((BufferedNetworkAccess) network) :
+                Optional.empty();
+        buffered.ifPresent(BufferedNetworkAccess::disableCommits);
+        CompletableFuture<WritableAbsoluteCapability> switched = writeSynchronizer.applyComplexComputation(owner, parent,
+                (s, c) -> s.withWriter(owner, oldCap.writer, network).thenCompose(v0 -> {
+                    CommittedWriterData oldVersion = v0.get(oldCap.writer);
+                    return network.getMetadata(oldVersion, oldCap).thenCompose(rootOpt -> {
+                        CryptreeNode root = rootOpt.orElseThrow(() -> new IllegalStateException("Writing space root is missing"));
+                        if (root.getProperties(root.getParentKey(oldCap.rBaseKey)).isLink)
+                            return root.getDirectChildrenCapabilities(oldCap, v0, network)
+                                    .thenApply(children -> new Pair<>(new Snapshot(parent.publicKeyHash, v0.get(parent.publicKeyHash)),
+                                            (WritableAbsoluteCapability) children.iterator().next().cap));
+                        return CryptreeNode.initAndAuthoriseSigner(owner, parent, SigningKeyPair.randomWriter(crypto), network, v0, c)
+                                .thenCompose(p -> IpfsTransaction.call(owner, tid -> {
+                                    SigningPrivateKeyAndPublicHash newSigner = p.right;
+                                    WritableAbsoluteCapability newCap = oldCap.withSigner(newSigner.publicKeyHash);
+                                    CommittedWriterData empty = p.left.get(newSigner);
+                                    // the cryptree is a content addressed champ, and nodes in one writing space name
+                                    // their children without a writer, so the new writer takes the old one's as it is
+                                    CryptreeNode newRoot = root.withWriterLink(oldCap.rBaseKey,
+                                            SymmetricLinkToSigner.fromPair(oldCap.wBaseKey.get(), newSigner));
+                                    if (from.isPresent())
+                                        newRoot = newRoot.withParentLink(root.getParentKey(oldCap.rBaseKey),
+                                                root.getParentCapability(oldCap.rBaseKey).get()
+                                                        .withWritingKey(Optional.of(from.get().holderSigner.publicKeyHash)));
+                                    CryptreeNode rewritten = newRoot;
+                                    return c.commit(owner, newSigner, empty.props.get().withChamp(oldVersion.props.get().tree.get()), empty, tid)
+                                            .thenApply(p.left::mergeAndOverwriteWith)
+                                            .thenCompose(v -> network.uploadChunk(v, c, rewritten, owner, oldCap.getMapKey(), newSigner, tid))
+                                            .thenCompose(v -> from.isPresent() ?
+                                                    pointHolderAt(from.get(), newCap, space.getFileProperties(), v, c) :
+                                                    Futures.of(v))
+                                            // the old writer last, from the version the new one took
+                                            .thenCompose(v -> retireInPlace(oldSigner, oldVersion, oldCap, newCap,
+                                                    from.map(f -> f.holderSigner.publicKeyHash), alsoLinked, v, c, tid))
+                                            // later steps change the other writers, so the lock keeps only its own
+                                            .thenApply(v -> new Pair<>(new Snapshot(parent.publicKeyHash, v.get(parent.publicKeyHash)), newCap));
+                                }, network.dhtClient));
+                    });
+                }))
+                .thenApply(p -> p.right);
+        return Futures.<WritableAbsoluteCapability>asyncExceptionally(() -> switched.thenApply(r -> {
+                            buffered.ifPresent(BufferedNetworkAccess::enableCommits);
+                            return r;
+                        }),
+                        t -> {
+                            buffered.ifPresent(BufferedNetworkAccess::enableCommits);
+                            if (attempts <= 1)
+                                return Futures.errored(t);
+                            // the old writer moved under us, so start again from where it is now
+                            LOG.log(Level.INFO, "Retrying the move of " + oldCap.writer + " to a hybrid writer", t);
+                            return switchSpace(space, parent, from, alsoLinked, quotas, attempts - 1);
+                        })
+                .thenCompose(newCap -> ! quotas.containsKey(oldCap.writer) ?
+                        Futures.of(newCap) :
+                        network.spaceUsage.setWriterQuota(signer, newCap.writer, Optional.of(quotas.get(oldCap.writer)))
+                                .thenCompose(x -> network.spaceUsage.setWriterQuota(signer, oldCap.writer, Optional.empty())
+                                        .exceptionally(t -> false))
+                                .thenApply(x -> newCap));
+    }
+
+    /** Replace an old writer's champ with links, under its old keys, to where its space's root, and the given
+     *  directories in it, now are. Everything else it owns stays, as it was.
+     */
+    private CompletableFuture<Snapshot> retireInPlace(SigningPrivateKeyAndPublicHash oldSigner,
+                                                      CommittedWriterData oldVersion,
+                                                      WritableAbsoluteCapability oldRoot,
+                                                      WritableAbsoluteCapability newRoot,
+                                                      Optional<PublicKeyHash> rootParentWriter,
+                                                      List<WritableAbsoluteCapability> alsoLinked,
+                                                      Snapshot in,
+                                                      Committer c,
+                                                      TransactionId tid) {
+        PublicKeyHash owner = signer.publicKeyHash;
+        return Futures.combineAllInOrder(alsoLinked.stream()
+                        .map(cap -> network.getMetadata(oldVersion, cap).thenCompose(node -> linkInPlaceOf(node.get(), cap,
+                                cap.withSigner(newRoot.writer), Optional.of(newRoot.writer))))
+                        .collect(Collectors.toList()))
+                .thenCompose(others -> network.getMetadata(oldVersion, oldRoot)
+                        .thenCompose(root -> linkInPlaceOf(root.get(), oldRoot, newRoot, rootParentWriter))
+                        .thenCompose(rootLink -> {
+                            WriterData was = oldVersion.props.get();
+                            // the first link written creates a new champ
+                            WriterData withoutTree = new WriterData(was.controller, was.generationAlgorithm, was.publicData,
+                                    was.followRequestReceiver, was.ownedKeys, was.namedOwnedKeys, was.staticData,
+                                    Optional.empty(), was.secretLinks);
+                            return c.commit(owner, oldSigner, withoutTree, oldVersion, tid)
+                                    .thenApply(in::mergeAndOverwriteWith)
+                                    .thenCompose(v -> rootLink.commit(v, c, oldRoot, oldSigner, network, tid))
+                                    .thenCompose(v -> Futures.reduceAll(IntStream.range(0, others.size()).boxed().collect(Collectors.toList()), v,
+                                            (v2, i) -> others.get(i).commit(v2, c, alsoLinked.get(i), oldSigner, network, tid),
+                                            (x, y) -> y));
+                        }));
+    }
+
+    /** A link node in place of an old one, at its location and with its keys and name, to where it now is. It holds the
+     *  write key, so old write caps still write there.
+     */
+    private CompletableFuture<CryptreeNode.DirAndChildren> linkInPlaceOf(CryptreeNode old,
+                                                                         WritableAbsoluteCapability oldCap,
+                                                                         WritableAbsoluteCapability target,
+                                                                         Optional<PublicKeyHash> parentWriter) {
+        FileProperties props = old.getProperties(old.getParentKey(oldCap.rBaseKey));
+        // a link is a directory, which needs a parent key of its own, unlike a file
+        SymmetricKey parentKey = SymmetricKey.random();
+        Optional<RelativeCapability> toParent = old.getParentCapability(oldCap.rBaseKey)
+                .map(p -> parentWriter.isPresent() ? p.withWritingKey(parentWriter) : p);
+        RelativeCapability toTarget = new RelativeCapability(Optional.of(target.writer), target.getMapKey(), target.bat,
+                target.rBaseKey, Optional.of(SymmetricLink.fromPair(oldCap.wBaseKey.get(), target.wBaseKey.get())));
+        RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(
+                crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH), Optional.of(Bat.random(crypto.random)), oldCap.rBaseKey);
+        return CryptreeNode.createDir(MaybeMultihash.empty(), oldCap.rBaseKey, oldCap.wBaseKey.get(), Optional.empty(),
+                props.asLink(), toParent, parentKey, nextChunk,
+                new CryptreeNode.ChildrenLinks(Collections.singletonList(new NamedRelativeCapability(new PathElement(props.name), toTarget,
+                        Optional.of(props.isDirectory), Optional.of(props.mimeType), Optional.of(props.created)))),
+                oldCap.bat, mirrorBatId(), crypto.random, crypto.hasher);
+    }
+
+    /** Point the holder of a nested space, in its own space's new writer, at the nested space's new cap */
+    private CompletableFuture<Snapshot> pointHolderAt(NestedSpace from,
+                                                      WritableAbsoluteCapability newCap,
+                                                      FileProperties props,
+                                                      Snapshot v,
+                                                      Committer c) {
+        if (! (from.holder instanceof WritableAbsoluteCapability))
+            return Futures.errored(new IllegalStateException("Nested writing space held by a read only cap"));
+        WritableAbsoluteCapability holder = ((WritableAbsoluteCapability) from.holder).withSigner(from.holderSigner.publicKeyHash);
+        return v.withWriter(signer.publicKeyHash, holder.writer, network)
+                .thenCompose(withHolder -> network.getMetadata(withHolder.get(holder.writer), holder)
+                        .thenCompose(node -> node.orElseThrow(() -> new IllegalStateException("Moved holder of a nested writing space is missing"))
+                                .updateChildLink(withHolder, c, holder, from.holderSigner, from.cap,
+                                        new NamedAbsoluteCapability(props.name, newCap, Optional.of(props.isDirectory),
+                                                Optional.of(props.mimeType), Optional.of(props.created)),
+                                        network, crypto.random, crypto.hasher)));
+    }
+
+    /** Send a directory's shares again, and point its links at the new caps. Each step's snapshot is merged in, as
+     *  some return only the writers they touched. A link is updated from its current value, which an earlier move
+     *  that stopped before its commit point may have changed.
+     */
+    private CompletableFuture<Snapshot> reshareAfterMove(Path dir, SharedWithState state, Snapshot in, Committer c) {
+        return Futures.<Snapshot, Map.Entry<String, Set<String>>>reduceAll(state.readShares().entrySet(), in,
+                        (s, e) -> orSkip(s, "read share of " + dir.resolve(e.getKey()),
+                                () -> shareReadAccessWith(dir.resolve(e.getKey()), e.getValue(), s, c).thenApply(r -> s.mergeAndOverwriteWith(r))),
+                        (a, b) -> b)
+                .thenCompose(s2 -> Futures.<Snapshot, Map.Entry<String, Set<String>>>reduceAll(state.writeShares().entrySet(), s2,
+                        (s, e) -> orSkip(s, "write share of " + dir.resolve(e.getKey()),
+                                () -> sendWriteCapToAll(dir.resolve(e.getKey()), e.getValue(), s, c).thenApply(r -> s.mergeAndOverwriteWith(r))),
+                        (a, b) -> b))
+                .thenCompose(s3 -> Futures.<Snapshot, Map.Entry<String, Set<LinkProperties>>>reduceAll(state.links().entrySet(), s3,
+                        (s, e) -> Futures.<Snapshot, LinkProperties>reduceAll(e.getValue(), s,
+                                (v, link) -> orSkip(v, "secret link to " + dir.resolve(e.getKey()),
+                                        () -> v.withWriter(signer.publicKeyHash, signer.publicKeyHash, network)
+                                        .thenCompose(withId -> withId.get(signer).props.get()
+                                                .getSecretLinkChamp(signer.publicKeyHash, mirrorBat, network.dhtClient, crypto.hasher)
+                                                .thenCompose(champ -> champ.getValueHash(link.label))
+                                                .thenCompose(current -> updateSecretLink(dir.resolve(e.getKey()).toString(),
+                                                        link.withExisting(current), withId, c))
+                                                .thenApply(r -> withId.mergeAndOverwriteWith(r)))),
+                                (a, b) -> b),
+                        (a, b) -> b));
+    }
+
+    /** A share that can't be sent again, e.g. to a former friend or of a file that is gone, mustn't stop the others */
+    private static CompletableFuture<Snapshot> orSkip(Snapshot in, String what, Supplier<CompletableFuture<Snapshot>> step) {
+        return Futures.asyncExceptionally(step, t -> {
+            LOG.log(Level.WARNING, "Couldn't send the " + what + " again after moving to hybrid writers", t);
+            return Futures.of(in);
+        });
+    }
+
+    /** Publish each published file again, with its cap under its new writer */
+    private CompletableFuture<Boolean> republish() {
+        PublicKeyHash owner = signer.publicKeyHash;
+        return writeSynchronizer.applyComplexUpdate(owner, signer, (s, c) -> IpfsTransaction.call(owner, tid -> {
+            CommittedWriterData current = s.get(signer);
+            WriterData wd = current.props.get();
+            if (wd.publicData.isEmpty())
+                return Futures.of(s);
+            return network.dhtClient.get(owner, (Cid) wd.publicData.get(), Optional.empty())
+                    .thenCompose(rootCbor -> InodeFileSystem.build(owner, rootCbor.get(), crypto.hasher, network.dhtClient))
+                    .thenCompose(pubCaps -> allPublished(pubCaps, "")
+                            // every one, as a move that stopped part way may have published caps that are now gone
+                            .thenCompose(published -> Futures.reduceAll(published, pubCaps,
+                                    (fs, p) -> getByPath(p.left).thenCompose(file -> {
+                                        if (file.isEmpty())
+                                            return Futures.of(fs);
+                                        AbsoluteCapability now = file.get().getPointer().capability.readOnly();
+                                        return now.equals(p.right.cap.get()) ?
+                                                Futures.of(fs) :
+                                                fs.addCap(owner, signer, p.left, now, p.right.link, tid);
+                                    }),
+                                    (a, b) -> b))
+                            .thenCompose(updated -> updated == pubCaps ?
+                                    Futures.of(s) :
+                                    network.dhtClient.put(owner, signer, updated.serialize(), crypto.hasher, tid)
+                                            .thenCompose(newRoot -> c.commit(owner, signer, wd.withPublicRoot(newRoot), current, tid))));
+        }, network.dhtClient)).thenApply(x -> true);
+    }
+
+    private static CompletableFuture<List<Pair<String, InodeCap>>> allPublished(InodeFileSystem pubCaps, String dir) {
+        return pubCaps.listDirectory(dir)
+                .thenCompose(children -> Futures.combineAllInOrder(children.stream()
+                                .map(child -> {
+                                    String path = dir + "/" + child.inode.name.name;
+                                    return allPublished(pubCaps, path).thenApply(below -> {
+                                        List<Pair<String, InodeCap>> res = new ArrayList<>();
+                                        if (child.cap.isPresent())
+                                            res.add(new Pair<>(path, child));
+                                        res.addAll(below);
+                                        return res;
+                                    });
+                                })
+                                .collect(Collectors.toList()))
+                        .thenApply(lists -> lists.stream().flatMap(List::stream).collect(Collectors.toList())));
+    }
+
+    private CompletableFuture<Boolean> replaceHomeEntryPoint(String password,
+                                                             Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa,
+                                                             WritableAbsoluteCapability oldRoot,
+                                                             WritableAbsoluteCapability newRoot) {
+        EntryPoint updated = new EntryPoint(newRoot, username);
+        Predicate<EntryPoint> isHome = e -> e.ownerName.equals(username) && e.pointer.writer.equals(oldRoot.writer) &&
+                Arrays.equals(e.pointer.getMapKey(), oldRoot.getMapKey());
+        PublicKeyHash owner = signer.publicKeyHash;
+        return WriterData.getWriterData(owner, owner, network.mutable, network.dhtClient).thenCompose(cwd -> {
+            SecretGenerationAlgorithm algorithm = cwd.props.flatMap(wd -> wd.generationAlgorithm)
+                    .orElseThrow(() -> new IllegalStateException("No login algorithm specified in user data!"));
+            return UserUtil.generateUser(username, password, crypto, algorithm).thenCompose(credentials -> {
+                SymmetricKey loginRoot = credentials.getRoot();
+                if (cwd.props.get().staticData.isPresent()) // legacy account
+                    return writeSynchronizer.applyComplexUpdate(owner, signer, (s, c) -> IpfsTransaction.call(owner, tid -> {
+                        CommittedWriterData current = s.get(signer);
+                        WriterData wd = current.props.get();
+                        UserStaticData entries = new UserStaticData(wd.staticData.get().getData(loginRoot)
+                                .replaceEntryPoint(isHome, updated), loginRoot);
+                        return c.commit(owner, signer, wd.withStaticData(Optional.of(entries)), current, tid);
+                    }, network.dhtClient)).thenApply(x -> true);
+                PublicSigningKey loginPub = credentials.getUser().publicSigningKey;
+                return getLoginData(username, loginPub, credentials.getUser().secretSigningKey, loginRoot, mfa, false, false, network)
+                        .thenCompose(login -> network.account.setLoginData(new LoginData(username,
+                                new UserStaticData(login.right.replaceEntryPoint(isHome, updated), loginRoot), loginPub, Optional.empty()), signer, false))
+                        .thenApply(set -> {
+                            if (! set)
+                                throw new IllegalStateException("Couldn't store the new home entry point for " + username);
+                            return true;
+                        });
+            });
+        });
+    }
+
     public CompletableFuture<Boolean> getAndVerifyServerIdChain(Multihash from, Multihash to) {
         return network.dhtClient.getIpnsEntry(from)
                 .thenCompose(res -> validateResolutionRecord(res, from))
@@ -485,7 +890,7 @@ public class UserContext {
 
     private static CompletableFuture<byte[]> signSpaceRequest(String username, SigningPrivateKeyAndPublicHash identity, long desiredQuota, boolean annual) {
         SpaceUsage.SpaceRequest req = new SpaceUsage.SpaceRequest(username, desiredQuota, annual, System.currentTimeMillis(), Optional.empty());
-        return identity.secret.signMessage(req.serialize());
+        return identity.secret.signMessage(req.serialize(), SigningDomain.SPACE_REQUEST);
     }
 
     public static CompletableFuture<UserContext> signUp(String username,
@@ -544,14 +949,14 @@ public class UserContext {
                             .thenCompose(batid -> opLog.addBat(username, batid, mirror, identity)
                                     .thenCompose(b -> initialNetwork.dhtClient.id()
                             .thenCompose(id -> UserPublicKeyLink.createInitial(identity, username, expiry, Arrays.asList(id)))
-                            .thenCompose(chain -> IpfsTransaction.call(identityHash, tid -> identityPair.secretSigningKey.signMessage(identityPair.publicSigningKey.serialize())
+                            .thenCompose(chain -> IpfsTransaction.call(identityHash, tid -> identityPair.secretSigningKey.signMessage(identityPair.publicSigningKey.serialize(), SigningDomain.SIGNING_KEY)
                                     .thenCompose(signedIdentity -> network.dhtClient.putSigningKey(
                                     signedIdentity,
                                     identityHash,
                                     identityPair.publicSigningKey, tid)).thenCompose(returnedIdentityHash -> {
                                 PublicBoxingKey publicBoxingKey = userWithRoot.getBoxingPair().publicBoxingKey;
                                 return crypto.hasher.sha256(publicBoxingKey.serialize())
-                                        .thenCompose(boxerHash -> identityPair.secretSigningKey.signMessage(boxerHash)
+                                        .thenCompose(boxerHash -> identityPair.secretSigningKey.signMessage(boxerHash, SigningDomain.BOXING_KEY)
                                                 .thenCompose(signedBoxerHash -> network.dhtClient.putBoxingKey(identityHash,
                                                         signedBoxerHash, publicBoxingKey, tid)));
                                             }).thenCompose(boxerHash -> {
@@ -1554,7 +1959,7 @@ public class UserContext {
      */
     @JsMethod
     public CompletableFuture<Boolean> approveSpaceRequest(DecodedSpaceRequest req) {
-        return signer.secret.signMessage(req.source.serialize())
+        return signer.secret.signMessage(req.source.serialize(), SigningDomain.SPACE_REQUEST_APPROVAL)
                 .thenCompose(adminSignedRequest -> network.dhtClient.id()
                         .thenCompose(instanceId -> network.instanceAdmin
                                 .approveSpaceRequest(signer.publicKeyHash, instanceId, adminSignedRequest)));
@@ -1779,12 +2184,12 @@ public class UserContext {
                                             WriterData newIdBlock = cwd.props.get().withAlgorithm(newAlgorithm);
                                             byte[] rawBlock = newIdBlock.serialize();
                                             return crypto.hasher.sha256(rawBlock).thenCompose(blockHash -> {
-                                                return signer.secret.signMessage(blockHash)
+                                                return signer.secret.signMessage(blockHash, SigningDomain.BLOCK)
                                                         .thenCompose(signed -> {
                                                             OpLog.BlockWrite blockWrite = new OpLog.BlockWrite(signer.publicKeyHash, signed, rawBlock, false, Optional.empty());
                                                             MaybeMultihash newHash = MaybeMultihash.of(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, blockHash));
                                                             PointerUpdate pointerCas = new PointerUpdate(cwd.hash, newHash, PointerUpdate.increment(cwd.sequence));
-                                                            return signer.secret.signMessage(pointerCas.serialize())
+                                                            return signer.secret.signMessage(pointerCas.serialize(), SigningDomain.POINTER)
                                                                     .thenCompose(signedCas -> {
                                                                         OpLog.PointerWrite pointerWrite = new OpLog.PointerWrite(signer.publicKeyHash, signedCas);
                                                                         LoginData updatedLoginData = new LoginData(username, updatedEntry, newLoginPublicKey, Optional.of(new Pair<>(blockWrite, pointerWrite)));
@@ -1805,7 +2210,7 @@ public class UserContext {
                                 BoxingKeyPair newBoxingKeypair = newAlgorithm.generateBoxerAndIdentity() ? updatedLogin.getBoxingPair() : boxer;
                                 SigningKeyPair newIdentityPair = SigningKeyPair.random(crypto.random, crypto.signer);
                                 PublicSigningKey newIdentityPub = newIdentityPair.publicSigningKey;
-                                return existingLoginSecret.signMessage(newIdentityPub.serialize())
+                                return existingLoginSecret.signMessage(newIdentityPub.serialize(), SigningDomain.SIGNING_KEY)
                                         .thenCompose(signed -> IpfsTransaction.call(existingOwner,
                                                 tid -> network.dhtClient.putSigningKey(
                                                         signed,
@@ -1867,7 +2272,7 @@ public class UserContext {
                                                                     NetworkAccess network,
                                                                     Crypto crypto) {
         long t1 = System.currentTimeMillis();
-        SigningKeyPair writer = SigningKeyPair.random(crypto.random, crypto.signer);
+        SigningKeyPair writer = SigningKeyPair.randomWriter(crypto);
         LOG.info("Random User generation took " + (System.currentTimeMillis() - t1) + " mS");
         // Steps (All in 1 transaction):
         // 1. Add signing key authorised by owner
@@ -1888,10 +2293,11 @@ public class UserContext {
         WritableAbsoluteCapability rootPointer =
                 new WritableAbsoluteCapability(owner.publicKeyHash, preHash, rootMapKey, rootBat, rootRKey, rootWKey);
         EntryPoint entry = new EntryPoint(rootPointer, directoryName);
-        return owner.secret.signMessage(writer.publicSigningKey.serialize()).thenCompose(signed -> IpfsTransaction.call(owner.publicKeyHash, tid -> network.dhtClient.putSigningKey(
-                signed,
+        return IpfsTransaction.call(owner.publicKeyHash, tid -> network.dhtClient.putSigningKey(
                 owner.publicKeyHash,
+                owner,
                 writer.publicSigningKey,
+                network.hasher,
                 tid).thenCompose(writerHash -> {
 
             // and authorise the writer key
@@ -1923,7 +2329,7 @@ public class UserContext {
                                                     .thenCompose(x -> addRootEntryPointAndCommit(x.merge(s2), entry, current, loginPublic, owner, userRootKey, committer, network, tid));
                                         });
                             }));
-        }), network.dhtClient).thenApply(s -> TrieNodeImpl.empty().put("/" + directoryName, entry)));
+        }), network.dhtClient).thenApply(s -> TrieNodeImpl.empty().put("/" + directoryName, entry));
     }
 
     public CompletableFuture<PublicSigningKey> getSigningKey(PublicKeyHash owner) {
@@ -1980,13 +2386,13 @@ public class UserContext {
                         SigningPrivateKeyAndPublicHash pair = root.signingPair();
                         CommittedWriterData current = root.getVersionRoot();
                         PointerUpdate cas = new PointerUpdate(current.hash, MaybeMultihash.empty(), PointerUpdate.increment(current.sequence));
-                        return pair.secret.signMessage(cas.serialize())
+                        return pair.secret.signMessage(cas.serialize(), SigningDomain.POINTER)
                                 .thenCompose(signed -> network.mutable.setPointer(this.signer.publicKeyHash, pair.publicKeyHash, signed));
                     }).thenCompose(x -> network.spaceUsage.requestQuota(username, identity, 1_000_000, false))
                             .thenCompose(x -> network.mutable.getPointerTarget(owner, owner, network.dhtClient)
                                     .thenCompose(current -> {
                                         PointerUpdate cas = new PointerUpdate(current.updated, MaybeMultihash.empty(), PointerUpdate.increment(current.sequence));
-                                        return identity.secret.signMessage(cas.serialize())
+                                        return identity.secret.signMessage(cas.serialize(), SigningDomain.POINTER)
                                                 .thenCompose(signed -> network.mutable.setPointer(owner, owner, signed));
                                     })
                             );
@@ -2589,7 +2995,7 @@ public class UserContext {
                 return blindAndSendFollowRequest(initialRequest.entry.get().pointer.owner, targetUser, reply)
                         .thenCompose(b ->
                                 // remove pending follow request from them
-                                signer.secret.signMessage(initialRequestAndRaw.cipher.serialize())
+                                signer.secret.signMessage(initialRequestAndRaw.cipher.serialize(), SigningDomain.FOLLOW_REQUEST_REMOVAL)
                                         .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed))
                         );
             });
@@ -2655,7 +3061,7 @@ public class UserContext {
         }).thenCompose(trie -> {
             // remove original request
             entrie = trie;
-            return signer.secret.signMessage(initialRequestAndRaw.cipher.serialize())
+            return signer.secret.signMessage(initialRequestAndRaw.cipher.serialize(), SigningDomain.FOLLOW_REQUEST_REMOVAL)
                     .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed));
         });
     }
@@ -2669,7 +3075,7 @@ public class UserContext {
         FollowRequest reply = new FollowRequest(Optional.of(ours), Optional.of(theirs.pointer.rBaseKey));
         return getPublicKeys(theirs.ownerName)
                 .thenCompose(keys -> blindAndSendFollowRequest(theirs.pointer.owner, keys.get().right, reply))
-                .thenCompose(b -> signer.secret.signMessage(request.cipher.serialize()))
+                .thenCompose(b -> signer.secret.signMessage(request.cipher.serialize(), SigningDomain.FOLLOW_REQUEST_REMOVAL))
                 .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed));
     }
 
@@ -2806,7 +3212,7 @@ public class UserContext {
                 CryptreeNode.initAndAuthoriseSigner(
                         owner,
                         parentSigner,
-                        SigningKeyPair.random(crypto.random, crypto.signer), network, initial, c) :
+                        SigningKeyPair.randomWriter(crypto), network, initial, c) :
                 Futures.of(new Pair<>(initial, file.signingPair())))
                 .thenCompose(p -> {
                     if (rotateSigners)
@@ -3284,7 +3690,7 @@ public class UserContext {
                 linkMapKey, linkBat, linkParentKey, Optional.empty());
 
         return CryptreeNode.initAndAuthoriseSigner(owner, parentSigner,
-                        SigningKeyPair.random(crypto.random, crypto.signer), network, initial, c)
+                        SigningKeyPair.randomWriter(crypto), network, initial, c)
                 .thenCompose(p -> {
                     SigningPrivateKeyAndPublicHash newSigner = p.right;
                     WritableAbsoluteCapability newCap = originalCap.withSigner(newSigner.publicKeyHash);
@@ -3448,7 +3854,7 @@ public class UserContext {
                         if (! x)
                             throw new IllegalStateException("Couldn't store new social keypair for " + username);
                         return crypto.hasher.sha256(newBoxer.publicBoxingKey.serialize())
-                            .thenCompose(boxerHash -> owner.secret.signMessage(boxerHash)
+                            .thenCompose(boxerHash -> owner.secret.signMessage(boxerHash, SigningDomain.BOXING_KEY)
                                     .thenCompose(signedBoxerHash -> network.dhtClient.putBoxingKey(owner.publicKeyHash, signedBoxerHash, newBoxer.publicBoxingKey, tid)
                                             .thenCompose(kh -> c.commit(owner.publicKeyHash, owner, wd.withBoxer(Optional.of(kh)), cwd, tid))));
                     })
@@ -3457,7 +3863,7 @@ public class UserContext {
             // legacy account
             Optional<UserStaticData> updated = wd.staticData.map(sd -> new UserStaticData(sd.getData(rootKey).withBoxer(newBoxer), rootKey));
             return crypto.hasher.sha256(newBoxer.publicBoxingKey.serialize())
-                    .thenCompose(boxerHash -> owner.secret.signMessage(boxerHash)
+                    .thenCompose(boxerHash -> owner.secret.signMessage(boxerHash, SigningDomain.BOXING_KEY)
                             .thenCompose(signedBoxerHash -> network.dhtClient.putBoxingKey(owner.publicKeyHash, signedBoxerHash, newBoxer.publicBoxingKey, tid)
                                     .thenCompose(kh -> c.commit(owner.publicKeyHash, owner,
                                             wd.withStaticData(updated).withBoxer(Optional.of(kh)), cwd, tid))));
@@ -3515,7 +3921,7 @@ public class UserContext {
 
     private CompletableFuture<Boolean> removeUnusableFollowRequests(List<BlindFollowRequest> unusable) {
         return Futures.reduceAll(unusable, true,
-                (b, req) -> signer.secret.signMessage(req.serialize())
+                (b, req) -> signer.secret.signMessage(req.serialize(), SigningDomain.FOLLOW_REQUEST_REMOVAL)
                         .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed))
                         .exceptionally(t -> false),
                 (a, b) -> a);
@@ -3603,12 +4009,12 @@ public class UserContext {
                                     return updatedRoot.thenCompose(newRoot -> {
                                         entrie = newRoot;
                                         // clear their response follow req too
-                                        return signer.secret.signMessage(p.cipher.serialize())
+                                        return signer.secret.signMessage(p.cipher.serialize(), SigningDomain.FOLLOW_REQUEST_REMOVAL)
                                                 .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed))
                                                 .thenApply(b -> newRoot);
                                     });
                                 }
-                                return signer.secret.signMessage(p.cipher.serialize())
+                                return signer.secret.signMessage(p.cipher.serialize(), SigningDomain.FOLLOW_REQUEST_REMOVAL)
                                         .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed))
                                         .thenApply(b -> root);
                             };
@@ -3630,7 +4036,7 @@ public class UserContext {
                                     return getGroupUid(SocialState.FOLLOWERS_GROUP_NAME)
                                             .thenCompose(followersUidOpt -> shareReadAccessWith(PathUtil.get(username,
                                                     SHARED_DIR_NAME, followersUidOpt.get()), Collections.singleton(theirName)))
-                                            .thenCompose(x -> signer.secret.signMessage(p.cipher.serialize())
+                                            .thenCompose(x -> signer.secret.signMessage(p.cipher.serialize(), SigningDomain.FOLLOW_REQUEST_REMOVAL)
                                                     .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed)))
                                             .thenApply(x -> trie);
                                 } else {
@@ -3651,7 +4057,7 @@ public class UserContext {
                                 }
                             };
                             return Futures.reduceAll(toDiscard, true,
-                                            (b, p) -> signer.secret.signMessage(p.cipher.serialize())
+                                            (b, p) -> signer.secret.signMessage(p.cipher.serialize(), SigningDomain.FOLLOW_REQUEST_REMOVAL)
                                                     .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed))
                                                     .exceptionally(t -> false),
                                             (a, b) -> a)
@@ -3947,7 +4353,7 @@ public class UserContext {
                                                                      PublicKeyHash writer) {
         return mutable.getPointer(owner, writer)
                 .thenCompose(casOpt -> ipfs.getSigningKey(owner, writer)
-                        .thenCompose(signer -> casOpt.map(raw -> signer.get().unsignMessage(raw)
+                        .thenCompose(signer -> casOpt.map(raw -> signer.get().unsignMessage(raw, SigningDomain.POINTER)
                                         .thenApply(unsigned -> PointerUpdate.fromCbor(CborObject.fromByteArray(unsigned))))
                                 .orElse(Futures.of(PointerUpdate.empty()))));
     }

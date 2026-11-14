@@ -33,6 +33,11 @@ public interface TrieNode {
 
     TrieNode getChildNode(String name);
 
+    /** The entry point at this node, if there is one */
+    default Optional<EntryPoint> getValue() {
+        return Optional.empty();
+    }
+
     boolean isEmpty();
 
     static String canonicalise(String path) {

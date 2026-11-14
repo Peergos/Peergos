@@ -93,7 +93,7 @@ public class Chat implements Cborable {
                                                       Crypto crypto) {
         TreeClock msgTime = current.increment(host);
         MessageEnvelope msg = new MessageEnvelope(host, msgTime, LocalDateTime.now(ZoneOffset.UTC), recentRefs, body);
-        return signer.secret.signatureOnly(msg.serialize()).thenCompose(signature -> {
+        return signer.secret.signatureOnly(msg.serialize(), SigningDomain.CHAT).thenCompose(signature -> {
             SignedMessage signed = new SignedMessage(signature, msg);
             return mergeMessage(chatUid, signed, host(), userIdentity, ipfs, crypto);
         });
@@ -284,7 +284,7 @@ public class Chat implements Cborable {
                     .thenCompose(signerOpt -> {
                         if (signerOpt.isEmpty())
                             throw new IllegalStateException("Couldn't retrieve public signing key!");
-                        signerOpt.get().unsignMessage(ArrayOps.concat(signed.signature, signed.msg.serialize()));
+                        signerOpt.get().unsignMessage(ArrayOps.concat(signed.signature, signed.msg.serialize()), SigningDomain.CHAT);
                         return applyMessage(signed, chatUid, userIdentity, ipfs, crypto);
                     }).thenApply(u -> u.withState(u.state.mergeMessageTimestamp(msg.timestamp, host)));
         }

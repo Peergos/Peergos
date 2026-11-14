@@ -26,7 +26,7 @@ public class TimeLimitedClient {
         }
 
         public CompletableFuture<byte[]> sign(SecretSigningKey signer) {
-            return signer.signMessage(serialize());
+            return signer.signMessage(serialize(), SigningDomain.TIME_LIMITED);
         }
 
         public static SignedRequest fromCbor(Cborable cbor) {
@@ -41,6 +41,6 @@ public class TimeLimitedClient {
 
     public static CompletableFuture<byte[]> signNow(SecretSigningKey signer) {
         byte[] time = new CborObject.CborLong(System.currentTimeMillis()).serialize();
-        return signer.signMessage(time);
+        return signer.signMessage(time, SigningDomain.TIME_LIMITED);
     }
 }
