@@ -19,11 +19,24 @@ public class JdbcRoutingStore {
     private static final String GET = "SELECT records FROM routingrecords WHERE kind = ? AND subject = ?;";
     private static final String PUT = "INSERT INTO routingrecords (kind, subject, records, statehash) VALUES (?, ?, ?, ?) " +
             "ON CONFLICT (kind, subject) DO UPDATE SET records = excluded.records, statehash = excluded.statehash;";
-    private static final String NOT_PENDING = "AND NOT EXISTS (SELECT 1 FROM routingpending p WHERE p.kind = r.kind AND p.subject = r.subject) ";
-    private static final String STATES = "SELECT subject, statehash FROM routingrecords r WHERE kind = ? AND subject > ? " +
-            NOT_PENDING + "ORDER BY subject LIMIT ?;";
-    private static final String STATES_UP_TO = "SELECT subject, statehash FROM routingrecords r WHERE kind = ? AND subject > ? " +
-            "AND subject <= ? " + NOT_PENDING + "ORDER BY subject LIMIT ?;";
+    private static final String UNINDEXED = "SELECT subject, statehash FROM routingrecords r WHERE kind = ? AND subject > ? " +
+            "AND NOT EXISTS (SELECT 1 FROM routingpending p WHERE p.kind = r.kind AND p.subject = r.subject) " +
+            "ORDER BY subject LIMIT ?;";
+    private static final String GET_STATEHASH = "SELECT statehash FROM routingrecords WHERE kind = ? AND subject = ?;";
+    private static final String IS_PENDING = "SELECT 1 FROM routingpending WHERE kind = ? AND subject = ?;";
+    private static final String STATES = "SELECT subject, statehash FROM routingstates WHERE kind = ? AND slot >= ? AND slot <= ? " +
+            "AND (slot > ? OR (slot = ? AND subject > ?)) ORDER BY slot, subject LIMIT ?;";
+    private static final String GET_STATE = "SELECT statehash FROM routingstates WHERE kind = ? AND slot = ? AND subject = ?;";
+    private static final String PUT_STATE = "INSERT INTO routingstates (kind, slot, subject, statehash) VALUES (?, ?, ?, ?) " +
+            "ON CONFLICT (kind, slot, subject) DO UPDATE SET statehash = excluded.statehash;";
+    private static final String REMOVE_STATE = "DELETE FROM routingstates WHERE kind = ? AND slot = ? AND subject = ?;";
+    private static final String GET_SUM = "SELECT count, sum FROM routingsums WHERE kind = ? AND depth = ? AND prefix = ?;";
+    private static final String CHILD_SUMS = "SELECT prefix, count, sum FROM routingsums WHERE kind = ? AND depth = ? " +
+            "AND prefix >= ? AND prefix <= ? ORDER BY prefix;";
+    private static final String PUT_SUM = "INSERT INTO routingsums (kind, depth, prefix, count, sum) VALUES (?, ?, ?, ?, ?) " +
+            "ON CONFLICT (kind, depth, prefix) DO UPDATE SET count = excluded.count, sum = excluded.sum;";
+    private static final String REMOVE_SUM = "DELETE FROM routingsums WHERE kind = ? AND depth = ? AND prefix = ?;";
+    private static final String INDEXED = "index";
     private static final String COUNT = "SELECT COUNT(*) FROM routingrecords WHERE kind = ?;";
     private static final String ADD_PENDING = "INSERT INTO routingpending (kind, subject) VALUES (?, ?) ON CONFLICT DO NOTHING;";
     private static final String REMOVE_PENDING = "DELETE FROM routingpending WHERE kind = ? AND subject = ?;";
@@ -91,7 +104,22 @@ public class JdbcRoutingStore {
         }
     }
 
+    /** A subject's records and the hash of them, to store. */
+    public static final class Put {
+        public final Subject subject;
+        public final List<Stored> records;
+        public final byte[] stateHash;
+
+        public Put(Subject subject, List<Stored> records, byte[] stateHash) {
+            this.subject = subject;
+            this.records = records;
+            this.stateHash = stateHash;
+        }
+    }
+
     private final Supplier<Connection> conn;
+    /** One transaction at a time: each reads the sums it changes before writing them. */
+    private final Object writes = new Object();
 
     public JdbcRoutingStore(Supplier<Connection> conn, SqlSupplier commands) {
         this.conn = conn;
@@ -100,6 +128,8 @@ public class JdbcRoutingStore {
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+        if (getMeta(INDEXED).isEmpty())
+            reindex();
     }
 
     private Connection getConnection() {
@@ -136,17 +166,173 @@ public class JdbcRoutingStore {
     }
 
     public void put(Subject s, List<Stored> records, byte[] stateHash) {
-        try (Connection c = getConnection();
-             PreparedStatement insert = c.prepareStatement(PUT)) {
-            insert.setInt(1, s.kind);
-            insert.setBytes(2, s.idBytes());
-            insert.setBytes(3, encode(records));
-            insert.setBytes(4, stateHash);
-            insert.executeUpdate();
-        } catch (SQLException e) {
-            LOG.log(Level.WARNING, e.getMessage(), e);
-            throw new RuntimeException(e);
+        putAll(List.of(new Put(s, records, stateHash)));
+    }
+
+    /** Stores several subjects in one transaction, as when taking a page of a peer's log. */
+    public void putAll(List<Put> puts) {
+        transact(c -> {
+            Sums sums = new Sums();
+            try (PreparedStatement insert = c.prepareStatement(PUT)) {
+                for (Put p : puts) {
+                    insert.setInt(1, p.subject.kind);
+                    insert.setBytes(2, p.subject.idBytes());
+                    insert.setBytes(3, encode(p.records));
+                    insert.setBytes(4, p.stateHash);
+                    insert.executeUpdate();
+                    if (! isPending(c, p.subject))
+                        index(c, p.subject, Optional.of(p.stateHash), sums);
+                }
+            }
+            sums.write(c);
+        });
+    }
+
+    private interface Transaction {
+        void run(Connection c) throws SQLException;
+    }
+
+    /** Begun and committed as statements, not through the connection's auto-commit flag: the connection may be one
+     *  every caller shares, each of them setting that flag as it starts.
+     */
+    private void transact(Transaction t) {
+        synchronized (writes) {
+            try (Connection c = getConnection()) {
+                execute(c, "BEGIN");
+                try {
+                    t.run(c);
+                    execute(c, "COMMIT");
+                } catch (SQLException | RuntimeException e) {
+                    try {
+                        execute(c, "ROLLBACK");
+                    } catch (SQLException x) {}
+                    throw e;
+                }
+            } catch (SQLException e) {
+                LOG.log(Level.WARNING, e.getMessage(), e);
+                throw new RuntimeException(e);
+            }
         }
+    }
+
+    private static void execute(Connection c, String sql) throws SQLException {
+        try (Statement s = c.createStatement()) {
+            s.execute(sql);
+        }
+    }
+
+    /** What a transaction adds to each range's count and fingerprint, written once at its end. */
+    private static final class Sums {
+        final Map<List<Integer>, long[]> counts = new HashMap<>();
+        final Map<List<Integer>, java.math.BigInteger> sums = new HashMap<>();
+
+        void add(int kind, int slot, long count, java.math.BigInteger item) {
+            for (int depth = 0; depth <= Reconciliation.MAX_DEPTH; depth++) {
+                List<Integer> key = List.of(kind, depth, slot >> (8 * (Reconciliation.MAX_DEPTH - depth)));
+                counts.computeIfAbsent(key, k -> new long[1])[0] += count;
+                sums.merge(key, item, java.math.BigInteger::add);
+            }
+        }
+
+        void write(Connection c) throws SQLException {
+            try (PreparedStatement select = c.prepareStatement(GET_SUM);
+                 PreparedStatement insert = c.prepareStatement(PUT_SUM);
+                 PreparedStatement remove = c.prepareStatement(REMOVE_SUM)) {
+                for (Map.Entry<List<Integer>, java.math.BigInteger> e : sums.entrySet()) {
+                    List<Integer> key = e.getKey();
+                    for (int i = 0; i < 3; i++)
+                        select.setInt(i + 1, key.get(i));
+                    long count = counts.get(key)[0];
+                    java.math.BigInteger sum = e.getValue();
+                    try (ResultSet rs = select.executeQuery()) {
+                        if (rs.next()) {
+                            count += rs.getLong(1);
+                            sum = sum.add(new java.math.BigInteger(1, rs.getBytes(2)));
+                        }
+                    }
+                    PreparedStatement update = count == 0 ? remove : insert;
+                    for (int i = 0; i < 3; i++)
+                        update.setInt(i + 1, key.get(i));
+                    if (count != 0) {
+                        update.setLong(4, count);
+                        update.setBytes(5, Reconciliation.bytes(Reconciliation.add(java.math.BigInteger.ZERO, sum)));
+                    }
+                    update.executeUpdate();
+                }
+            }
+        }
+    }
+
+    private static boolean isPending(Connection c, Subject s) throws SQLException {
+        try (PreparedStatement select = c.prepareStatement(IS_PENDING)) {
+            select.setInt(1, s.kind);
+            select.setBytes(2, s.idBytes());
+            try (ResultSet rs = select.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
+    /** Sets, or with no state hash removes, what reconciliation sees of a subject. */
+    private static void index(Connection c, Subject s, Optional<byte[]> stateHash, Sums sums) throws SQLException {
+        byte[] id = s.idBytes();
+        int slot = Reconciliation.slot(id);
+        Optional<byte[]> old;
+        try (PreparedStatement select = c.prepareStatement(GET_STATE)) {
+            select.setInt(1, s.kind);
+            select.setInt(2, slot);
+            select.setBytes(3, id);
+            try (ResultSet rs = select.executeQuery()) {
+                old = rs.next() ? Optional.of(rs.getBytes(1)) : Optional.empty();
+            }
+        }
+        if (old.isEmpty() && stateHash.isEmpty())
+            return;
+        if (old.isPresent() && stateHash.isPresent() && Arrays.equals(old.get(), stateHash.get()))
+            return;
+        try (PreparedStatement update = c.prepareStatement(stateHash.isPresent() ? PUT_STATE : REMOVE_STATE)) {
+            update.setInt(1, s.kind);
+            update.setInt(2, slot);
+            update.setBytes(3, id);
+            if (stateHash.isPresent())
+                update.setBytes(4, stateHash.get());
+            update.executeUpdate();
+        }
+        if (old.isPresent())
+            sums.add(s.kind, slot, -1, Reconciliation.item(id, old.get()).negate());
+        if (stateHash.isPresent())
+            sums.add(s.kind, slot, 1, Reconciliation.item(id, stateHash.get()));
+    }
+
+    /** Builds what reconciliation reads from the records held, for a store written before it was kept. */
+    private void reindex() {
+        transact(c -> {
+            execute(c, "DELETE FROM routingstates");
+            execute(c, "DELETE FROM routingsums");
+            Sums sums = new Sums();
+            for (int kind : new int[]{Subject.IDENTITY, Subject.SERVER}) {
+                byte[] after = new byte[0];
+                while (true) {
+                    List<State> page = new ArrayList<>();
+                    try (PreparedStatement select = c.prepareStatement(UNINDEXED)) {
+                        select.setInt(1, kind);
+                        select.setBytes(2, after);
+                        select.setInt(3, 1_000);
+                        try (ResultSet rs = select.executeQuery()) {
+                            while (rs.next())
+                                page.add(new State(subject(kind, rs.getBytes(1)), rs.getBytes(2)));
+                        }
+                    }
+                    for (State st : page)
+                        index(c, st.subject, Optional.of(st.hash), sums);
+                    if (page.size() < 1_000)
+                        break;
+                    after = page.get(page.size() - 1).subject.idBytes();
+                }
+            }
+            sums.write(c);
+        });
+        setMeta(INDEXED, new byte[]{1});
     }
 
     private static byte[] encode(List<Stored> records) {
@@ -166,26 +352,59 @@ public class JdbcRoutingStore {
         return new CborObject.CborList(res).toByteArray();
     }
 
-    /** States in subject order after the given subject id, for reconciliation and snapshots. */
-    public List<State> states(int kind, byte[] after, int limit) {
-        return states(kind, after, Optional.empty(), limit);
-    }
-
-    /** States with subject ids after one id, and up to another if given, in order: what reconciliation compares,
+    /** States in a range after a place in it, ordered by slot and then subject id: what reconciliation compares,
      *  so not the inceptions this server still owes proof of work for.
      */
-    public List<State> states(int kind, byte[] after, Optional<byte[]> upTo, int limit) {
+    public List<State> states(int kind, Reconciliation.Range range, Reconciliation.Cursor after, int limit) {
         try (Connection c = getConnection();
-             PreparedStatement select = c.prepareStatement(upTo.isPresent() ? STATES_UP_TO : STATES)) {
+             PreparedStatement select = c.prepareStatement(STATES)) {
             select.setInt(1, kind);
-            select.setBytes(2, after);
-            if (upTo.isPresent())
-                select.setBytes(3, upTo.get());
-            select.setInt(upTo.isPresent() ? 4 : 3, limit);
+            select.setInt(2, range.from());
+            select.setInt(3, range.to());
+            select.setInt(4, after.slot);
+            select.setInt(5, after.slot);
+            select.setBytes(6, after.id);
+            select.setInt(7, limit);
             ResultSet rs = select.executeQuery();
             List<State> res = new ArrayList<>();
             while (rs.next())
                 res.add(new State(subject(kind, rs.getBytes(1)), rs.getBytes(2)));
+            return res;
+        } catch (SQLException e) {
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    /** A range's count and fingerprint, kept up to date as subjects change rather than read from them. */
+    public Reconciliation.Summary summary(int kind, Reconciliation.Range range) {
+        try (Connection c = getConnection();
+             PreparedStatement select = c.prepareStatement(GET_SUM)) {
+            select.setInt(1, kind);
+            select.setInt(2, range.depth);
+            select.setInt(3, range.prefix);
+            ResultSet rs = select.executeQuery();
+            return rs.next() ? new Reconciliation.Summary(rs.getLong(1), rs.getBytes(2)) : Reconciliation.Summary.EMPTY;
+        } catch (SQLException e) {
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    /** The summaries of a range's children that hold anything, by the last byte of their prefix. */
+    public Map<Integer, Reconciliation.Summary> children(int kind, Reconciliation.Range parent) {
+        if (parent.depth >= Reconciliation.MAX_DEPTH)
+            throw new IllegalStateException("A range at depth " + parent.depth + " has no children");
+        try (Connection c = getConnection();
+             PreparedStatement select = c.prepareStatement(CHILD_SUMS)) {
+            select.setInt(1, kind);
+            select.setInt(2, parent.depth + 1);
+            select.setInt(3, parent.prefix << 8);
+            select.setInt(4, (parent.prefix << 8) + Reconciliation.FANOUT - 1);
+            ResultSet rs = select.executeQuery();
+            Map<Integer, Reconciliation.Summary> res = new TreeMap<>();
+            while (rs.next())
+                res.put(rs.getInt(1) & 0xff, new Reconciliation.Summary(rs.getLong(2), rs.getBytes(3)));
             return res;
         } catch (SQLException e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
@@ -210,23 +429,38 @@ public class JdbcRoutingStore {
         return new Subject(kind, kind == Subject.IDENTITY ? Cid.cast(id) : Multihash.decode(id));
     }
 
+    /** An inception this server owes proof of work for, which reconciliation doesn't see until it is done. */
     public void addPending(Subject s) {
-        update(ADD_PENDING, s);
+        transact(c -> {
+            update(c, ADD_PENDING, s);
+            Sums sums = new Sums();
+            index(c, s, Optional.empty(), sums);
+            sums.write(c);
+        });
     }
 
     public void removePending(Subject s) {
-        update(REMOVE_PENDING, s);
+        transact(c -> {
+            update(c, REMOVE_PENDING, s);
+            Optional<byte[]> stateHash;
+            try (PreparedStatement select = c.prepareStatement(GET_STATEHASH)) {
+                select.setInt(1, s.kind);
+                select.setBytes(2, s.idBytes());
+                try (ResultSet rs = select.executeQuery()) {
+                    stateHash = rs.next() ? Optional.of(rs.getBytes(1)) : Optional.empty();
+                }
+            }
+            Sums sums = new Sums();
+            index(c, s, stateHash, sums);
+            sums.write(c);
+        });
     }
 
-    private void update(String sql, Subject s) {
-        try (Connection c = getConnection();
-             PreparedStatement stmt = c.prepareStatement(sql)) {
+    private static void update(Connection c, String sql, Subject s) throws SQLException {
+        try (PreparedStatement stmt = c.prepareStatement(sql)) {
             stmt.setInt(1, s.kind);
             stmt.setBytes(2, s.idBytes());
             stmt.executeUpdate();
-        } catch (SQLException e) {
-            LOG.log(Level.WARNING, e.getMessage(), e);
-            throw new RuntimeException(e);
         }
     }
 

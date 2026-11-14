@@ -31,6 +31,8 @@ public class RoutingReplica {
     private final Map<Subject, SubjectLog> cache = Collections.synchronizedMap(new LRUCache<>(10_000));
     private final Map<Subject, Subject> aliases = Collections.synchronizedMap(new LRUCache<>(10_000));
     private final Object[] locks = new Object[LOCKS];
+    /** Held shared to change one subject, and alone to store a page of them in one transaction. */
+    private final java.util.concurrent.locks.ReadWriteLock pages = new java.util.concurrent.locks.ReentrantReadWriteLock();
     private final List<BiConsumer<Subject, SubjectLog>> listeners = new CopyOnWriteArrayList<>();
     private volatile Optional<Multihash> compactFor = Optional.empty();
     private final Map<ByteArrayWrapper, Integer> ranks = Collections.synchronizedMap(new LRUCache<>(100_000));
@@ -150,6 +152,15 @@ public class RoutingReplica {
         } catch (RuntimeException e) {
             return Outcome.Rejected;
         }
+        pages.readLock().lock();
+        try {
+            return add(s, record, v, gate);
+        } finally {
+            pages.readLock().unlock();
+        }
+    }
+
+    private Outcome add(Subject s, SignedRecord record, Verified<? extends SignedRecord> v, Gate gate) {
         synchronized (lock(s)) {
             SubjectLog log = log(s);
             RecordLog.Change<? extends SubjectLog> c = log.add(v);
@@ -217,14 +228,75 @@ public class RoutingReplica {
         return new Verified<>(v.record, hash, v.keyHash);
     }
 
-    private void save(Subject s, SubjectLog log) {
-        boolean strip = compactFor.map(self -> ! keepsFull(self, log)).orElse(false);
+    /** Takes in a page of a peer's log, whole subjects at a time, as a node starting from little does (remove-pki
+     *  §4.3.1): every record is checked as when it arrives alone, on as many threads as there are, and the page is
+     *  stored in one transaction. A subject whose inception isn't proven is left out, as is any record that fails.
+     *
+     * @return how many subjects changed
+     */
+    public int takeAll(Map<Subject, List<SignedRecord>> page) {
+        Map<Subject, List<Verified<? extends SignedRecord>>> verified = new ConcurrentHashMap<>();
+        page.entrySet().parallelStream().forEach(e -> {
+            Subject s = canonical(e.getKey());
+            List<Verified<? extends SignedRecord>> ok = new ArrayList<>();
+            for (SignedRecord r : notHeld(s, e.getValue())) {
+                if (! s.accepts(RecordType.of(r)))
+                    continue;
+                try {
+                    ok.add(validator.verify(r).join());
+                    if (isInception(r))
+                        isProven(s, r, true); // remembered, for when the page is stored
+                } catch (RuntimeException invalid) {}
+            }
+            if (! ok.isEmpty())
+                verified.put(s, ok);
+        });
+        if (verified.isEmpty())
+            return 0;
+        pages.writeLock().lock();
+        try {
+            Map<Subject, SubjectLog> changed = new LinkedHashMap<>();
+            List<JdbcRoutingStore.Put> puts = new ArrayList<>();
+            for (Map.Entry<Subject, List<Verified<? extends SignedRecord>>> e : verified.entrySet()) {
+                Subject s = e.getKey();
+                SubjectLog before = log(s);
+                SubjectLog log = SubjectLog.build(before, e.getValue());
+                if (log.inception().isEmpty() || ! isProven(s, log.inception().get().record, true))
+                    continue;
+                if (Arrays.equals(digest(log.held()), digest(before.held())))
+                    continue;
+                changed.put(s, log);
+                puts.add(new JdbcRoutingStore.Put(s, stored(log), digest(log.held())));
+            }
+            store.putAll(puts);
+            changed.forEach(this::saved);
+            return changed.size();
+        } finally {
+            pages.writeLock().unlock();
+        }
+    }
+
+    private boolean strips(SubjectLog log) {
+        return compactFor.map(self -> ! keepsFull(self, log)).orElse(false);
+    }
+
+    private List<JdbcRoutingStore.Stored> stored(SubjectLog log) {
+        boolean strip = strips(log);
         List<JdbcRoutingStore.Stored> records = new ArrayList<>();
         for (Verified<? extends SignedRecord> v : log.held())
             records.add(strip || v.record.isStripped() ?
                     new JdbcRoutingStore.Stored(RecordType.stripped(v.record), Optional.of(v.hash)) :
                     new JdbcRoutingStore.Stored(v.record, Optional.empty()));
-        store.put(s, records, digest(log.held()));
+        return records;
+    }
+
+    private void save(Subject s, SubjectLog log) {
+        store.put(s, stored(log), digest(log.held()));
+        saved(s, log);
+    }
+
+    private void saved(Subject s, SubjectLog log) {
+        boolean strip = strips(log);
         if (log instanceof ServerLog)
             index(s, (ServerLog) log);
         if (strip)
@@ -355,14 +427,19 @@ public class RoutingReplica {
 
     /** One of ours that was stored without signatures, as when a user moves here: keep it in full from now on. */
     private void restore(Subject s, List<Verified<? extends SignedRecord>> held, List<SignedRecord> full) {
-        synchronized (lock(s)) {
-            if (! Arrays.equals(stateHash(s), digest(held)))
-                return;
-            List<JdbcRoutingStore.Stored> records = new ArrayList<>();
-            for (SignedRecord r : full)
-                records.add(new JdbcRoutingStore.Stored(r, Optional.empty()));
-            store.put(s, records, digest(held));
-            cache.remove(s);
+        pages.readLock().lock();
+        try {
+            synchronized (lock(s)) {
+                if (! Arrays.equals(stateHash(s), digest(held)))
+                    return;
+                List<JdbcRoutingStore.Stored> records = new ArrayList<>();
+                for (SignedRecord r : full)
+                    records.add(new JdbcRoutingStore.Stored(r, Optional.empty()));
+                store.put(s, records, digest(held));
+                cache.remove(s);
+            }
+        } finally {
+            pages.readLock().unlock();
         }
     }
 

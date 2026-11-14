@@ -485,7 +485,7 @@ public class RoutingSimulationTests {
             }
 
             @Override
-            public java.util.concurrent.CompletableFuture<List<JdbcRoutingStore.State>> states(int kind, Reconciliation.Range range, int limit) {
+            public java.util.concurrent.CompletableFuture<List<JdbcRoutingStore.State>> states(int kind, Reconciliation.Range range, Reconciliation.Cursor after, int limit) {
                 List<JdbcRoutingStore.State> same = new ArrayList<>();
                 for (int i = 0; i < RoutingNode.PAGE; i++)
                     same.add(new JdbcRoutingStore.State(nodes.get(0).subject, new byte[32]));
@@ -497,6 +497,19 @@ public class RoutingSimulationTests {
             victim.routing.differences(looping, Subject.SERVER);
             Assert.fail("A page that doesn't move forward is refused");
         } catch (IllegalStateException expected) {}
+        List<JdbcRoutingStore.State> invented = new ArrayList<>();
+        byte[] template = nodes.get(0).id.toBytes();
+        for (int i = 0; i < RoutingNode.MAX_DIFFERENCES + 20 * RoutingNode.PAGE; i++) {
+            byte[] id = template.clone();
+            byte[] tail = new byte[id.length - 6];
+            net.random.nextBytes(tail);
+            System.arraycopy(tail, 0, id, 6, tail.length);
+            invented.add(new JdbcRoutingStore.State(Subject.server(peergos.shared.io.ipfs.Multihash.decode(id)), new byte[32]));
+        }
+        Map<JdbcRoutingStore.State, Integer> slots = new HashMap<>();
+        for (JdbcRoutingStore.State st : invented)
+            slots.put(st, Reconciliation.slot(st.subject.idBytes()));
+        invented.sort(Comparator.comparingInt((JdbcRoutingStore.State st) -> slots.get(st)).thenComparing(st -> st.subject));
         RoutingPeer flooding = new SimPeer(victim.id, nodes.get(2).id, net) {
             @Override
             public java.util.concurrent.CompletableFuture<List<Reconciliation.Summary>> summaries(int kind, List<Reconciliation.Range> ranges) {
@@ -504,18 +517,19 @@ public class RoutingSimulationTests {
             }
 
             @Override
-            public java.util.concurrent.CompletableFuture<List<JdbcRoutingStore.State>> states(int kind, Reconciliation.Range range, int limit) {
-                List<JdbcRoutingStore.State> fake = new ArrayList<>();
-                byte[] after = range.after.length == 0 ? nodes.get(0).id.toBytes() : range.after.clone();
-                if (range.after.length == 0)
-                    Arrays.fill(after, 6, after.length, (byte) 0);
-                for (int i = 0; i < limit; i++) {
-                    for (int j = after.length - 1; j >= 0 && ++after[j] == 0; j--) {}
-                    if (range.upTo.map(u -> peergos.shared.util.ArrayOps.compare(after, u) > 0).orElse(false))
-                        break;
-                    fake.add(new JdbcRoutingStore.State(Subject.server(peergos.shared.io.ipfs.Multihash.decode(after.clone())), new byte[32]));
+            public java.util.concurrent.CompletableFuture<List<JdbcRoutingStore.State>> states(int kind, Reconciliation.Range range, Reconciliation.Cursor after, int limit) {
+                int lo = 0, hi = invented.size();
+                while (lo < hi) {
+                    int mid = (lo + hi) / 2;
+                    JdbcRoutingStore.State st = invented.get(mid);
+                    int slot = slots.get(st);
+                    boolean isAfter = slot != after.slot ? slot > after.slot : Subject.compareBytes(st.subject.idBytes(), after.id) > 0;
+                    if (isAfter)
+                        hi = mid;
+                    else
+                        lo = mid + 1;
                 }
-                return peergos.shared.util.Futures.of(fake);
+                return peergos.shared.util.Futures.of(new ArrayList<>(invented.subList(lo, Math.min(invented.size(), lo + limit))));
             }
         };
         List<JdbcRoutingStore.State> d = victim.routing.differences(flooding, Subject.SERVER);

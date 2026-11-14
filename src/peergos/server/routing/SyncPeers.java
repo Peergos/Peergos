@@ -21,8 +21,6 @@ public class SyncPeers {
     private static final Logger LOG = Logging.LOG();
     public static final int DRAWN = 8, VERIFY_PER_ROUND = 16, DISCOVER = 32;
     private static final int MAX_SCANNED = 10_000;
-    /** Server ids share their multihash and key type header, so a random point among them keeps it. */
-    private static final int KEY_PREFIX = 6;
 
     private final RoutingNode node;
     private final BucketVerifier buckets;
@@ -93,32 +91,51 @@ public class SyncPeers {
         }
     }
 
-    /** The full nodes in the replica with a direct address, other than this one and those configured. */
+    /** Some of a replica's servers, starting from a random place in their order and going round to it again. With
+     *  more servers than are read, every node reads a different stretch, so no servers are everyone's choice and
+     *  there is no place in the order worth making keys for.
+     */
+    public static List<JdbcRoutingStore.State> someServers(RoutingReplica replica, Random random, int max) {
+        Reconciliation.Cursor start = Reconciliation.Cursor.at(random.nextInt(1 << (8 * Reconciliation.MAX_DEPTH)));
+        List<JdbcRoutingStore.State> res = new ArrayList<>();
+        Reconciliation.Cursor after = start;
+        boolean wrapped = false;
+        while (res.size() < max) {
+            List<JdbcRoutingStore.State> page = replica.store().states(Subject.SERVER, Reconciliation.Range.ALL, after,
+                    Math.min(1_000, max - res.size()));
+            for (JdbcRoutingStore.State st : page) {
+                if (wrapped && start.isBefore(st.subject))
+                    return res;
+                res.add(st);
+            }
+            if (page.isEmpty()) {
+                if (wrapped)
+                    return res;
+                wrapped = true;
+                after = Reconciliation.Cursor.START;
+            } else
+                after = Reconciliation.Cursor.after(page.get(page.size() - 1).subject);
+        }
+        return res;
+    }
+
+    /** Full nodes in the replica with a direct address, other than this one and those configured. */
     private List<Multihash> fullNodes() {
         RoutingReplica replica = node.replica();
         Set<Multihash> skip = new HashSet<>();
         skip.add(self);
         configured.forEach(p -> skip.add(p.id().bareMultihash()));
         List<Multihash> res = new ArrayList<>();
-        byte[] after = new byte[0];
-        int scanned = 0;
-        while (scanned < MAX_SCANNED) {
-            List<JdbcRoutingStore.State> page = replica.store().states(Subject.SERVER, after, 1_000);
-            if (page.isEmpty())
-                break;
-            for (JdbcRoutingStore.State st : page) {
-                Multihash id = st.subject.id.bareMultihash();
-                if (skip.contains(id))
-                    continue;
-                replica.server(st.subject)
-                        .filter(log -> replica.isProven(st.subject, false))
-                        .flatMap(ServerLog::addresses)
-                        .filter(a -> a.mode != ServerAddresses.Mode.Light && ! a.addrs.isEmpty())
-                        .filter(a -> skip.stream().noneMatch(p -> p.equals(ServerKeys.peerId(a.endpoint).bareMultihash())))
-                        .ifPresent(a -> res.add(id));
-            }
-            scanned += page.size();
-            after = page.get(page.size() - 1).subject.idBytes();
+        for (JdbcRoutingStore.State st : someServers(replica, random, MAX_SCANNED)) {
+            Multihash id = st.subject.id.bareMultihash();
+            if (skip.contains(id))
+                continue;
+            replica.server(st.subject)
+                    .filter(log -> replica.isProven(st.subject, false))
+                    .flatMap(ServerLog::addresses)
+                    .filter(a -> a.mode != ServerAddresses.Mode.Light && ! a.addrs.isEmpty())
+                    .filter(a -> skip.stream().noneMatch(p -> p.equals(ServerKeys.peerId(a.endpoint).bareMultihash())))
+                    .ifPresent(a -> res.add(id));
         }
         return res;
     }
@@ -145,21 +162,18 @@ public class SyncPeers {
                 node.removeSyncPeer(p.id());
     }
 
-    /** Pulls a page of server records from a configured node, from a random point in the key space. */
+    /** Pulls a page of server records from a configured node, from a random place in their order. */
     private void discover() {
         if (configured.isEmpty())
             return;
         RoutingPeer from = configured.get(0);
-        byte[] start = self.toBytes();
-        byte[] tail = new byte[start.length - KEY_PREFIX];
-        random.nextBytes(tail);
-        System.arraycopy(tail, 0, start, KEY_PREFIX, tail.length);
+        Reconciliation.Cursor start = Reconciliation.Cursor.at(random.nextInt(1 << (8 * Reconciliation.MAX_DEPTH)));
         try {
-            List<JdbcRoutingStore.State> page = from.states(Subject.SERVER, new Reconciliation.Range(start, Optional.empty()), DISCOVER)
+            List<JdbcRoutingStore.State> page = from.states(Subject.SERVER, Reconciliation.Range.ALL, start, DISCOVER)
                     .get(15, java.util.concurrent.TimeUnit.SECONDS);
             if (page.size() < DISCOVER) {
                 List<JdbcRoutingStore.State> wrapped = new ArrayList<>(page);
-                wrapped.addAll(from.states(Subject.SERVER, new Reconciliation.Range(new byte[0], Optional.of(start)), DISCOVER - page.size())
+                wrapped.addAll(from.states(Subject.SERVER, Reconciliation.Range.ALL, Reconciliation.Cursor.START, DISCOVER - page.size())
                         .get(15, java.util.concurrent.TimeUnit.SECONDS));
                 page = wrapped;
             }

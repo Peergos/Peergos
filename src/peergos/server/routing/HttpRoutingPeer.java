@@ -53,6 +53,50 @@ public class HttpRoutingPeer implements RoutingPeer {
     }
 
     @Override
+    public CompletableFuture<Map<Subject, List<SignedRecord>>> recordsOf(List<Subject> subjects) {
+        return call("records-of", Map.of("s", new CborObject.CborList(subjects)))
+                .thenApply(HttpRoutingPeer::recordsBySubject);
+    }
+
+    static CborObject.CborList recordsBySubject(Map<Subject, List<SignedRecord>> records) {
+        List<Cborable> res = new ArrayList<>();
+        for (Map.Entry<Subject, List<SignedRecord>> e : records.entrySet()) {
+            Map<String, Cborable> m = new TreeMap<>();
+            m.put("s", e.getKey());
+            m.put("r", new CborObject.CborList(e.getValue().stream().map(RecordType::tag).collect(Collectors.toList())));
+            res.add(CborObject.CborMap.build(m));
+        }
+        return new CborObject.CborList(res);
+    }
+
+    static Map<Subject, List<SignedRecord>> recordsBySubject(Cborable cbor) {
+        Map<Subject, List<SignedRecord>> res = new LinkedHashMap<>();
+        for (Cborable c : ((CborObject.CborList) cbor).value) {
+            CborObject.CborMap m = (CborObject.CborMap) c;
+            res.put(Subject.fromCbor(m.get("s")), m.getList("r", RecordType::untag));
+        }
+        return res;
+    }
+
+    @Override
+    public CompletableFuture<Page> page(int kind, Reconciliation.Cursor after, int limit) {
+        return call("page", Map.of("k", new CborObject.CborLong(kind), "a", after, "l", new CborObject.CborLong(limit)))
+                .thenApply(HttpRoutingPeer::page);
+    }
+
+    static CborObject.CborMap page(Page page) {
+        Map<String, Cborable> m = new TreeMap<>();
+        m.put("r", recordsBySubject(page.records));
+        page.next.ifPresent(n -> m.put("n", n));
+        return CborObject.CborMap.build(m);
+    }
+
+    static Page page(Cborable cbor) {
+        CborObject.CborMap m = (CborObject.CborMap) cbor;
+        return new Page(recordsBySubject(m.get("r")), m.getOptional("n", Reconciliation.Cursor::fromCbor));
+    }
+
+    @Override
     public CompletableFuture<List<Reconciliation.Summary>> summaries(int kind, List<Reconciliation.Range> ranges) {
         return call("summaries", Map.of("k", new CborObject.CborLong(kind), "r", new CborObject.CborList(ranges)))
                 .thenApply(res -> ((CborObject.CborList) res).value.stream()
@@ -61,8 +105,16 @@ public class HttpRoutingPeer implements RoutingPeer {
     }
 
     @Override
-    public CompletableFuture<List<JdbcRoutingStore.State>> states(int kind, Reconciliation.Range range, int limit) {
-        return call("states", Map.of("k", new CborObject.CborLong(kind), "r", range, "l", new CborObject.CborLong(limit)))
+    public CompletableFuture<List<Map<Integer, Reconciliation.Summary>>> children(int kind, List<Reconciliation.Range> parents) {
+        return call("children", Map.of("k", new CborObject.CborLong(kind), "r", new CborObject.CborList(parents)))
+                .thenApply(res -> ((CborObject.CborList) res).value.stream()
+                        .map(Reconciliation::children)
+                        .collect(Collectors.toList()));
+    }
+
+    @Override
+    public CompletableFuture<List<JdbcRoutingStore.State>> states(int kind, Reconciliation.Range range, Reconciliation.Cursor after, int limit) {
+        return call("states", Map.of("k", new CborObject.CborLong(kind), "r", range, "a", after, "l", new CborObject.CborLong(limit)))
                 .thenApply(res -> ((CborObject.CborList) res).value.stream()
                         .map(Reconciliation::state)
                         .collect(Collectors.toList()));
