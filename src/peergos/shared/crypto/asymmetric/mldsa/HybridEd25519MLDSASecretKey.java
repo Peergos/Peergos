@@ -49,14 +49,6 @@ public class HybridEd25519MLDSASecretKey implements SecretSigningKey {
                         }));
     }
 
-    public byte[] mldsaSeed() {
-        return Arrays.copyOf(mldsaSeed, mldsaSeed.length);
-    }
-
-    public HybridEd25519MLDSAPublicKey publicKey(Ed25519PublicKey ed25519Public) {
-        return new HybridEd25519MLDSAPublicKey(ed25519Public, provider.publicKey(mldsaSeed), provider);
-    }
-
     @Override
     public CborObject toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();

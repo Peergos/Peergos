@@ -151,7 +151,9 @@ public class GarbageCollector {
         System.out.println("Checking integrity from pointer targets...");
         allPointers.forEach((writerHash, signedRawCas) -> {
             PublicKeyHash owner = usage.getOwnerKey(writerHash);
-            PointerUpdate cas = getWithBackoff(() -> PointerKeys.verify(owner, writerHash, signedRawCas, storage).join());
+            PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(owner, writerHash).join().get());
+            byte[] bothHashes = writer.unsignMessage(signedRawCas, SigningDomain.POINTER).join();
+            PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
             MaybeMultihash updated = cas.updated;
             if (updated.isPresent() && !done.contains(updated.get())) {
                 done.add(updated.get());
@@ -214,18 +216,19 @@ public class GarbageCollector {
             System.out.println("From pki:");
             while (! queue.isEmpty()) {
                 PublicKeyHash parent = queue.poll();
+                PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(fromPki, parent).join().get());
                 Optional<byte[]> pointer = pointers.getPointer(parent).join();
                 if (pointer.isEmpty()) {
                     System.out.println("No pointer for " + parent);
                     continue;
                 }
-                PointerUpdate cas = getWithBackoff(() -> PointerKeys.verify(fromPki, parent, pointer.get(), storage).join());
+                byte[] bothHashes = writer.unsignMessage(pointer.get(), SigningDomain.POINTER).join();
+                PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
                 List<Cid> ids = storage.ids().join();
                 List<Multihash> peerIds = ids.stream().map(m -> (Multihash) m).collect(Collectors.toList());
                 Set<PublicKeyHash> kids = DeletableContentAddressedStorage.getDirectOwnedKeys(fromPki, parent,
                         cas.updated,
-                        (c, s) -> DeletableContentAddressedStorage.getWriterData(peerIds, fromPki, c, s, false, ids.get(ids.size() - 1), h, storage),
-                        pointers::getPointer, storage, h).join();
+                        (c, s) -> DeletableContentAddressedStorage.getWriterData(peerIds, fromPki, c, s, false, ids.get(ids.size() - 1), h, storage), storage, h).join();
                 for (PublicKeyHash kid : kids) {
                     System.out.println(parent + " owns " + kid);
                     queue.add(kid);
@@ -242,7 +245,9 @@ public class GarbageCollector {
                 .filter(p -> p.right.isPresent())
                 .collect(Collectors.toMap(p -> p.left, p -> p.right.get()));
         userPointers.forEach((writerHash, signedRawCas) -> {
-            PointerUpdate cas = getWithBackoff(() -> PointerKeys.verify(fromPki, writerHash, signedRawCas, storage).join());
+            PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(fromPki, writerHash).join().get());
+            byte[] bothHashes = writer.unsignMessage(signedRawCas, SigningDomain.POINTER).join();
+            PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
             MaybeMultihash updated = cas.updated;
             if (updated.isPresent() && !done.contains(updated.get())) {
                 done.add(updated.get());
@@ -574,7 +579,10 @@ public class GarbageCollector {
                                                      PublicKeyHash writerHash,
                                                      byte[] signedRawCas,
                                                      DeletableContentAddressedStorage storage) {
-        return getWithBackoff(() -> PointerKeys.verify(owner, writerHash, signedRawCas, storage).join()).updated;
+        PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(owner, writerHash).join().get());
+        byte[] bothHashes = writer.unsignMessage(signedRawCas, SigningDomain.POINTER).join();
+        PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
+        return cas.updated;
     }
 
     private static boolean markReachable(PublicKeyHash owner,

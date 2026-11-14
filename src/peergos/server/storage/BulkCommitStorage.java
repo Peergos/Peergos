@@ -298,11 +298,6 @@ public class BulkCommitStorage extends DelegatingStorage {
                         .thenCompose(at -> DeletableContentAddressedStorage.getDirectOwnedKeys(owner, w.writer,
                                 updates.get(at).map(u -> u.updated).orElse(MaybeMultihash.empty()),
                                 (h, seq) -> ContentAddressedStorage.getWriterData(owner, h, seq, withCallBlocks),
-                                child -> commit.writers.stream()
-                                        .filter(c -> c.writer.equals(child) && c.pointer.isPresent())
-                                        .findFirst()
-                                        .map(c -> Futures.of(Optional.of(c.pointer.get().signed)))
-                                        .orElseGet(() -> pointers.getPointer(owner, child)),
                                 withCallBlocks, hasher))
                         .exceptionally(unwalkable -> Collections.emptySet())
                         .join();
@@ -373,7 +368,9 @@ public class BulkCommitStorage extends DelegatingStorage {
                     return Futures.of(claimed.original.isPresent() ?
                             Optional.of(new PointerCasException(MaybeMultihash.empty(), Optional.empty(), claimed.original)) :
                             Optional.empty());
-                return PointerKeys.verify(owner, writer, current.get(), target)
+                return writerKey(owner, writer)
+                        .thenCompose(key -> key.unsignMessage(current.get(), SigningDomain.POINTER))
+                        .thenApply(msg -> PointerUpdate.fromCbor(CborObject.fromByteArray(msg)))
                         .thenApply(now -> now.updated.equals(claimed.original) ?
                                 Optional.empty() :
                                 Optional.of(new PointerCasException(now.updated, now.sequence, claimed.original)));
@@ -385,19 +382,12 @@ public class BulkCommitStorage extends DelegatingStorage {
 
     /** The pointer update each writer is proposing, which also checks the signature we are relying on. */
     private CompletableFuture<List<Optional<PointerUpdate>>> updates(PublicKeyHash owner, BulkCommit commit, List<List<Cid>> hashes) {
-        // a new writer's key block, or an upgraded writer's new WriterData and key, may be in the call
-        Map<Cid, byte[]> pending = new HashMap<>();
-        for (int i = 0; i < commit.writers.size(); i++) {
-            List<byte[]> cbor = commit.writers.get(i).cborBlocks;
-            for (int j = 0; j < cbor.size(); j++)
-                pending.put(hashes.get(i).get(j), cbor.get(j));
-        }
         return Futures.combineAllInOrder(commit.writers.stream()
                 .map(w -> w.pointer.isEmpty() ?
                         Futures.of(Optional.<PointerUpdate>empty()) :
-                        PointerKeys.pointerKey(owner, w.writer, w.pointer.get().signed, target, pending)
-                                .thenCompose(key -> PointerKeys.decode(key, w.pointer.get().signed))
-                                .thenApply(Optional::of))
+                        writerKey(owner, w.writer, commit, hashes)
+                                .thenCompose(key -> key.unsignMessage(w.pointer.get().signed, SigningDomain.POINTER))
+                                .thenApply(signed -> Optional.of(PointerUpdate.fromCbor(CborObject.fromByteArray(signed)))))
                 .collect(Collectors.toList()));
     }
 
@@ -506,7 +496,7 @@ public class BulkCommitStorage extends DelegatingStorage {
                 Map<Cid, byte[]> inCall = blocksInCall(commit, cborInCall);
                 Map<PublicKeyHash, Long> res = new HashMap<>();
                 for (int j = 0; j < commit.writers.size(); j++)
-                    res.merge(commit.writers.get(j).writer, deltaFor(owner, commit.writers.get(j).writer, updates.get(j), inCall), Long::sum);
+                    res.merge(commit.writers.get(j).writer, deltaFor(owner, updates.get(j), inCall), Long::sum);
                 deltas[0] = res;
             }
             return deltas[0];
@@ -542,7 +532,7 @@ public class BulkCommitStorage extends DelegatingStorage {
      *  already hold. The new root is only in the call at this point, so the diff runs over a view of
      *  the store that includes the call's own blocks.
      */
-    private long deltaFor(PublicKeyHash owner, PublicKeyHash writer, Optional<PointerUpdate> update, Map<Cid, byte[]> cborInCall) {
+    private long deltaFor(PublicKeyHash owner, Optional<PointerUpdate> update, Map<Cid, byte[]> cborInCall) {
         if (update.isEmpty())
             return 0;
         PointerUpdate u = update.get();
@@ -551,9 +541,9 @@ public class BulkCommitStorage extends DelegatingStorage {
         DeletableContentAddressedStorage view = withCallBlocks(cborInCall);
         if (after.isEmpty())
             // the whole of this writer's tree goes away
-            return before.map(b -> - view.getWriterTreeSize(owner, writer, b,
+            return before.map(b -> - view.getRecursiveBlockSize(owner, b,
                     Collections.singletonList(unfiltered.id().join())).join()).orElse(0L);
-        return view.getChangeInWriterSize(owner, writer, before, after.get()).join();
+        return view.getChangeInContainedSize(owner, before, after.get()).join();
     }
 
     /** The block store as it will look once this commit's blocks are written, for measuring against. */

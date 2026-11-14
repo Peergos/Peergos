@@ -31,7 +31,7 @@ public class OwnerProof implements Cborable {
     }
 
     public static CompletableFuture<OwnerProof> build(SigningPrivateKeyAndPublicHash ownedKeypair, PublicKeyHash owner) {
-        return ownedKeypair.blockSigner().secret.signMessage(owner.serialize(), SigningDomain.OWNER_PROOF)
+        return ownedKeypair.secret.signMessage(owner.serialize(), SigningDomain.OWNER_PROOF)
                 .thenApply(signed -> new OwnerProof(ownedKeypair.publicKeyHash, signed));
     }
 

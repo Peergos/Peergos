@@ -8,10 +8,8 @@ import peergos.shared.mutable.MutablePointers;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -26,7 +24,6 @@ public class WriteSynchronizer {
     private final Hasher hasher;
     // The keys are <owner, writer> pairs. The owner is only needed to handle identity changes
     private final Map<Pair<PublicKeyHash, PublicKeyHash>, AsyncLock<Snapshot>> pending = new ConcurrentHashMap<>();
-    private final Map<PublicKeyHash, Boolean> upgradingOwners = new ConcurrentHashMap<>();
     private CommitterBuilder committerBuilder = (c, o, w) -> c;
     private BufferedNetworkAccess.Flusher flusher = (o, writers, v, w) -> Futures.of(v);
     private volatile CommitObserver commitObserver = (w, s) -> {};
@@ -114,51 +111,6 @@ public class WriteSynchronizer {
                         commitObserver.committed(w.publicKeyHash, s.get(w.publicKeyHash).sequence);
                     return s;
                 });
-    }
-
-    /** An owner using this synchronizer upgrades each of its Ed25519 writers to a composite key on its next write there */
-    public void upgradeWritersOf(PublicKeyHash owner) {
-        upgradingOwners.put(owner, true);
-    }
-
-    private Committer upgrading(Committer c) {
-        return (o, signer, wd, existing, tid) -> {
-            if (wd.isEmpty() || ! SigningKeyPair.HYBRID_WRITERS || ! upgradingOwners.containsKey(o) ||
-                    signer.publicKeyHash.equals(o) || ! signer.isUpgradable() ||
-                    ! wd.get().controller.equals(signer.publicKeyHash))
-                return c.commit(o, signer, wd, existing, tid);
-            return parent(o, signer).thenCompose(parent -> {
-                if (parent.isEmpty())
-                    return c.commit(o, signer, wd, existing, tid);
-                return dht.putSigningKey(o, signer, signer.upgradedKey().get(), hasher, tid)
-                        .thenCompose(key -> c.commit(o, signer, Optional.of(wd.get().withController(key).withParent(parent.get())), existing, tid));
-            });
-        };
-    }
-
-    /** The writer whose owned keys hold the proof that it owns this one: usually the directory it was reached
-     *  through, or the identity for a top level writer
-     */
-    private CompletableFuture<Optional<PublicKeyHash>> parent(PublicKeyHash owner, SigningPrivateKeyAndPublicHash child) {
-        List<PublicKeyHash> candidates = new ArrayList<>();
-        child.parentHint().filter(p -> ! p.equals(child.publicKeyHash)).ifPresent(candidates::add);
-        if (! candidates.contains(owner))
-            candidates.add(owner);
-        return Futures.findFirst(candidates, p -> getWriterData(owner, p)
-                .thenCompose(s -> s.contains(p) && s.get(p).props.isPresent() ?
-                        owns(owner, s.get(p).props.get(), child.publicKeyHash) :
-                        Futures.of(false))
-                .thenApply(owns -> owns ? Optional.of(p) : Optional.<PublicKeyHash>empty()));
-    }
-
-    private CompletableFuture<Boolean> owns(PublicKeyHash owner, WriterData parent, PublicKeyHash child) {
-        if (parent.namedOwnedKeys.values().stream().anyMatch(proof -> proof.ownedKey.equals(child)))
-            return Futures.of(true);
-        if (parent.ownedKeys.isEmpty())
-            return Futures.of(false);
-        return parent.getOwnedKeyChamp(owner, dht, hasher)
-                .thenCompose(champ -> champ.get(owner, child))
-                .thenApply(Optional::isPresent);
     }
 
     public void put(PublicKeyHash owner, PublicKeyHash writer, CommittedWriterData val) {
@@ -250,8 +202,8 @@ public class WriteSynchronizer {
                 .runWithLock(current -> {
                             Set<PublicKeyHash> written = Collections.singleton(writer.publicKeyHash);
                             return IpfsTransaction.call(owner, tid -> Futures.asyncExceptionally(() -> transformer.apply(current.get(writer).props.get(), tid)
-                                            .thenCompose(wd -> upgrading(observe(committerBuilder.buildCommitter((aOwner, signer, wdr, existing, t) -> wdr.get().commit(aOwner, signer,
-                                                    existing.hash, existing.sequence, mutable, dht, hasher, t), owner, () -> true)))
+                                            .thenCompose(wd -> observe(committerBuilder.buildCommitter((aOwner, signer, wdr, existing, t) -> wdr.get().commit(aOwner, signer,
+                                                    existing.hash, existing.sequence, mutable, dht, hasher, t), owner, () -> true))
                                                     .commit(owner, writer, wd, current.get(writer), tid)),
                                     t -> {
                                         discardBuffered.accept(written);
@@ -277,11 +229,10 @@ public class WriteSynchronizer {
                 .runWithLock(current -> {
                             Written written = new Written(writer.publicKeyHash);
                             return discardOnFailure(written, () -> transformer.apply(current,
-                                        upgrading(written.tracking(observe(committerBuilder.buildCommitter((aOwner, signer, wd, existing, tid) -> (wd.isPresent() ?
+                                        written.tracking(observe(committerBuilder.buildCommitter((aOwner, signer, wd, existing, tid) -> (wd.isPresent() ?
                                                 wd.get().commit(aOwner, signer, existing.hash, existing.sequence, mutable, dht, hasher, tid) :
-                                                WriterData.commitDeletion(aOwner, signer.pointerSigner(existing.props.map(d -> d.controller).orElse(signer.publicKeyHash)),
-                                                        existing.hash, existing.sequence, mutable))
-                                                .thenCompose(s -> updateWriterState(owner, signer.publicKeyHash, s).thenApply(x -> s)), owner, commitWatcher))))))
+                                                WriterData.commitDeletion(aOwner, signer, existing.hash, existing.sequence, mutable))
+                                                .thenCompose(s -> updateWriterState(owner, signer.publicKeyHash, s).thenApply(x -> s)), owner, commitWatcher)))))
                                 .thenApply(Snapshot::asWritable)
                                 .thenCompose(v -> flusher.commit(owner, written.get(), v, commitWatcher));
                         },
@@ -325,14 +276,13 @@ public class WriteSynchronizer {
                 .runWithLock(current -> {
                             Written written = new Written(writer.publicKeyHash);
                             return discardOnFailure(written, () -> transformer.apply(current,
-                                upgrading(written.tracking(observe(committerBuilder.buildCommitter((aOwner, signer, wd, existing, tid) ->
+                                written.tracking(observe(committerBuilder.buildCommitter((aOwner, signer, wd, existing, tid) ->
                                                 (wd.isPresent() ?
                                                         wd.get().commit(aOwner, signer, existing.hash, existing.sequence, mutable, dht, hasher, tid) :
-                                                        WriterData.commitDeletion(aOwner, signer.pointerSigner(existing.props.map(d -> d.controller).orElse(signer.publicKeyHash)),
-                                                        existing.hash, existing.sequence, mutable))
+                                                        WriterData.commitDeletion(aOwner, signer, existing.hash, existing.sequence, mutable))
                                                         .thenCompose(s -> updateWriterState(owner, signer.publicKeyHash, s)
                                                                 .thenApply(x -> s)),
-                                        owner, () -> true))))))
+                                        owner, () -> true)))))
                                 .thenCompose(p -> flusher.commit(owner, written.get(), p.left.asWritable(), () -> true).thenApply(x -> p))
                                 .thenApply(p -> {
                                     res.complete(p);

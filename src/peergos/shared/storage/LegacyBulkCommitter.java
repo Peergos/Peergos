@@ -114,7 +114,7 @@ public class LegacyBulkCommitter implements BulkCommitter {
 
     private CompletableFuture<List<byte[]>> sign(SigningPrivateKeyAndPublicHash signer, List<byte[]> blocks) {
         return Futures.combineAllInOrder(blocks.stream()
-                .map(b -> hasher.sha256(b).thenCompose(h -> signer.blockSigner().secret.signMessage(h, SigningDomain.BLOCK)))
+                .map(b -> hasher.sha256(b).thenCompose(h -> signer.secret.signMessage(h, SigningDomain.BLOCK)))
                 .collect(Collectors.toList()));
     }
 

@@ -25,7 +25,6 @@ import peergos.shared.mutable.HttpMutablePointers;
 import peergos.shared.mutable.MutablePointers;
 import peergos.shared.mutable.MutablePointersProxy;
 import peergos.shared.mutable.PointerUpdate;
-import peergos.shared.mutable.PointerKeys;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.Account;
@@ -335,7 +334,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
                     LOG.info("Partitioning blocks from remaining pointers..");
                     allPointers.forEach((writerHash, rawPointer) -> {
-                        PointerUpdate cas = PointerKeys.verify(null, writerHash, rawPointer, this).join();
+                        PublicSigningKey writer = getSigningKey(null, writerHash).join().get();
+                        byte[] bothHashes = writer.unsignMessage(rawPointer, SigningDomain.POINTER).join();
+                        PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
                         MaybeMultihash updated = cas.updated;
                         if (updated.isPresent() && doneRoots.contains(updated.get()))
                             return;

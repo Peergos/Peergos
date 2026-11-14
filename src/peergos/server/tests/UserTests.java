@@ -923,8 +923,7 @@ public abstract class UserTests {
         Cid root2 = ((BufferedStorage)network.dhtClient).target().put(bContext.signer.publicKeyHash, bContext.signer.publicKeyHash,
                 bContext.signer.secret.signMessage(crypto.hasher.sha256(rootBlock).join(), SigningDomain.BLOCK).join(), rootBlock, TransactionId.build("hey")).join();
         Assert.assertFalse(network.mutable.setPointer(bContext.signer.publicKeyHash, bRoot.writer(),
-                bRoot.signingPair().pointerSigner(bRoot.getVersionRoot().props.get().controller)
-                        .secret.signMessage(cas.serialize(), SigningDomain.POINTER).join()).join());
+                bRoot.signingPair().secret.signMessage(cas.serialize(), SigningDomain.POINTER).join()).join());
         MaybeMultihash updated = network.mutable.getPointerTarget(bContext.signer.publicKeyHash, bRoot.writer(), network.dhtClient).join().updated;
         Assert.assertTrue("Malicious pointer update failed", updated.equals(current));
     }

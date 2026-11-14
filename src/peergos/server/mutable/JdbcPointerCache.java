@@ -22,11 +22,13 @@ public class JdbcPointerCache implements PointerCache {
     @Override
     public synchronized CompletableFuture<Boolean> put(PublicKeyHash owner, PublicKeyHash writer, byte[] signedUpdate) {
         return store.getPointer(writer)
-                .thenCompose(current -> {
-                    if (doUpdate(owner, writer, current, signedUpdate, storage).join())
+                .thenCompose(current -> storage.getSigningKey(owner, writer).thenCompose(signerOpt -> {
+                    if (signerOpt.isEmpty())
+                        throw new IllegalStateException("Couldn't retrieve signing key!");
+                    if (doUpdate(current, signedUpdate, signerOpt.get()).join())
                         return store.setPointer(writer, current, signedUpdate);
                     return Futures.of(false);
-                });
+                }));
     }
 
     @Override

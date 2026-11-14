@@ -697,9 +697,9 @@ public class WriterQuotaTests {
     /** The server's step as a pointer lands, against the given store */
     private static void pointerLanded(MutableEvent event, UsageStore store) throws Exception {
         java.lang.reflect.Method prepare = SpaceCheckingKeyFilter.class.getDeclaredMethod("prepareMutablePointerChange",
-                MutableEvent.class, MutablePointers.class, DeletableContentAddressedStorage.class, UsageStore.class, Hasher.class);
+                MutableEvent.class, DeletableContentAddressedStorage.class, UsageStore.class, Hasher.class);
         prepare.setAccessible(true);
-        prepare.invoke(null, event, filterField("mutable"), filterField("dht"), store, filterField("hasher"));
+        prepare.invoke(null, event, filterField("dht"), store, filterField("hasher"));
     }
 
     /** The queue's step for a writer's update from a root to its current one, against the given store */
@@ -1392,11 +1392,10 @@ public class WriterQuotaTests {
         Cid naming = service.storage.put(ownerKey, parent, before.props.get().addNamedKey("unsized", proof).withChamp(missing).serialize(),
                 crypto.hasher, tid).join();
         PointerUpdate toNaming = new PointerUpdate(before.hash, MaybeMultihash.of(naming), PointerUpdate.increment(before.sequence));
-        SigningPrivateKeyAndPublicHash pointerSigner = parent.pointerSigner(before.props.get().controller);
-        service.mutable.setPointer(ownerKey, pointerSigner, toNaming).join();
+        service.mutable.setPointer(ownerKey, parent, toNaming).join();
         awaitUsageUpdate();
         Cid back = service.storage.put(ownerKey, parent, before.props.get().serialize(), crypto.hasher, tid).join();
-        service.mutable.setPointer(ownerKey, pointerSigner, new PointerUpdate(MaybeMultihash.of(naming), MaybeMultihash.of(back),
+        service.mutable.setPointer(ownerKey, parent, new PointerUpdate(MaybeMultihash.of(naming), MaybeMultihash.of(back),
                 PointerUpdate.increment(toNaming.sequence))).join();
         awaitUsageUpdate();
 
