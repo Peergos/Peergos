@@ -58,6 +58,17 @@ public class CryptreeNode implements Cborable {
         return MAX_CHILD_LINKS_PER_BLOB;
     }
 
+    private static boolean WRITE_LEGACY_FORMAT = false;
+
+    /** Only for tests of reading and upgrading data written before the restricted format. */
+    public static synchronized void setWriteLegacyFormat(boolean legacy) {
+        WRITE_LEGACY_FORMAT = legacy;
+    }
+
+    private static synchronized boolean writeLegacyFormat() {
+        return WRITE_LEGACY_FORMAT;
+    }
+
     private transient final MaybeMultihash lastCommittedHash;
     private transient final boolean isDirectory;
     public final List<BatId> bats;
@@ -83,17 +94,27 @@ public class CryptreeNode implements Cborable {
         return CURRENT_VERSION;
     }
 
+    /** In the restricted format the base block is under R = KDF(B), and holds a link from B to the parent key (dir)
+     *  or data key (file), whose presence marks the format. Its parent or data key is P' = KDF(P) for a directory.
+     */
     private static class FromBase implements Cborable {
         public final SymmetricKey parentOrData;
         public final Optional<SymmetricLinkToSigner> signer;
         public final RelativeCapability nextChunk;
+        public final Optional<SymmetricLink> fromFullKey;
 
         public FromBase(SymmetricKey parentOrData,
                         Optional<SymmetricLinkToSigner> signer,
-                        RelativeCapability nextChunk) {
+                        RelativeCapability nextChunk,
+                        Optional<SymmetricLink> fromFullKey) {
             this.parentOrData = parentOrData;
             this.signer = signer;
             this.nextChunk = nextChunk;
+            this.fromFullKey = fromFullKey;
+        }
+
+        public FromBase withSigner(Optional<SymmetricLinkToSigner> newSigner) {
+            return new FromBase(parentOrData, newSigner, nextChunk, fromFullKey);
         }
 
         @Override
@@ -102,6 +123,7 @@ public class CryptreeNode implements Cborable {
             state.put("k", parentOrData);
             signer.ifPresent(w -> state.put("w", w));
             state.put("n", nextChunk);
+            fromFullKey.ifPresent(x -> state.put("x", x));
             return CborObject.CborMap.build(state);
         }
 
@@ -113,27 +135,37 @@ public class CryptreeNode implements Cborable {
             SymmetricKey k = m.get("k", SymmetricKey::fromCbor);
             Optional<SymmetricLinkToSigner> w = m.getOptional("w", SymmetricLinkToSigner::fromCbor);
             RelativeCapability nextChunk = m.get("n", RelativeCapability::fromCbor);
-            return new FromBase(k, w, nextChunk);
+            Optional<SymmetricLink> x = m.getOptional("x", SymmetricLink::fromCbor);
+            return new FromBase(k, w, nextChunk, x);
         }
     }
 
-    private FromBase getBaseBlock(SymmetricKey baseKey) {
-        return fromBaseKey.decrypt(baseKey, FromBase::fromCbor);
-    }
-
+    /** In the restricted format the parent link is a nested cipher text, q, under the file's B or directory's P. */
     private static class FromParent implements Cborable {
         public final Optional<RelativeCapability> parentLink;
+        public final Optional<PaddedCipherText> encryptedParentLink;
         public final FileProperties properties;
 
-        public FromParent(Optional<RelativeCapability> parentLink, FileProperties properties) {
+        public FromParent(Optional<RelativeCapability> parentLink,
+                          Optional<PaddedCipherText> encryptedParentLink,
+                          FileProperties properties) {
+            // a plaintext parent link alongside the encrypted one would show restricted holders where they are
+            if (parentLink.isPresent() && encryptedParentLink.isPresent())
+                throw new IllegalStateException("A parent block can't have both a plaintext and an encrypted parent link");
             this.parentLink = parentLink;
+            this.encryptedParentLink = encryptedParentLink;
             this.properties = properties;
+        }
+
+        public FromParent withProperties(FileProperties newProps) {
+            return new FromParent(parentLink, encryptedParentLink, newProps);
         }
 
         @Override
         public CborObject toCbor() {
             SortedMap<String, Cborable> state = new TreeMap<>();
             parentLink.ifPresent(p -> state.put("p", p));
+            encryptedParentLink.ifPresent(q -> state.put("q", q));
             state.put("s", properties);
             return CborObject.CborMap.build(state);
         }
@@ -143,14 +175,138 @@ public class CryptreeNode implements Cborable {
                 throw new IllegalStateException("Incorrect cbor for FromParent: " + cbor);
 
             CborObject.CborMap m = (CborObject.CborMap) cbor;
-            Optional<RelativeCapability> parentLink = m.getOptional("p", RelativeCapability::fromCbor);
+            Optional<PaddedCipherText> q = m.getOptional("q", PaddedCipherText::fromCbor);
+            // only a legacy node has p, and they never have q, so p with q was forged and must not lock out the owner
+            Optional<RelativeCapability> parentLink = q.isPresent() ?
+                    Optional.empty() :
+                    m.getOptional("p", RelativeCapability::fromCbor);
             FileProperties properties = m.get("s", FileProperties::fromCbor);
-            return new FromParent(parentLink, properties);
+            return new FromParent(parentLink, q, properties);
         }
     }
 
+    public static final String RESTRICTED = "restricted";
+    public static final String PROPERTIES = "properties";
+    // so a child's full key link can't stand in for a directory's link to its parent key, which is directly under its full key
+    public static final String CHILD_KEYS = "child-keys";
+    // for a child whose full key was sealed to us, so that we remember it is pending when we link to it instead
+    public static final String PENDING_CHILD_KEYS = "pending-child-keys";
+
+    /** How a key opens this node: a full key to a legacy or restricted format node, a restricted key, or a parent
+     *  key, which only opens the properties and parent link of a directory.
+     */
+    private enum Access { LEGACY, FULL, RESTRICTED, PARENT }
+
+    private static class Opened {
+        final Access access;
+        final Optional<FromBase> base;
+
+        Opened(Access access, Optional<FromBase> base) {
+            this.access = access;
+            this.base = base;
+        }
+    }
+
+    private static class OpenedParent {
+        final FromParent block;
+        final SymmetricKey key;
+
+        OpenedParent(FromParent block, SymmetricKey key) {
+            this.block = block;
+            this.key = key;
+        }
+    }
+
+    private transient final Map<SymmetricKey, Opened> opened = new ConcurrentHashMap<>();
+    private transient final Map<SymmetricKey, OpenedParent> openedParent = new ConcurrentHashMap<>();
+
+    private Opened open(SymmetricKey key) {
+        Opened cached = opened.get(key);
+        if (cached != null)
+            return cached;
+        Opened res;
+        Optional<FromBase> full = tryDecrypt(fromBaseKey, key.derive(RESTRICTED), FromBase::fromCbor);
+        if (full.isPresent())
+            res = new Opened(Access.FULL, full);
+        else {
+            Optional<FromBase> direct = tryDecrypt(fromBaseKey, key, FromBase::fromCbor);
+            res = direct.map(b -> new Opened(b.fromFullKey.isPresent() ? Access.RESTRICTED : Access.LEGACY, direct))
+                    .orElseGet(() -> new Opened(Access.PARENT, Optional.empty()));
+        }
+        opened.put(key, res);
+        return res;
+    }
+
+    private static <T> Optional<T> tryDecrypt(PaddedCipherText cipherText, SymmetricKey key, Function<CborObject, T> fromCbor) {
+        try {
+            return Optional.of(cipherText.decrypt(key, fromCbor));
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
+    private SymmetricKey baseBlockKey(SymmetricKey key) {
+        return open(key).access == Access.FULL ? key.derive(RESTRICTED) : key;
+    }
+
+    private FromBase getBaseBlock(SymmetricKey baseKey) {
+        Opened o = open(baseKey);
+        if (o.base.isEmpty())
+            throw new InvalidCipherTextException("Couldn't decrypt base block");
+        return o.base.get();
+    }
+
+    /** Whether this node is in the format that supports restricted capabilities. */
+    public boolean isRestrictedFormat(SymmetricKey baseKey) {
+        Access a = open(baseKey).access;
+        return a == Access.FULL || a == Access.RESTRICTED;
+    }
+
+    /** The key the base block is under, which is the restricted key for a restricted format node. */
+    public SymmetricKey restrictedKey(SymmetricKey baseKey) {
+        return baseBlockKey(baseKey);
+    }
+
+    /** Whether the key is a restricted key, which gives no way to the parent or any full key below. */
+    public boolean isRestrictedKey(SymmetricKey baseKey) {
+        return open(baseKey).access == Access.RESTRICTED;
+    }
+
+    private OpenedParent openParent(SymmetricKey parentKey) {
+        OpenedParent cached = openedParent.get(parentKey);
+        if (cached != null)
+            return cached;
+        // a legacy node or a restricted directory, a restricted format file, or a parent key to a restricted format
+        // directory, tried most likely first
+        Opened o = opened.get(parentKey);
+        List<String> labels = isDirectory ?
+                Arrays.asList(PROPERTIES, null, RESTRICTED) :
+                o != null && o.access == Access.FULL ?
+                        Arrays.asList(RESTRICTED, null, PROPERTIES) :
+                        Arrays.asList(null, RESTRICTED, PROPERTIES);
+        for (String label : labels) {
+            SymmetricKey k = label == null ? parentKey : parentKey.derive(label);
+            Optional<FromParent> block = tryDecrypt(fromParentKey, k, FromParent::fromCbor);
+            if (block.isPresent()) {
+                OpenedParent res = new OpenedParent(block.get(), k);
+                openedParent.put(parentKey, res);
+                return res;
+            }
+        }
+        throw new InvalidCipherTextException("Couldn't decrypt parent block");
+    }
+
     private FromParent getParentBlock(SymmetricKey parentKey) {
-        return fromParentKey.decrypt(parentKey, FromParent::fromCbor);
+        return openParent(parentKey).block;
+    }
+
+    /** In the restricted format only the encrypted parent link counts, and a plaintext one was forged. */
+    private boolean onlyEncryptedParentLink(SymmetricKey baseKey) {
+        Access access = open(baseKey).access;
+        if (access != Access.PARENT)
+            return isRestrictedFormat(baseKey);
+        // a parent key opens a restricted format directory's parent block through a key derived from it
+        return ! openParent(baseKey).key.equals(baseKey);
     }
 
     public static class DirAndChildren {
@@ -204,13 +360,20 @@ public class CryptreeNode implements Cborable {
 
     public static class ChildrenLinks implements Cborable {
         public final Either<List<RelativeCapability>, List<NamedRelativeCapability>> children;
+        // The public half of a restricted format directory's sealing key pair
+        public final Optional<byte[]> sealKey;
 
         public ChildrenLinks(List<NamedRelativeCapability> children) {
-            this.children = Either.b(children);
+            this(Either.b(children), Optional.empty());
         }
 
-        private ChildrenLinks(Either<List<RelativeCapability>, List<NamedRelativeCapability>> children) {
+        private ChildrenLinks(Either<List<RelativeCapability>, List<NamedRelativeCapability>> children, Optional<byte[]> sealKey) {
             this.children = children;
+            this.sealKey = sealKey;
+        }
+
+        public ChildrenLinks withSealKey(Optional<byte[]> newSealKey) {
+            return new ChildrenLinks(children, newSealKey);
         }
 
         @Override
@@ -218,10 +381,19 @@ public class CryptreeNode implements Cborable {
             List<CborObject> mapped = children.map(
                     x -> x.stream().map(Cborable::toCbor).collect(Collectors.toList()),
                     x -> x.stream().map(Cborable::toCbor).collect(Collectors.toList()));
-            return new CborObject.CborList(mapped);
+            if (sealKey.isEmpty())
+                return new CborObject.CborList(mapped);
+            SortedMap<String, Cborable> state = new TreeMap<>();
+            state.put("c", new CborObject.CborList(mapped));
+            state.put("e", new CborObject.CborByteArray(sealKey.get()));
+            return CborObject.CborMap.build(state);
         }
 
         public static ChildrenLinks fromCbor(CborObject cbor) {
+            if (cbor instanceof CborObject.CborMap) {
+                CborObject.CborMap m = (CborObject.CborMap) cbor;
+                return fromCbor((CborObject) m.get("c")).withSealKey(Optional.of(m.getByteArray("e")));
+            }
             if (! (cbor instanceof CborObject.CborList))
                 throw new IllegalStateException("Incorrect cbor for ChildrenLinks: " + cbor);
 
@@ -233,15 +405,15 @@ public class CryptreeNode implements Cborable {
                 return new ChildrenLinks(Either.b(cborList
                         .stream()
                         .map(NamedRelativeCapability::fromCbor)
-                        .collect(Collectors.toList())));
+                        .collect(Collectors.toList())), Optional.empty());
             return new ChildrenLinks(Either.a(cborList
                         .stream()
                         .map(RelativeCapability::fromCbor)
-                        .collect(Collectors.toList())));
+                        .collect(Collectors.toList())), Optional.empty());
         }
 
         public static ChildrenLinks empty() {
-            return new ChildrenLinks(Either.b(Collections.emptyList()));
+            return new ChildrenLinks(Either.b(Collections.emptyList()), Optional.empty());
         }
     }
 
@@ -254,25 +426,40 @@ public class CryptreeNode implements Cborable {
     }
 
     public boolean isReadable(SymmetricKey baseKey) {
-        try {
-            getBaseBlock(baseKey);
-            return true;
-        } catch (Exception e) {}
-        return false;
+        return open(baseKey).base.isPresent();
     }
 
     public Optional<SymmetricLinkToSigner> getWriterLink(SymmetricKey baseKey) {
         return getBaseBlock(baseKey).signer;
     }
 
+    /** For a directory this is P, or P' for a restricted key. A file's base key opens its properties. */
     public SymmetricKey getParentKey(SymmetricKey baseKey) {
-        if (isDirectory())
-            try {
-                return getBaseBlock(baseKey).parentOrData;
-            } catch (Exception e) {
-                // if we don't have read access to this folder, then we must just have the parent key already
-            }
-        return baseKey;
+        if (! isDirectory())
+            return baseKey;
+        Opened o = open(baseKey);
+        switch (o.access) {
+            case FULL:
+                // a further chunk added through a restricted key couldn't link from the full key
+                return verifiedParentKey(baseKey).orElse(o.base.get().parentOrData);
+            case LEGACY:
+            case RESTRICTED: return o.base.get().parentOrData;
+            default: return baseKey; // we don't have read access to this folder, so we must just have the parent key already
+        }
+    }
+
+    /** A directory's parent key P, if it links from the full key. Anyone with the restricted key can write one that doesn't. */
+    private Optional<SymmetricKey> verifiedParentKey(SymmetricKey baseKey) {
+        try {
+            return Optional.of(getBaseBlock(baseKey).fromFullKey.get().target(baseKey));
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
+    /** Whether we hold a directory's full key, but its parent key wasn't linked from it, so a restricted key holder chose it. */
+    public boolean hasUnverifiedParentKey(SymmetricKey baseKey) {
+        return isDirectory && open(baseKey).access == Access.FULL && verifiedParentKey(baseKey).isEmpty();
     }
 
     public SymmetricKey getDataKey(SymmetricKey baseKey) {
@@ -309,10 +496,29 @@ public class CryptreeNode implements Cborable {
                                                                               NetworkAccess network) {
         if (! isDirectory)
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return getLinkedData(us.owner, us.rBaseKey, ChildrenLinks::fromCbor, network.hasher, network, x -> {})
+        boolean full = open(us.rBaseKey).access == Access.FULL;
+        return getLinkedData(us.owner, baseBlockKey(us.rBaseKey), ChildrenLinks::fromCbor, network.hasher, network, x -> {})
                 .thenCompose(c -> {
-                    if (c.children.isB())
-                        return Futures.of(c.children.b());
+                    if (c.children.isB()) {
+                        if (! full)
+                            return Futures.of(c.children.b());
+                        // the stored public key is writable through the restricted key, so open with the one we derive
+                        Optional<byte[]> ourSealKey = c.children.b().stream().anyMatch(n -> n.cap.sealedFullKey.isPresent()) ?
+                                Optional.of(SealedKey.publicKey(us.rBaseKey)) :
+                                Optional.empty();
+                        return Futures.of(c.children.b().stream()
+                                .map(n -> {
+                                    // a restricted key holder can write a child whose full key we can't open, or one in the clear
+                                    if (! n.cap.hasWrappedFullKey())
+                                        return n.withCap(n.cap.asPending());
+                                    try {
+                                        return n.withCap(n.cap.unwrapFullKey(us.rBaseKey, ourSealKey));
+                                    } catch (Exception e) {
+                                        return n.withCap(n.cap.asPending());
+                                    }
+                                })
+                                .collect(Collectors.toList()));
+                    }
                     // Only get here on legacy format directories
                     return Futures.combineAllInOrder(c.children.a().stream()
                             .map(r -> network.retrieveMetadata(r.toAbsolute(us), version)
@@ -435,11 +641,10 @@ public class CryptreeNode implements Cborable {
                                                         FileProperties newProps,
                                                         NetworkAccess network) {
 
-        SymmetricKey parentKey = getParentKey(us.rBaseKey);
-        FromParent parentBlock = getParentBlock(parentKey);
-        FromParent newParentBlock = new FromParent(parentBlock.parentLink, newProps);
+        OpenedParent parent = openParent(getParentKey(us.rBaseKey));
+        FromParent newParentBlock = parent.block.withProperties(newProps);
         CryptreeNode updated = new CryptreeNode(lastCommittedHash, isDirectory, bats, fromBaseKey, childrenOrData,
-                PaddedCipherText.build(parentKey, newParentBlock, META_DATA_PADDING_BLOCKSIZE));
+                PaddedCipherText.build(parent.key, newParentBlock, META_DATA_PADDING_BLOCKSIZE));
         return IpfsTransaction.call(us.owner,
                 tid -> network.uploadChunk(base, committer, updated, us.owner, us.getMapKey(), getSigner(us.rBaseKey, us.wBaseKey.get(), entryWriter), tid),
                 network.dhtClient);
@@ -536,21 +741,55 @@ public class CryptreeNode implements Cborable {
     }
 
     public CryptreeNode withWriterLink(SymmetricKey baseKey, Optional<SymmetricLinkToSigner> newWriterLink) {
-        FromBase baseBlock = getBaseBlock(baseKey);
-        FromBase newBaseBlock = new FromBase(baseBlock.parentOrData, newWriterLink, baseBlock.nextChunk);
-        PaddedCipherText encryptedBaseBlock = PaddedCipherText.build(baseKey, newBaseBlock, BASE_BLOCK_PADDING_BLOCKSIZE);
+        FromBase newBaseBlock = getBaseBlock(baseKey).withSigner(newWriterLink);
+        PaddedCipherText encryptedBaseBlock = PaddedCipherText.build(baseBlockKey(baseKey), newBaseBlock, BASE_BLOCK_PADDING_BLOCKSIZE);
         return new CryptreeNode(lastCommittedHash, isDirectory, bats, encryptedBaseBlock, childrenOrData, fromParentKey);
     }
 
-    public CompletableFuture<DirAndChildren> withChildren(SymmetricKey baseKey,
+    public CompletableFuture<DirAndChildren> withChildren(AbsoluteCapability us,
                                                           ChildrenLinks children,
+                                                          NetworkAccess network,
                                                           SafeRandom random,
                                                           Hasher hasher) {
-        return buildChildren(children, baseKey, mirrorBatId(), random, hasher)
+        return toWrite(us, children, network, random)
+                .thenCompose(toWrite -> buildChildren(toWrite, baseBlockKey(us.rBaseKey), mirrorBatId(), random, hasher))
                 .thenApply(encryptedChildren -> {
                     CryptreeNode cryptreeNode = new CryptreeNode(lastCommittedHash, isDirectory, bats, fromBaseKey, encryptedChildren.left, fromParentKey);
                     return new DirAndChildren(cryptreeNode, encryptedChildren.right);
                 });
+    }
+
+    /** The child links as they're stored: in a restricted format directory, with each child's full key linked from
+     *  ours, or sealed to us if all we have is our restricted key.
+     */
+    private CompletableFuture<ChildrenLinks> toWrite(AbsoluteCapability us,
+                                                     ChildrenLinks children,
+                                                     NetworkAccess network,
+                                                     SafeRandom random) {
+        Access access = open(us.rBaseKey).access;
+        if (access == Access.FULL)
+            return Futures.of(wrapFullKeys(us.rBaseKey, children));
+        if (access == Access.LEGACY)
+            return Futures.of(children);
+        return getLinkedData(us.owner, us.rBaseKey, ChildrenLinks::fromCbor, network.hasher, network, x -> {})
+                .thenApply(existing -> sealFullKeys(existing.sealKey
+                        .orElseThrow(() -> new IllegalStateException("Directory has no sealing key")), children, random));
+    }
+
+    /** Child links in a restricted format directory hold the child's restricted key, and its full key under ours. */
+    private static ChildrenLinks wrapFullKeys(SymmetricKey ourFullKey, ChildrenLinks children) {
+        return new ChildrenLinks(children.children.b().stream()
+                .map(c -> c.cap.hasWrappedFullKey() ? c : c.withCap(c.cap.wrapFullKey(ourFullKey)))
+                .collect(Collectors.toList()))
+                .withSealKey(Optional.of(SealedKey.publicKey(ourFullKey)));
+    }
+
+    /** New children added through a restricted key, which can only seal their full keys to us. */
+    private static ChildrenLinks sealFullKeys(byte[] ourPublicKey, ChildrenLinks children, SafeRandom random) {
+        return new ChildrenLinks(children.children.b().stream()
+                .map(c -> c.cap.hasWrappedFullKey() ? c : c.withCap(c.cap.sealFullKey(ourPublicKey, random)))
+                .collect(Collectors.toList()))
+                .withSealKey(Optional.of(ourPublicKey));
     }
 
     private static CompletableFuture<Pair<FragmentedPaddedCipherText, List<FragmentWithHash>>> buildChildren(ChildrenLinks children,
@@ -570,14 +809,27 @@ public class CryptreeNode implements Cborable {
         return childrenOrData.getAndDecrypt(owner, baseOrDataKey, fromCbor, h, network, progress);
     }
 
-    public CryptreeNode withParentLink(SymmetricKey parentKey, RelativeCapability newParentLink) {
-        return withParentLinkAndProperties(parentKey, newParentLink, getParentBlock(parentKey).properties);
+    public CryptreeNode withParentLink(SymmetricKey baseKey, RelativeCapability newParentLink) {
+        return withParentLinkAndProperties(baseKey, newParentLink, getProperties(getParentKey(baseKey)));
     }
 
-    public CryptreeNode withParentLinkAndProperties(SymmetricKey parentKey, RelativeCapability newParentLink, FileProperties newProps) {
-        FromParent newParentBlock = new FromParent(Optional.of(newParentLink), newProps);
+    public CryptreeNode withParentLinkAndProperties(SymmetricKey baseKey, RelativeCapability newParentLink, FileProperties newProps) {
+        Access access = open(baseKey).access;
+        SymmetricKey parentKey = getParentKey(baseKey);
+        OpenedParent parent = openParent(parentKey);
+        FromParent newParentBlock;
+        if (access == Access.FULL) {
+            if (hasUnverifiedParentKey(baseKey))
+                throw new IllegalStateException("This folder's parent key wasn't linked from its full key. Copy it instead.");
+            SymmetricKey parentLinkKey = isDirectory ? parentKey : baseKey;
+            newParentBlock = new FromParent(Optional.empty(),
+                    Optional.of(PaddedCipherText.build(parentLinkKey, newParentLink, META_DATA_PADDING_BLOCKSIZE)), newProps);
+        } else if (access == Access.LEGACY)
+            newParentBlock = new FromParent(Optional.of(newParentLink), Optional.empty(), newProps);
+        else
+            throw new IllegalStateException("This can't be moved through a link that hides where it is. Copy it instead.");
         return new CryptreeNode(lastCommittedHash, isDirectory, bats, fromBaseKey, childrenOrData,
-                PaddedCipherText.build(parentKey, newParentBlock, META_DATA_PADDING_BLOCKSIZE));
+                PaddedCipherText.build(parent.key, newParentBlock, META_DATA_PADDING_BLOCKSIZE));
     }
 
     /**
@@ -854,7 +1106,7 @@ public class CryptreeNode implements Cborable {
                                 CryptreeNode newFileChunk = createFile(MaybeMultihash.empty(), signerLink, newUs.cap.rBaseKey,
                                         dataKey,
                                         streamSecret.map(props::withNewStreamSecret).orElse(props),
-                                        this.childrenOrData, newParentCap, RelativeCapability.buildSubsequentChunk(
+                                        this.childrenOrData, newParentCap, Optional.empty(), RelativeCapability.buildSubsequentChunk(
                                                 nextChunk.right.getMapKey(), nextChunk.right.bat, nextChunk.right.rBaseKey),
                                         newUs.cap.bat, mirrorBat, crypto.random);
                                 return IpfsTransaction.call(us.cap.owner, tid -> newFileChunk.commit(nextChunk.left,
@@ -863,6 +1115,49 @@ public class CryptreeNode implements Cborable {
                         }).thenApply(v -> new Pair<>(v, newUs.cap));
             });
         });
+    }
+
+    /** Rewrite this chunk into the restricted format, keeping its keys, map key and bats, and its data or children. */
+    public CompletableFuture<Snapshot> upgradeToRestrictedFormat(Snapshot base,
+                                                                 Committer committer,
+                                                                 WritableAbsoluteCapability us,
+                                                                 SigningPrivateKeyAndPublicHash signer,
+                                                                 NetworkAccess network,
+                                                                 Crypto crypto) {
+        Access access = open(us.rBaseKey).access;
+        if (access == Access.FULL || access == Access.RESTRICTED)
+            return Futures.of(base);
+        if (access != Access.LEGACY)
+            throw new IllegalStateException("Upgrading a node needs its full key");
+        SymmetricKey full = us.rBaseKey;
+        SymmetricKey restricted = full.derive(RESTRICTED);
+        FromBase b = getBaseBlock(full);
+        FromParent p = getParentBlock(getParentKey(full));
+        if (! isDirectory) {
+            FromBase newBase = new FromBase(b.parentOrData, b.signer, b.nextChunk.withBaseKey(restricted),
+                    Optional.of(SymmetricLink.fromPair(full, b.parentOrData)));
+            FromParent newParent = new FromParent(Optional.empty(),
+                    p.parentLink.map(l -> PaddedCipherText.build(full, l, META_DATA_PADDING_BLOCKSIZE)), p.properties);
+            CryptreeNode upgraded = new CryptreeNode(lastCommittedHash, false, bats,
+                    PaddedCipherText.build(restricted, newBase, BASE_BLOCK_PADDING_BLOCKSIZE), childrenOrData,
+                    PaddedCipherText.build(restricted, newParent, META_DATA_PADDING_BLOCKSIZE));
+            return IpfsTransaction.call(us.owner, tid -> upgraded.commit(base, committer, us, signer, network, tid), network.dhtClient);
+        }
+        SymmetricKey parentKey = b.parentOrData;
+        SymmetricKey propertiesKey = parentKey.derive(PROPERTIES);
+        FromBase newBase = new FromBase(propertiesKey, b.signer, b.nextChunk.withBaseKey(restricted),
+                Optional.of(SymmetricLink.fromPair(full, parentKey)));
+        FromParent newParent = new FromParent(Optional.empty(),
+                p.parentLink.map(l -> PaddedCipherText.build(parentKey, l, META_DATA_PADDING_BLOCKSIZE)), p.properties);
+        return getDirectChildren(us, base, network)
+                .thenCompose(children -> buildChildren(wrapFullKeys(full, new ChildrenLinks(children)), restricted,
+                        mirrorBatId(), crypto.random, crypto.hasher))
+                .thenCompose(children -> IpfsTransaction.call(us.owner,
+                        tid -> new DirAndChildren(new CryptreeNode(lastCommittedHash, true, bats,
+                                PaddedCipherText.build(restricted, newBase, BASE_BLOCK_PADDING_BLOCKSIZE), children.left,
+                                PaddedCipherText.build(propertiesKey, newParent, META_DATA_PADDING_BLOCKSIZE)), children.right)
+                                .commit(base, committer, us, signer, network, tid),
+                        network.dhtClient));
     }
 
     public Optional<BatId> mirrorBatId() {
@@ -964,8 +1259,8 @@ public class CryptreeNode implements Cborable {
                                 .thenCompose(newBase -> {
                                     // create and upload new metadata blob
                                     SymmetricKey nextSubfoldersKey = us.rBaseKey;
-                                    SymmetricKey ourParentKey = getParentKey(us.rBaseKey);
-                                    Optional<RelativeCapability> parentCap = getParentBlock(ourParentKey).parentLink;
+                                    SymmetricKey ourParentKey = hasUnverifiedParentKey(us.rBaseKey) ? SymmetricKey.random() : getParentKey(us.rBaseKey);
+                                    Optional<RelativeCapability> parentCap = getParentCapability(us.rBaseKey);
                                     RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(
                                             crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), nextSubfoldersKey);
                                     List<NamedRelativeCapability> addToNextChunk = addToNext.stream()
@@ -974,10 +1269,17 @@ public class CryptreeNode implements Cborable {
                                     List<NamedRelativeCapability> remaining = addToNext.stream()
                                             .skip(getMaxChildLinksPerBlob())
                                             .collect(Collectors.toList());
+                                    boolean restricted = isRestrictedKey(us.rBaseKey);
+                                    // through a restricted key, start the next chunk empty, so its children are sealed as they're added
+                                    List<NamedRelativeCapability> addToNextAfterCreation = restricted ? addToNext : remaining;
                                     return getNextChunkLocation(us.rBaseKey, Optional.empty(), null, Optional.empty(), null)
-                                            .thenCompose(nextMapKeyAndBat -> CryptreeNode.createDir(MaybeMultihash.empty(), nextSubfoldersKey,
+                                            .thenCompose(nextMapKeyAndBat -> (restricted ?
+                                                    getLinkedData(us.owner, us.rBaseKey, ChildrenLinks::fromCbor, network.hasher, network, x -> {})
+                                                            .thenCompose(ours -> createRestrictedDirChunk(nextSubfoldersKey, ourParentKey, nextChunk,
+                                                                    ours.sealKey.get(), nextMapKeyAndBat.right, mirrorBat, crypto.random, crypto.hasher)) :
+                                                    CryptreeNode.createDir(MaybeMultihash.empty(), nextSubfoldersKey,
                                                     null, Optional.empty(), FileProperties.EMPTY, parentCap,
-                                                    ourParentKey, nextChunk, new ChildrenLinks(addToNextChunk), nextMapKeyAndBat.right, mirrorBat, crypto.random, crypto.hasher)
+                                                    ourParentKey, nextChunk, new ChildrenLinks(addToNextChunk), nextMapKeyAndBat.right, mirrorBat, crypto.random, crypto.hasher))
                                                     .thenCompose(next -> {
                                                         WritableAbsoluteCapability nextPointer = new WritableAbsoluteCapability(us.owner,
                                                                 us.writer, nextMapKeyAndBat.left, nextMapKeyAndBat.right, nextSubfoldersKey, us.wBaseKey.get());
@@ -986,7 +1288,7 @@ public class CryptreeNode implements Cborable {
                                                                         .thenCompose(updatedBase ->
                                                                                 network.getMetadata(updatedBase.get(nextPointer.writer), nextPointer)
                                                                                         .thenCompose(nextOpt -> nextOpt.get().
-                                                                                                addChildrenAndCommit(updatedBase, committer, remaining,
+                                                                                                addChildrenAndCommit(updatedBase, committer, addToNextAfterCreation,
                                                                                                         nextPointer, signer, mirrorBat, network, crypto)))
                                                                 , network.dhtClient);
                                                     }));
@@ -1003,7 +1305,7 @@ public class CryptreeNode implements Cborable {
                 newFiles.addAll(targetCAPs);
 
                 return IpfsTransaction.call(us.owner,
-                        tid -> withChildren(us.rBaseKey, new ChildrenLinks(newFiles), crypto.random, crypto.hasher)
+                        tid -> withChildren(us, new ChildrenLinks(newFiles), network, crypto.random, crypto.hasher)
                                 .thenCompose(d ->
                                         d.commit(current, committer, us, signer, network, tid)),
                         network.dhtClient);
@@ -1057,9 +1359,13 @@ public class CryptreeNode implements Cborable {
                 Optional.of(Bat.random(crypto.random)), dirReadKey, Optional.empty());
         WritableAbsoluteCapability childCap = us.withBaseKey(dirReadKey).withBaseWriteKey(dirWriteKey).withMapKey(dirMapKey, dirBat);
         LocalDateTime timestamp = LocalDateTime.now(ZoneOffset.UTC);
-        return CryptreeNode.createEmptyDir(MaybeMultihash.empty(), dirReadKey, dirWriteKey, Optional.empty(),
-                new FileProperties(name, true, false, "", 0, timestamp, timestamp, isSystemFolder,
-                        Optional.empty(), Optional.empty(), Optional.empty()), Optional.of(ourCap), SymmetricKey.random(), nextChunk, dirBat, mirrorBat, crypto.random, crypto.hasher)
+        FileProperties props = new FileProperties(name, true, false, "", 0, timestamp, timestamp, isSystemFolder,
+                Optional.empty(), Optional.empty(), Optional.empty());
+        return (isRestrictedKey(us.rBaseKey) ?
+                CryptreeNode.createEmptyPendingDir(dirReadKey, dirWriteKey, props, SymmetricKey.random(), nextChunk,
+                        dirBat, mirrorBat, crypto.random, crypto.hasher) :
+                CryptreeNode.createEmptyDir(MaybeMultihash.empty(), dirReadKey, dirWriteKey, Optional.empty(),
+                        props, Optional.of(ourCap), SymmetricKey.random(), nextChunk, dirBat, mirrorBat, crypto.random, crypto.hasher))
                 .thenCompose(child -> {
 
                     SymmetricLink toChildWriteKey = SymmetricLink.fromPair(us.wBaseKey.get(), dirWriteKey);
@@ -1113,29 +1419,35 @@ public class CryptreeNode implements Cborable {
                                                         NetworkAccess network,
                                                         SafeRandom random,
                                                         Hasher hasher) {
-        return getDirectChildren(network, ourPointer, base).thenCompose(children -> {
-
+        // work from the stored links, which hold full keys we may not be able to read, but must keep
+        return getDirectChildren(ourPointer, base, network).thenCompose(children -> {
+            Function<NamedRelativeCapability, Location> location = c -> c.cap.getLocation(ourPointer.owner, ourPointer.writer);
             Set<Location> existingChildLocs = children.stream()
-                    .map(r -> r.capability.getLocation())
+                    .map(location)
                     .collect(Collectors.toSet());
 
             Map<Location, NamedAbsoluteCapability> oldToNew = childCasPairs.stream()
                     .collect(Collectors.toMap(p -> p.left.getLocation(), p -> p.right));
 
             List<NamedRelativeCapability> unchanged = children.stream()
-                    .filter(e -> ! oldToNew.containsKey(e.capability.getLocation()))
-                    .map(c -> new NamedRelativeCapability(c.getProperties().name, ourPointer.relativise(c.capability),
-                            Optional.of(c.getProperties().isDirectory),
-                            Optional.of(c.getProperties().mimeType),
-                            Optional.of(c.getProperties().created)))
+                    .filter(e -> ! oldToNew.containsKey(location.apply(e)))
                     .collect(Collectors.toList());
 
             List<NamedRelativeCapability> updatedLinks = children.stream()
-                    .filter(e -> oldToNew.containsKey(e.capability.getLocation()))
+                    .filter(e -> oldToNew.containsKey(location.apply(e)))
                     .map(c -> {
-                        NamedAbsoluteCapability newTarget = oldToNew.get(c.capability.getLocation());
-                        return new NamedRelativeCapability(newTarget.name,
-                                ourPointer.relativise(newTarget.cap),
+                        NamedAbsoluteCapability newTarget = oldToNew.get(location.apply(c));
+                        RelativeCapability related = ourPointer.relativise(newTarget.cap);
+                        // the same keys are as pending as they were
+                        RelativeCapability newCap = c.cap.isPending() && related.rBaseKey.equals(c.cap.rBaseKey) ?
+                                related.asPending() :
+                                related;
+                        if (c.cap.hasWrappedFullKey()) {
+                            if (! newCap.rBaseKey.equals(c.cap.rBaseKey))
+                                throw new IllegalStateException("A restricted key can't replace a child");
+                            newCap = c.cap.withWritingKey(newCap.writer);
+                        }
+                        return new NamedRelativeCapability(newTarget.name, newCap,
                                 newTarget.isDir, newTarget.mimetype, newTarget.created);
                     })
                     .collect(Collectors.toList());
@@ -1146,8 +1458,8 @@ public class CryptreeNode implements Cborable {
 
             return (! updatedLinks.isEmpty() ?
                     IpfsTransaction.call(ourPointer.owner,
-                            tid -> withChildren(ourPointer.rBaseKey, new ChildrenLinks(Stream.concat(unchanged.stream(), updatedLinks.stream())
-                                    .collect(Collectors.toList())), random, hasher)
+                            tid -> withChildren(ourPointer, new ChildrenLinks(Stream.concat(unchanged.stream(), updatedLinks.stream())
+                                    .collect(Collectors.toList())), network, random, hasher)
                                     .thenCompose(d -> d.commit(base, committer, ourPointer, signer, network, tid)),
                             network.dhtClient) :
                     CompletableFuture.completedFuture(base)).thenCompose(
@@ -1178,14 +1490,12 @@ public class CryptreeNode implements Cborable {
         Set<Location> locsToRemove = childrenToRemove.stream()
                 .map(r -> r.getLocation())
                 .collect(Collectors.toSet());
-        return getDirectChildrenCapabilities(ourPointer, current, network).thenCompose(childCaps -> {
+        return getDirectChildren(ourPointer, current, network).thenCompose(childCaps -> {
             List<NamedRelativeCapability> withRemoval = childCaps.stream()
-                    .filter(e -> ! locsToRemove.contains(e.cap.getLocation()))
-                    .map(c -> new NamedRelativeCapability(new PathElement(c.name.name),
-                            ourPointer.relativise(c.cap), c.isDir, c.mimetype, c.created))
+                    .filter(e -> ! locsToRemove.contains(e.cap.getLocation(ourPointer.owner, ourPointer.writer)))
                     .collect(Collectors.toList());
             Set<Location> kidLocs = childCaps.stream()
-                    .map(r -> r.cap.getLocation())
+                    .map(r -> r.cap.getLocation(ourPointer.owner, ourPointer.writer))
                     .collect(Collectors.toSet());
 
             List<AbsoluteCapability> remaining = childrenToRemove.stream()
@@ -1193,7 +1503,7 @@ public class CryptreeNode implements Cborable {
                     .collect(Collectors.toList());
 
             return IpfsTransaction.call(ourPointer.owner,
-                    tid -> withChildren(ourPointer.rBaseKey, new ChildrenLinks(withRemoval), random, hasher)
+                    tid -> withChildren(ourPointer, new ChildrenLinks(withRemoval), network, random, hasher)
                             .thenCompose(d -> d.commit(current, committer, ourPointer, entryWriter, network, tid)),
                     network.dhtClient).thenCompose(s -> {
                         if (remaining.isEmpty())
@@ -1232,14 +1542,24 @@ public class CryptreeNode implements Cborable {
         return network.uploadChunk(current, committer, this, us.owner, us.getMapKey(), signer, tid);
     }
 
+    /** Whether there is a parent link, which a restricted key can't read. */
     public boolean hasParentLink(SymmetricKey baseKey) {
-        SymmetricKey parentKey = getParentKey(baseKey);
-        return getParentBlock(parentKey).parentLink.isPresent();
+        FromParent block = getParentBlock(getParentKey(baseKey));
+        return block.parentLink.isPresent() || block.encryptedParentLink.isPresent();
     }
 
     public Optional<RelativeCapability> getParentCapability(SymmetricKey baseKey) {
+        Access access = open(baseKey).access;
         SymmetricKey parentKey = getParentKey(baseKey);
-        return getParentBlock(parentKey).parentLink;
+        FromParent block = getParentBlock(parentKey);
+        if (block.encryptedParentLink.isEmpty())
+            return onlyEncryptedParentLink(baseKey) ? Optional.empty() : block.parentLink;
+        Optional<SymmetricKey> parentLinkKey = access == Access.FULL ?
+                (isDirectory ? verifiedParentKey(baseKey) : Optional.of(baseKey)) :
+                access == Access.PARENT ?
+                        Optional.of(baseKey) :
+                        Optional.empty();
+        return parentLinkKey.flatMap(k -> tryDecrypt(block.encryptedParentLink.get(), k, RelativeCapability::fromCbor));
     }
 
     public CompletableFuture<RetrievedCapability> getParent(PublicKeyHash owner,
@@ -1247,8 +1567,7 @@ public class CryptreeNode implements Cborable {
                                                             SymmetricKey baseKey,
                                                             NetworkAccess network,
                                                             Snapshot version) {
-        SymmetricKey parentKey = getParentKey(baseKey);
-        Optional<RelativeCapability> parentLink = getParentBlock(parentKey).parentLink;
+        Optional<RelativeCapability> parentLink = getParentCapability(baseKey);
         if (! parentLink.isPresent())
             return CompletableFuture.completedFuture(null);
 
@@ -1270,6 +1589,7 @@ public class CryptreeNode implements Cborable {
             Location parentLocation,
             Optional<Bat> parentBat,
             SymmetricKey parentparentKey,
+            boolean pendingParent,
             RelativeCapability nextChunk,
             Optional<Bat> inlineBat,
             Optional<BatId> mirrorBat,
@@ -1286,7 +1606,9 @@ public class CryptreeNode implements Cborable {
                             parentparentKey,
                             Optional.empty());
                     CryptreeNode cryptree = createFile(existingHash, Optional.empty(), parentKey, dataKey, props,
-                            linksAndData.left, toParent, nextChunk, inlineBat, mirrorBat, random);
+                            linksAndData.left, Optional.of(toParent),
+                            pendingParent ? Optional.of(pendingParentLink(random)) : Optional.empty(),
+                            nextChunk, inlineBat, mirrorBat, random);
                     return new Pair<>(cryptree, linksAndData.right);
                 });
     }
@@ -1303,7 +1625,53 @@ public class CryptreeNode implements Cborable {
                                           Optional<BatId> mirrorBat,
                                           SafeRandom random) {
         return createFile(existingHash, signerLink, parentKey, dataKey, props, data, Optional.of(toParentDir),
-                nextChunk, inlineBat, mirrorBat, random);
+                Optional.empty(), nextChunk, inlineBat, mirrorBat, random);
+    }
+
+    /** The parent link of a restricted format node, which a restricted writer copies without reading it. */
+    public Optional<PaddedCipherText> getEncryptedParentLink(SymmetricKey baseKey) {
+        return getParentBlock(getParentKey(baseKey)).encryptedParentLink;
+    }
+
+    /** A parent link, the size of a real one, that no one can open. For nodes made through a restricted key, which
+     *  can't link to their parent.
+     */
+    public static PaddedCipherText pendingParentLink(SafeRandom random) {
+        RelativeCapability unreachable = new RelativeCapability(Optional.empty(), random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
+                Optional.of(Bat.random(random)), SymmetricKey.random(), Optional.empty());
+        return PaddedCipherText.build(SymmetricKey.random(), unreachable, META_DATA_PADDING_BLOCKSIZE);
+    }
+
+    /** A file chunk written through a restricted key, which can only copy the chunk's parent link. */
+    public static CompletableFuture<Pair<CryptreeNode, List<FragmentWithHash>>> createRestrictedFile(
+            MaybeMultihash existingHash,
+            SymmetricKey restrictedKey,
+            SymmetricKey dataKey,
+            FileProperties props,
+            byte[] chunkData,
+            Optional<PaddedCipherText> parentLink,
+            RelativeCapability nextChunk,
+            Optional<Bat> inlineBat,
+            Optional<BatId> mirrorBat,
+            SafeRandom random,
+            Hasher hasher,
+            boolean allowArrayCache) {
+        return FragmentedPaddedCipherText.build(dataKey, new CborObject.CborByteArray(chunkData),
+                        MIN_FRAGMENT_SIZE, Fragment.MAX_LENGTH, mirrorBat, random, hasher, allowArrayCache)
+                .thenApply(linksAndData -> {
+                    List<BatId> bats = inlineBat.isEmpty() ?
+                            Collections.emptyList() :
+                            Stream.concat(inlineBat.stream().map(BatId::inline), mirrorBat.stream()).collect(Collectors.toList());
+                    // without the full key, link from a random key so the block looks like any other
+                    FromBase fromBase = new FromBase(dataKey, Optional.empty(), nextChunk.withBaseKey(restrictedKey),
+                            Optional.of(SymmetricLink.fromPair(SymmetricKey.random(), dataKey)));
+                    FromParent fromParent = new FromParent(Optional.empty(), parentLink, props);
+                    CryptreeNode chunk = new CryptreeNode(existingHash, false, bats,
+                            PaddedCipherText.build(restrictedKey, fromBase, BASE_BLOCK_PADDING_BLOCKSIZE),
+                            linksAndData.left,
+                            PaddedCipherText.build(restrictedKey, fromParent, META_DATA_PADDING_BLOCKSIZE));
+                    return new Pair<>(chunk, linksAndData.right);
+                });
     }
 
     public static CryptreeNode createSubsequentFileChunk(MaybeMultihash existingHash,
@@ -1316,8 +1684,8 @@ public class CryptreeNode implements Cborable {
                                                          Optional<Bat> inlineBat,
                                                          Optional<BatId> mirrorBat,
                                                          SafeRandom random) {
-        return createFile(existingHash, signerLink, parentKey, dataKey, props, data, Optional.empty(), nextChunk,
-                inlineBat, mirrorBat, random);
+        return createFile(existingHash, signerLink, parentKey, dataKey, props, data, Optional.empty(), Optional.empty(),
+                nextChunk, inlineBat, mirrorBat, random);
     }
 
     private static CryptreeNode createFile(MaybeMultihash existingHash,
@@ -1327,20 +1695,31 @@ public class CryptreeNode implements Cborable {
                                            FileProperties props,
                                            FragmentedPaddedCipherText data,
                                            Optional<RelativeCapability> toParentDir,
+                                           Optional<PaddedCipherText> pendingParent,
                                            RelativeCapability nextChunk,
                                            Optional<Bat> inlineBat,
                                            Optional<BatId> mirrorBat,
                                            SafeRandom random) {
         if (parentKey.equals(dataKey))
             throw new IllegalStateException("A file's base key and data key must be different!");
-        FromBase fromBase = new FromBase(dataKey, signerLink, nextChunk);
-        FromParent fromParent = new FromParent(toParentDir, props);
-
         List<BatId> bats = inlineBat.isEmpty() ?
                 Collections.emptyList() :
                 Stream.concat(inlineBat.stream().map(BatId::inline), mirrorBat.stream()).collect(Collectors.toList());
-        PaddedCipherText encryptedBaseBlock = PaddedCipherText.build(parentKey, fromBase, BASE_BLOCK_PADDING_BLOCKSIZE);
-        PaddedCipherText encryptedParentBlock = PaddedCipherText.build(parentKey, fromParent, META_DATA_PADDING_BLOCKSIZE);
+        if (writeLegacyFormat())
+            return new CryptreeNode(existingHash, false, bats,
+                    PaddedCipherText.build(parentKey, new FromBase(dataKey, signerLink, nextChunk, Optional.empty()), BASE_BLOCK_PADDING_BLOCKSIZE),
+                    data,
+                    PaddedCipherText.build(parentKey, new FromParent(toParentDir, Optional.empty(), props), META_DATA_PADDING_BLOCKSIZE));
+        SymmetricKey restricted = parentKey.derive(RESTRICTED);
+        FromBase fromBase = new FromBase(dataKey, signerLink, nextChunk.withBaseKey(restricted),
+                Optional.of(SymmetricLink.fromPair(parentKey, dataKey)));
+        FromParent fromParent = new FromParent(Optional.empty(),
+                pendingParent.isPresent() ?
+                        pendingParent :
+                        toParentDir.map(p -> PaddedCipherText.build(parentKey, p, META_DATA_PADDING_BLOCKSIZE)), props);
+
+        PaddedCipherText encryptedBaseBlock = PaddedCipherText.build(restricted, fromBase, BASE_BLOCK_PADDING_BLOCKSIZE);
+        PaddedCipherText encryptedParentBlock = PaddedCipherText.build(restricted, fromParent, META_DATA_PADDING_BLOCKSIZE);
         return new CryptreeNode(existingHash, false, bats, encryptedBaseBlock, data, encryptedParentBlock);
     }
 
@@ -1413,16 +1792,82 @@ public class CryptreeNode implements Cborable {
             Optional<BatId> mirrorBat,
             SafeRandom random,
             Hasher hasher) {
+        return createDir(lastCommittedHash, rBaseKey, wBaseKey, signingPair, props, parentCap, Optional.empty(), parentKey,
+                nextChunk, children, inlineBat, mirrorBat, random, hasher);
+    }
+
+    /** A further chunk of a directory, made through its restricted key. */
+    private static CompletableFuture<DirAndChildren> createRestrictedDirChunk(SymmetricKey restrictedKey,
+                                                                              SymmetricKey propertiesKey,
+                                                                              RelativeCapability nextChunk,
+                                                                              byte[] sealKey,
+                                                                              Optional<Bat> inlineBat,
+                                                                              Optional<BatId> mirrorBat,
+                                                                              SafeRandom random,
+                                                                              Hasher hasher) {
+        // without the full key, link from a random key so the block looks like any other
+        FromBase fromBase = new FromBase(propertiesKey, Optional.empty(), nextChunk.withBaseKey(restrictedKey),
+                Optional.of(SymmetricLink.fromPair(SymmetricKey.random(), propertiesKey)));
+        FromParent fromParent = new FromParent(Optional.empty(), Optional.empty(), FileProperties.EMPTY);
+        List<BatId> bats = Stream.concat(inlineBat.stream().map(BatId::inline), mirrorBat.stream()).collect(Collectors.toList());
+        return buildChildren(ChildrenLinks.empty().withSealKey(Optional.of(sealKey)), restrictedKey, mirrorBat, random, hasher)
+                .thenApply(children -> new DirAndChildren(new CryptreeNode(MaybeMultihash.empty(), true, bats,
+                        PaddedCipherText.build(restrictedKey, fromBase, BASE_BLOCK_PADDING_BLOCKSIZE), children.left,
+                        PaddedCipherText.build(propertiesKey, fromParent, META_DATA_PADDING_BLOCKSIZE)), children.right));
+    }
+
+    /** A directory made through its parent's restricted key, which can't link to the parent. */
+    public static CompletableFuture<DirAndChildren> createEmptyPendingDir(
+            SymmetricKey rBaseKey,
+            SymmetricKey wBaseKey,
+            FileProperties props,
+            SymmetricKey parentKey,
+            RelativeCapability nextChunk,
+            Optional<Bat> inlineBat,
+            Optional<BatId> mirrorBat,
+            SafeRandom random,
+            Hasher hasher) {
+        return createDir(MaybeMultihash.empty(), rBaseKey, wBaseKey, Optional.empty(), props, Optional.empty(),
+                Optional.of(pendingParentLink(random)), parentKey, nextChunk, ChildrenLinks.empty(), inlineBat, mirrorBat, random, hasher);
+    }
+
+    private static CompletableFuture<DirAndChildren> createDir(
+            MaybeMultihash lastCommittedHash,
+            SymmetricKey rBaseKey,
+            SymmetricKey wBaseKey,
+            Optional<SigningPrivateKeyAndPublicHash> signingPair,
+            FileProperties props,
+            Optional<RelativeCapability> parentCap,
+            Optional<PaddedCipherText> pendingParent,
+            SymmetricKey parentKey,
+            RelativeCapability nextChunk,
+            ChildrenLinks children,
+            Optional<Bat> inlineBat,
+            Optional<BatId> mirrorBat,
+            SafeRandom random,
+            Hasher hasher) {
         if (rBaseKey.equals(parentKey))
             throw new IllegalStateException("A directory's base key and parent key must be different!");
         Optional<SymmetricLinkToSigner> writerLink = signingPair.map(pair -> SymmetricLinkToSigner.fromPair(wBaseKey, pair));
-        FromBase fromBase = new FromBase(parentKey, writerLink, nextChunk);
-        FromParent fromParent = new FromParent(parentCap, props);
-
-        PaddedCipherText encryptedBaseBlock = PaddedCipherText.build(rBaseKey, fromBase, BASE_BLOCK_PADDING_BLOCKSIZE);
-        PaddedCipherText encryptedParentBlock = PaddedCipherText.build(parentKey, fromParent, META_DATA_PADDING_BLOCKSIZE);
         List<BatId> bats = Stream.concat(inlineBat.stream().map(BatId::inline), mirrorBat.stream()).collect(Collectors.toList());
-        return FragmentedPaddedCipherText.build(rBaseKey, children, MIN_FRAGMENT_SIZE, Fragment.MAX_LENGTH, mirrorBat, random, hasher, false)
+        if (writeLegacyFormat())
+            return FragmentedPaddedCipherText.build(rBaseKey, children, MIN_FRAGMENT_SIZE, Fragment.MAX_LENGTH, mirrorBat, random, hasher, false)
+                    .thenApply(linksAndData -> new DirAndChildren(new CryptreeNode(lastCommittedHash, true, bats,
+                            PaddedCipherText.build(rBaseKey, new FromBase(parentKey, writerLink, nextChunk, Optional.empty()), BASE_BLOCK_PADDING_BLOCKSIZE),
+                            linksAndData.left,
+                            PaddedCipherText.build(parentKey, new FromParent(parentCap, Optional.empty(), props), META_DATA_PADDING_BLOCKSIZE)),
+                            linksAndData.right));
+        SymmetricKey restricted = rBaseKey.derive(RESTRICTED);
+        FromBase fromBase = new FromBase(parentKey.derive(PROPERTIES), writerLink, nextChunk.withBaseKey(restricted),
+                Optional.of(SymmetricLink.fromPair(rBaseKey, parentKey)));
+        FromParent fromParent = new FromParent(Optional.empty(),
+                pendingParent.isPresent() ?
+                        pendingParent :
+                        parentCap.map(p -> PaddedCipherText.build(parentKey, p, META_DATA_PADDING_BLOCKSIZE)), props);
+
+        PaddedCipherText encryptedBaseBlock = PaddedCipherText.build(restricted, fromBase, BASE_BLOCK_PADDING_BLOCKSIZE);
+        PaddedCipherText encryptedParentBlock = PaddedCipherText.build(parentKey.derive(PROPERTIES), fromParent, META_DATA_PADDING_BLOCKSIZE);
+        return FragmentedPaddedCipherText.build(restricted, wrapFullKeys(rBaseKey, children), MIN_FRAGMENT_SIZE, Fragment.MAX_LENGTH, mirrorBat, random, hasher, false)
                 .thenApply(linksAndData -> {
                     CryptreeNode metadata = new CryptreeNode(lastCommittedHash, true, bats, encryptedBaseBlock, linksAndData.left, encryptedParentBlock);
                     return new DirAndChildren(metadata, linksAndData.right);
@@ -1455,13 +1900,66 @@ public class CryptreeNode implements Cborable {
         PaddedCipherText fromParentKey = m.get("p", PaddedCipherText::fromCbor);
         FragmentedPaddedCipherText childrenOrData = m.get("d", FragmentedPaddedCipherText::fromCbor);
 
-        boolean isDirectory;
-        try {
-            // For a file the base key is the parent key
-            isDirectory = fromParentKey.decrypt(base, FromParent::fromCbor).properties.isDirectory;
-        } catch (Throwable t) {
-            isDirectory = true;
+        Map<SymmetricKey, Opened> opened = new HashMap<>();
+        Map<SymmetricKey, OpenedParent> openedParent = new HashMap<>();
+        boolean isDirectory = isDirectory(base, fromBaseKey, fromParentKey, opened, openedParent);
+        CryptreeNode res = new CryptreeNode(MaybeMultihash.of(hash), isDirectory, bats, fromBaseKey, childrenOrData, fromParentKey);
+        res.opened.putAll(opened);
+        res.openedParent.putAll(openedParent);
+        return res;
+    }
+
+    /** Works out how the key opens the node on the way, so reading it afterwards doesn't try the same keys again. */
+    private static boolean isDirectory(SymmetricKey base,
+                                       PaddedCipherText fromBaseKey,
+                                       PaddedCipherText fromParentKey,
+                                       Map<SymmetricKey, Opened> opened,
+                                       Map<SymmetricKey, OpenedParent> openedParent) {
+        SymmetricKey restricted = base.derive(RESTRICTED);
+        Optional<FromBase> full = tryDecrypt(fromBaseKey, restricted, FromBase::fromCbor);
+        if (full.isPresent()) {
+            opened.put(base, new Opened(Access.FULL, full));
+            FromBase b = full.get();
+            // a file links from its full key to its data key, and a directory to the key its properties key derives from
+            Optional<SymmetricKey> linked = b.fromFullKey.flatMap(x -> {
+                try {
+                    return Optional.of(x.target(base));
+                } catch (Exception e) {
+                    return Optional.empty(); // a chunk made through a restricted key links from a random key
+                }
+            });
+            if (linked.isPresent() && linked.get().equals(b.parentOrData))
+                return false;
+            if (linked.isPresent() && linked.get().derive(PROPERTIES).equals(b.parentOrData))
+                return true;
+            return ! openFileProperties(base, restricted, fromParentKey, openedParent);
         }
-        return new CryptreeNode(MaybeMultihash.of(hash), isDirectory, bats, fromBaseKey, childrenOrData, fromParentKey);
+        Optional<FromBase> direct = tryDecrypt(fromBaseKey, base, FromBase::fromCbor);
+        if (direct.isPresent()) {
+            opened.put(base, new Opened(direct.get().fromFullKey.isPresent() ? Access.RESTRICTED : Access.LEGACY, direct));
+            return ! openFileProperties(base, base, fromParentKey, openedParent);
+        }
+        opened.put(base, new Opened(Access.PARENT, Optional.empty()));
+        // a parent key opens a directory's properties, directly or through a key derived from it
+        for (SymmetricKey k : Arrays.asList(base.derive(PROPERTIES), base)) {
+            Optional<FromParent> block = tryDecrypt(fromParentKey, k, FromParent::fromCbor);
+            if (block.isPresent()) {
+                openedParent.put(base, new OpenedParent(block.get(), k));
+                return block.get().properties.isDirectory;
+            }
+        }
+        return true;
+    }
+
+    /** A file's properties are under the key that opened its base block. */
+    private static boolean openFileProperties(SymmetricKey base,
+                                              SymmetricKey key,
+                                              PaddedCipherText fromParentKey,
+                                              Map<SymmetricKey, OpenedParent> openedParent) {
+        Optional<FromParent> block = tryDecrypt(fromParentKey, key, FromParent::fromCbor);
+        if (block.isEmpty())
+            return false;
+        openedParent.put(base, new OpenedParent(block.get(), key));
+        return ! block.get().properties.isDirectory;
     }
 }
