@@ -99,6 +99,21 @@ public class RelayTests {
         user(replica, List.of(later, peer(self)));
         Assert.assertTrue("as a user's providers change", relays.vouchesFor(later));
         Assert.assertTrue(relays.vouchesFor(mirrored));
+        Assert.assertTrue(relays.identitiesRead() > 0);
+
+        Relays restarted = new Relays(List.of(), List.of(own), true, Relays.TOTAL_BYTES_PER_SECOND, System::currentTimeMillis, new Random(1));
+        restarted.start(RoutingLookup.full(replica), peer(self));
+        for (int i = 0; i < 100 && ! restarted.vouchesFor(later); i++)
+            Thread.sleep(50);
+        Assert.assertTrue(restarted.vouchesFor(later));
+        Assert.assertTrue(restarted.vouchesFor(mirrored));
+        Assert.assertEquals("a restart reads the identities it mirrors, not every identity", 0, restarted.identitiesRead());
+        Relays other = new Relays(List.of(), List.of(), true, Relays.TOTAL_BYTES_PER_SECOND, System::currentTimeMillis, new Random(1));
+        other.start(RoutingLookup.full(replica), stranger);
+        for (int i = 0; i < 100 && other.identitiesRead() == 0; i++)
+            Thread.sleep(50);
+        Assert.assertTrue("a log first run with as another server is read again", other.identitiesRead() > 0);
+        Assert.assertFalse(other.vouchesFor(mirrored));
     }
 
     private static Subject user(RoutingReplica replica, List<Multihash> providers) {

@@ -6,6 +6,7 @@ import io.libp2p.core.multiformats.Multiaddr;
 import io.libp2p.protocol.circuit.RelayTransport.CandidateRelay;
 import org.peergos.protocol.circuit.RelayBandwidth;
 import org.peergos.protocol.circuit.RelayPolicy;
+import peergos.shared.cbor.*;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.routing.*;
 import peergos.shared.util.*;
@@ -13,7 +14,9 @@ import peergos.shared.util.*;
 import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
 import java.util.function.*;
+import java.util.logging.*;
 import java.util.stream.*;
 
 /** Which relays this server reserves on, whom it relays for, and how a server is dialled through its relays
@@ -110,24 +113,71 @@ public class Relays {
                 mirrored(subject, (IdentityLog) log);
         });
         background.submit(() -> {
-            Reconciliation.Cursor after = Reconciliation.Cursor.START;
-            while (true) {
-                List<JdbcRoutingStore.State> page = replica.store().states(Subject.IDENTITY, Reconciliation.Range.ALL, after, 1_000);
-                if (page.isEmpty())
-                    return;
-                for (JdbcRoutingStore.State st : page)
-                    replica.identity(st.subject).ifPresent(l -> mirrored(st.subject, l));
-                after = Reconciliation.Cursor.after(page.get(page.size() - 1).subject);
+            try {
+                findMirrored(replica);
+            } catch (Throwable t) {
+                LOG.log(Level.WARNING, "Finding the identities this server mirrors failed: " + t.getMessage(), t);
             }
         });
     }
 
+    private static final Logger LOG = peergos.server.util.Logging.LOG();
+    private static final String MIRRORS = "mirrors";
+    private final AtomicLong identitiesRead = new AtomicLong();
+
+    public long identitiesRead() {
+        return identitiesRead.get();
+    }
+
+    private static final int MIRROR_SCAN_SAVED_EVERY = 100;
+
+    /** Reads every identity once, the first time this server runs with this log, keeping where it has got to; from
+     *  then on the identities it mirrors are kept as they change, and a restart reads only those.
+     */
+    private void findMirrored(RoutingReplica replica) {
+        JdbcRoutingStore store = replica.store();
+        byte[] me = self.toBytes();
+        Reconciliation.Cursor after = Reconciliation.Cursor.START;
+        Optional<CborObject.CborMap> progress = store.getMeta(MIRRORS).map(raw -> (CborObject.CborMap) CborObject.fromByteArray(raw));
+        if (progress.isPresent() && Arrays.equals(progress.get().getByteArray("s"), me)) {
+            store.mirrored().forEach(mirroredHomes::putIfAbsent);
+            if (! progress.get().containsKey("a"))
+                return;
+            after = Reconciliation.Cursor.fromCbor(progress.get().get("a"));
+        } else {
+            store.clearMirrored();
+            store.setMeta(MIRRORS, mirrorProgress(me, Optional.of(after)));
+        }
+        for (int pages = 1; ; pages++) {
+            List<JdbcRoutingStore.State> page = store.states(Subject.IDENTITY, Reconciliation.Range.ALL, after, 1_000);
+            for (JdbcRoutingStore.State st : page)
+                replica.identity(st.subject).ifPresent(l -> mirrored(st.subject, l));
+            identitiesRead.addAndGet(page.size());
+            if (page.size() < 1_000)
+                break;
+            after = Reconciliation.Cursor.after(page.get(page.size() - 1).subject);
+            if (pages % MIRROR_SCAN_SAVED_EVERY == 0)
+                store.setMeta(MIRRORS, mirrorProgress(me, Optional.of(after)));
+        }
+        store.setMeta(MIRRORS, mirrorProgress(me, Optional.empty()));
+    }
+
+    private static byte[] mirrorProgress(byte[] self, Optional<Reconciliation.Cursor> after) {
+        Map<String, Cborable> m = new TreeMap<>();
+        m.put("s", new CborObject.CborByteArray(self));
+        after.ifPresent(a -> m.put("a", a));
+        return CborObject.CborMap.build(m).serialize();
+    }
+
     private void mirrored(Subject identity, IdentityLog log) {
         List<Multihash> providers = log.providers().stream().map(Multihash::bareMultihash).collect(Collectors.toList());
-        if (providers.size() > 1 && providers.subList(1, providers.size()).contains(self))
-            mirroredHomes.put(identity.id.bareMultihash(), providers.get(0));
-        else
-            mirroredHomes.remove(identity.id.bareMultihash());
+        Multihash id = identity.id.bareMultihash();
+        Optional<Multihash> home = providers.size() > 1 && providers.subList(1, providers.size()).contains(self) ?
+                Optional.of(providers.get(0)) :
+                Optional.empty();
+        Multihash before = home.isPresent() ? mirroredHomes.put(id, home.get()) : mirroredHomes.remove(id);
+        if (! Objects.equals(before, home.orElse(null)))
+            lookup.get().replica().store().setMirrored(id, home);
     }
 
     /** Asked by a full node placing a server in a bucket (remove-pki §4.5): only for this relay's first tier, its
