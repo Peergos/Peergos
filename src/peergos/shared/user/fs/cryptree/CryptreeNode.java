@@ -1370,12 +1370,9 @@ public class CryptreeNode implements Cborable {
                 crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH), Optional.of(Bat.random(crypto.random)), linkCap.rBaseKey);
         SymmetricKey parentParentKey = parent.getParentKey();
         WritableAbsoluteCapability parentCap = parent.writableFilePointer();
-        // a link left behind in an old writing space names its parent's writer
-        Optional<PublicKeyHash> parentWriter = parentCap.writer.equals(linkCap.writer) ?
-                Optional.empty() :
-                Optional.of(parentCap.writer);
-        RelativeCapability toParent = new RelativeCapability(parentWriter, parentCap.getMapKey(),
+        RelativeCapability toParent = new RelativeCapability(Optional.empty(), parentCap.getMapKey(),
                 parentCap.bat, parentParentKey, Optional.empty());
+        // The link must be in the same writing subspace as the parent
         Optional<SigningPrivateKeyAndPublicHash> empty = Optional.empty();
         return createDir(MaybeMultihash.empty(), linkCap.rBaseKey, linkCap.wBaseKey.get(), empty, targetProps.asLink(),
                 Optional.of(toParent), parentKey, nextChunk,

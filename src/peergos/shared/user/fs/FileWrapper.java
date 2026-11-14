@@ -3044,10 +3044,8 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                 for (NamedAbsoluteCapability child : childCaps) {
                                     if (child.cap.writer.equals(currentCap.writer))
                                         sameSpace.add(child.cap);
-                                    else {
+                                    else
                                         res.nestedWritingSpaces.add(child.cap);
-                                        res.nestedHolders.add(currentCap);
-                                    }
                                 }
                                 return network.retrieveAllMetadata(sameSpace, updatedVersion)
                                         .thenCompose(retrieved -> Futures.reduceAll(retrieved.left,
