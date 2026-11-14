@@ -8,8 +8,10 @@ import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.display.*;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.mutable.*;
+import peergos.shared.social.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -276,6 +278,74 @@ public class HybridMigrationTests {
                 read(login(old.friend.username, old.friendPassword), old.docs.resolve("doc.bin")));
 
         old.assertMigrated();
+    }
+
+    /** A move that stops after its commit point, before the old writers are removed, is finished on the next login */
+    @Test
+    public void aMoveStoppedAfterItsCommitPointIsFinished() {
+        OldAccount old = new OldAccount();
+        SigningKeyPair.HYBRID_WRITERS = true;
+        Assert.assertTrue(old.owner.moveAndCommit(old.password, UserTests::noMfa, x -> {}).join());
+        // the old home still holds the sharing folders friends' entry points name
+        Assert.assertArrayEquals(old.files.get(old.docs.resolve("doc.bin")),
+                read(login(old.friend.username, old.friendPassword), old.docs.resolve("doc.bin")));
+        old.assertMigrated();
+        Assert.assertFalse("Nothing is left to finish", login(old.owner.username, old.password).finishMove().join());
+    }
+
+    private static SocialPost post(UserContext context, FileRef ref) {
+        FileWrapper file = context.getFile(ref).join()
+                .orElseThrow(() -> new AssertionError(context.username + " can't open " + ref.path));
+        return Serialize.parse(file, SocialPost::fromCbor, context.network, crypto).join();
+    }
+
+    private static FileRef shared(UserContext context, String sharer) {
+        SocialFeed feed = context.getSocialFeed().join().update().join();
+        Pair<SharedItem, FileWrapper> item = feed.getSharedFiles(0, 1000).join().stream()
+                .filter(p -> p.left.sharer.equals(sharer) && ! p.right.isDirectory())
+                .reduce((a, b) -> b)
+                .orElseThrow(() -> new AssertionError(context.username + " has nothing from " + sharer));
+        return new FileRef(item.left.path, item.left.cap, item.right.getContentHash(context.network, crypto).join());
+    }
+
+    /** Posts refer to each other by cap, which names the old writers once both sides have moved, so they are
+     *  found by path
+     */
+    @Test
+    public void postsAndCommentsStillResolve() {
+        SigningKeyPair.HYBRID_WRITERS = false;
+        String ownerPassword = generatePassword(), friendPassword = generatePassword();
+        UserContext owner = login(generateUsername(random), ownerPassword);
+        UserContext friend = login(generateUsername(random), friendPassword);
+        friendBetweenGroups(Arrays.asList(owner), Arrays.asList(friend));
+
+        SocialPost post = SocialPost.createInitialPost(owner.username, Arrays.asList(new Text("a post")), SocialPost.Resharing.Friends);
+        Pair<Path, FileWrapper> posted = owner.getSocialFeed().join().update().join().createNewPost(post).join();
+        owner.shareReadAccessWith(posted.left, Set.of(friend.username)).join();
+
+        FileRef toPost = shared(friend, owner.username);
+        SocialPost comment = SocialPost.createComment(toPost, SocialPost.Resharing.Friends, friend.username,
+                Arrays.asList(new Text("a comment")));
+        Pair<Path, FileWrapper> commented = friend.getSocialFeed().join().update().join().createNewPost(comment).join();
+        friend.shareReadAccessWith(commented.left, Set.of(owner.username)).join();
+        FileRef toComment = shared(owner, friend.username);
+        Assert.assertEquals("a comment", ((Text) post(owner, toComment).body.get(0)).content);
+
+        SigningKeyPair.HYBRID_WRITERS = true;
+        UserContext ownerAfter = login(owner.username, ownerPassword);
+        UserContext friendAfter = login(friend.username, friendPassword);
+        assertHybrid(ownerAfter, ownerAfter.getUserRoot().join().writer());
+        assertHybrid(friendAfter, friendAfter.getUserRoot().join().writer());
+        ownerAfter = login(owner.username, ownerPassword);
+
+        // the comment's reference to the post, and the post owner's to the comment
+        Assert.assertTrue("the old cap still resolves, so the path isn't tested",
+                friendAfter.network.getFile(toPost.cap, owner.username).join().isEmpty());
+        SocialPost parent = post(friendAfter, post(friendAfter, toComment).parent.get());
+        Assert.assertEquals("a post", ((Text) parent.body.get(0)).content);
+        Assert.assertEquals("a post", ((Text) post(friendAfter, toPost).body.get(0)).content);
+        Assert.assertTrue(ownerAfter.network.getFile(toComment.cap, friend.username).join().isEmpty());
+        Assert.assertEquals("a comment", ((Text) post(ownerAfter, toComment).body.get(0)).content);
     }
 
     /** An account with no friends, shares or nested writing spaces */
