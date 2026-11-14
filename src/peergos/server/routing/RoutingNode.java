@@ -90,6 +90,10 @@ public class RoutingNode {
     private static final String SNAPSHOT = "snapshot";
     private static final byte[] SNAPSHOT_DONE = {1};
     private volatile boolean bootstrapping;
+    /** Configured peers whose pages left out most of what they passed, as a compact node's do: it holds other
+     *  servers' users without their signatures. Their log isn't read end to end again while this node runs.
+     */
+    private final Set<Multihash> cantPage = ConcurrentHashMap.newKeySet();
     /** Set while a page of a peer's log is taken in: every node holds those records, so they aren't announced. */
     private final ThreadLocal<Boolean> quiet = ThreadLocal.withInitial(() -> false);
     /** When this node's state of each recently changed subject changed, and the states it moved on from. */
@@ -386,18 +390,20 @@ public class RoutingNode {
         Map<Subject, List<SignedRecord>> res = new LinkedHashMap<>();
         long bytes = 0;
         Optional<Reconciliation.Cursor> next = Optional.empty();
+        int skipped = 0;
         for (JdbcRoutingStore.State st : states) {
             if (replica.servesAtOnce(st.subject)) {
                 List<SignedRecord> records = replica.records(st.subject, dial);
                 for (SignedRecord r : records)
                     bytes += r.serialize().length;
                 res.put(st.subject, records);
-            }
+            } else
+                skipped++;
             next = Optional.of(Reconciliation.Cursor.after(st.subject));
             if (bytes > HttpRoutingPeer.MAX_RESPONSE / 2)
-                return new RoutingPeer.Page(res, next);
+                return new RoutingPeer.Page(res, next, skipped);
         }
-        return new RoutingPeer.Page(res, states.size() < max ? Optional.empty() : next);
+        return new RoutingPeer.Page(res, states.size() < max ? Optional.empty() : next, skipped);
     }
 
     public List<Reconciliation.Summary> summaries(int kind, List<Reconciliation.Range> ranges) {
@@ -1231,7 +1237,8 @@ public class RoutingNode {
             return 0;
         }
         Optional<RoutingPeer> seed = syncPeers.values().stream()
-                .filter(p -> configured.contains(p.id().bareMultihash()) && ! unreachable.containsKey(p.id().bareMultihash()))
+                .filter(p -> configured.contains(p.id().bareMultihash()) && ! unreachable.containsKey(p.id().bareMultihash())
+                        && ! cantPage.contains(p.id().bareMultihash()))
                 .findFirst();
         if (seed.isEmpty()) {
             bootstrapping = false;
@@ -1260,8 +1267,20 @@ public class RoutingNode {
             }
             bootstrapping = true;
             quiet.set(true);
+            long served = 0, skipped = 0;
             for (int pages = 0; pages < SNAPSHOT_PAGES_PER_ROUND; pages++) {
                 RoutingPeer.Page page = from.page(kind, after, PAGE).join();
+                served += page.records.size();
+                skipped += page.records.isEmpty() && page.next.isPresent() ? Math.max(1, page.skipped) : page.skipped;
+                if (skipped > served) {
+                    // Nothing is marked done: another configured peer, or reconciliation, brings what this one left out.
+                    cantPage.add(from.id().bareMultihash());
+                    bootstrapping = false;
+                    store.setMeta(SNAPSHOT, progress(Subject.SERVER, Reconciliation.Cursor.START));
+                    LOG.info("Not reading the routing log of " + from.id() + ": it holds most subjects without their " +
+                            "signatures. Starting from little is far quicker from an archival routing peer");
+                    return changed;
+                }
                 if (page.records.size() > PAGE)
                     throw new IllegalStateException("Peer " + from.id() + " sent a longer page than asked for");
                 for (Subject s : page.records.keySet())
@@ -1281,10 +1300,7 @@ public class RoutingNode {
                     LOG.info("Read the routing log of " + from.id() + " to its end");
                     return changed;
                 }
-                Map<String, Cborable> m = new TreeMap<>();
-                m.put("k", new CborObject.CborLong(kind));
-                m.put("a", after);
-                store.setMeta(SNAPSHOT, CborObject.CborMap.build(m).serialize());
+                store.setMeta(SNAPSHOT, progress(kind, after));
             }
         } catch (Throwable t) {
             // this round reconciles instead, and the next carries on from where this got to
@@ -1294,6 +1310,13 @@ public class RoutingNode {
             quiet.set(false);
         }
         return changed;
+    }
+
+    private static byte[] progress(int kind, Reconciliation.Cursor after) {
+        Map<String, Cborable> m = new TreeMap<>();
+        m.put("k", new CborObject.CborLong(kind));
+        m.put("a", after);
+        return CborObject.CborMap.build(m).serialize();
     }
 
     private static boolean isForward(Reconciliation.Cursor from, Reconciliation.Cursor to) {

@@ -39,10 +39,13 @@ public interface RoutingPeer {
         public final Map<Subject, List<SignedRecord>> records;
         /** Where the next page starts, or empty at the end. It may be past subjects the peer couldn't serve. */
         public final Optional<Reconciliation.Cursor> next;
+        /** Subjects passed over because the peer holds them without their signatures. */
+        public final int skipped;
 
-        public Page(Map<Subject, List<SignedRecord>> records, Optional<Reconciliation.Cursor> next) {
+        public Page(Map<Subject, List<SignedRecord>> records, Optional<Reconciliation.Cursor> next, int skipped) {
             this.records = records;
             this.next = next;
+            this.skipped = skipped;
         }
     }
 
@@ -51,7 +54,8 @@ public interface RoutingPeer {
                 .thenCompose(states -> recordsOf(states.stream().map(st -> st.subject).collect(java.util.stream.Collectors.toList()))
                         .thenApply(records -> new Page(records, states.size() < limit ?
                                 Optional.empty() :
-                                Optional.of(Reconciliation.Cursor.after(states.get(states.size() - 1).subject)))));
+                                Optional.of(Reconciliation.Cursor.after(states.get(states.size() - 1).subject)),
+                                states.size() - records.size())));
     }
 
     CompletableFuture<List<Reconciliation.Summary>> summaries(int kind, List<Reconciliation.Range> ranges);
