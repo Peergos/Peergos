@@ -23,6 +23,8 @@ public class RoutingNode {
     public static final int PAGE = 1000, BATCH = 16;
     /** A range in which a peer holds no more than this is listed rather than descended into. */
     public static final int LIST_BELOW = 512;
+    /** Ranges listed in one call, as many as a range has children, and the states that call may return. */
+    public static final int LIST_RANGES = 256, LISTED = 4 * PAGE;
     /** Subjects being fetched from one announcer at once, as many as it may announce in a call, and how many are
      *  asked for in one call.
      */
@@ -109,12 +111,13 @@ public class RoutingNode {
      */
     public static final int MAX_FAILURES_PER_PEER = 8;
     public static final long PEER_ROUND_MILLIS = 2 * 60_000L;
+    private volatile long peerRoundMillis = PEER_ROUND_MILLIS;
     /** Subjects a peer may claim in a round and then answer that it can't serve: a compact peer can't when a
      *  provider is offline, which is no failure of its own, but nor may it claim without end.
      */
     public static final int MAX_UNDELIVERED_PER_PEER = 1024;
 
-    private static final class Budget {
+    private final class Budget {
         int failures, undelivered;
         long waitedNanos;
         /** Admitting servers already asked of this peer this round. */
@@ -125,7 +128,19 @@ public class RoutingNode {
         }
 
         boolean spent() {
-            return failing() || undelivered >= MAX_UNDELIVERED_PER_PEER || waitedNanos > PEER_ROUND_MILLIS * 1_000_000;
+            return failing() || undelivered >= MAX_UNDELIVERED_PER_PEER || waitedNanos > peerRoundMillis * 1_000_000;
+        }
+
+        /** Comparing and fetching each get a share of time, so a long comparison leaves time to fetch what it found. */
+        void startFetching() {
+            waitedNanos = 0;
+        }
+    }
+
+    /** A peer's share of the round ran out: what it gave so far is kept, and the rest waits for the next round. */
+    private static final class Spent extends RuntimeException {
+        Spent(Multihash peer) {
+            super("Peer " + peer + " has used its share of this round", null, false, false);
         }
     }
 
@@ -155,7 +170,7 @@ public class RoutingNode {
     /** Waits for a sync peer's answer, within its budget for the round. */
     private <T> T ask(RoutingPeer peer, Budget budget, Supplier<CompletableFuture<T>> call) {
         if (budget.spent())
-            throw new IllegalStateException("Peer " + peer.id() + " has used its share of this round");
+            throw new Spent(peer.id());
         long start = System.nanoTime();
         try {
             return call.get().join();
@@ -399,6 +414,24 @@ public class RoutingNode {
 
     public List<JdbcRoutingStore.State> states(int kind, Reconciliation.Range range, Reconciliation.Cursor after, int limit) {
         return replica.store().states(kind, range, after, Math.min(limit, PAGE));
+    }
+
+    /** The whole of each range in turn, stopping before the first that would pass the limit. */
+    public List<List<JdbcRoutingStore.State>> statesIn(int kind, List<Reconciliation.Range> ranges, int limit) {
+        List<List<JdbcRoutingStore.State>> res = new ArrayList<>();
+        int left = Math.min(limit, LISTED);
+        for (Reconciliation.Range range : ranges) {
+            List<JdbcRoutingStore.State> all = replica.store().states(kind, range, Reconciliation.Cursor.at(range.from()), left + 1);
+            if (all.size() > left)
+                break;
+            res.add(all);
+            left -= all.size();
+        }
+        return res;
+    }
+
+    public void peerRoundMillis(long millis) {
+        peerRoundMillis = millis;
     }
 
     /** A server in the log with its proof of work done. Any other peer id costs nothing to make, so wherever a
@@ -984,6 +1017,9 @@ public class RoutingNode {
 
     // ---- reconciliation
 
+    /** Stands for what a peer holds in a range it was asked to list and hasn't yet: something, and not much. */
+    private static final Reconciliation.Summary UNLISTED = new Reconciliation.Summary(1, new byte[32]);
+
     /** A range that differs from a peer's, with what the peer says it holds there. */
     private static final class Differing {
         final Reconciliation.Range range;
@@ -1000,30 +1036,59 @@ public class RoutingNode {
      *  they keep, so the cost is by what differs, not by what is held.
      */
     public List<JdbcRoutingStore.State> differences(RoutingPeer peer, int kind) {
-        return differences(peer, kind, new Budget());
+        List<JdbcRoutingStore.State> res = new ArrayList<>();
+        differences(peer, kind, new Budget(), res);
+        return res;
     }
 
-    private List<JdbcRoutingStore.State> differences(RoutingPeer peer, int kind, Budget budget) {
-        List<JdbcRoutingStore.State> res = new ArrayList<>();
+    /** @param res filled as differences are found, so that what was found is kept if the peer then fails
+     *  @return whether the comparison finished, rather than running out of the peer's share of the round
+     */
+    private boolean differences(RoutingPeer peer, int kind, Budget budget, List<JdbcRoutingStore.State> res) {
+        try {
+            return compare(peer, kind, budget, res);
+        } catch (Spent e) {
+            return false;
+        }
+    }
+
+    private boolean compare(RoutingPeer peer, int kind, Budget budget, List<JdbcRoutingStore.State> res) {
         JdbcRoutingStore store = replica.store();
+        int start = res.size();
         Reconciliation.Summary all = ask(peer, budget, () -> peer.summaries(kind, List.of(Reconciliation.Range.ALL))).get(0);
         Deque<Differing> todo = new ArrayDeque<>();
         if (! store.summary(kind, Reconciliation.Range.ALL).equals(all))
             todo.add(new Differing(Reconciliation.Range.ALL, all));
         while (! todo.isEmpty()) {
-            List<Reconciliation.Range> descend = new ArrayList<>();
-            while (! todo.isEmpty() && descend.size() < BATCH) {
+            List<Reconciliation.Range> descend = new ArrayList<>(), list = new ArrayList<>();
+            while (! todo.isEmpty() && descend.size() < BATCH && list.size() < LIST_RANGES) {
                 Differing d = todo.poll();
-                if (d.range.depth < Reconciliation.MAX_DEPTH && d.theirs.count > LIST_BELOW) {
+                if (d.range.depth < Reconciliation.MAX_DEPTH && d.theirs.count > LIST_BELOW)
                     descend.add(d.range);
-                    continue;
-                }
-                if (d.theirs.count == 0)
+                else if (d.theirs.count == 0)
                     tally(peer, kind, d.range, Map.of());
                 else
-                    res.addAll(differing(peer, kind, d.range, MAX_DIFFERENCES - res.size(), budget));
-                if (res.size() >= MAX_DIFFERENCES)
-                    return res;
+                    list.add(d.range);
+            }
+            if (! list.isEmpty()) {
+                // Small ranges are listed many to a call: a node that is far behind differs in most of them.
+                List<List<JdbcRoutingStore.State>> listed = ask(peer, budget, () -> peer.statesIn(kind, list, LISTED));
+                int total = listed.stream().mapToInt(List::size).sum();
+                if (listed.size() > list.size() || total > LISTED)
+                    throw new IllegalStateException("Peer " + peer.id() + " sent more states than asked for");
+                for (int i = 0; i < listed.size(); i++) {
+                    Reconciliation.Range range = list.get(i);
+                    Map<ByteArrayWrapper, byte[]> theirs = new HashMap<>();
+                    differing(peer, kind, range, Reconciliation.Cursor.at(range.from()), listed.get(i), theirs, res);
+                    tally(peer, kind, range, theirs);
+                }
+                // one too long for the call is read a page at a time
+                if (listed.size() < list.size())
+                    paged(peer, kind, list.get(listed.size()), MAX_DIFFERENCES - (res.size() - start), budget, res);
+                for (int i = list.size() - 1; i > listed.size(); i--)
+                    todo.addFirst(new Differing(list.get(i), UNLISTED));
+                if (res.size() - start >= MAX_DIFFERENCES)
+                    return false;
             }
             if (descend.isEmpty())
                 continue;
@@ -1044,40 +1109,50 @@ public class RoutingNode {
                 }
             }
         }
-        return res;
+        return true;
     }
 
-    /** A peer's states in a range that differ from ours. A peer can answer anything, so each page must move forward
-     *  within the range and be no longer than asked for, and a round takes at most {@link #MAX_DIFFERENCES} from one
-     *  peer; the rest wait for the next round.
+    /** A peer's states in a range that differ from ours, a page at a time. A round takes at most
+     *  {@link #MAX_DIFFERENCES} from one peer; the rest wait for the next round.
      */
-    private List<JdbcRoutingStore.State> differing(RoutingPeer peer, int kind, Reconciliation.Range range, int max, Budget budget) {
-        List<JdbcRoutingStore.State> res = new ArrayList<>();
+    private void paged(RoutingPeer peer, int kind, Reconciliation.Range range, int max, Budget budget, List<JdbcRoutingStore.State> res) {
+        int start = res.size();
         Map<ByteArrayWrapper, byte[]> theirs = new HashMap<>();
         Reconciliation.Cursor after = Reconciliation.Cursor.at(range.from());
-        while (res.size() < max) {
+        while (res.size() - start < max) {
             Reconciliation.Cursor from = after;
             List<JdbcRoutingStore.State> page = ask(peer, budget, () -> peer.states(kind, range, from, PAGE));
             if (page.size() > PAGE)
                 throw new IllegalStateException("Peer " + peer.id() + " sent more states than asked for");
-            for (JdbcRoutingStore.State st : page) {
-                byte[] id = st.subject.idBytes();
-                int slot = Reconciliation.slot(id);
-                boolean forward = slot > after.slot || (slot == after.slot && Subject.compareBytes(id, after.id) > 0);
-                if (st.subject.kind != kind || ! forward || ! range.contains(slot))
-                    throw new IllegalStateException("Peer " + peer.id() + " sent states out of order or range");
-                after = new Reconciliation.Cursor(slot, id);
-                saw(st.subject, st.hash, peer.id());
-                theirs.put(new ByteArrayWrapper(id), st.hash);
-                if (! Arrays.equals(replica.stateHash(st.subject), st.hash))
-                    res.add(st);
-            }
+            after = differing(peer, kind, range, after, page, theirs, res);
             if (page.size() < PAGE) {
                 tally(peer, kind, range, theirs);
-                return res;
+                return;
             }
         }
-        return res;
+    }
+
+    /** Takes a stretch of a peer's states in a range. A peer can answer anything, so they must move forward within
+     *  the range.
+     *
+     * @return the place after the last of them
+     */
+    private Reconciliation.Cursor differing(RoutingPeer peer, int kind, Reconciliation.Range range, Reconciliation.Cursor after,
+                                            List<JdbcRoutingStore.State> states, Map<ByteArrayWrapper, byte[]> theirs,
+                                            List<JdbcRoutingStore.State> res) {
+        for (JdbcRoutingStore.State st : states) {
+            byte[] id = st.subject.idBytes();
+            int slot = Reconciliation.slot(id);
+            boolean forward = slot > after.slot || (slot == after.slot && Subject.compareBytes(id, after.id) > 0);
+            if (st.subject.kind != kind || ! forward || ! range.contains(slot))
+                throw new IllegalStateException("Peer " + peer.id() + " sent states out of order or range");
+            after = new Reconciliation.Cursor(slot, id);
+            saw(st.subject, st.hash, peer.id());
+            theirs.put(new ByteArrayWrapper(id), st.hash);
+            if (! Arrays.equals(replica.stateHash(st.subject), st.hash))
+                res.add(st);
+        }
+        return after;
     }
 
     /** Beyond this a peer is far enough behind; counting more would cost a lookup each. */
@@ -1253,20 +1328,28 @@ public class RoutingNode {
         for (RoutingPeer peer : peers) {
             boolean ok = true;
             Budget budget = budgets.computeIfAbsent(peer.id().bareMultihash(), p -> new Budget());
+            boolean finished = true;
+            List<JdbcRoutingStore.State> found = new ArrayList<>();
             for (int kind : new int[]{Subject.SERVER, Subject.IDENTITY}) {
                 try {
-                    for (JdbcRoutingStore.State st : differences(peer, kind, budget))
-                        wanted.computeIfAbsent(st.subject, x -> new HashMap<>())
-                                .computeIfAbsent(new ByteArrayWrapper(st.hash), h -> new ArrayList<>())
-                                .add(peer);
+                    finished &= differences(peer, kind, budget, found);
                 } catch (Throwable t) {
                     ok = false;
                     LOG.log(Level.INFO, "Reconciling with " + peer.id() + " failed: " + t.getMessage());
                 }
             }
-            if (ok)
+            // What a peer gave before failing or running out of time is still fetched, so a node far behind gains
+            // on it each round.
+            for (JdbcRoutingStore.State st : found)
+                wanted.computeIfAbsent(st.subject, x -> new HashMap<>())
+                        .computeIfAbsent(new ByteArrayWrapper(st.hash), h -> new ArrayList<>())
+                        .add(peer);
+            budget.startFetching();
+            // A comparison cut short shows nothing about being synced. Only one that gave nothing in all its
+            // time counts against the peer.
+            if (ok && finished)
                 answered.add(peer);
-            else
+            else if (! ok || found.isEmpty())
                 missed(peer);
         }
         int changed = 0, failed = 0;

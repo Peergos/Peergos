@@ -121,6 +121,16 @@ public class HttpRoutingPeer implements RoutingPeer {
     }
 
     @Override
+    public CompletableFuture<List<List<JdbcRoutingStore.State>>> statesIn(int kind, List<Reconciliation.Range> ranges, int limit) {
+        return call("states-in", Map.of("k", new CborObject.CborLong(kind), "r", new CborObject.CborList(ranges), "l", new CborObject.CborLong(limit)))
+                .thenApply(res -> ((CborObject.CborList) res).value.stream()
+                        .map(range -> ((CborObject.CborList) range).value.stream()
+                                .map(Reconciliation::state)
+                                .collect(Collectors.toList()))
+                        .collect(Collectors.toList()));
+    }
+
+    @Override
     public CompletableFuture<Outcome> offer(Subject s, List<SignedRecord> records) {
         return call("offer", Map.of("s", s, "r", new CborObject.CborList(records.stream()
                 .map(RecordType::tag)
