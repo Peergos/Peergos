@@ -736,6 +736,7 @@ public class RoutingNode {
 
     /** Takes the inceptions whose turn has come and the held updates whose token is due. Run periodically. */
     public void tick() {
+        inceptions.resize(replica.store().summary(Subject.IDENTITY, Reconciliation.Range.ALL).count);
         takeInceptions();
         long now = clock.getAsLong();
         for (Map.Entry<Subject, Held> e : new ArrayList<>(held.entrySet())) {

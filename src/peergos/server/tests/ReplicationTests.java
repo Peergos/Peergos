@@ -553,6 +553,29 @@ public class ReplicationTests {
     }
 
     @Test
+    public void aBucketsRateGrowsWithTheLog() {
+        AtomicLong clock = new AtomicLong(0);
+        RateLimits.Inceptions<String> limits = new RateLimits.Inceptions<>(100, 1000, clock::get);
+        Assert.assertEquals("the configured rate while the log is small", 100, limits.perDay(500_000));
+        Assert.assertEquals(100, limits.sharedPerDay(100_000));
+        Assert.assertEquals(1_000_000, limits.perDay(10_000_000_000L));
+        Assert.assertEquals("the bucket unplaced servers share stands for all of them", 4_000_000, limits.sharedPerDay(10_000_000_000L));
+
+        AddressBucket placed = AddressBucket.of(addr("10.1.2.3"));
+        for (int i = 0; i < 300; i++) {
+            Multihash server = ServerKeys.peerId(key().publicSigningKey);
+            limits.offer(placed, server, "placed " + i);
+            limits.offer(AddressBucket.UNVERIFIED, server, "shared " + i);
+        }
+        limits.resize(2_000_000);
+        List<String> taken = limits.take();
+        Assert.assertEquals(200, taken.stream().filter(o -> o.startsWith("placed")).count());
+        Assert.assertEquals(300, taken.stream().filter(o -> o.startsWith("shared")).count());
+        clock.addAndGet(RateLimits.DAY / 200 * 10);
+        Assert.assertEquals("refilled at the new rate", 10, limits.take().size());
+    }
+
+    @Test
     public void roundRobinByAdmittingServerWithinABucket() {
         AtomicLong clock = new AtomicLong(0);
         RateLimits.Inceptions<String> limits = new RateLimits.Inceptions<>(2, 1000, clock::get);
