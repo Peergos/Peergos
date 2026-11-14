@@ -239,11 +239,9 @@ public class FileBlockCache implements BlockCache {
             long size = file.length();
             file.delete();
             totalSize.addAndGet(-size);
-            Path parent = file.toPath().getParent();
-            File[] files = parent.toFile().listFiles();
-            if (files != null && files.length == 0) {
-                parent.toFile().delete();
-            }
+            // File.delete() won't remove a folder that still holds anything; listing it first costs thousands of
+            // entries per deleted block
+            file.getParentFile().delete();
         }
     }
 
