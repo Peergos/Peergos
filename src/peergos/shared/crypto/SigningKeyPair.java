@@ -89,7 +89,7 @@ public class SigningKeyPair implements Cborable
     }
 
     /** Whether new non-identity writers get composite Ed25519 + ML-DSA keys. */
-    public static boolean HYBRID_WRITERS = true;
+    public static boolean HYBRID_WRITERS = false;
 
     public static SigningKeyPair randomWriter(Crypto crypto) {
         return HYBRID_WRITERS ?
