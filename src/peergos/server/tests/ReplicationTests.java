@@ -758,26 +758,96 @@ public class ReplicationTests {
     }
 
     @Test
-    public void aBucketsRateGrowsWithTheLog() {
+    public void ratesGrowWithTheLogAndBucketsTakeTurnsAtTheOneForAllOfThem() {
         AtomicLong clock = new AtomicLong(0);
-        RateLimits.Inceptions<String> limits = new RateLimits.Inceptions<>(100, 1000, clock::get);
-        Assert.assertEquals("the configured rate while the log is small", 100, limits.perDay(500_000));
-        Assert.assertEquals(100, limits.sharedPerDay(100_000));
-        Assert.assertEquals(1_000_000, limits.perDay(10_000_000_000L));
-        Assert.assertEquals("the bucket unplaced servers share stands for all of them", 4_000_000, limits.sharedPerDay(10_000_000_000L));
+        RateLimits.Inceptions<String> defaults = new RateLimits.Inceptions<>(RateLimits.DEFAULT_INCEPTIONS_PER_DAY, 1000, clock::get);
+        Assert.assertEquals("the configured rate while the log is small", 50, defaults.perDay(8_000));
+        Assert.assertEquals("a small log can't be doubled in a day from any number of ranges", 200, defaults.networkPerDay(8_000));
+        Assert.assertEquals(5_000, defaults.perDay(1_000_000));
+        Assert.assertEquals(20_000, defaults.networkPerDay(1_000_000));
+        Assert.assertEquals(50_000_000, defaults.perDay(10_000_000_000L));
 
-        AddressBucket placed = AddressBucket.of(addr("10.1.2.3"));
-        for (int i = 0; i < 300; i++) {
-            Multihash server = ServerKeys.peerId(key().publicSigningKey);
-            limits.offer(placed, server, "placed " + i);
-            limits.offer(AddressBucket.UNVERIFIED, server, "shared " + i);
+        RateLimits.Inceptions<String> limits = new RateLimits.Inceptions<>(10, 1000, clock::get);
+        List<AddressBucket> buckets = new ArrayList<>();
+        for (int b = 0; b < 8; b++) {
+            buckets.add(AddressBucket.of(addr("10." + b + ".2.3")));
+            for (int i = 0; i < 300; i++)
+                limits.offer(buckets.get(b), ServerKeys.peerId(key().publicSigningKey), b + " " + i);
         }
-        limits.resize(2_000_000);
         List<String> taken = limits.take();
-        Assert.assertEquals(200, taken.stream().filter(o -> o.startsWith("placed")).count());
-        Assert.assertEquals(300, taken.stream().filter(o -> o.startsWith("shared")).count());
-        clock.addAndGet(RateLimits.DAY / 200 * 10);
-        Assert.assertEquals("refilled at the new rate", 10, limits.take().size());
+        Assert.assertEquals("four ranges' worth for all of them", 40, taken.size());
+        for (int b = 0; b < 8; b++) {
+            String from = b + " ";
+            Assert.assertEquals("each range has its turns", 5, taken.stream().filter(o -> o.startsWith(from)).count());
+        }
+        Assert.assertFalse("with those for all ranges spent, a new one waits its turn", limits.tryTakeNow(AddressBucket.of(addr("10.99.2.3"))));
+
+        limits.resize(40_000);
+        clock.addAndGet(RateLimits.DAY);
+        taken = limits.take();
+        Assert.assertEquals("refilled at the new rate", 800, taken.size());
+        Assert.assertEquals(100, taken.stream().filter(o -> o.startsWith("0 ")).count());
+    }
+
+    @Test
+    public void aFullQueueMakesRoomFromWhoeverHasTheMostWaiting() {
+        AtomicLong clock = new AtomicLong(0);
+        RateLimits.Inceptions<String> limits = new RateLimits.Inceptions<>(5, 1000, clock::get);
+        AddressBucket bucket = AddressBucket.of(addr("10.1.2.3"));
+        Multihash flooder = ServerKeys.peerId(key().publicSigningKey), honest = ServerKeys.peerId(key().publicSigningKey);
+        for (int i = 0; i < 2000; i++)
+            limits.offer(bucket, flooder, "flood " + i);
+        Assert.assertEquals(1000, limits.waiting());
+        Assert.assertTrue("an honest server beside a flood still has room", limits.offer(bucket, honest, "signup"));
+        Assert.assertEquals(1000, limits.waiting());
+        Assert.assertFalse("made by the flood's newest", limits.isWaiting("flood 999"));
+        Assert.assertEquals(List.of("flood 0", "signup", "flood 1", "flood 2", "flood 3"), limits.take());
+
+        RateLimits.Inceptions<String> many = new RateLimits.Inceptions<>(5, 1000, clock::get);
+        for (int b = 0; b < RateLimits.Inceptions.MAX_WAITING / 1000; b++) {
+            AddressBucket flooded = AddressBucket.of(addr("10." + b + ".2.3"));
+            for (int i = 0; i < 1000; i++)
+                many.offer(flooded, flooder, b + " " + i);
+        }
+        Assert.assertEquals(RateLimits.Inceptions.MAX_WAITING, many.waiting());
+        Assert.assertTrue("an honest range beside flooded ones still has room", many.offer(AddressBucket.of(addr("11.1.2.3")), honest, "signup"));
+        Assert.assertEquals(RateLimits.Inceptions.MAX_WAITING, many.waiting());
+        // ranges take turns at the rate for all of them, so it waits behind one turn of each
+        List<String> taken = new ArrayList<>();
+        int days = 0;
+        while (! taken.contains("signup")) {
+            taken.addAll(many.take());
+            clock.addAndGet(RateLimits.DAY);
+            Assert.assertTrue(++days < 20);
+        }
+        Assert.assertEquals(RateLimits.Inceptions.MAX_WAITING / 1000, taken.indexOf("signup"));
+    }
+
+    @Test
+    public void aStolenFirstKeysInceptionsReplaceTheEvidenceOnlySoOften() {
+        Network net = new Network();
+        Node victim = net.node(100), evil = net.node(100);
+        Server x = new Server();
+        SigningKeyPair stolen = key();
+        IdentityInception first = x.admit(stolen);
+        Subject s = Subject.identity(first.identityHash());
+        victim.replica.add(x.subject, x.inception);
+        victim.replica.add(s, first);
+        List<IdentityInception> forged = new ArrayList<>();
+        for (int i = 0; i < 8; i++)
+            forged.add(x.admit(stolen));
+        // each lower than the last, so each would replace it
+        forged.sort((a, b) -> peergos.shared.util.ArrayOps.compare(victim.replica.hash(b), victim.replica.hash(a)));
+        int replaced = 0;
+        for (IdentityInception f : forged)
+            if (victim.routing.offered(evil.id, s, List.of(f)) == Outcome.Added)
+                replaced++;
+        Assert.assertEquals(RateLimits.EVIDENCE.burst, replaced);
+        Assert.assertTrue(victim.replica.identity(s).get().hasDuplicityEvidence());
+        Assert.assertEquals("the first is still the one held", first, victim.replica.log(s).inception().get().record);
+
+        net.clock.addAndGet(RateLimits.QUARTER);
+        Assert.assertEquals(Outcome.Added, victim.routing.offered(evil.id, s, List.of(forged.get(forged.size() - 1))));
     }
 
     @Test

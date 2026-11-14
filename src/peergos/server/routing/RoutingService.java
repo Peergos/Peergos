@@ -39,7 +39,7 @@ public class RoutingService {
     public static final Command.Arg ARG_ROUTING_POW_THREADS = new Command.Arg("routing-pow-threads",
             "Cores used for the proof of work on identities signing up here", false);
     public static final Command.Arg ARG_ROUTING_INCEPTIONS_PER_DAY = new Command.Arg("routing-inceptions-per-day",
-            "New inceptions taken per day from each address bucket", false, "" + RateLimits.DEFAULT_INCEPTIONS_PER_DAY);
+            "New inceptions taken per day from each address bucket, at least: more as the log grows", false, "" + RateLimits.DEFAULT_INCEPTIONS_PER_DAY);
     public static final Command.Arg ARG_ROUTING_LEGACY_STATE = new Command.Arg("routing-legacy-state",
             "Path to the PKI's final state, imported as legacy records", false);
     public static final Command.Arg ARG_ROUTING_LEGACY_STATE_HASH = new Command.Arg("routing-legacy-state-hash",

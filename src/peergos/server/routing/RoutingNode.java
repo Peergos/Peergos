@@ -764,6 +764,8 @@ public class RoutingNode {
         RoutingReplica.Gate gate = (subject, record, isNewInception) -> {
             if (catchUp)
                 return true;
+            if (RoutingReplica.isInception(record) && ! isNewInception && ! updates.tryTakeEvidence(subject))
+                return false;
             RecordType type = RecordType.of(record);
             if (updates.isLimited(type) && ! updates.tryTake(subject, type)) {
                 if (record instanceof Update)

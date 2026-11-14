@@ -22,20 +22,26 @@ public class RateLimits {
             RecordType.IDENTITY_MOVE, new Rate(3, MONTH),
             RecordType.SERVER_ADDRESSES, new Rate(3, MONTH));
 
-    public static final int DEFAULT_INCEPTIONS_PER_DAY = 10_000;
-    /** A bucket's rate is at least the configured one, and grows with the log: each day a bucket may add this
-     *  fraction of the identities a node holds. A fixed rate that suits a small network would cap an honest
-     *  provider's range at a sliver of the signups of a large one, while a flood is still held to the same share of
-     *  the log per range, whatever its size.
+    /** What a duplicate inception kept as evidence may be replaced by, per subject: whoever holds a stolen first key
+     *  can sign any number, each with a lower hash than the last, and each would otherwise replace it everywhere.
      */
-    public static final int LOG_FRACTION_PER_DAY = 10_000;
-    /** The bucket every unplaced server shares takes this many times a placed bucket's share of the log, as it
-     *  stands for all of them. Its turns still go round by server.
-     */
-    public static final int SHARED_BUCKET_SHARES = 4;
+    public static final Rate EVIDENCE = new Rate(2, QUARTER);
+    private static final int EVIDENCE_CODE = 100;
 
-    static int inceptionsPerDay(int configured, long identities, int shares) {
-        return (int) Math.min(DAY, Math.max(configured, shares * (identities / LOG_FRACTION_PER_DAY)));
+    public static final int DEFAULT_INCEPTIONS_PER_DAY = 50;
+    /** An address range's rate is at least the configured one, and grows with the log: each day a range may add
+     *  this fraction of the identities a node holds. A fixed number that suits a large network would let one range
+     *  multiply a small one in a day.
+     */
+    public static final int LOG_FRACTION_PER_DAY = 200;
+    /** New identities taken from every range together are held to this many ranges' worth, with the ranges taking
+     *  turns. So the whole log grows by a bounded fraction a day however many ranges a flood comes from, and a
+     *  flood delays an honest range in proportion to the ranges it holds.
+     */
+    public static final int NETWORK_RANGES = 4;
+
+    static int inceptionsPerDay(int configured, long identities, int ranges) {
+        return (int) Math.min(DAY, ranges * Math.max((long) configured, identities / LOG_FRACTION_PER_DAY));
     }
 
     public static final class Rate {
@@ -122,6 +128,10 @@ public class RateLimits {
             return new long[]{tokens, b[1] + refills * rate.refillMillis};
         }
 
+        public synchronized long tokens(K key) {
+            return current(key, clock.getAsLong())[0];
+        }
+
         public synchronized int size() {
             return buckets.size();
         }
@@ -152,8 +162,11 @@ public class RateLimits {
 
         /** [tokens, time the last token was credited] */
         private long[] current(Subject s, RecordType type, long now) {
-            Rate rate = UPDATES.get(type);
-            long[] b = store.tokens(s, type.code).orElse(null);
+            return current(s, UPDATES.get(type), type.code, now);
+        }
+
+        private long[] current(Subject s, Rate rate, int code, long now) {
+            long[] b = store.tokens(s, code).orElse(null);
             if (b == null)
                 return new long[]{rate.burst, now};
             long refills = (now - b[1]) / rate.refillMillis;
@@ -174,6 +187,15 @@ public class RateLimits {
             return true;
         }
 
+        /** For a duplicate inception replacing the one kept as evidence. Called with the subject's lock held. */
+        public boolean tryTakeEvidence(Subject s) {
+            long[] b = current(s, EVIDENCE, EVIDENCE_CODE, clock.getAsLong());
+            if (b[0] < 1)
+                return false;
+            store.setTokens(s, EVIDENCE_CODE, b[0] - 1, b[1]);
+            return true;
+        }
+
         public long nextToken(Subject s, RecordType type) {
             long now = clock.getAsLong();
             long[] b = current(s, type, now);
@@ -184,17 +206,24 @@ public class RateLimits {
         public void prune() {
             long now = clock.getAsLong();
             UPDATES.forEach((type, rate) -> store.removeTokens(type.code, now - rate.burst * rate.refillMillis));
+            store.removeTokens(EVIDENCE_CODE, now - EVIDENCE.burst * EVIDENCE.refillMillis);
         }
     }
 
-    /** New inceptions, per address bucket of the server that admitted them. Offers wait with whoever made them;
-     *  this only decides which to take next: within a bucket, round-robin by admitting server, so an honest home
-     *  server's few signups get a turn however many the servers beside it offer.
+    /** New inceptions, per address bucket of the server that admitted them, and for all buckets together. Offers wait
+     *  with whoever made them; this only decides which to take next. Buckets take turns at the rate for all of
+     *  them, and within a bucket admitting servers take turns, so an honest home server's few signups get a turn
+     *  however many the servers beside it offer, and an honest range however many ranges a flood comes from.
+     *
+     *  What waits is bounded the same way: when a bucket's queue is full, room is made by the server with the most
+     *  waiting, and when all of it is, by the bucket with the most. So a flood fills its own share and no more.
      */
     public static final class Inceptions<O> {
-        private final TokenBuckets<AddressBucket> rate, sharedRate;
+        private static final String ALL = "";
+        private final TokenBuckets<AddressBucket> rate;
+        private final TokenBuckets<String> network;
         private final int configuredPerDay;
-        private final Map<AddressBucket, LinkedHashMap<Multihash, ArrayDeque<O>>> offers = new HashMap<>();
+        private final LinkedHashMap<AddressBucket, LinkedHashMap<Multihash, ArrayDeque<O>>> offers = new LinkedHashMap<>();
         private final int maxOffersPerServer;
         private final LongSupplier clock;
         private final Map<AddressBucket, Long> busyUntil = new HashMap<>();
@@ -204,35 +233,34 @@ public class RateLimits {
         private int waiting;
 
         public Inceptions(int perDay, int maxOffersPerServer, LongSupplier clock) {
-            this.rate = new TokenBuckets<>(new Rate(perDay, DAY / perDay), clock);
-            this.sharedRate = new TokenBuckets<>(new Rate(perDay, DAY / perDay), clock);
             this.configuredPerDay = perDay;
+            this.rate = new TokenBuckets<>(rate(perDay(0)), clock);
+            this.network = new TokenBuckets<>(rate(networkPerDay(0)), clock);
             this.maxOffersPerServer = maxOffersPerServer;
             this.maxPerBucket = Math.max(perDay, maxOffersPerServer);
             this.clock = clock;
         }
 
+        private static Rate rate(int perDay) {
+            return new Rate(perDay, DAY / perDay);
+        }
+
         /** Sets the rates for a log holding this many identities. */
         public synchronized void resize(long identities) {
-            int perDay = perDay(identities), shared = sharedPerDay(identities);
-            rate.setRate(new Rate(perDay, DAY / perDay));
-            sharedRate.setRate(new Rate(shared, DAY / shared));
-            maxPerBucket = Math.max(perDay, maxOffersPerServer);
+            rate.setRate(rate(perDay(identities)));
+            network.setRate(rate(networkPerDay(identities)));
+            maxPerBucket = Math.max(perDay(identities), maxOffersPerServer);
         }
 
         public int perDay(long identities) {
             return inceptionsPerDay(configuredPerDay, identities, 1);
         }
 
-        public int sharedPerDay(long identities) {
-            return inceptionsPerDay(configuredPerDay, identities, SHARED_BUCKET_SHARES);
+        public int networkPerDay(long identities) {
+            return inceptionsPerDay(configuredPerDay, identities, NETWORK_RANGES);
         }
 
-        private TokenBuckets<AddressBucket> rate(AddressBucket bucket) {
-            return bucket.equals(AddressBucket.UNVERIFIED) ? sharedRate : rate;
-        }
-
-        /** Whether this bucket has had inceptions waiting for its rate within the last day, so that honest nodes
+        /** Whether this bucket has had inceptions waiting for a rate within the last day, so that honest nodes
          *  may hold different ones of them for a while.
          */
         public synchronized boolean congested(AddressBucket bucket) {
@@ -246,60 +274,108 @@ public class RateLimits {
             return true;
         }
 
-        /** Queues an offer; false if it is waiting already, or its admitting server or its bucket has as many
-         *  waiting as are kept: a day's worth for a bucket, so a flood fills its own range's queue, not everyone's.
+        /** Queues an offer; false if it is waiting already or there is no room for it. Nothing is lost by that, or
+         *  by making room: the sender keeps what it offered and offers it again.
          */
         public synchronized boolean offer(AddressBucket bucket, Multihash admittingServer, O offer) {
-            if (waiting >= MAX_WAITING || all.contains(offer) || waitingIn.getOrDefault(bucket, 0) >= maxPerBucket)
+            if (all.contains(offer))
                 return false;
-            LinkedHashMap<Multihash, ArrayDeque<O>> servers = offers.computeIfAbsent(bucket, b -> new LinkedHashMap<>());
-            ArrayDeque<O> queue = servers.get(admittingServer.bareMultihash());
-            if (queue != null && queue.size() >= maxOffersPerServer)
+            Multihash server = admittingServer.bareMultihash();
+            LinkedHashMap<Multihash, ArrayDeque<O>> servers = offers.get(bucket);
+            ArrayDeque<O> queue = servers == null ? null : servers.get(server);
+            int mine = queue == null ? 0 : queue.size();
+            if (mine >= maxOffersPerServer)
                 return false;
-            if (queue == null)
-                servers.put(admittingServer.bareMultihash(), queue = new ArrayDeque<>());
-            queue.add(offer);
+            if (waitingIn.getOrDefault(bucket, 0) >= maxPerBucket && ! makeRoom(bucket, mine))
+                return false;
+            if (waiting >= MAX_WAITING) {
+                AddressBucket fullest = Collections.max(waitingIn.entrySet(), Map.Entry.comparingByValue()).getKey();
+                if (waitingIn.get(fullest) <= waitingIn.getOrDefault(bucket, 0) + 1 || ! makeRoom(fullest, -1))
+                    return false;
+            }
+            servers = offers.computeIfAbsent(bucket, b -> new LinkedHashMap<>());
+            servers.computeIfAbsent(server, x -> new ArrayDeque<>()).add(offer);
             all.add(offer);
             waitingIn.merge(bucket, 1, Integer::sum);
             waiting++;
             return true;
         }
 
-        /** Takes a token for an inception that needn't then queue: from a bucket with nothing waiting and more than
-         *  half its tokens left. Below that they go by turns, so a burst from one server leaves some for the others.
+        /** Drops the newest offer of the server with the most waiting in a bucket, if that is more than the server
+         *  now offering would have.
+         */
+        private boolean makeRoom(AddressBucket bucket, int offering) {
+            LinkedHashMap<Multihash, ArrayDeque<O>> servers = offers.get(bucket);
+            if (servers == null || servers.isEmpty())
+                return false;
+            Map.Entry<Multihash, ArrayDeque<O>> longest = Collections.max(servers.entrySet(),
+                    Comparator.comparingInt(e -> e.getValue().size()));
+            if (longest.getValue().size() <= offering + 1)
+                return false;
+            all.remove(longest.getValue().pollLast());
+            if (longest.getValue().isEmpty())
+                servers.remove(longest.getKey());
+            if (servers.isEmpty())
+                offers.remove(bucket);
+            waitingIn.computeIfPresent(bucket, (b, n) -> n > 1 ? n - 1 : null);
+            waiting--;
+            return true;
+        }
+
+        /** Takes tokens for an inception that needn't then queue: from a bucket with nothing waiting and more than
+         *  half its tokens left, while more than half of those for all buckets are left too. Below that they go
+         *  by turns, so a burst from one server or one range leaves some for the others.
          */
         public synchronized boolean tryTakeNow(AddressBucket bucket) {
-            return waitingIn.getOrDefault(bucket, 0) == 0 && rate(bucket).tryTakeAbove(bucket, rate(bucket).burst() / 2);
+            if (waitingIn.getOrDefault(bucket, 0) > 0
+                    || rate.tokens(bucket) <= rate.burst() / 2
+                    || network.tokens(ALL) <= network.burst() / 2)
+                return false;
+            return network.tryTake(ALL) && rate.tryTake(bucket);
         }
 
         public synchronized boolean isWaiting(O offer) {
             return all.contains(offer);
         }
 
-        /** Across every bucket, to bound memory. Nothing is lost: the sender keeps it and offers it again. */
-        public static final int MAX_WAITING = 1_000_000;
+        /** Across every bucket, to bound memory. */
+        public static final int MAX_WAITING = 200_000;
 
-        /** The offers that may be taken now, each charged to its bucket. */
+        /** The offers that may be taken now, each charged to its bucket and to the rate for all of them. Buckets
+         *  take turns, one offer each, and a bucket served goes to the back.
+         */
         public synchronized List<O> take() {
             List<O> res = new ArrayList<>();
-            for (Iterator<Map.Entry<AddressBucket, LinkedHashMap<Multihash, ArrayDeque<O>>>> it = offers.entrySet().iterator(); it.hasNext(); ) {
-                Map.Entry<AddressBucket, LinkedHashMap<Multihash, ArrayDeque<O>>> e = it.next();
-                LinkedHashMap<Multihash, ArrayDeque<O>> servers = e.getValue();
-                while (! servers.isEmpty() && rate(e.getKey()).tryTake(e.getKey())) {
+            long busy = clock.getAsLong() + DAY;
+            boolean progress = true;
+            while (progress) {
+                progress = false;
+                for (AddressBucket bucket : new ArrayList<>(offers.keySet())) {
+                    LinkedHashMap<Multihash, ArrayDeque<O>> servers = offers.get(bucket);
+                    if (! rate.has(bucket)) {
+                        busyUntil.put(bucket, busy);
+                        continue;
+                    }
+                    if (! network.tryTake(ALL)) {
+                        for (AddressBucket left : offers.keySet())
+                            busyUntil.put(left, busy);
+                        return res;
+                    }
+                    rate.tryTake(bucket);
                     Multihash next = servers.keySet().iterator().next();
                     ArrayDeque<O> queue = servers.remove(next);
                     O taken = queue.poll();
                     res.add(taken);
                     all.remove(taken);
-                    waitingIn.computeIfPresent(e.getKey(), (b, n) -> n > 1 ? n - 1 : null);
+                    waitingIn.computeIfPresent(bucket, (b, n) -> n > 1 ? n - 1 : null);
                     waiting--;
                     if (! queue.isEmpty())
                         servers.put(next, queue);
+                    offers.remove(bucket);
+                    if (! servers.isEmpty())
+                        offers.put(bucket, servers);
+                    progress = true;
                 }
-                if (servers.isEmpty())
-                    it.remove();
-                else
-                    busyUntil.put(e.getKey(), clock.getAsLong() + DAY);
             }
             return res;
         }
