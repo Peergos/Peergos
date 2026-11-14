@@ -536,6 +536,29 @@ public class ReplicationTests {
     }
 
     @Test
+    public void aSyncPeersClaimsForASubjectAreBoundedInSizeAndNumber() {
+        Network net = new Network();
+        Node victim = net.node(100), evil = net.node(100);
+        victim.syncWith(evil);
+        Subject s = Subject.identity(peergos.shared.storage.ContentAddressedStorage.hashKey(key().publicSigningKey));
+        for (int i = 0; i < 50; i++) {
+            byte[] hash = new byte[32];
+            hash[0] = (byte) i;
+            victim.routing.announced(evil.id, List.of(new JdbcRoutingStore.State(s, hash)));
+        }
+        Assert.assertEquals("one claim per sync peer", 1, victim.routing.claimedStates(s));
+        try {
+            victim.routing.announced(evil.id, List.of(new JdbcRoutingStore.State(s, new byte[1024 * 1024])));
+            Assert.fail("a state hash is 32 bytes");
+        } catch (IllegalStateException expected) {}
+        try {
+            Reconciliation.state(Reconciliation.state(new JdbcRoutingStore.State(s, new byte[33])));
+            Assert.fail("a state hash is 32 bytes");
+        } catch (IllegalStateException expected) {}
+        Assert.assertEquals(1, victim.routing.claimedStates(s));
+    }
+
+    @Test
     public void aFloodFillsItsOwnBucketsQueueOnly() {
         AtomicLong clock = new AtomicLong(0);
         RateLimits.Inceptions<String> limits = new RateLimits.Inceptions<>(5, 2, clock::get);

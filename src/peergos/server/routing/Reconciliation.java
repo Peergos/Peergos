@@ -19,6 +19,7 @@ public class Reconciliation {
     /** Bytes of slot, and so levels of ranges below the whole. */
     public static final int MAX_DEPTH = 3;
     public static final int FANOUT = 256;
+    public static final int HASH_BYTES = 32;
 
     /** The hash of the id rather than the id, so that subjects spread evenly whatever their ids' encoding. */
     public static int slot(byte[] id) {
@@ -218,7 +219,10 @@ public class Reconciliation {
 
     public static JdbcRoutingStore.State state(Cborable cbor) {
         CborObject.CborMap m = (CborObject.CborMap) cbor;
-        return new JdbcRoutingStore.State(Subject.fromCbor(m.get("s")), m.getByteArray("h"));
+        byte[] hash = m.getByteArray("h");
+        if (hash.length != HASH_BYTES)
+            throw new IllegalStateException("A state hash is " + HASH_BYTES + " bytes");
+        return new JdbcRoutingStore.State(Subject.fromCbor(m.get("s")), hash);
     }
 
     /** What one (subject, state hash) pair adds to its ranges' fingerprints. */

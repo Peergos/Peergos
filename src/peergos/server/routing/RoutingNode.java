@@ -53,7 +53,8 @@ public class RoutingNode {
     public static final int MAX_PLACING_PER_SENDER = 4;
     private final Function<Multihash, RoutingPeer> dial;
     private final Map<Multihash, RoutingPeer> syncPeers = new ConcurrentHashMap<>();
-    private final Map<Subject, Map<ByteArrayWrapper, Set<Multihash>>> seen = Collections.synchronizedMap(new LRUCache<>(100_000));
+    /** The state each sync peer last claimed of a subject: one per peer, so what is kept can't outgrow the peers. */
+    private final Map<Subject, Map<Multihash, ByteArrayWrapper>> seen = Collections.synchronizedMap(new LRUCache<>(100_000));
     private final Map<Subject, Held> held = new ConcurrentHashMap<>();
     private final Map<Subject, SubjectLog> unproven = Collections.synchronizedMap(new LRUCache<>(UNPROVEN_CACHE));
     private final Map<Multihash, AtomicInteger> fetching = new ConcurrentHashMap<>();
@@ -394,6 +395,8 @@ public class RoutingNode {
         boolean isSyncPeer = syncPeers.containsKey(caller.bareMultihash());
         List<JdbcRoutingStore.State> wanted = new ArrayList<>();
         for (JdbcRoutingStore.State st : changed) {
+            if (st.hash.length != Reconciliation.HASH_BYTES)
+                throw new IllegalStateException("A state hash is " + Reconciliation.HASH_BYTES + " bytes");
             Subject s = replica.canonical(st.subject);
             // only a sync peer's claims count towards catch-up, so no one else's are kept
             if (isSyncPeer)
@@ -565,10 +568,13 @@ public class RoutingNode {
     }
 
     private void saw(Subject s, byte[] hash, Multihash peer) {
+        if (hash.length != Reconciliation.HASH_BYTES)
+            throw new IllegalStateException("A state hash is " + Reconciliation.HASH_BYTES + " bytes");
         synchronized (seen) {
-            seen.computeIfAbsent(s, x -> new HashMap<>())
-                    .computeIfAbsent(new ByteArrayWrapper(hash), h -> new HashSet<>())
-                    .add(peer.bareMultihash());
+            Map<Multihash, ByteArrayWrapper> claims = seen.computeIfAbsent(s, x -> new HashMap<>());
+            claims.put(peer.bareMultihash(), new ByteArrayWrapper(hash));
+            if (claims.size() > syncPeers.size())
+                claims.keySet().retainAll(syncPeers.keySet());
         }
     }
 
@@ -577,9 +583,13 @@ public class RoutingNode {
      *  ranges can't outvote the rest and pass a flood off as catch-up.
      */
     private boolean isCatchUp(Subject s, byte[] hash) {
-        Set<Multihash> holders;
+        Set<Multihash> holders = new HashSet<>();
+        ByteArrayWrapper state = new ByteArrayWrapper(hash);
         synchronized (seen) {
-            holders = new HashSet<>(seen.getOrDefault(s, Map.of()).getOrDefault(new ByteArrayWrapper(hash), Set.of()));
+            seen.getOrDefault(s, Map.of()).forEach((peer, claimed) -> {
+                if (claimed.equals(state))
+                    holders.add(peer);
+            });
         }
         holders.retainAll(syncPeers.keySet());
         if (holders.isEmpty() || holders.size() * 2 <= syncPeers.size())
@@ -859,6 +869,12 @@ public class RoutingNode {
 
     public int outstandingFetches() {
         return inFlight.size();
+    }
+
+    public int claimedStates(Subject s) {
+        synchronized (seen) {
+            return seen.getOrDefault(replica.canonical(s), Map.of()).size();
+        }
     }
 
     public int heldUpdates() {
