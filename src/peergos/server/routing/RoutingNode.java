@@ -1289,8 +1289,11 @@ public class RoutingNode {
             bootstrapping = true;
             quiet.set(true);
             long served = 0, skipped = 0;
+            // The next page is asked for while this one is checked and stored.
+            CompletableFuture<RoutingPeer.Page> ahead = null;
             for (int pages = 0; pages < SNAPSHOT_PAGES_PER_ROUND; pages++) {
-                RoutingPeer.Page page = from.page(kind, after, PAGE).join();
+                RoutingPeer.Page page = (ahead != null ? ahead : from.page(kind, after, PAGE)).join();
+                ahead = null;
                 served += page.records.size();
                 skipped += page.records.isEmpty() && page.next.isPresent() ? Math.max(1, page.skipped) : page.skipped;
                 if (skipped > served) {
@@ -1309,6 +1312,9 @@ public class RoutingNode {
                         throw new IllegalStateException("Peer " + from.id() + " sent a page out of order");
                 if (page.next.isPresent() && ! isForward(after, page.next.get()))
                     throw new IllegalStateException("Peer " + from.id() + " sent a page that doesn't move on");
+                // Servers are stored before identities are asked for, whose admissions are checked against them.
+                if (page.next.isPresent() && pages + 1 < SNAPSHOT_PAGES_PER_ROUND)
+                    ahead = from.page(kind, page.next.get(), PAGE);
                 changed += replica.takeAll(page.records);
                 if (page.next.isPresent())
                     after = page.next.get();

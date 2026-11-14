@@ -268,6 +268,7 @@ public class ReplicationTests {
             Assert.assertEquals(a.replica.store().summary(kind, Reconciliation.Range.ALL), b.replica.store().summary(kind, Reconciliation.Range.ALL));
         Assert.assertEquals("a page of servers and two of identities", 3, pages.get());
         Assert.assertEquals("nothing is fetched a subject at a time", 0, fetches.get());
+        Assert.assertEquals("each admission is checked once, with the rest of its page", 1200, b.replica.admissionChecks());
         Assert.assertEquals("far more than the day's rate, as from any configured peer when starting", 0, b.routing.waitingInceptions());
         Assert.assertEquals(0, b.routing.syncRound());
         Assert.assertTrue(b.routing.isSynced());
