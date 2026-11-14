@@ -239,11 +239,9 @@ public class FileBlockCache implements BlockCache {
             long size = file.length();
             file.delete();
             totalSize.addAndGet(-size);
-            Path parent = file.toPath().getParent();
-            File[] files = parent.toFile().listFiles();
-            if (files != null && files.length == 0) {
-                parent.toFile().delete();
-            }
+            // File.delete() won't remove a folder that still holds anything; listing it first costs thousands of
+            // entries per deleted block
+            file.getParentFile().delete();
         }
     }
 
@@ -301,13 +299,39 @@ public class FileBlockCache implements BlockCache {
             return;
         if (! cleaning.compareAndSet(false, true))
             return;
-        // delete files randomly, don't bother trying to sort by access time
+        // Biggest first: those are file contents, which free the space fastest and are only needed again to open that
+        // file. The small ones are mostly metadata, which every listing needs, as does a cached sign-in offline.
+        // Sizes are counted to the KiB over two walks: a list of every block would not fit in memory for a server's
+        // cache of millions of small blocks.
         Logging.LOG().info("Starting FileBlockCache reduction from " + totalSize.get());
+        long[] bytesByKiB = new long[kib(ContentAddressedStorage.MAX_BLOCK_SIZE) + 1];
+        applyToAll((p, a) -> bytesByKiB[kib(a.size())] += a.size());
+        // The walk is the real size, which the running count can have drifted from, as when another cache shared the
+        // folder: evicting by a count above it deletes more than needed, down to blocks a cached sign-in offline needs.
+        totalSize.set(Arrays.stream(bytesByKiB).sum());
+        needToCommitSize.set(true);
+        if (totalSize.get() <= maxSize) {
+            cleaning.set(false);
+            return;
+        }
+        // every size above the smallest that has to go, and as much of that one as is still needed
+        long excess = totalSize.get() - maxSize / 2;
+        int smallest = bytesByKiB.length - 1;
+        long above = 0;
+        while (smallest > 0 && above + bytesByKiB[smallest] < excess)
+            above += bytesByKiB[smallest--];
+        int smallestToGo = smallest;
+        AtomicLong stillNeeded = new AtomicLong(excess - above);
         applyToAll((p, a) -> {
-            if (totalSize.get() > maxSize / 2)
+            int kib = kib(a.size());
+            if (kib > smallestToGo || (kib == smallestToGo && stillNeeded.getAndAdd(-a.size()) > 0))
                 delete(p.toFile()); // delete() already subtracts the file's size
         });
         Logging.LOG().info("Reduced FileBlockCache down to " + totalSize.get());
         cleaning.set(false);
+    }
+
+    private static int kib(long size) {
+        return (int) Math.min(size, ContentAddressedStorage.MAX_BLOCK_SIZE) / 1024;
     }
 }
