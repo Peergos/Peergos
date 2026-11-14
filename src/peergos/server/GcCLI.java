@@ -23,6 +23,7 @@ import java.nio.file.*;
 import java.sql.*;
 import java.time.*;
 import java.util.function.*;
+import java.util.stream.Collectors;
 
 public class GcCLI extends Builder {
 
@@ -34,7 +35,9 @@ public class GcCLI extends Builder {
                     .map(p -> p.defaultValue
                             .map(d -> new Command.Arg(p.name, p.description, false, d))
                             .orElseGet(() -> new Command.Arg(p.name, p.description, false)))
-                    .toList()
+                    // not Stream.toList(): Main's static initialiser builds this, the android app reaches Main,
+                    // and Android has toList() only from API 34, while the app runs from API 30
+                    .collect(Collectors.toList())
     );
 
     public static Path tokenFile(Args a) {
