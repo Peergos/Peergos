@@ -117,6 +117,8 @@ public class RoutingNode {
     private static final class Budget {
         int failures, undelivered;
         long waitedNanos;
+        /** Admitting servers already asked of this peer this round. */
+        final Set<Subject> askedFor = new HashSet<>();
 
         boolean failing() {
             return failures >= MAX_FAILURES_PER_PEER;
@@ -163,6 +165,31 @@ public class RoutingNode {
         } finally {
             budget.waitedNanos += System.nanoTime() - start;
         }
+    }
+
+    /** The budget of the sync peer whose records the round is taking, for anything more it must be asked for. */
+    private final ThreadLocal<Budget> roundBudget = new ThreadLocal<>();
+
+    /** Asks whoever sent an identity for the server that admitted it. In a sync round that is within the peer's
+     *  budget, and once per server, so identities naming servers it then won't serve hold the round up no longer
+     *  than any other call it fails.
+     */
+    private void fetchAdmitter(RoutingPeer from, Subject server, boolean fromQueue) {
+        Budget budget = roundBudget.get();
+        if (budget == null) {
+            accept(from, server, from.records(server).orTimeout(FETCH_TIMEOUT_SECONDS, TimeUnit.SECONDS).join(), fromQueue, false);
+            return;
+        }
+        if (budget.spent() || ! budget.askedFor.add(server))
+            return;
+        try {
+            List<SignedRecord> records = ask(from, budget, () -> from.records(server).orTimeout(FETCH_TIMEOUT_SECONDS, TimeUnit.SECONDS));
+            accept(from, server, records, fromQueue, false);
+        } catch (RuntimeException e) {
+            LOG.log(Level.FINE, "Fetching " + server + " from " + from.id() + " failed: " + e.getMessage());
+        }
+        if (replica.log(server).inception().isEmpty())
+            budget.undelivered++;
     }
 
     private static final class Past {
@@ -642,7 +669,7 @@ public class RoutingNode {
             if (admitter.isPresent() && replica.log(Subject.server(admitter.get())).inception().isEmpty()) {
                 Subject server = Subject.server(admitter.get());
                 if (! unasked)
-                    fetch(from, server, fromQueue);
+                    fetchAdmitter(from, server, fromQueue);
                 else if (! isOnItsWay(server))
                     fetchLater(budgetKey(sender), from, List.of(new JdbcRoutingStore.State(server, ANY_STATE)));
                 if (replica.log(server).inception().isEmpty()) {
@@ -1299,6 +1326,7 @@ public class RoutingNode {
                                 continue;
                             }
                             try {
+                                roundBudget.set(budget);
                                 if (accept(holder, c.subject, records, false) == Outcome.Added)
                                     changed++;
                                 if (misrepresented(c.subject, c.state, records)) {
@@ -1308,6 +1336,8 @@ public class RoutingNode {
                             } catch (Throwable t) {
                                 LOG.log(Level.FINE, "Taking " + c.subject + " failed: " + t.getMessage());
                                 undelivered.add(c);
+                            } finally {
+                                roundBudget.remove();
                             }
                         }
                     }
