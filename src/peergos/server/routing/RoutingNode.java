@@ -926,6 +926,11 @@ public class RoutingNode {
             RoutingPeer from = offers.get(0).from;
             for (int i = 0; i < offers.size(); i += FETCH_BATCH) {
                 List<Offer> batch = offers.subList(i, Math.min(offers.size(), i + FETCH_BATCH));
+                // A server taken from the queue is still on its way until it is stored: an identity it admitted
+                // that arrives meanwhile waits for it, rather than being turned away for naming a server nobody holds.
+                for (Offer o : batch)
+                    if (! o.subject.isIdentity())
+                        fetchingServers.merge(o.subject, 1, Integer::sum);
                 Map<Subject, List<SignedRecord>> got = Map.of();
                 try {
                     got = from.recordsOf(batch.stream().map(o -> o.subject).collect(Collectors.toList())).join();
@@ -940,8 +945,11 @@ public class RoutingNode {
                     } catch (Throwable t) {
                         LOG.log(Level.FINE, "Taking " + o.subject + " failed: " + t.getMessage());
                     }
-                    if (! o.subject.isIdentity())
-                        release(o.subject.id);
+                    if (! o.subject.isIdentity()) {
+                        fetchingServers.computeIfPresent(o.subject, (x, n) -> n > 1 ? n - 1 : null);
+                        if (! isOnItsWay(o.subject))
+                            release(o.subject.id);
+                    }
                 }
             }
         }
