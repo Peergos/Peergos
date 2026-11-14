@@ -97,7 +97,14 @@ public class RoutingNode {
     /** Set while a page of a peer's log is taken in: every node holds those records, so they aren't announced. */
     private final ThreadLocal<Boolean> quiet = ThreadLocal.withInitial(() -> false);
     /** When this node's state of each recently changed subject changed, and the states it moved on from. */
-    private final Map<Subject, Past> past = Collections.synchronizedMap(new LRUCache<>(100_000));
+    private final Map<Subject, Past> past = new LinkedHashMap<>();
+    /** How long a change is remembered, and at most how many: by time, as a fixed number covers less of the grace
+     *  below the busier the log is.
+     */
+    public static final long PAST_MILLIS = 2 * 3600_000L;
+    public static final int MAX_PAST = 2_000_000;
+    /** Updates kept until a token is due. One not kept stays with its sender, and reconciliation brings it. */
+    public static final int MAX_HELD = 100_000;
     private final Map<Multihash, Tally> tallies = new ConcurrentHashMap<>();
     private final Map<Multihash, Integer> strikes = new ConcurrentHashMap<>();
     private final Map<Multihash, Long> suspects = new ConcurrentHashMap<>();
@@ -258,10 +265,12 @@ public class RoutingNode {
     private static final class Held {
         final RoutingPeer from;
         final SignedRecord record;
+        final long due;
 
-        Held(RoutingPeer from, SignedRecord record) {
+        Held(RoutingPeer from, SignedRecord record, long due) {
             this.from = from;
             this.record = record;
+            this.due = due;
         }
     }
 
@@ -275,7 +284,7 @@ public class RoutingNode {
         this.replica = replica;
         this.hasher = hasher;
         this.clock = clock;
-        this.updates = new RateLimits.Updates(clock);
+        this.updates = new RateLimits.Updates(replica.store(), clock);
         this.inceptions = new RateLimits.Inceptions<>(inceptionsPerDay, MAX_OFFERS_PER_SERVER, clock);
         this.buckets = buckets;
         this.placer = (server, claimed) -> buckets.apply(server);
@@ -295,7 +304,15 @@ public class RoutingNode {
                     superseded.put(before.current, now);
                 while (superseded.size() > 4)
                     superseded.remove(superseded.keySet().iterator().next());
+                // kept in the order they changed, so the oldest are first
+                past.remove(s);
                 past.put(s, new Past(now, superseded, new ByteArrayWrapper(hash)));
+                Iterator<Past> oldest = past.values().iterator();
+                while (oldest.hasNext()) {
+                    if (oldest.next().changedAt >= now - PAST_MILLIS && past.size() <= MAX_PAST)
+                        break;
+                    oldest.remove();
+                }
             }
             if (! quiet.get() && replica.isProven(s, true))
                 announce(new JdbcRoutingStore.State(s, hash));
@@ -806,7 +823,9 @@ public class RoutingNode {
 
     /** An update that arrives before its token is kept, the newest only, and applied when the token is due. */
     private void hold(Subject s, RoutingPeer from, SignedRecord record) {
-        held.merge(s, new Held(from, record), (old, update) ->
+        if (held.size() >= MAX_HELD && ! held.containsKey(s))
+            return;
+        held.merge(s, new Held(from, record, updates.nextToken(s, RecordType.of(record))), (old, update) ->
                 ((Update) update.record).counter() >= ((Update) old.record).counter() ? update : old);
     }
 
@@ -816,8 +835,7 @@ public class RoutingNode {
         takeInceptions();
         long now = clock.getAsLong();
         for (Map.Entry<Subject, Held> e : new ArrayList<>(held.entrySet())) {
-            RecordType type = RecordType.of(e.getValue().record);
-            if (updates.nextToken(e.getKey(), type) > now)
+            if (e.getValue().due > now)
                 continue;
             held.remove(e.getKey(), e.getValue());
             accept(e.getValue().from, e.getKey(), List.of(e.getValue().record), false);
@@ -1189,7 +1207,10 @@ public class RoutingNode {
                 ByteArrayWrapper id = new ByteArrayWrapper(st.subject.idBytes());
                 ours.add(id);
                 byte[] held = theirs.get(id);
-                Past p = past.get(st.subject);
+                Past p;
+                synchronized (past) {
+                    p = past.get(st.subject);
+                }
                 if (held == null) {
                     if ((p == null || p.changedAt < cutoff) && t.lacks < MAX_COUNTED && ! isCongested(st.subject))
                         t.lacks++;

@@ -133,30 +133,57 @@ public class RateLimits {
         }
     }
 
-    /** Per identity or server: rotations, moves and address updates. */
+    /** Per identity or server: rotations, moves and address updates. A bucket that isn't full is kept in the routing
+     *  store, beside the subject it limits: there is one for every subject updated in the last few months, which
+     *  at scale is more than fits in memory, and a restart must not hand every subject a full one.
+     */
     public static final class Updates {
-        private final Map<RecordType, TokenBuckets<Subject>> buckets = new EnumMap<>(RecordType.class);
+        private final JdbcRoutingStore store;
+        private final LongSupplier clock;
 
-        public Updates(LongSupplier clock) {
-            for (Map.Entry<RecordType, Rate> e : UPDATES.entrySet())
-                buckets.put(e.getKey(), new TokenBuckets<>(e.getValue(), clock));
+        public Updates(JdbcRoutingStore store, LongSupplier clock) {
+            this.store = store;
+            this.clock = clock;
         }
 
         public boolean isLimited(RecordType type) {
-            return buckets.containsKey(type);
+            return UPDATES.containsKey(type);
         }
 
+        /** [tokens, time the last token was credited] */
+        private long[] current(Subject s, RecordType type, long now) {
+            Rate rate = UPDATES.get(type);
+            long[] b = store.tokens(s, type.code).orElse(null);
+            if (b == null)
+                return new long[]{rate.burst, now};
+            long refills = (now - b[1]) / rate.refillMillis;
+            if (refills <= 0)
+                return b;
+            long tokens = Math.min(rate.burst, b[0] + refills);
+            return tokens == rate.burst ? new long[]{rate.burst, now} : new long[]{tokens, b[1] + refills * rate.refillMillis};
+        }
+
+        /** Called with the subject's lock held, as records are added, so a bucket is read and written by one thread. */
         public boolean tryTake(Subject s, RecordType type) {
-            TokenBuckets<Subject> b = buckets.get(type);
-            return b == null || b.tryTake(s);
+            if (! isLimited(type))
+                return true;
+            long[] b = current(s, type, clock.getAsLong());
+            if (b[0] < 1)
+                return false;
+            store.setTokens(s, type.code, b[0] - 1, b[1]);
+            return true;
         }
 
         public long nextToken(Subject s, RecordType type) {
-            return buckets.get(type).nextToken(s);
+            long now = clock.getAsLong();
+            long[] b = current(s, type, now);
+            return b[0] > 0 ? now : b[1] + UPDATES.get(type).refillMillis;
         }
 
+        /** Drops the buckets that have filled: one delete per type, by when each was last credited. */
         public void prune() {
-            buckets.values().forEach(TokenBuckets::prune);
+            long now = clock.getAsLong();
+            UPDATES.forEach((type, rate) -> store.removeTokens(type.code, now - rate.burst * rate.refillMillis));
         }
     }
 

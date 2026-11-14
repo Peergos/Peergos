@@ -750,6 +750,35 @@ public class ReplicationTests {
     }
 
     @Test
+    public void updateBucketsAreKeptInTheStoreUntilTheyFill() {
+        AtomicLong clock = new AtomicLong(1_000_000_000L);
+        JdbcRoutingStore store = new JdbcRoutingStore(Builder.buildEphemeralSqlite(), new SqliteCommands());
+        RateLimits.Updates updates = new RateLimits.Updates(store, clock::get);
+        Subject s = Subject.identity(peergos.shared.storage.ContentAddressedStorage.hashKey(key().publicSigningKey));
+        Subject other = Subject.identity(peergos.shared.storage.ContentAddressedStorage.hashKey(key().publicSigningKey));
+        for (int i = 0; i < 3; i++)
+            Assert.assertTrue(updates.tryTake(s, RecordType.IDENTITY_MOVE));
+        Assert.assertFalse(updates.tryTake(s, RecordType.IDENTITY_MOVE));
+        Assert.assertTrue("each type has its own", updates.tryTake(s, RecordType.IDENTITY_ROTATION));
+        Assert.assertTrue(updates.tryTake(other, RecordType.IDENTITY_MOVE));
+        Assert.assertEquals(clock.get() + RateLimits.MONTH, updates.nextToken(s, RecordType.IDENTITY_MOVE));
+
+        RateLimits.Updates restarted = new RateLimits.Updates(store, clock::get);
+        Assert.assertFalse("a restart hands out no full buckets", restarted.tryTake(s, RecordType.IDENTITY_MOVE));
+        clock.addAndGet(RateLimits.MONTH);
+        Assert.assertTrue(restarted.tryTake(s, RecordType.IDENTITY_MOVE));
+        Assert.assertFalse(restarted.tryTake(s, RecordType.IDENTITY_MOVE));
+        Assert.assertEquals(3, store.countTokens());
+
+        clock.addAndGet(3 * RateLimits.MONTH);
+        restarted.prune();
+        Assert.assertEquals("only the rotation's, which refills over two quarters", 1, store.countTokens());
+        for (int i = 0; i < 3; i++)
+            Assert.assertTrue(restarted.tryTake(s, RecordType.IDENTITY_MOVE));
+        Assert.assertFalse(restarted.tryTake(s, RecordType.IDENTITY_MOVE));
+    }
+
+    @Test
     public void tokenBucketsKeepStateOnlyForRecentUse() {
         AtomicLong clock = new AtomicLong(0);
         RateLimits.TokenBuckets<String> b = new RateLimits.TokenBuckets<>(new RateLimits.Rate(2, 1000), clock::get);
