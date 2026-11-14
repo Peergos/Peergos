@@ -62,6 +62,27 @@ public interface RoutingPeer {
     /** States in a range after a place in it, in order. */
     CompletableFuture<List<JdbcRoutingStore.State>> states(int kind, Reconciliation.Range range, Reconciliation.Cursor after, int limit);
 
+    /** The whole of each range in turn, stopping before the first whose states would pass the limit: the answer
+     *  holds a list for each range before that one.
+     */
+    default CompletableFuture<List<List<JdbcRoutingStore.State>>> statesIn(int kind, List<Reconciliation.Range> ranges, int limit) {
+        List<List<JdbcRoutingStore.State>> res = new ArrayList<>();
+        int left = limit;
+        try {
+            for (Reconciliation.Range range : ranges) {
+                int max = Math.min(left + 1, RoutingNode.PAGE);
+                List<JdbcRoutingStore.State> all = states(kind, range, Reconciliation.Cursor.at(range.from()), max).join();
+                if (all.size() > left || all.size() >= max)
+                    break;
+                res.add(all);
+                left -= all.size();
+            }
+        } catch (Throwable t) {
+            return Futures.errored(t);
+        }
+        return Futures.of(res);
+    }
+
     /** Records handed in by a light server, or the caller's own, charged to the caller's budget. */
     CompletableFuture<Outcome> offer(Subject s, List<SignedRecord> records);
 

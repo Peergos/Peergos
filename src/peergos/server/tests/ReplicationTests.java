@@ -328,6 +328,97 @@ public class ReplicationTests {
     }
 
     @Test
+    public void aNodeFarBehindListsManyRangesInACall() {
+        Network net = new Network();
+        Node a = net.node(1), b = net.node(1);
+        Server x = new Server();
+        a.replica.add(x.subject, x.inception);
+        b.replica.add(x.subject, x.inception);
+        Set<Subject> lacking = new HashSet<>();
+        for (int i = 0; i < 1200; i++) {
+            IdentityInception inc = x.admit(key());
+            Subject s = Subject.identity(inc.identityHash());
+            a.replica.add(s, inc);
+            if (i % 2 == 0)
+                b.replica.add(s, inc);
+            else
+                lacking.add(s);
+        }
+        AtomicInteger calls = new AtomicInteger();
+        RoutingPeer counted = new LocalPeer(b.id, a) {
+            @Override
+            public CompletableFuture<List<Reconciliation.Summary>> summaries(int kind, List<Reconciliation.Range> ranges) {
+                calls.incrementAndGet();
+                return super.summaries(kind, ranges);
+            }
+
+            @Override
+            public CompletableFuture<List<Map<Integer, Reconciliation.Summary>>> children(int kind, List<Reconciliation.Range> parents) {
+                calls.incrementAndGet();
+                return super.children(kind, parents);
+            }
+
+            @Override
+            public CompletableFuture<List<List<JdbcRoutingStore.State>>> statesIn(int kind, List<Reconciliation.Range> ranges, int limit) {
+                calls.incrementAndGet();
+                return CompletableFuture.completedFuture(target.routing.statesIn(kind, ranges, limit));
+            }
+
+            @Override
+            public CompletableFuture<List<JdbcRoutingStore.State>> states(int kind, Reconciliation.Range range, Reconciliation.Cursor after, int limit) {
+                calls.incrementAndGet();
+                return super.states(kind, range, after, limit);
+            }
+        };
+        List<JdbcRoutingStore.State> diff = b.routing.differences(counted, Subject.IDENTITY);
+        Assert.assertEquals(lacking, new HashSet<>(diff.stream().map(st -> st.subject).toList()));
+        Assert.assertTrue("nearly every range differs, and they are listed together: " + calls.get(), calls.get() <= 4);
+
+        List<Reconciliation.Range> ranges = new ArrayList<>();
+        for (int i = 0; i < Reconciliation.FANOUT; i++)
+            ranges.add(Reconciliation.Range.ALL.child(i));
+        List<List<JdbcRoutingStore.State>> some = a.routing.statesIn(Subject.IDENTITY, ranges, 100);
+        Assert.assertTrue(some.size() < ranges.size());
+        Assert.assertTrue("whole ranges, within the limit", some.stream().mapToInt(List::size).sum() <= 100);
+        for (int i = 0; i < some.size(); i++)
+            Assert.assertEquals(a.replica.store().summary(Subject.IDENTITY, ranges.get(i)).count, some.get(i).size());
+    }
+
+    @Test
+    public void aPeerWhoseShareOfARoundRunsOutIsStillCaughtUpWith() throws Exception {
+        Network net = new Network();
+        Node a = net.node(1), b = net.node(1);
+        Server x = new Server();
+        a.replica.add(x.subject, x.inception);
+        b.replica.add(x.subject, x.inception);
+        for (int i = 0; i < 800; i++) {
+            IdentityInception inc = x.admit(key());
+            a.replica.add(Subject.identity(inc.identityHash()), inc);
+        }
+        b.routing.peerRoundMillis(100);
+        // a peer that lists a range to a call, each taking a while
+        b.routing.addSyncPeer(new LocalPeer(b.id, a) {
+            @Override
+            public CompletableFuture<List<List<JdbcRoutingStore.State>>> statesIn(int kind, List<Reconciliation.Range> ranges, int limit) {
+                return CompletableFuture.supplyAsync(() -> {
+                    try {
+                        Thread.sleep(20);
+                    } catch (InterruptedException e) {}
+                    return target.routing.statesIn(kind, ranges.subList(0, 1), limit);
+                });
+            }
+        });
+        Reconciliation.Summary all = a.replica.store().summary(Subject.IDENTITY, Reconciliation.Range.ALL);
+        int rounds = 0;
+        while (! b.replica.store().summary(Subject.IDENTITY, Reconciliation.Range.ALL).equals(all)) {
+            Assert.assertTrue("each round brings what it had time to find", b.routing.syncRound() > 0);
+            Assert.assertTrue(++rounds < 200);
+        }
+        Assert.assertTrue("it took more than one round: " + rounds, rounds > 3);
+        Assert.assertFalse(b.routing.unreachable().contains(a.id));
+    }
+
+    @Test
     public void syncPeersAndRelaysAreDrawnFromARandomStretchOfTheServers() {
         Network net = new Network();
         Node a = net.node(100);

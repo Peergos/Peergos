@@ -76,6 +76,8 @@ public class RoutingHandler implements HttpHandler {
             case "children":
             case "states":
                 return (proven ? scans : unprovenScans).tryTake(key);
+            case "states-in":
+                return (proven ? scans : unprovenScans).tryTake(key, RoutingNode.LISTED / RoutingNode.PAGE);
             case "page":
                 return (proven ? pages : unprovenPages).tryTake(key);
             case "records":
@@ -154,6 +156,14 @@ public class RoutingHandler implements HttpHandler {
                         Reconciliation.Cursor.fromCbor(m.get("a")), (int) m.getLong("l")).stream()
                         .map(Reconciliation::state)
                         .collect(Collectors.toList()));
+            case "states-in": {
+                List<Reconciliation.Range> ranges = m.getList("r", Reconciliation.Range::fromCbor);
+                if (ranges.size() > RoutingNode.LIST_RANGES)
+                    throw new IllegalStateException("Too many ranges");
+                return new CborObject.CborList(node.statesIn((int) m.getLong("k"), ranges, (int) m.getLong("l")).stream()
+                        .map(range -> new CborObject.CborList(range.stream().map(Reconciliation::state).collect(Collectors.toList())))
+                        .collect(Collectors.toList()));
+            }
             case "offer": {
                 List<SignedRecord> records = m.getList("r", RecordType::untag);
                 if (records.size() > MAX_ITEMS)
