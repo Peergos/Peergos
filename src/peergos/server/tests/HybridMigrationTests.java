@@ -58,6 +58,11 @@ public class HybridMigrationTests {
         return Serialize.readFully(in, file.getFileProperties().size).join();
     }
 
+    private static byte[] readFile(UserContext context, FileWrapper file) {
+        AsyncReader in = file.getInputStream(context.network, crypto, x -> {}).join();
+        return Serialize.readFully(in, file.getFileProperties().size).join();
+    }
+
     private static byte[] upload(UserContext context, Path dir, String name, int size) {
         byte[] data = new byte[size];
         random.nextBytes(data);
@@ -112,6 +117,8 @@ public class HybridMigrationTests {
         final Path home, docs, team, inner, pub, collab, linked;
         final Map<Path, byte[]> files = new HashMap<>();
         final LinkProperties link, writableLink;
+        // made before the move: to a file in a nested writing space, and to a file that is a writing space itself
+        final FileRef toNestedFile, toWritableFile;
         final PublicKeyHash oldRoot, oldTeam, oldInner;
         final SigningPrivateKeyAndPublicHash oldTeamSigner;
 
@@ -153,6 +160,17 @@ public class HybridMigrationTests {
             files.put(collab.resolve("from-friend.bin"), upload(friendNow, collab, "from-friend.bin", 1300));
             Assert.assertArrayEquals(files.get(docs.resolve("doc.bin")), read(friendNow, docs.resolve("doc.bin")));
 
+            files.put(home.resolve("wfile.bin"), upload(owner, home, "wfile.bin", 1400));
+            owner.shareWriteAccessWith(home.resolve("wfile.bin"), Collections.singleton(writer.username)).join();
+            UserContext writerAgain = login(writer.username, writerPassword);
+            byte[] rewritten = new byte[1600];
+            random.nextBytes(rewritten);
+            writerAgain.getByPath(home.resolve("wfile.bin")).join().get()
+                    .overwriteFile(AsyncReader.build(rewritten), rewritten.length, writerAgain.network, crypto, x -> {}).join();
+            files.put(home.resolve("wfile.bin"), rewritten);
+            toNestedFile = ref(owner, team.resolve("t.bin"));
+            toWritableFile = ref(owner, home.resolve("wfile.bin"));
+
             link = owner.createSecretLink(home.resolve("small.bin").toString(), false, Optional.empty(), Optional.empty(), "", false).join();
             mkdir(owner, home, "linked");
             files.put(linked.resolve("l.bin"), upload(owner, linked, "l.bin", 900));
@@ -171,6 +189,11 @@ public class HybridMigrationTests {
             Assert.assertTrue(oldInner.isIdentity());
             Assert.assertNotEquals(oldRoot, oldTeam);
             Assert.assertNotEquals(oldTeam, oldInner);
+        }
+
+        static FileRef ref(UserContext context, Path path) {
+            FileWrapper file = context.getByPath(path).join().get();
+            return new FileRef(path.toString(), file.getPointer().capability.readOnly(), file.getContentHash(context.network, crypto).join());
         }
 
         UserContext fromLink(LinkProperties props) {
@@ -236,6 +259,23 @@ public class HybridMigrationTests {
             Assert.assertTrue(viaWritable.getByPath(linked).join().get().isWritable());
             byte[] linkLater = upload(viaWritable, linked, "link-later.bin", 600);
             Assert.assertArrayEquals(linkLater, read(login(owner.username, password), linked.resolve("link-later.bin")));
+
+            // a file that is its own writing space moved too, and its sharee still writes it
+            Assert.assertNotEquals(writer(after, home), writer(after, home.resolve("wfile.bin")));
+            FileWrapper writable = writerNow.getByPath(home.resolve("wfile.bin")).join().get();
+            Assert.assertEquals(writer(after, home.resolve("wfile.bin")), writable.writer());
+            byte[] rewrittenLater = new byte[1700];
+            random.nextBytes(rewrittenLater);
+            writable.overwriteFile(AsyncReader.build(rewrittenLater), rewrittenLater.length, writerNow.network, crypto, x -> {}).join();
+            Assert.assertArrayEquals(rewrittenLater, read(login(owner.username, password), home.resolve("wfile.bin")));
+            files.put(home.resolve("wfile.bin"), rewrittenLater);
+
+            // refs made before the move find the files by path, not a copy left under an old writer
+            UserContext ownerNow = login(owner.username, password);
+            Assert.assertTrue(ownerNow.network.getFile(toNestedFile.cap, owner.username).join().isEmpty());
+            Assert.assertTrue(ownerNow.network.getFile(toWritableFile.cap, owner.username).join().isEmpty());
+            Assert.assertArrayEquals(files.get(team.resolve("t.bin")), readFile(ownerNow, ownerNow.getFile(toNestedFile).join().get()));
+            Assert.assertArrayEquals(rewrittenLater, readFile(ownerNow, ownerNow.getFile(toWritableFile).join().get()));
 
             // the published file still opens
             FileWrapper page = UserContext.getPublicFile(pub.resolve("page.html"), network.clear(), crypto).join().get();

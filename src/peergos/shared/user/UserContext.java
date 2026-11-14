@@ -823,11 +823,20 @@ public class UserContext {
                                 (b, w) -> Futures.findFirst(found.nestedWritingSpaces.stream()
                                                         .filter(n -> ! n.writer.isIdentity())
                                                         .collect(Collectors.toList()),
-                                                n -> nodeAt(new AbsoluteCapability(n.owner, w, n.getMapKey(), n.bat, n.rBaseKey, n.wBaseKey)).thenApply(node -> node.map(x -> n)))
-                                        .thenCompose(movedFrom -> movedFrom.isEmpty() ?
+                                                n -> nodeAt(new AbsoluteCapability(n.owner, w, n.getMapKey(), n.bat, n.rBaseKey, n.wBaseKey))
+                                                        .thenApply(node -> node.filter(x -> n.wBaseKey.isPresent())
+                                                                .map(x -> x.getSigner(n.rBaseKey, n.wBaseKey.get(), Optional.empty()))))
+                                        .thenCompose(oldSigner -> oldSigner.isEmpty() ?
                                                 Futures.of(b) :
                                                 network.spaceUsage.setWriterQuota(signer, w, Optional.empty())
                                                         .exceptionally(t -> false)
+                                                        // it shares the moved space's champ, so its old caps would still
+                                                        // find a copy, frozen at the move, rather than fail over to a path
+                                                        .thenCompose(x -> writeSynchronizer.applyComplexUpdate(owner, oldSigner.get(),
+                                                                (s, c) -> IpfsTransaction.call(owner,
+                                                                        tid -> WriterData.createEmpty(owner, oldSigner.get(), network.dhtClient, crypto.hasher, tid)
+                                                                                .thenCompose(empty -> c.commit(owner, oldSigner.get(), empty, s.get(oldSigner.get()), tid)),
+                                                                        network.dhtClient)))
                                                         .thenCompose(x -> writeSynchronizer.applyComplexUpdate(owner, spaceSigner,
                                                                 (s, c) -> CryptreeNode.deAuthoriseSigner(owner, spaceSigner, w, network, s, c)))
                                                         .thenApply(x -> b)),
