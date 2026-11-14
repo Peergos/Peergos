@@ -43,14 +43,22 @@ public interface CborObject extends Cborable {
     static CborObject fromByteArray(byte[] cbor) {
         if (cbor.length == 0)
             throw new IllegalArgumentException("Empty cbor byte array!");
-        return deserialize(new CborDecoder(new ByteArrayInputStream(cbor)), cbor.length);
+        return deserialize(new CborDecoder(new ByteArrayInputStream(cbor)), cbor.length, 0);
     }
 
     static CborObject read(InputStream in, int maxBytes) {
-        return deserialize(new CborDecoder(in), maxBytes);
+        return deserialize(new CborDecoder(in), maxBytes, 0);
     }
 
-    static CborObject deserialize(CborDecoder decoder, int maxGroupSize) {
+    // Each edit of a social post nests the old version 3 deeper and doubles the size, so any post under 2 GiB
+    // is less than 82 deep. Nothing else Peergos writes is more than about 10 deep.
+    int MAX_DEPTH = 128;
+    // Declared array lengths aren't trusted for more than this up front
+    int MAX_PREALLOCATED_ITEMS = 16;
+
+    static CborObject deserialize(CborDecoder decoder, int maxGroupSize, int depth) {
+        if (depth > MAX_DEPTH)
+            throw new IllegalStateException("Invalid cbor: nested more than " + MAX_DEPTH + " deep!");
         try {
             CborType type = decoder.peekType();
             switch (type.getMajorType()) {
@@ -82,8 +90,8 @@ public interface CborObject extends Cborable {
                         throw new IllegalStateException("Invalid cbor: more map elements than original bytes!");
                     SortedMap<CborString, CborObject> result = new TreeMap<>();
                     for (long i=0; i < nValues; i++) {
-                        CborString key = (CborString) deserialize(decoder, maxGroupSize);
-                        CborObject value = deserialize(decoder, maxGroupSize);
+                        CborString key = (CborString) deserialize(decoder, maxGroupSize, depth + 1);
+                        CborObject value = deserialize(decoder, maxGroupSize, depth + 1);
                         CborObject existing = result.put(key, value);
                         if (existing != null)
                             throw new IllegalStateException("Duplicate map key in cbor!");
@@ -94,14 +102,14 @@ public interface CborObject extends Cborable {
                     long nItems = decoder.readArrayLength();
                     if (nItems > maxGroupSize)
                         throw new IllegalStateException("Invalid cbor: more array elements than original bytes!");
-                    List<CborObject> res = new ArrayList<>((int) nItems);
+                    List<CborObject> res = new ArrayList<>((int) Math.min(nItems, MAX_PREALLOCATED_ITEMS));
                     for (long i=0; i < nItems; i++)
-                        res.add(deserialize(decoder, maxGroupSize));
+                        res.add(deserialize(decoder, maxGroupSize, depth + 1));
                     return new CborList(res);
                 case CborConstants.TYPE_TAG:
                     long tag = decoder.readTag();
                     if (tag == LINK_TAG) {
-                        CborObject value = deserialize(decoder, maxGroupSize);
+                        CborObject value = deserialize(decoder, maxGroupSize, depth + 1);
                         if (value instanceof CborString)
                             return new CborMerkleLink(Cid.decode(((CborString) value).value));
                         if (value instanceof CborByteArray) {
