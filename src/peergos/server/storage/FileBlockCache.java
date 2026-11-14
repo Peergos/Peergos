@@ -308,6 +308,14 @@ public class FileBlockCache implements BlockCache {
         Logging.LOG().info("Starting FileBlockCache reduction from " + totalSize.get());
         long[] bytesByKiB = new long[kib(ContentAddressedStorage.MAX_BLOCK_SIZE) + 1];
         applyToAll((p, a) -> bytesByKiB[kib(a.size())] += a.size());
+        // The walk is the real size, which the running count can have drifted from, as when another cache shared the
+        // folder: evicting by a count above it deletes more than needed, down to blocks a cached sign-in offline needs.
+        totalSize.set(Arrays.stream(bytesByKiB).sum());
+        needToCommitSize.set(true);
+        if (totalSize.get() <= maxSize) {
+            cleaning.set(false);
+            return;
+        }
         // every size above the smallest that has to go, and as much of that one as is still needed
         long excess = totalSize.get() - maxSize / 2;
         int smallest = bytesByKiB.length - 1;

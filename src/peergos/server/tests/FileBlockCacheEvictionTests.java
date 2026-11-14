@@ -46,6 +46,44 @@ public class FileBlockCacheEvictionTests {
             Assert.assertTrue(cache.hasBlock(hash));
     }
 
+    /** A count that has run ahead of the files, as a second cache over them leaves it, must not make an eviction
+     *  delete what it doesn't need to */
+    @Test
+    public void evictionGoesByTheFilesNotADriftedCount() throws IOException {
+        Crypto crypto = Main.initCrypto();
+        Path tmpDir = Files.createTempDirectory("peergos-test");
+        FileBlockCache cache = new FileBlockCache(tmpDir, 100_000_000);
+        Random rnd = new Random(42);
+        List<Cid> small = new ArrayList<>();
+        for (int i = 0; i < 200; i++) {
+            byte[] data = new byte[1_000];
+            rnd.nextBytes(data);
+            Cid hash = crypto.hasher.hash(data, false).join();
+            cache.put(hash, data).join();
+            small.add(hash);
+        }
+        List<Cid> big = new ArrayList<>();
+        for (int i = 0; i < 12; i++) {
+            byte[] data = new byte[100_000];
+            rnd.nextBytes(data);
+            Cid hash = crypto.hasher.hash(data, true).join();
+            cache.put(hash, data).join();
+            big.add(hash);
+        }
+        // another cache over the same folder evicts most of the big ones, which this one still counts
+        try (Stream<Path> files = Files.walk(tmpDir)) {
+            for (Path p : files.filter(p -> p.toString().endsWith(".data") && p.toFile().length() == 100_000).limit(7).toList())
+                Files.delete(p);
+        }
+        long bigLeft = big.stream().filter(cache::hasBlock).count();
+
+        // the files are within the limit, only the count is over it
+        cache.ensureWithinSizeLimit(1_000_000);
+        for (Cid hash : small)
+            Assert.assertTrue(cache.hasBlock(hash));
+        Assert.assertEquals(bigLeft, big.stream().filter(cache::hasBlock).count());
+    }
+
     private static long blocksSize(Path dir) throws IOException {
         try (Stream<Path> files = Files.walk(dir)) {
             return files.filter(p -> p.toString().endsWith(".data")).mapToLong(p -> p.toFile().length()).sum();
