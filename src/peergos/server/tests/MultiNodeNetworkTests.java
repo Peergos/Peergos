@@ -445,6 +445,38 @@ public class MultiNodeNetworkTests {
     }
 
     @Test
+    public void migrateThenReadRawFragments() {
+        if (iNode1 == 0 || iNode2 == 0)
+            return; // Don't test migration to/from pki node
+        String username = generateUsername(random);
+        String password = randomString();
+        NetworkAccess node1 = getNode(iNode1);
+        Multihash originalNodeId = node1.dhtClient.id().join();
+        NetworkAccess node2 = getNode(iNode2);
+        Multihash newStorageNodeId = node2.dhtClient.id().join();
+        UserContext user = ensureSignedUp(username, password, node1, crypto);
+        updatePkis();
+
+        byte[] data = new byte[2 * 1024 * 1024];
+        random.nextBytes(data);
+        user.getUserRoot().join().uploadOrReplaceFile("data.bin", AsyncReader.build(data), data.length,
+                user.network, crypto, () -> false, x -> {}).join();
+
+        List<UserPublicKeyLink> existing = user.network.coreNode.getChain(username).join();
+        List<UserPublicKeyLink> newChain = peergos.shared.user.Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret).join();
+        UserContext userViaNewServer = ensureSignedUp(username, password, node2, crypto);
+        List<BatWithId> bats = node1.batCave.getUserBats(username, userViaNewServer.signer).join();
+        Optional<BatWithId> mirrorBat = Optional.of(bats.get(bats.size() - 1));
+        long usage = user.getSpaceUsage(false).join();
+        userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId, mirrorBat, LocalDateTime.now(), usage, true).join();
+
+        UserContext postMigration = ensureSignedUp(username, password, node2.clear(), crypto);
+        FileWrapper file = postMigration.getByPath(PathUtil.get(username, "data.bin")).join().get();
+        byte[] read = Serialize.readFully(file.getInputStream(postMigration.network, crypto, x -> {}).join(), data.length).join();
+        Assert.assertArrayEquals(data, read);
+    }
+
+    @Test
     public void largeP2pWrites() {
         if (iNode1 == 0 || iNode2 == 0)
             return; // Don't test to/from pki node
