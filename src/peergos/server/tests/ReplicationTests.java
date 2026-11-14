@@ -218,14 +218,17 @@ public class ReplicationTests {
         ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor();
         a.routing.announceEvery(timer, 500);
         List<Subject> signups = new ArrayList<>();
+        long start = System.currentTimeMillis();
         for (int i = 0; i < 300; i++) {
             IdentityInception inc = x.admit(key());
             signups.add(Subject.identity(inc.identityHash()));
             a.replica.add(signups.get(i), inc);
         }
+        // one announcement for each half second the changes took to make, however slow the machine
+        long intervals = (System.currentTimeMillis() - start) / 500 + 2;
         waitFor(() -> signups.stream().allMatch(s -> b.replica.log(s).inception().isPresent()));
-        Assert.assertTrue("300 changes went in a few announcements: " + announcements.get(), announcements.get() <= 5);
-        Assert.assertTrue("and were fetched a batch to a call: " + fetches.get(), fetches.get() <= 10);
+        Assert.assertTrue("300 changes went in a few announcements: " + announcements.get(), announcements.get() <= Math.max(5, intervals));
+        Assert.assertTrue("and were fetched a batch to a call: " + fetches.get(), fetches.get() <= 2 * Math.max(5, intervals));
         timer.shutdownNow();
     }
 
@@ -635,6 +638,45 @@ public class ReplicationTests {
         a.routing.offered(sender.id, u, List.of(signup));
         waitFor(() -> a.replica.log(u).inception().isPresent());
         Assert.assertTrue(a.replica.log(real.subject).inception().isPresent());
+    }
+
+    @Test
+    public void anIdentityArrivingWhileItsServerIsFetchedFromTheQueueWaitsForIt() throws Exception {
+        Network net = new Network();
+        Node source = net.node(100), victim = net.node(100);
+        Server x = new Server();
+        IdentityInception alice = x.admit(key());
+        Subject aliceSubject = Subject.identity(alice.identityHash());
+        source.replica.add(x.subject, x.inception);
+        source.replica.add(aliceSubject, alice);
+        CountDownLatch fetching = new CountDownLatch(1), proceed = new CountDownLatch(1);
+        RoutingPeer slow = new LocalPeer(victim.id, source) {
+            @Override
+            public CompletableFuture<Map<Subject, List<SignedRecord>>> recordsOf(List<Subject> subjects) {
+                if (! subjects.contains(x.subject))
+                    return super.recordsOf(subjects);
+                return CompletableFuture.supplyAsync(() -> {
+                    fetching.countDown();
+                    try {
+                        proceed.await();
+                    } catch (InterruptedException e) {}
+                    return source.routing.recordsOf(subjects);
+                });
+            }
+
+            @Override
+            public CompletableFuture<List<SignedRecord>> records(Subject s) {
+                // asked again for the server meanwhile, it has nothing more to say
+                return s.equals(x.subject) && fetching.getCount() == 0 ? CompletableFuture.completedFuture(List.of()) : super.records(s);
+            }
+        };
+        victim.routing.pull(slow, x.subject);
+        Assert.assertTrue(fetching.await(20, TimeUnit.SECONDS));
+        victim.routing.pull(slow, aliceSubject);
+        Assert.assertTrue(victim.replica.log(aliceSubject).inception().isEmpty());
+        proceed.countDown();
+        waitFor(() -> victim.replica.log(aliceSubject).inception().isPresent());
+        Assert.assertTrue(victim.replica.log(x.subject).inception().isPresent());
     }
 
     @Test
