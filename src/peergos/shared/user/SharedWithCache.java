@@ -323,8 +323,10 @@ public class SharedWithCache {
     }
 
     public CompletableFuture<Snapshot> applyAndCommit(Path toFile, Function<SharedWithState, SharedWithState> transform, Snapshot in, Committer committer, NetworkAccess network) {
-        return base.getUpdated(in, network)
-                .thenCompose(updated -> retrieveWithFileOrCreate(updated, toFile.getParent(), network, crypto, in, committer))
+        // as in applyIfPresentAndCommit, a caller holding another writer's lock may not have ours
+        return in.withWriter(base.owner(), base.writer(), network)
+                .thenCompose(withBase -> base.getUpdated(withBase, network)
+                .thenCompose(updated -> retrieveWithFileOrCreate(updated, toFile.getParent(), network, crypto, withBase, committer)))
                 .thenCompose(p -> {
                     FileWrapper source = p.left;
                     SharedWithState current = p.right;

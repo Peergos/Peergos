@@ -61,6 +61,13 @@ public class SecretLinkChamp {
                         CompletableFuture.completedFuture(Optional.empty()));
     }
 
+    /** The hash of a link's current value, which an update has to replace */
+    public CompletableFuture<Optional<Multihash>> getValueHash(long label) {
+        return keyToBytes(label)
+                .thenCompose(champ::get)
+                .thenApply(res -> res.map(link -> link.target));
+    }
+
     public CompletableFuture<Pair<Multihash, Cid>> add(SigningPrivateKeyAndPublicHash owner,
                                             long label,
                                             SecretLinkTarget target,

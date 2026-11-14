@@ -2930,6 +2930,8 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
         public final List<Pair<byte[], Optional<Bat>>> moved = new ArrayList<>();
         public final Map<ByteArrayWrapper, MaybeMultihash> movedValues = new HashMap<>();
         public final List<AbsoluteCapability> nestedWritingSpaces = new ArrayList<>();
+        // the directory, or link, in the moved subtree whose child each nested writing space is
+        public final List<AbsoluteCapability> nestedHolders = new ArrayList<>();
 
         private void record(AbsoluteCapability cap, CryptreeNode chunk) {
             moved.add(new Pair<>(cap.getMapKey(), cap.bat));
@@ -3013,8 +3015,10 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                 for (NamedAbsoluteCapability child : childCaps) {
                                     if (child.cap.writer.equals(currentCap.writer))
                                         sameSpace.add(child.cap);
-                                    else
+                                    else {
                                         res.nestedWritingSpaces.add(child.cap);
+                                        res.nestedHolders.add(currentCap);
+                                    }
                                 }
                                 return network.retrieveAllMetadata(sameSpace, updatedVersion)
                                         .thenCompose(retrieved -> Futures.reduceAll(retrieved.left,
