@@ -144,7 +144,7 @@ public class RoutingService {
         ExecutorService work = Executors.newFixedThreadPool(4, daemon("Routing replication"));
         BucketVerifier buckets = new BucketVerifier(RoutingLookup.full(server.replica), dialler,
                 (relay, target) -> new HttpRoutingPeer(relay, p2p).vouches(target), System::currentTimeMillis,
-                Executors.newFixedThreadPool(2, daemon("Routing bucket checks")));
+                Executors.newFixedThreadPool(16, daemon("Routing bucket checks")));
         RoutingNode node = new RoutingNode(server.replica, crypto.hasher, System::currentTimeMillis,
                 a.getInt(ARG_ROUTING_INCEPTIONS_PER_DAY.name, RateLimits.DEFAULT_INCEPTIONS_PER_DAY),
                 buckets::bucket, peer -> new HttpRoutingPeer(peer, p2p), work);
