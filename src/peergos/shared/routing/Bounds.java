@@ -23,6 +23,9 @@ public class Bounds {
     /** The cbor framing of what sits beside a record's body: its signature, and a proof or an admission. */
     private static final int MAX_FRAMING_BYTES = 64;
 
+    /** Writers may use other key types, which the routing log doesn't take until every full node knows their sizes. */
+    private static final PublicSigningKey.Type[] ROUTING_KEY_TYPES = {PublicSigningKey.Type.Ed25519};
+
     /** Every key and signature has the one size its type gives it, so neither can carry anything else. */
     public static int serializedKeyBytes(PublicSigningKey.Type type) {
         switch (type) {
@@ -45,7 +48,7 @@ public class Bounds {
     /** An admission is signed by a server key the record doesn't carry, so its signature may be any type's. */
     public static int maxSignatureBytes() {
         int max = 0;
-        for (PublicSigningKey.Type t : PublicSigningKey.Type.values())
+        for (PublicSigningKey.Type t : ROUTING_KEY_TYPES)
             max = Math.max(max, signatureBytes(t));
         return max;
     }
