@@ -240,9 +240,10 @@ public class StorageHandler implements HttpHandler {
                     // Get the actual key, unless this is the initial write of the signing key during sign up
                     // In the initial put of a signing key during sign up the key signs itself (we still check the hash
                     // against the core node)
+                    PublicKeyHash owner = ownerHash.get();
                     Supplier<PublicSigningKey> fromDht = () -> {
                         try {
-                            return dht.getSigningKey(writerHash, writerHash).get().get();
+                            return dht.getSigningKey(owner, writerHash).get().get();
                         } catch (Exception e) {
                             throw new RuntimeException(e);
                         }
@@ -252,7 +253,7 @@ public class StorageHandler implements HttpHandler {
                             PublicSigningKey candidateKey = PublicSigningKey.fromByteArray(writes.blocks.get(0));
                             PublicKeyHash calculatedHash = ContentAddressedStorage.hashKey(candidateKey);
                             if (calculatedHash.equals(writerHash)) {
-                                candidateKey.unsignMessage(writes.signatures.get(0));
+                                candidateKey.unsignMessage(writes.signatures.get(0), SigningDomain.BLOCK).join();
                                 return candidateKey;
                             }
                         } catch (Throwable e) {
@@ -267,7 +268,7 @@ public class StorageHandler implements HttpHandler {
                     for (int i = 0; i < writes.blocks.size(); i++) {
                         byte[] signature = writes.signatures.get(i);
                         byte[] hash = hasher.sha256(writes.blocks.get(i)).join();
-                        byte[] unsigned = writer.unsignMessage(signature).join();
+                        byte[] unsigned = writer.unsignMessage(signature, SigningDomain.BLOCK).join();
                         if (! Arrays.equals(unsigned, hash))
                             throw new IllegalStateException("Invalid signature for block!");
                     }

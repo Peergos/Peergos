@@ -155,7 +155,7 @@ public class IdentityLink implements Cborable {
     public static CompletableFuture<IdentityLink> decrypt(String encryptedPost, SymmetricKey key, PublicSigningKey identity) {
         CipherText parsed = CipherText.fromCbor(CborObject.fromByteArray(Base58.decode(encryptedPost.trim())));
         byte[] decrypted = parsed.decrypt(key, c -> ((CborObject.CborByteArray) c).value);
-        return identity.unsignMessage(decrypted)
+        return identity.unsignMessage(decrypted, SigningDomain.IDENTITY_LINK)
                 .thenApply(unsigned -> IdentityLink.fromCbor(CborObject.fromByteArray(unsigned)));
     }
 

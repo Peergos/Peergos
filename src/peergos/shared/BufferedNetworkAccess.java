@@ -1,5 +1,7 @@
 package peergos.shared;
 
+import peergos.shared.crypto.asymmetric.SigningDomain;
+
 import peergos.shared.cbor.CborObject;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
@@ -342,7 +344,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
                             BufferedPointers.WriterUpdate u = writes.get(i).left;
                             SigningPrivateKeyAndPublicHash signer = writers.get(u.writer);
                             PointerUpdate update = new PointerUpdate(u.prevHash, u.currentHash, u.currentSequence);
-                            return signer.secret.signMessage(update.serialize())
+                            return signer.secret.signMessage(update.serialize(), SigningDomain.POINTER)
                                     .thenApply(sig -> new SignedPointerUpdate(u.writer, sig))
                                     .thenCompose(pointer -> blockBuffer.buildWriterCommit(owner, u.writer,
                                             Optional.of(pointer), signer, tid, byRoot.get(i)));

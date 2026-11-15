@@ -20,7 +20,7 @@ public interface SpaceUsage extends QuotaControl {
 
     default CompletableFuture<Boolean> setWriterQuota(SigningPrivateKeyAndPublicHash identity, PublicKeyHash writer, Optional<Long> bytes) {
         WriterQuotaRequest req = new WriterQuotaRequest(identity.publicKeyHash, writer, bytes, System.currentTimeMillis());
-        return identity.secret.signMessage(req.serialize())
+        return identity.secret.signMessage(req.serialize(), SigningDomain.WRITER_QUOTA)
                 .thenCompose(signed -> setWriterQuota(identity.publicKeyHash, signed));
     }
 

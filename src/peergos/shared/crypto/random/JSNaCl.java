@@ -22,4 +22,8 @@ public class JSNaCl {
     native public CompletableFuture<byte[][]> generateMlkemKeyPair();
     native public CompletableFuture<byte[][]> encapsulate(byte[] publicKeyBytes);
     native public CompletableFuture<byte[]> decapsulate(byte[] cipherTextBytes, byte[] secretKeyBytes);
+
+    native public byte[] mldsa44_public_key(byte[] seed);
+    native public CompletableFuture<byte[]> mldsa44_sign(byte[] message, byte[] seed);
+    native public CompletableFuture<Boolean> mldsa44_verify(byte[] signature, byte[] message, byte[] publicKey);
 }

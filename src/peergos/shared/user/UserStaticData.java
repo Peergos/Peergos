@@ -8,6 +8,7 @@ import peergos.shared.crypto.asymmetric.mlkem.HybridCurve25519MLKEMPublicKey;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 
 import java.util.*;
+import java.util.function.*;
 import java.util.stream.*;
 
 public class UserStaticData implements Cborable {
@@ -75,6 +76,15 @@ public class UserStaticData implements Cborable {
             if (!(newBoxer.publicBoxingKey instanceof HybridCurve25519MLKEMPublicKey))
                 throw new IllegalStateException("You can only upgrade to post-quantum friending!");
             return new EntryPoints(version, entries, identity, Optional.of(newBoxer));
+        }
+
+        public EntryPoints replaceEntryPoint(Predicate<EntryPoint> existing, EntryPoint updated) {
+            List<EntryPoint> replaced = entries.stream()
+                    .map(e -> existing.test(e) ? updated : e)
+                    .collect(Collectors.toList());
+            if (replaced.equals(entries))
+                throw new IllegalStateException("No such entry point to replace");
+            return new EntryPoints(version, replaced, identity, boxer);
         }
 
         public EntryPoints addEntryPoint(EntryPoint entry) {

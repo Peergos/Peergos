@@ -44,7 +44,7 @@ public class IdentityLinkProof implements Cborable {
     }
 
     public CompletableFuture<Boolean> isValid(PublicSigningKey peergosIdentity) {
-        return peergosIdentity.unsignMessage(signedClaim()).thenApply(unsigned -> {
+        return peergosIdentity.unsignMessage(signedClaim(), SigningDomain.IDENTITY_LINK).thenApply(unsigned -> {
             IdentityLink signedClaim = IdentityLink.fromCbor(CborObject.fromByteArray(unsigned));
             if (!signedClaim.equals(claim))
                 throw new IllegalStateException("Signature invalid!");
@@ -145,7 +145,7 @@ public class IdentityLinkProof implements Cborable {
         IdentityLink.IdentityService serviceA = new IdentityLink.IdentityService(Either.a(IdentityLink.KnownService.Peergos));
         IdentityLink.IdentityService serviceB = IdentityLink.IdentityService.parse(alternateService);
         IdentityLink claim = new IdentityLink(peergosUsername, serviceA, alternateUsername, serviceB);
-        return signer.secret.signatureOnly(claim.serialize())
+        return signer.secret.signatureOnly(claim.serialize(), SigningDomain.IDENTITY_LINK)
                 .thenApply(signature -> new IdentityLinkProof(claim, signature, Optional.empty(), Optional.empty()));
     }
 }

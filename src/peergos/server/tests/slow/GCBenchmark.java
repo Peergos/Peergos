@@ -1,5 +1,7 @@
 package peergos.server.tests.slow;
 
+import peergos.shared.crypto.asymmetric.SigningDomain;
+
 import org.junit.*;
 import peergos.server.*;
 import peergos.server.corenode.*;
@@ -43,7 +45,7 @@ public class GCBenchmark {
             TransactionId tid = storage.startTransaction(owner).join();
             Multihash root = generateTree(r, owner, storage, nLeavesPerUser, tid);
             PointerUpdate cas = new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(root), Optional.of(Long.valueOf(i)));
-            pointers.setPointer(owner, Optional.empty(), pair.signMessage(cas.serialize()).join()).join();
+            pointers.setPointer(owner, Optional.empty(), pair.signMessage(cas.serialize(), SigningDomain.POINTER).join()).join();
             generateTree(r, owner, storage, nLeavesPerUser/2, tid); // garbage tree
             storage.closeTransaction(owner, tid).join();
         }

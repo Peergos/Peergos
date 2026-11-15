@@ -29,7 +29,7 @@ public class VerifyingAccount implements Account {
     public CompletableFuture<Boolean> setLoginData(LoginData login, byte[] auth, boolean forceLocal) {
         PublicKeyHash identityHash = core.getPublicKeyHash(login.username).join().get();
         PublicSigningKey identity = storage.getSigningKey(identityHash, identityHash).join().get();
-        identity.unsignMessage(ArrayOps.concat(auth, login.serialize())).join(); // throws if auth isn't a valid signature
+        identity.unsignMessage(ArrayOps.concat(auth, login.serialize()), SigningDomain.LOGIN).join(); // throws if auth isn't a valid signature
         return target.setLoginData(login, auth, forceLocal);
     }
 

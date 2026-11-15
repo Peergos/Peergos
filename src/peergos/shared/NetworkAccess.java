@@ -6,6 +6,7 @@ import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.SigningDomain;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.Cid;
@@ -792,7 +793,7 @@ public class NetworkAccess {
                 .map(f -> hasher.sha256(f.data))
                 .collect(Collectors.toList()))
                 .thenCompose(hashes -> Futures.combineAllInOrder(hashes.stream()
-                        .map(writer.secret::signMessage)
+                        .map(h -> writer.secret.signMessage(h, SigningDomain.BLOCK))
                         .collect(Collectors.toList()))
                         .thenCompose(signedHashes -> bulkUploadFragments(
                                 fragments,

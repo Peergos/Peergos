@@ -1,5 +1,7 @@
 package peergos.shared.storage;
 
+import peergos.shared.crypto.asymmetric.SigningDomain;
+
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.io.ipfs.*;
@@ -23,7 +25,7 @@ public class IpnsEntry {
             throw new IllegalStateException("Only Ed25519 keys are supported for IPNS in client!");
         byte[] pubKeymaterial = Arrays.copyOfRange(signer.getHash(), 4, 36);
         Ed25519PublicKey pub = new Ed25519PublicKey(pubKeymaterial, crypto.signer);
-        return pub.unsignMessage(ArrayOps.concat(ArrayOps.concat(signature, "ipns-signature:".getBytes()), data));
+        return pub.unsignMessage(ArrayOps.concat(ArrayOps.concat(signature, "ipns-signature:".getBytes()), data), SigningDomain.IPNS);
     }
 
     public CompletableFuture<ResolutionRecord> getValue(Multihash signer, peergos.shared.Crypto crypto) {

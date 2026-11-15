@@ -661,7 +661,7 @@ public class CryptreeNode implements Cborable {
                     currentChild.cap.writer, newMapKey, newBat, baseRead, baseWrite);
             return Futures.of(new Pair<>(version, currentChild.withCap(newChildCap)));
         }
-        SigningKeyPair newSignerPair = SigningKeyPair.random(crypto.random, crypto.signer);
+        SigningKeyPair newSignerPair = SigningKeyPair.randomWriter(crypto);
         return initAndAuthoriseSigner(currentChild.cap.owner, newParent.signer, newSignerPair, network, version, committer)
                 .thenApply(p -> {
                     rotatedSigners.put(currentChild.cap.writer, p.right.publicKeyHash);
@@ -677,9 +677,8 @@ public class CryptreeNode implements Cborable {
             NetworkAccess network,
             Snapshot version,
             Committer committer) {
-        return parentSigner.secret.signMessage(newSignerPair.publicSigningKey.serialize()).thenCompose(signature -> IpfsTransaction.call(owner,
-                tid -> network.dhtClient.putSigningKey(signature, owner, parentSigner.publicKeyHash,
-                                newSignerPair.publicSigningKey, tid)
+        return IpfsTransaction.call(owner,
+                tid -> network.dhtClient.putSigningKey(owner, parentSigner, newSignerPair.publicSigningKey, network.hasher, tid)
                         .thenCompose(newSignerHash -> {
                             SigningPrivateKeyAndPublicHash newSigner =
                                     new SigningPrivateKeyAndPublicHash(newSignerHash, newSignerPair.secretSigningKey);
@@ -690,7 +689,7 @@ public class CryptreeNode implements Cborable {
                                                     network.hasher, tid)
                                             .thenCompose(wd -> committer.commit(owner, newSigner, wd, new CommittedWriterData(MaybeMultihash.empty(), Optional.empty(), Optional.empty()), tid))
                                             .thenApply(s -> new Pair<>(version.mergeAndOverwriteWith(v).mergeAndOverwriteWith(s), newSigner)));
-                        }), network.dhtClient));
+                        }), network.dhtClient);
     }
 
     public static CompletableFuture<Snapshot> deAuthoriseSigner(

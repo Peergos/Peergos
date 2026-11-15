@@ -85,7 +85,9 @@ public class SpaceHandler implements HttpHandler {
                     break;
                 }
                 case "writer-usage": {
-                    byte[] signedRequest = ArrayOps.hexToBytes(last.apply("auth"));
+                    byte[] signedRequest = params.containsKey("auth") ?
+                            ArrayOps.hexToBytes(last.apply("auth")) :
+                            Serialize.readFully(exchange.getRequestBody(), 16 * 1024);
                     PublicKeyHash writer = PublicKeyHash.fromString(last.apply("writer"));
                     result = spaceUsage.getWriterUsage(owner, writer, signedRequest).join();
                     break;

@@ -1,5 +1,7 @@
 package peergos.shared.storage;
 
+import peergos.shared.crypto.asymmetric.SigningDomain;
+
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
@@ -219,7 +221,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                             .map(b -> hasher.hash(b, true))
                             .collect(Collectors.toList()))
                     .thenCompose(hashes -> BlockWriteAuth.payload(owner, hashes, hasher)
-                            .thenCompose(payload -> signer.secret.signMessage(payload))
+                            .thenCompose(payload -> signer.secret.signMessage(payload, SigningDomain.BLOCK_WRITE_AUTH))
                             .thenApply(sig -> new BlockWriteAuth(hashes, sizes, batIds, (byte[]) sig)))
                     .thenCompose(auth -> Futures.asyncExceptionally(
                             () -> fallback.authWrites(owner, signer.publicKeyHash, auth, true, tid)

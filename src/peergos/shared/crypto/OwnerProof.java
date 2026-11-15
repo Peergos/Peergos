@@ -26,12 +26,12 @@ public class OwnerProof implements Cborable {
 
     /** The owner this proof names, given the owned key it was signed with */
     public CompletableFuture<PublicKeyHash> verifyOwner(PublicSigningKey ownedKey) {
-        return ownedKey.unsignMessage(signedOwner)
+        return ownedKey.unsignMessage(signedOwner, SigningDomain.OWNER_PROOF)
                 .thenApply(unsigned -> PublicKeyHash.fromCbor(CborObject.fromByteArray(unsigned)));
     }
 
     public static CompletableFuture<OwnerProof> build(SigningPrivateKeyAndPublicHash ownedKeypair, PublicKeyHash owner) {
-        return ownedKeypair.secret.signMessage(owner.serialize())
+        return ownedKeypair.secret.signMessage(owner.serialize(), SigningDomain.OWNER_PROOF)
                 .thenApply(signed -> new OwnerProof(ownedKeypair.publicKeyHash, signed));
     }
 

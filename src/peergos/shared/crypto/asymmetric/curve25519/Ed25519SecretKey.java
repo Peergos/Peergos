@@ -2,6 +2,7 @@ package peergos.shared.crypto.asymmetric.curve25519;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.PublicSigningKey;
+import peergos.shared.crypto.asymmetric.SigningDomain;
 import peergos.shared.crypto.asymmetric.SecretSigningKey;
 
 import java.util.*;
@@ -42,12 +43,14 @@ public class Ed25519SecretKey implements SecretSigningKey {
     }
 
     @Override
-    public CompletableFuture<byte[]> signMessage(byte[] message) {
+    @SuppressWarnings("unusable-by-js")
+    public CompletableFuture<byte[]> signMessage(byte[] message, SigningDomain domain) {
         return implementation.crypto_sign(message, secretKey);
     }
 
     @Override
-    public CompletableFuture<byte[]> signatureOnly(byte[] message) {
+    @SuppressWarnings("unusable-by-js")
+    public CompletableFuture<byte[]> signatureOnly(byte[] message, SigningDomain domain) {
         return implementation.crypto_sign(message, secretKey)
                 .thenApply(res -> Arrays.copyOf(res, Ed25519PublicKey.SIGNATURE_SIZE_BYTES));
     }

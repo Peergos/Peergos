@@ -45,7 +45,7 @@ public class WriterQuotas implements WriterUsageStore.UsageListener {
                                             ContentAddressedStorage dht) {
         PublicSigningKey ownerKey = dht.getSigningKey(owner, owner).join()
                 .orElseThrow(() -> new IllegalStateException("Couldn't retrieve owner key!"));
-        WriterQuotaRequest req = WriterQuotaRequest.fromCbor(CborObject.fromByteArray(ownerKey.unsignMessage(signedRequest).join()));
+        WriterQuotaRequest req = WriterQuotaRequest.fromCbor(CborObject.fromByteArray(ownerKey.unsignMessage(signedRequest, SigningDomain.WRITER_QUOTA).join()));
         if (! req.owner.equals(owner))
             throw new IllegalStateException("Writer quota request is for a different owner!");
         if (req.writer.equals(owner))

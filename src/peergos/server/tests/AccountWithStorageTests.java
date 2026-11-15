@@ -95,11 +95,11 @@ public class AccountWithStorageTests {
                 SecretGenerationAlgorithm.withNewSalt(cwd.props.get().generationAlgorithm.get(), crypto.random));
         byte[] rawBlock = newIdBlock.serialize();
         byte[] blockHash = crypto.hasher.sha256(rawBlock).join();
-        byte[] signedBlock = signer.secret.signMessage(blockHash).join();
+        byte[] signedBlock = signer.secret.signMessage(blockHash, SigningDomain.BLOCK).join();
         OpLog.BlockWrite blockWrite = new OpLog.BlockWrite(signer.publicKeyHash, signedBlock, rawBlock, false, Optional.empty());
         MaybeMultihash newHash = MaybeMultihash.of(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, blockHash));
         PointerUpdate cas = new PointerUpdate(expectedCurrent, newHash, PointerUpdate.increment(cwd.sequence));
-        byte[] signedCas = signer.secret.signMessage(cas.serialize()).join();
+        byte[] signedCas = signer.secret.signMessage(cas.serialize(), SigningDomain.POINTER).join();
         OpLog.PointerWrite pointerWrite = new OpLog.PointerWrite(signer.publicKeyHash, signedCas);
         return loginFor(newReader, Optional.of(new Pair<>(blockWrite, pointerWrite)));
     }

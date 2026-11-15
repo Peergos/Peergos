@@ -17,12 +17,12 @@ public interface PointerCache {
     default CompletableFuture<Boolean> doUpdate(Optional<byte[]> current, byte[] update, PublicSigningKey signer) {
         if (current.isPresent() && Arrays.equals(current.get(), update))
             return Futures.of(false);
-        Optional<CompletableFuture<Optional<PointerUpdate>>> currentFut = current.map(signer::unsignMessage)
+        Optional<CompletableFuture<Optional<PointerUpdate>>> currentFut = current.map(c -> signer.unsignMessage(c, SigningDomain.POINTER))
                 .map(f -> f.thenApply(CborObject::fromByteArray))
                 .map(f -> f.thenApply(PointerUpdate::fromCbor))
                 .map(f -> f.thenApply(Optional::of));
 
-        return signer.unsignMessage(update).thenCompose(unsigned -> {
+        return signer.unsignMessage(update, SigningDomain.POINTER).thenCompose(unsigned -> {
             PointerUpdate newVal = PointerUpdate.fromCbor(CborObject.fromByteArray(unsigned));
 
             return currentFut.orElse(Futures.of(Optional.empty())).thenApply(currentVal -> {

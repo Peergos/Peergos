@@ -1,5 +1,7 @@
 package peergos.server.storage;
 
+import peergos.shared.crypto.asymmetric.SigningDomain;
+
 import peergos.server.corenode.IpfsCoreNode;
 import peergos.server.corenode.JdbcIpnsAndSocial;
 import peergos.server.space.UsageStore;
@@ -117,7 +119,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
             allPointers.forEach((writerHash, rawPointer) -> {
                 PublicKeyHash owner = writerHash.equals(pkiKey) ? pkiOwner : usage.getOwnerKey(writerHash);
                 PublicSigningKey writer = getSigningKey(null, writerHash).join().get();
-                byte[] bothHashes = writer.unsignMessage(rawPointer).join();
+                byte[] bothHashes = writer.unsignMessage(rawPointer, SigningDomain.POINTER).join();
                 PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
                 MaybeMultihash updated = cas.updated;
 

@@ -56,7 +56,7 @@ public class MutationHandler implements HttpHandler {
                 case "setPointer": {
                     AggregatedMetrics.MUTABLE_POINTERS_SET.inc();
                     PublicKeyHash writer = PublicKeyHash.fromString(params.get("writer").get(0));
-                    byte[] signedPayload = Serialize.readFully(din, 1024);
+                    byte[] signedPayload = Serialize.readFully(din, peergos.server.corenode.UserRepository.MAX_HYBRID_POINTER_SIZE);
                     boolean isAdded = mutable.setPointer(owner, writer, signedPayload).get();
                     dout.writeBoolean(isAdded);
                     break;

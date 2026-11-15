@@ -1,5 +1,7 @@
 package peergos.server.tests.linux;
 
+import peergos.shared.crypto.asymmetric.SigningDomain;
+
 import org.junit.*;
 import peergos.server.*;
 import peergos.server.corenode.*;
@@ -182,7 +184,7 @@ public class S3BlockAbsenceTests {
 
     private void setPointerTo(MaybeMultihash target) {
         byte[] signedCas = signer.signMessage(new PointerUpdate(MaybeMultihash.empty(), target, Optional.of(1L))
-                .serialize()).join();
+                .serialize(), SigningDomain.POINTER).join();
         pointers.setPointer(owner, Optional.empty(), signedCas).join();
     }
 

@@ -30,7 +30,7 @@ public class TimeLimited {
     }
 
     public static long isAllowedTime(byte[] signedTime, int durationSeconds, PublicSigningKey pubKey) {
-        byte[] raw = pubKey.unsignMessage(signedTime).join();
+        byte[] raw = pubKey.unsignMessage(signedTime, SigningDomain.TIME_LIMITED).join();
         CborObject cbor = CborObject.fromByteArray(raw);
         if (! (cbor instanceof CborObject.CborLong))
             throw new IllegalStateException("Invalid cbor for time in authorisation!");
@@ -63,7 +63,7 @@ public class TimeLimited {
     }
 
     public static long isAllowed(String expectedPath, byte[] signedReq, int durationSeconds, PublicSigningKey pubKey) {
-        byte[] raw = pubKey.unsignMessage(signedReq).join();
+        byte[] raw = pubKey.unsignMessage(signedReq, SigningDomain.TIME_LIMITED).join();
         CborObject cbor = CborObject.fromByteArray(raw);
 
         TimeLimitedClient.SignedRequest req = TimeLimitedClient.SignedRequest.fromCbor(cbor);

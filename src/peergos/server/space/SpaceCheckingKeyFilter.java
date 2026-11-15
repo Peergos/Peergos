@@ -180,7 +180,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 boolean isChanged = ! writerUsage.target().equals(rootHash);
                 if (isChanged) {
                     Logging.LOG().info("Root hash changed from " + writerUsage.target() + " to " + rootHash);
-                    long updatedSize = dht.getRecursiveBlockSize(owner, (Cid)rootHash.get(), us).get();
+                    long updatedSize = dht.getWriterTreeSize(owner, writerKey, (Cid)rootHash.get(), us).get();
                     long deltaUsage = updatedSize - writerUsage.directRetainedStorage();
                     Set<PublicKeyHash> directOwnedKeys = DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writerKey, mutable,
                             (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht), dht, hasher).join();
@@ -290,7 +290,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         List<Multihash> us = List.of(ourId.bareMultihash());
         PointerUpdate pointerUpdate = dht.getSigningKey(event.owner, event.writer)
                 .thenApply(signer -> PointerUpdate.fromCbor(CborObject.fromByteArray(signer.get()
-                        .unsignMessage(event.writerSignedBtreeRootHash).join()))).join();
+                        .unsignMessage(event.writerSignedBtreeRootHash, SigningDomain.POINTER).join()))).join();
         Set<PublicKeyHash> updatedOwned = directOwnedKeys(event.owner, event.writer, pointerUpdate.updated, us, ourId, dht, hasher);
         if (updatedOwned.isEmpty())
             return;
@@ -387,7 +387,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         try {
             PointerUpdate pointerUpdate = dht.getSigningKey(event.owner, event.writer)
                     .thenApply(signer -> PointerUpdate.fromCbor(CborObject.fromByteArray(signer.get()
-                            .unsignMessage(event.writerSignedBtreeRootHash).join()))).join();
+                            .unsignMessage(event.writerSignedBtreeRootHash, SigningDomain.POINTER).join()))).join();
             processMutablePointerEvent(usageStore, event.owner, event.writer, pointerUpdate.original, pointerUpdate.updated,
                     mutable, quotaAdmin, dht, hasher);
             // a writing space that is merely orphaned may have been moved, so only drop its cap once its pointer is empty
@@ -444,7 +444,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
 
             try {
                 long t0 = System.nanoTime();
-                long changeInStorage = dht.getChangeInContainedSize(owner, current.target().toOptional().map(c -> (Cid) c), (Cid) newRoot.get()).get();
+                long changeInStorage = dht.getChangeInWriterSize(owner, writer, current.target().toOptional().map(c -> (Cid) c), (Cid) newRoot.get()).get();
                 long t1 = System.nanoTime();
                 LOG.info("Calculating change in used space for (" + owner + ", " + writer + ") took " + (t1-t0)/1_000_000 + "mS");
                 Set<PublicKeyHash> updatedOwned = directOwnedKeys(owner, writer, newRoot, us, ourId, dht, hasher);

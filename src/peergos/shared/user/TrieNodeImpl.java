@@ -38,6 +38,11 @@ public class TrieNodeImpl implements TrieNode {
     }
 
     @Override
+    public Optional<EntryPoint> getValue() {
+        return value;
+    }
+
+    @Override
     public CompletableFuture<Optional<FileWrapper>> getByPath(String path, Hasher hasher, NetworkAccess network) {
         FileProperties.ensureValidPath(path);
 //        LOG.info("GetByPath: " + path);

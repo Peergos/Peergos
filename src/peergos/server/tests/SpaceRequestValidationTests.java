@@ -1,5 +1,7 @@
 package peergos.server.tests;
 
+import peergos.shared.crypto.asymmetric.SigningDomain;
+
 import org.junit.*;
 import peergos.server.*;
 import peergos.server.space.*;
@@ -35,7 +37,7 @@ public class SpaceRequestValidationTests {
 
     private static byte[] sign(UserContext signer, String label, long utcMillis) {
         QuotaControl.SpaceRequest req = new QuotaControl.SpaceRequest(label, 1_000_000, false, utcMillis, Optional.empty());
-        return signer.signer.secret.signMessage(req.serialize()).join();
+        return signer.signer.secret.signMessage(req.serialize(), SigningDomain.SPACE_REQUEST).join();
     }
 
     @Test

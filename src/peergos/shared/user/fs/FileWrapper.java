@@ -2930,6 +2930,8 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
         public final List<Pair<byte[], Optional<Bat>>> moved = new ArrayList<>();
         public final Map<ByteArrayWrapper, MaybeMultihash> movedValues = new HashMap<>();
         public final List<AbsoluteCapability> nestedWritingSpaces = new ArrayList<>();
+        // the directory, or link, in the moved subtree whose child each nested writing space is
+        public final List<AbsoluteCapability> nestedHolders = new ArrayList<>();
 
         private void record(AbsoluteCapability cap, CryptreeNode chunk) {
             moved.add(new Pair<>(cap.getMapKey(), cap.bat));
@@ -2937,6 +2939,35 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
             if (existing.isPresent())
                 movedValues.put(new ByteArrayWrapper(cap.getMapKey()), existing);
         }
+    }
+
+    /** Find the writing spaces nested in a directory's subtree, and the directory or link holding each one's cap,
+     *  without stopping at them or reading any file's chunks.
+     */
+    public static CompletableFuture<MovedSubtree> findNestedWritingSpaces(AbsoluteCapability dirCap,
+                                                                         NetworkAccess network,
+                                                                         MovedSubtree res,
+                                                                         Snapshot initialVersion) {
+        return initialVersion.withWriter(dirCap.owner, dirCap.writer, network)
+                .thenCompose(version -> network.getMetadata(version.get(dirCap.writer), dirCap)
+                        .thenCompose(mOpt -> {
+                            if (mOpt.isEmpty() || ! mOpt.get().isDirectory())
+                                return Futures.of(res);
+                            CryptreeNode chunk = mOpt.get();
+                            return chunk.getDirectChildrenCapabilities(dirCap, version, network)
+                                    .thenCompose(children -> Futures.reduceAll(children, res, (r, child) -> {
+                                        if (child.cap.writer.equals(dirCap.writer))
+                                            return findNestedWritingSpaces(child.cap, network, r, version);
+                                        r.nestedWritingSpaces.add(child.cap);
+                                        r.nestedHolders.add(dirCap);
+                                        return Futures.of(r);
+                                    }, (a, b) -> b))
+                                    // a directory's later chunks hold more of its children
+                                    .thenCompose(r -> chunk.getNextChunkLocation(dirCap.rBaseKey, Optional.empty(),
+                                                    dirCap.getMapKey(), dirCap.bat, network.hasher)
+                                            .thenCompose(next -> findNestedWritingSpaces(dirCap.withMapKey(next.left, next.right),
+                                                    network, r, version)));
+                        }));
     }
 
     /** This copies all the cryptree nodes from one signing key to another for a file or subtree.

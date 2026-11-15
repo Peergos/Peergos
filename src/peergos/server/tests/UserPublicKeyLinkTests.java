@@ -44,7 +44,7 @@ public class UserPublicKeyLinkTests {
     private PublicKeyHash putPublicSigningKey(SigningKeyPair user) throws Exception {
         PublicKeyHash owner = ContentAddressedStorage.hashKey(user.publicSigningKey);
         return ipfs.putSigningKey(
-                user.secretSigningKey.signMessage(user.publicSigningKey.serialize()).join(),
+                user.secretSigningKey.signMessage(user.publicSigningKey.serialize(), SigningDomain.SIGNING_KEY).join(),
                 owner,
                 user.publicSigningKey, ipfs.startTransaction(owner).join()).get();
     }

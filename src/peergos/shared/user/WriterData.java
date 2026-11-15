@@ -320,7 +320,7 @@ public class WriterData implements Cborable {
                                     throw new IllegalStateException("Couldn't store new login data for " + username);
                                 return network.hasher.sha256(followRequestReceiver.serialize());
                             })
-                                    .thenCompose(boxerHash -> oldSigner.secret.signMessage(boxerHash)
+                                    .thenCompose(boxerHash -> oldSigner.secret.signMessage(boxerHash, SigningDomain.BOXING_KEY)
                                             .thenCompose(signedBoxer -> network.dhtClient.putBoxingKey(oldSigner.publicKeyHash,
                                                     signedBoxer,
                                                     followRequestReceiver.publicBoxingKey, tid

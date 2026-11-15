@@ -300,6 +300,24 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         return Futures.runAsync(() -> CompletableFuture.completedFuture(getRecursiveBlockSizeSync(owner, block, peerids)), usagePool);
     }
 
+    /** The size of a writer's whole tree. A key block named by its hash is written, and linked, by the parent
+     *  that created the writer, so it is charged there and not again through the writer's own WriterData.
+     */
+    default CompletableFuture<Long> getWriterTreeSize(PublicKeyHash owner, PublicKeyHash writer, Cid root, List<Multihash> peerids) {
+        return getRecursiveBlockSize(owner, root, peerids)
+                .thenCompose(total -> writer.isIdentity() ?
+                        Futures.of(total) :
+                        getBlockMetadata(owner, root).thenCompose(meta -> meta.links.contains(writer.target) ?
+                                getSize(owner, writer.target).thenApply(key -> total - key.orElse(0)) :
+                                Futures.of(total)));
+    }
+
+    default CompletableFuture<Long> getChangeInWriterSize(PublicKeyHash owner, PublicKeyHash writer, Optional<Cid> original, Cid updated) {
+        if (! original.isPresent())
+            return getWriterTreeSize(owner, writer, updated, Arrays.asList(id().join()));
+        return getChangeInContainedSize(owner, original.get(), updated);
+    }
+
     default CompletableFuture<Long> getChangeInContainedSize(PublicKeyHash owner, Optional<Cid> original, Cid updated) {
         if (! original.isPresent())
             return getRecursiveBlockSize(owner, updated, Arrays.asList(id().join()));

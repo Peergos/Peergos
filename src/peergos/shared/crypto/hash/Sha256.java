@@ -210,6 +210,7 @@ public class Sha256
         int F = hh5;
         int G = hh6;
         int H = hh7;
+        // GWT doesn't wrap int addition, so the sums that accumulate are wrapped explicitly with | 0
         int r, T, T2;
         for (r = 0; r < 16; r++)
             w[r] = (in[offset++]         << 24
@@ -224,7 +225,7 @@ public class Sha256
                     + w[r - 7]
                     + (((T2 >>> 7) | (T2 << 25))
                     ^ ((T2 >>> 18) | (T2 << 14))
-                    ^ (T2 >>> 3)) + w[r - 16]);
+                    ^ (T2 >>> 3)) + w[r - 16]) | 0;
         }
         for (r = 0; r < 64; r++)
         {
@@ -239,14 +240,14 @@ public class Sha256
             H = G;
             G = F;
             F = E;
-            E = D + T;
+            E = (D + T) | 0;
             D = C;
             C = B;
             B = A;
-            A = T + T2;
+            A = (T + T2) | 0;
         }
         return new int[] {
-                hh0 + A, hh1 + B, hh2 + C, hh3 + D,
-                hh4 + E, hh5 + F, hh6 + G, hh7 + H };
+                (hh0 + A) | 0, (hh1 + B) | 0, (hh2 + C) | 0, (hh3 + D) | 0,
+                (hh4 + E) | 0, (hh5 + F) | 0, (hh6 + G) | 0, (hh7 + H) | 0 };
     }
 }

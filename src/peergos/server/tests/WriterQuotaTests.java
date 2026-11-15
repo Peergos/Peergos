@@ -1,5 +1,7 @@
 package peergos.server.tests;
 
+import peergos.shared.crypto.asymmetric.SigningDomain;
+
 import org.junit.*;
 import peergos.server.*;
 import peergos.server.mutable.MutableEvent;
@@ -382,8 +384,8 @@ public class WriterQuotaTests {
                 crypto.hasher, tid).join();
         PointerUpdate dUpd = new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(dRoot), PointerUpdate.increment(Optional.empty()));
         PointerUpdate eUpd = new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(eRoot), PointerUpdate.increment(Optional.empty()));
-        SignedPointerUpdate dSigned = new SignedPointerUpdate(d.publicKeyHash, d.secret.signMessage(dUpd.serialize()).join());
-        SignedPointerUpdate eSigned = new SignedPointerUpdate(e.publicKeyHash, e.secret.signMessage(eUpd.serialize()).join());
+        SignedPointerUpdate dSigned = new SignedPointerUpdate(d.publicKeyHash, d.secret.signMessage(dUpd.serialize(), SigningDomain.POINTER).join());
+        SignedPointerUpdate eSigned = new SignedPointerUpdate(e.publicKeyHash, e.secret.signMessage(eUpd.serialize(), SigningDomain.POINTER).join());
 
         // as a commit [W naming D, D naming E, E naming D] registers them, in the order it proves them
         SpaceCheckingKeyFilter filter = quotaFilter();
@@ -750,7 +752,7 @@ public class WriterQuotaTests {
     private SigningPrivateKeyAndPublicHash newKeyUnder(PublicKeyHash owner, SigningPrivateKeyAndPublicHash parent) {
         NetworkAccess net = network.clear();
         SigningKeyPair pair = SigningKeyPair.random(crypto.random, crypto.signer);
-        PublicKeyHash hash = net.dhtClient.putSigningKey(parent.secret.signMessage(pair.publicSigningKey.serialize()).join(), owner,
+        PublicKeyHash hash = net.dhtClient.putSigningKey(parent.secret.signMessage(pair.publicSigningKey.serialize(), SigningDomain.SIGNING_KEY).join(), owner,
                 parent.publicKeyHash, pair.publicSigningKey, net.dhtClient.startTransaction(owner).join()).join();
         return new SigningPrivateKeyAndPublicHash(hash, pair.secretSigningKey);
     }
@@ -919,7 +921,7 @@ public class WriterQuotaTests {
         SigningPrivateKeyAndPublicHash child = newKeyUnder(ownerKey, parent);
 
         BulkCommitStorage.Registration creating = quotaFilter().registerNewWriter(ownerKey, parent.publicKeyHash, child.publicKeyHash, Optional.empty());
-        SignedPointerUpdate another = new SignedPointerUpdate(child.publicKeyHash, child.secret.signMessage(new byte[] {1}).join());
+        SignedPointerUpdate another = new SignedPointerUpdate(child.publicKeyHash, child.secret.signMessage(new byte[] {1}, SigningDomain.POINTER).join());
         Assert.assertFalse("another server let in a pointer of a writer a commit is still creating",
                 anotherServer().isOwnedWriter(ownerKey, another));
         creating.undo();
@@ -1013,7 +1015,7 @@ public class WriterQuotaTests {
         usageStore().addProvisional(new WriterUsageStore.ProvisionalWriter(child.publicKeyHash, home.publicKeyHash, ownerKey,
                 true, Optional.empty(), 0));
         SpaceCheckingKeyFilter server = serverOver(failing("removeOwnedKey", new boolean[] {true}));
-        SignedPointerUpdate another = new SignedPointerUpdate(child.publicKeyHash, child.secret.signMessage(new byte[] {1}).join());
+        SignedPointerUpdate another = new SignedPointerUpdate(child.publicKeyHash, child.secret.signMessage(new byte[] {1}, SigningDomain.POINTER).join());
         Assert.assertFalse("a pointer of a writer whose commit never landed", server.isOwnedWriter(ownerKey, another));
         anotherServer().takeBackExpired(System.currentTimeMillis());
     }
@@ -1036,7 +1038,7 @@ public class WriterQuotaTests {
                 true, Optional.of(own), System.currentTimeMillis() + 600_000));
 
         SpaceCheckingKeyFilter another = anotherServer();
-        SignedPointerUpdate next = new SignedPointerUpdate(child.publicKeyHash, child.secret.signMessage(new byte[] {1}).join());
+        SignedPointerUpdate next = new SignedPointerUpdate(child.publicKeyHash, child.secret.signMessage(new byte[] {1}, SigningDomain.POINTER).join());
         Assert.assertFalse("a pointer of a writer its parent doesn't name", another.isOwnedWriter(ownerKey, next));
         another.takeBackExpired(Long.MAX_VALUE);
         Assert.assertTrue(usageStore().getProvisional(child.publicKeyHash).isEmpty());
@@ -1068,7 +1070,7 @@ public class WriterQuotaTests {
                         throw e.getCause();
                     }
                 });
-        SignedPointerUpdate another = new SignedPointerUpdate(child.publicKeyHash, child.secret.signMessage(new byte[] {1}).join());
+        SignedPointerUpdate another = new SignedPointerUpdate(child.publicKeyHash, child.secret.signMessage(new byte[] {1}, SigningDomain.POINTER).join());
         Assert.assertFalse("a pointer of a writer its refused commit took back",
                 serverOver(refusedAsRowsAreRead).isOwnedWriter(ownerKey, another));
         Assert.assertTrue(refused[0]);
@@ -1149,7 +1151,7 @@ public class WriterQuotaTests {
         SigningPrivateKeyAndPublicHash[] child = new SigningPrivateKeyAndPublicHash[1];
         try {
             net.synchronizer.applyComplexUpdate(ownerKey, parent, (s, committer) -> IpfsTransaction.call(ownerKey, tid ->
-                    parent.secret.signMessage(pair.publicSigningKey.serialize())
+                    parent.secret.signMessage(pair.publicSigningKey.serialize(), SigningDomain.SIGNING_KEY)
                             .thenCompose(sig -> net.dhtClient.putSigningKey(sig, ownerKey, parent.publicKeyHash, pair.publicSigningKey, tid))
                             .thenCompose(childHash -> {
                                 child[0] = new SigningPrivateKeyAndPublicHash(childHash, pair.secretSigningKey);
@@ -1201,7 +1203,7 @@ public class WriterQuotaTests {
         SigningPrivateKeyAndPublicHash child = newKeyUnder(ownerKey, parent);
 
         BulkCommitStorage.Registration creating = quotaFilter().registerNewWriter(ownerKey, parent.publicKeyHash, child.publicKeyHash, Optional.empty());
-        SignedPointerUpdate another = new SignedPointerUpdate(child.publicKeyHash, child.secret.signMessage(new byte[] {1}).join());
+        SignedPointerUpdate another = new SignedPointerUpdate(child.publicKeyHash, child.secret.signMessage(new byte[] {1}, SigningDomain.POINTER).join());
         try {
             Assert.assertFalse(quotaFilter().isOwnedWriter(ownerKey, another));
         } finally {
@@ -1549,7 +1551,7 @@ public class WriterQuotaTests {
     /** Per block signatures, as a client's own uploads carry. */
     private static java.util.concurrent.CompletableFuture<List<byte[]>> signed(SigningPrivateKeyAndPublicHash signer, List<byte[]> blocks) {
         return Futures.combineAllInOrder(blocks.stream()
-                .map(b -> crypto.hasher.sha256(b).thenCompose(h -> signer.secret.signMessage(h)))
+                .map(b -> crypto.hasher.sha256(b).thenCompose(h -> signer.secret.signMessage(h, SigningDomain.BLOCK)))
                 .toList());
     }
 
@@ -1565,18 +1567,18 @@ public class WriterQuotaTests {
 
         // signed by someone else's identity
         WriterQuotaRequest req = new WriterQuotaRequest(ownerKey, writer, Optional.of(1L), System.currentTimeMillis());
-        byte[] signedBySharee = sharee.signer.secret.signMessage(req.serialize()).join();
+        byte[] signedBySharee = sharee.signer.secret.signMessage(req.serialize(), SigningDomain.WRITER_QUOTA).join();
         assertRejected(() -> network.spaceUsage.setWriterQuota(ownerKey, signedBySharee).join());
         // signed by the writer key
-        byte[] signedByWriter = shared.signingPair().secret.signMessage(req.serialize()).join();
+        byte[] signedByWriter = shared.signingPair().secret.signMessage(req.serialize(), SigningDomain.WRITER_QUOTA).join();
         assertRejected(() -> network.spaceUsage.setWriterQuota(ownerKey, signedByWriter).join());
         // the identity can't be capped
         WriterQuotaRequest identityReq = new WriterQuotaRequest(ownerKey, ownerKey, Optional.of(1L), System.currentTimeMillis());
-        byte[] signedIdentity = owner.signer.secret.signMessage(identityReq.serialize()).join();
+        byte[] signedIdentity = owner.signer.secret.signMessage(identityReq.serialize(), SigningDomain.WRITER_QUOTA).join();
         assertRejected(() -> network.spaceUsage.setWriterQuota(ownerKey, signedIdentity).join());
 
         // a replayed request is rejected
-        byte[] signed = owner.signer.secret.signMessage(req.serialize()).join();
+        byte[] signed = owner.signer.secret.signMessage(req.serialize(), SigningDomain.WRITER_QUOTA).join();
         Assert.assertTrue(network.spaceUsage.setWriterQuota(ownerKey, signed).join());
         owner.setWriteShareQuota(dir, Optional.empty()).join();
         assertRejected(() -> network.spaceUsage.setWriterQuota(ownerKey, signed).join());

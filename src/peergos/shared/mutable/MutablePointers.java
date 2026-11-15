@@ -31,7 +31,7 @@ public interface MutablePointers {
     CompletableFuture<Boolean> setPointers(PublicKeyHash owner, List<SignedPointerUpdate> updates);
 
     default CompletableFuture<Boolean> setPointer(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, PointerUpdate casUpdate) {
-        return writer.secret.signMessage(casUpdate.serialize())
+        return writer.secret.signMessage(casUpdate.serialize(), SigningDomain.POINTER)
                 .thenCompose(signed -> setPointer(owner, writer.publicKeyHash, signed));
     }
 
@@ -74,13 +74,13 @@ public interface MutablePointers {
                                                                PublicKeyHash writerKeyHash,
                                                                ContentAddressedStorage ipfs) {
         return ipfs.getSigningKey(owner, writerKeyHash)
-                .thenCompose(writerOpt -> writerOpt.map(writerKey -> writerKey.unsignMessage(pointerCas)
+                .thenCompose(writerOpt -> writerOpt.map(writerKey -> writerKey.unsignMessage(pointerCas, SigningDomain.POINTER)
                                 .thenApply(signed -> PointerUpdate.fromCbor(CborObject.fromByteArray(signed))))
                         .orElse(Futures.of(PointerUpdate.empty())));
     }
 
     static CompletableFuture<Boolean> isValidUpdate(PublicSigningKey writerKey, Optional<byte[]> current, byte[] writerSignedBtreeRootHash) {
-        return writerKey.unsignMessage(writerSignedBtreeRootHash).thenCompose(bothHashes -> {
+        return writerKey.unsignMessage(writerSignedBtreeRootHash, SigningDomain.POINTER).thenCompose(bothHashes -> {
             PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
             MaybeMultihash claimedCurrentHash = cas.original;
             Multihash newHash = cas.updated.get();
@@ -94,7 +94,7 @@ public interface MutablePointers {
                                                     MaybeMultihash claimedCurrentHash,
                                                     Optional<Long> newSequence) {
         Optional<CompletableFuture<PointerUpdate>> decoded = current.map(signed ->
-                writerKey.unsignMessage(signed)
+                writerKey.unsignMessage(signed, SigningDomain.POINTER)
                         .thenApply(msg -> PointerUpdate.fromCbor(CborObject.fromByteArray(msg))));
         return decoded.map(f -> f.thenApply(p -> p.updated)).orElse(Futures.of(MaybeMultihash.empty()))
                 .thenCompose(existing -> decoded.map(f -> f.thenApply(p -> p.sequence))
