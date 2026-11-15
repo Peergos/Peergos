@@ -4372,150 +4372,174 @@ public class UserContext {
         return getFollowRequests().thenCompose(this::processFollowRequests);
     }
 
+    // Split into short methods, as the GWT compiler's time and memory multiply with each level of lambda nesting
     private CompletableFuture<List<FollowRequestWithCipherText>> processFollowRequests(List<BlindFollowRequest> all) {
-        return getSharingFolder().thenCompose(sharing ->
-                getFollowerRoots(false).thenCompose(followerRoots -> getPendingOutgoingFollowRequests()
-                        .thenCompose(pendingOut -> getBlocked().thenCompose(blocked -> getFriendLinkStore().thenCompose(links -> Futures.combineAllInOrder(all.stream()
-                                        .map(b -> openFollowRequest(b, links))
-                                        .collect(Collectors.toList()))
-                                .thenApply(opts -> opts.stream().flatMap(Optional::stream).collect(Collectors.toList()))
-                                .thenCompose(opened -> countLinkUses(opened, links))
-                                .thenCompose(opened -> takeBackChannels(opened, links, followerRoots.keySet(), pendingOut.pendingOutgoingFollowRequests))
-                                .thenCompose(withDecrypted -> (withDecrypted.stream()
-                                        .allMatch(p -> pendingOut.pendingOutgoingFollowRequests.contains(p.req.entry.get().ownerName)) ?
-                                        Futures.of(Collections.<String>emptySet()) : // only needed for requests which aren't replies
-                                        getFollowing()).thenCompose(following -> {
+        return getSharingFolder()
+                .thenCompose(sharing -> getFollowerRoots(false))
+                .thenCompose(followerRoots -> getPendingOutgoingFollowRequests()
+                        .thenCompose(pendingOut -> getBlocked()
+                                .thenCompose(blocked -> processFollowRequests(all, followerRoots, pendingOut.pendingOutgoingFollowRequests, blocked))));
+    }
 
-                            // Classify by message content where possible rather than by our local state alone, because a
-                            // failure part way through sending or replying leaves that state half updated.
-                            Map<String, FollowRequestWithCipherText> latestReplies = new LinkedHashMap<>();
-                            Map<String, FollowRequestWithCipherText> initial = new LinkedHashMap<>();
-                            List<FollowRequestWithCipherText> toDiscard = new ArrayList<>();
-                            List<FollowRequestWithCipherText> toReaffirm = new ArrayList<>();
-                            List<FollowRequestWithCipherText> toReject = new ArrayList<>();
-                            for (FollowRequestWithCipherText p : withDecrypted) {
-                                String from = p.req.entry.get().ownerName;
-                                if (blocked.contains(from)) {
-                                    // Deny a request, like any other, so they aren't left waiting. A reply to an
-                                    // earlier request of ours has nothing to answer.
-                                    boolean isRequest = p.req.key.isPresent() && ! p.req.entry.get().pointer.isNull();
-                                    (isRequest ? toReject : toDiscard).add(p);
-                                    continue;
-                                }
-                                if (pendingOut.pendingOutgoingFollowRequests.contains(from)) {
-                                    // they may have replied more than once, e.g. rejecting after an accept failed part way
-                                    FollowRequestWithCipherText earlier = latestReplies.put(from, p);
-                                    if (earlier != null)
-                                        toDiscard.add(earlier);
-                                    continue;
-                                }
-                                // an initial request always has a key and an entry point, so this is an unauthenticated
-                                // reply to a request we are no longer waiting on
-                                boolean replyShaped = p.req.key.isEmpty() || p.req.entry.get().pointer.isNull();
-                                if (replyShaped) {
-                                    toDiscard.add(p);
-                                    continue;
-                                }
-                                // They are waiting on a reply, e.g. after unfollowing and asking again. Accepting grants
-                                // nothing they don't already have.
-                                if (followerRoots.containsKey(from) && following.contains(from)) {
-                                    toReaffirm.add(p);
-                                    continue;
-                                }
-                                // A request from someone we already have a sharing dir for is still surfaced, so that a reply
-                                // which failed part way can be completed. Only the latest from each sender is kept.
-                                FollowRequestWithCipherText previous = initial.put(from, p);
-                                if (previous != null)
-                                    toDiscard.add(previous);
-                            }
+    private CompletableFuture<List<FollowRequestWithCipherText>> processFollowRequests(List<BlindFollowRequest> all,
+                                                                                       Map<String, FileWrapper> followerRoots,
+                                                                                       Set<String> pendingOut,
+                                                                                       Set<String> blocked) {
+        return getFriendLinkStore()
+                .thenCompose(links -> openFollowRequests(all, links)
+                        .thenCompose(opened -> countLinkUses(opened, links))
+                        .thenCompose(opened -> takeBackChannels(opened, links, followerRoots.keySet(), pendingOut)))
+                .thenCompose(withDecrypted -> followingIfNeeded(withDecrypted, pendingOut)
+                        .thenCompose(following -> handleFollowRequests(withDecrypted, followerRoots, pendingOut, blocked, following)));
+    }
 
-                            BiFunction<TrieNode, FollowRequestWithCipherText, CompletableFuture<TrieNode>> addToStatic = (root, p) -> {
-                                FollowRequest freq = p.req;
-                                if (! Arrays.equals(freq.entry.get().pointer.rBaseKey.serialize(), SymmetricKey.createNull().serialize())) {
-                                    CompletableFuture<TrieNode> updatedRoot = freq.entry.get().ownerName.equals(username) ?
-                                            CompletableFuture.completedFuture(root) : // ignore responses claiming to be owned by us
-                                            addExternalEntryPoint(freq.entry.get())
-                                                    .thenCompose(x -> removeFromPendingOutgoing(freq.entry.get().ownerName))
-                                                    // their dir may already be gone, e.g. if they removed us again
-                                                    .thenCompose(x -> retrieveAndAddEntryPointToTrie(root, freq.entry.get())
-                                                            .exceptionally(t -> root));
-                                    return updatedRoot.thenCompose(newRoot -> {
-                                        entrie = newRoot;
-                                        // clear their response follow req too
-                                        return signer.secret.signMessage(p.cipher.serialize(), SigningDomain.FOLLOW_REQUEST_REMOVAL)
-                                                .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed))
-                                                .thenApply(b -> newRoot);
-                                    });
-                                }
-                                return signer.secret.signMessage(p.cipher.serialize(), SigningDomain.FOLLOW_REQUEST_REMOVAL)
-                                        .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed))
-                                        .thenApply(b -> root);
-                            };
+    private CompletableFuture<List<FollowRequestWithCipherText>> openFollowRequests(List<BlindFollowRequest> all, FriendLinkStore links) {
+        return Futures.combineAllInOrder(all.stream()
+                        .map(b -> openFollowRequest(b, links))
+                        .collect(Collectors.toList()))
+                .thenApply(opts -> opts.stream().flatMap(Optional::stream).collect(Collectors.toList()));
+    }
 
-                            BiFunction<TrieNode, FollowRequestWithCipherText, CompletableFuture<TrieNode>> mozart = (trie, p) -> {
-                                FollowRequest freq = p.req;
-                                // delete our folder if they didn't reciprocate
-                                String theirName = freq.entry.get().ownerName;
-                                Optional<byte[]> keyFromResponse = freq.key.map(Cborable::serialize);
-                                if (keyFromResponse.isEmpty()) {
-                                    // They didn't reciprocate (follow us). They may already have been a follower, using
-                                    // the same dir, so revoke them fully rather than only removing the dir.
-                                    return revokeFollower(theirName).thenCompose(x -> removeFromPendingOutgoing(freq.entry.get().ownerName))
-                                            .thenCompose(b -> addToStatic.apply(trie, p));
-                                } else if (freq.entry.get().pointer.isNull()) {
-                                    // They reciprocated, but didn't accept (they follow us, but we can't follow them)
-                                    // and finally remove the follow request
-                                    // add them to followers group
-                                    return getGroupUid(SocialState.FOLLOWERS_GROUP_NAME)
-                                            .thenCompose(followersUidOpt -> shareReadAccessWith(PathUtil.get(username,
-                                                    SHARED_DIR_NAME, followersUidOpt.get()), Collections.singleton(theirName)))
-                                            .thenCompose(x -> signer.secret.signMessage(p.cipher.serialize(), SigningDomain.FOLLOW_REQUEST_REMOVAL)
-                                                    .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed)))
-                                            .thenApply(x -> trie);
-                                } else {
-                                    // they accepted and reciprocated
-                                    // add new entry point to tree root
-                                    EntryPoint entry = freq.entry.get();
-                                    if (entry.ownerName.equals(username))
-                                        throw new IllegalStateException("Received a follow request claiming to be owned by us!");
-                                    // add them to followers and friends group
-                                    return getGroupUid(SocialState.FOLLOWERS_GROUP_NAME)
-                                            .thenCompose(followersUidOpt -> shareReadAccessWith(PathUtil.get(username,
-                                                    SHARED_DIR_NAME, followersUidOpt.get()), Collections.singleton(theirName)))
-                                            .thenCompose(x -> getGroupUid(SocialState.FRIENDS_GROUP_NAME)
-                                                    .thenCompose(friendsUidOpt -> shareReadAccessWith(PathUtil.get(username,
-                                                            SHARED_DIR_NAME, friendsUidOpt.get()), Collections.singleton(theirName))))
-                                            .thenCompose(x -> addToStatic.apply(trie, p.withEntryPoint(entry)))
-                                            .exceptionally(t -> trie);
-                                }
-                            };
-                            return Futures.reduceAll(toDiscard, true,
-                                            (b, p) -> signer.secret.signMessage(p.cipher.serialize(), SigningDomain.FOLLOW_REQUEST_REMOVAL)
-                                                    .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed))
-                                                    .exceptionally(t -> false),
-                                            (a, b) -> a)
-                                    .thenCompose(x -> Futures.reduceAll(toReject, true,
-                                            (b, p) -> replyToFollowRequest(p, false, false).exceptionally(t -> false),
-                                            (a, b) -> a))
-                                    .thenCompose(x -> Futures.reduceAll(toReaffirm, true,
-                                            (b, p) -> reaffirmFollowRequest(p, followerRoots.get(p.req.entry.get().ownerName))
-                                                    .exceptionally(t -> false),
-                                            (a, b) -> a))
-                                    .thenCompose(x -> Futures.reduceAll(latestReplies.values(), true,
-                                            (b, p) -> rememberBackChannel(p.req).exceptionally(t -> false),
-                                            (a, b) -> a))
-                                    .thenCompose(x -> Futures.reduceAll(latestReplies.values(), entrie,
-                                            (trie, p) -> Futures.asyncExceptionally(() -> mozart.apply(trie, p), t -> {
-                                                LOG.log(Level.WARNING, "Couldn't process follow reply from " + p.req.entry.get().ownerName, t);
-                                                return Futures.of(trie);
-                                            }),
-                                            (a, b) -> a))
-                                    .thenApply(newRoot -> {
-                                        entrie = newRoot;
-                                        return new ArrayList<>(initial.values());
-                                    });
-                        })))))
-                ));
+    // only needed for requests which aren't replies
+    private CompletableFuture<Set<String>> followingIfNeeded(List<FollowRequestWithCipherText> requests, Set<String> pendingOut) {
+        if (requests.stream().allMatch(p -> pendingOut.contains(p.req.entry.get().ownerName)))
+            return Futures.of(Collections.emptySet());
+        return getFollowing();
+    }
+
+    private CompletableFuture<List<FollowRequestWithCipherText>> handleFollowRequests(List<FollowRequestWithCipherText> withDecrypted,
+                                                                                      Map<String, FileWrapper> followerRoots,
+                                                                                      Set<String> pendingOut,
+                                                                                      Set<String> blocked,
+                                                                                      Set<String> following) {
+        // Classify by message content where possible rather than by our local state alone, because a
+        // failure part way through sending or replying leaves that state half updated.
+        Map<String, FollowRequestWithCipherText> latestReplies = new LinkedHashMap<>();
+        Map<String, FollowRequestWithCipherText> initial = new LinkedHashMap<>();
+        List<FollowRequestWithCipherText> toDiscard = new ArrayList<>();
+        List<FollowRequestWithCipherText> toReaffirm = new ArrayList<>();
+        List<FollowRequestWithCipherText> toReject = new ArrayList<>();
+        for (FollowRequestWithCipherText p : withDecrypted) {
+            String from = p.req.entry.get().ownerName;
+            if (blocked.contains(from)) {
+                // Deny a request, like any other, so they aren't left waiting. A reply to an
+                // earlier request of ours has nothing to answer.
+                boolean isRequest = p.req.key.isPresent() && ! p.req.entry.get().pointer.isNull();
+                (isRequest ? toReject : toDiscard).add(p);
+                continue;
+            }
+            if (pendingOut.contains(from)) {
+                // they may have replied more than once, e.g. rejecting after an accept failed part way
+                FollowRequestWithCipherText earlier = latestReplies.put(from, p);
+                if (earlier != null)
+                    toDiscard.add(earlier);
+                continue;
+            }
+            // an initial request always has a key and an entry point, so this is an unauthenticated
+            // reply to a request we are no longer waiting on
+            boolean replyShaped = p.req.key.isEmpty() || p.req.entry.get().pointer.isNull();
+            if (replyShaped) {
+                toDiscard.add(p);
+                continue;
+            }
+            // They are waiting on a reply, e.g. after unfollowing and asking again. Accepting grants
+            // nothing they don't already have.
+            if (followerRoots.containsKey(from) && following.contains(from)) {
+                toReaffirm.add(p);
+                continue;
+            }
+            // A request from someone we already have a sharing dir for is still surfaced, so that a reply
+            // which failed part way can be completed. Only the latest from each sender is kept.
+            FollowRequestWithCipherText previous = initial.put(from, p);
+            if (previous != null)
+                toDiscard.add(previous);
+        }
+
+        BiFunction<TrieNode, FollowRequestWithCipherText, CompletableFuture<TrieNode>> addToStatic = (root, p) -> {
+            FollowRequest freq = p.req;
+            if (! Arrays.equals(freq.entry.get().pointer.rBaseKey.serialize(), SymmetricKey.createNull().serialize())) {
+                CompletableFuture<TrieNode> updatedRoot = freq.entry.get().ownerName.equals(username) ?
+                        CompletableFuture.completedFuture(root) : // ignore responses claiming to be owned by us
+                        addExternalEntryPoint(freq.entry.get())
+                                .thenCompose(x -> removeFromPendingOutgoing(freq.entry.get().ownerName))
+                                // their dir may already be gone, e.g. if they removed us again
+                                .thenCompose(x -> retrieveAndAddEntryPointToTrie(root, freq.entry.get())
+                                        .exceptionally(t -> root));
+                return updatedRoot.thenCompose(newRoot -> {
+                    entrie = newRoot;
+                    // clear their response follow req too
+                    return signer.secret.signMessage(p.cipher.serialize(), SigningDomain.FOLLOW_REQUEST_REMOVAL)
+                            .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed))
+                            .thenApply(b -> newRoot);
+                });
+            }
+            return signer.secret.signMessage(p.cipher.serialize(), SigningDomain.FOLLOW_REQUEST_REMOVAL)
+                    .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed))
+                    .thenApply(b -> root);
+        };
+
+        BiFunction<TrieNode, FollowRequestWithCipherText, CompletableFuture<TrieNode>> mozart = (trie, p) -> {
+            FollowRequest freq = p.req;
+            // delete our folder if they didn't reciprocate
+            String theirName = freq.entry.get().ownerName;
+            Optional<byte[]> keyFromResponse = freq.key.map(Cborable::serialize);
+            if (keyFromResponse.isEmpty()) {
+                // They didn't reciprocate (follow us). They may already have been a follower, using
+                // the same dir, so revoke them fully rather than only removing the dir.
+                return revokeFollower(theirName).thenCompose(x -> removeFromPendingOutgoing(freq.entry.get().ownerName))
+                        .thenCompose(b -> addToStatic.apply(trie, p));
+            } else if (freq.entry.get().pointer.isNull()) {
+                // They reciprocated, but didn't accept (they follow us, but we can't follow them)
+                // and finally remove the follow request
+                // add them to followers group
+                return getGroupUid(SocialState.FOLLOWERS_GROUP_NAME)
+                        .thenCompose(followersUidOpt -> shareReadAccessWith(PathUtil.get(username,
+                                SHARED_DIR_NAME, followersUidOpt.get()), Collections.singleton(theirName)))
+                        .thenCompose(x -> signer.secret.signMessage(p.cipher.serialize(), SigningDomain.FOLLOW_REQUEST_REMOVAL)
+                                .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed)))
+                        .thenApply(x -> trie);
+            } else {
+                // they accepted and reciprocated
+                // add new entry point to tree root
+                EntryPoint entry = freq.entry.get();
+                if (entry.ownerName.equals(username))
+                    throw new IllegalStateException("Received a follow request claiming to be owned by us!");
+                // add them to followers and friends group
+                return getGroupUid(SocialState.FOLLOWERS_GROUP_NAME)
+                        .thenCompose(followersUidOpt -> shareReadAccessWith(PathUtil.get(username,
+                                SHARED_DIR_NAME, followersUidOpt.get()), Collections.singleton(theirName)))
+                        .thenCompose(x -> getGroupUid(SocialState.FRIENDS_GROUP_NAME)
+                                .thenCompose(friendsUidOpt -> shareReadAccessWith(PathUtil.get(username,
+                                        SHARED_DIR_NAME, friendsUidOpt.get()), Collections.singleton(theirName))))
+                        .thenCompose(x -> addToStatic.apply(trie, p.withEntryPoint(entry)))
+                        .exceptionally(t -> trie);
+            }
+        };
+        return Futures.reduceAll(toDiscard, true,
+                        (b, p) -> signer.secret.signMessage(p.cipher.serialize(), SigningDomain.FOLLOW_REQUEST_REMOVAL)
+                                .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed))
+                                .exceptionally(t -> false),
+                        (a, b) -> a)
+                .thenCompose(x -> Futures.reduceAll(toReject, true,
+                        (b, p) -> replyToFollowRequest(p, false, false).exceptionally(t -> false),
+                        (a, b) -> a))
+                .thenCompose(x -> Futures.reduceAll(toReaffirm, true,
+                        (b, p) -> reaffirmFollowRequest(p, followerRoots.get(p.req.entry.get().ownerName))
+                                .exceptionally(t -> false),
+                        (a, b) -> a))
+                .thenCompose(x -> Futures.reduceAll(latestReplies.values(), true,
+                        (b, p) -> rememberBackChannel(p.req).exceptionally(t -> false),
+                        (a, b) -> a))
+                .thenCompose(x -> Futures.reduceAll(latestReplies.values(), entrie,
+                        (trie, p) -> Futures.asyncExceptionally(() -> mozart.apply(trie, p), t -> {
+                            LOG.log(Level.WARNING, "Couldn't process follow reply from " + p.req.entry.get().ownerName, t);
+                            return Futures.of(trie);
+                        }),
+                        (a, b) -> a))
+                .thenApply(newRoot -> {
+                    entrie = newRoot;
+                    return new ArrayList<>(initial.values());
+                });
     }
 
     /** Decrypts a request with the keypair of the link it was sent to, or the legacy receiver's if it names none. One
