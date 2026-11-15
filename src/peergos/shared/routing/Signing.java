@@ -29,13 +29,13 @@ public class Signing {
     }
 
     public static CompletableFuture<byte[]> sign(SecretSigningKey signer, String context, byte[] body) {
-        return signer.signatureOnly(message(context, body));
+        return signer.signatureOnly(message(context, body), SigningDomain.ROUTING_RECORD);
     }
 
     public static CompletableFuture<Boolean> verify(PublicSigningKey signer, String context, byte[] body, byte[] signature) {
         byte[] message = message(context, body);
         try {
-            return signer.unsignMessage(ArrayOps.concat(signature, message))
+            return signer.unsignMessage(ArrayOps.concat(signature, message), SigningDomain.ROUTING_RECORD)
                     .thenApply(unsigned -> Arrays.equals(unsigned, message))
                     .exceptionally(t -> false);
         } catch (Exception e) {

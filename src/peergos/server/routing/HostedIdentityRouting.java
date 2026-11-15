@@ -150,7 +150,7 @@ public class HostedIdentityRouting implements IdentityRouting {
         try {
             JdbcRoutingStore store = running().replica.store();
             hostedUser(identity);
-            byte[] raw = currentKey(identity).unsignMessage(signedCopy).join();
+            byte[] raw = currentKey(identity).unsignMessage(signedCopy, SigningDomain.RECOVERY_COPY).join();
             RecoveryCopy copy = RecoveryCopy.fromCbor(CborObject.fromByteArray(raw));
             long now = System.currentTimeMillis();
             byte[] id = identity.serialize();
@@ -172,7 +172,7 @@ public class HostedIdentityRouting implements IdentityRouting {
             byte[] commitment = commitment(log);
             if (! Arrays.equals(Hash.sha256(next.serialize()), commitment))
                 throw new IllegalStateException("Not the committed next key");
-            RecoveryRequest req = RecoveryRequest.fromCbor(CborObject.fromByteArray(next.unsignMessage(signedRequest).join()));
+            RecoveryRequest req = RecoveryRequest.fromCbor(CborObject.fromByteArray(next.unsignMessage(signedRequest, SigningDomain.RECOVERY_REQUEST).join()));
             if (! req.identity.equals(identity) || Math.abs(System.currentTimeMillis() - req.time) > RECOVERY_REQUEST_MILLIS)
                 throw new IllegalStateException("Stale recovery request");
             byte[] id = identity.serialize();

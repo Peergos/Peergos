@@ -4613,7 +4613,7 @@ public class UserContext {
     }
 
     private CompletableFuture<Boolean> discardFollowRequest(BlindFollowRequest b) {
-        return signer.secret.signMessage(b.serialize())
+        return signer.secret.signMessage(b.serialize(), SigningDomain.FOLLOW_REQUEST_REMOVAL)
                 .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed))
                 .exceptionally(t -> false);
     }
@@ -5689,7 +5689,7 @@ public class UserContext {
             if (status.recoveryKey.isEmpty())
                 return Futures.of(false);
             return RecoveryCopy.build(entries, status.recoveryKey.get(), crypto)
-                    .thenCompose(copy -> identity.secret.signMessage(copy.serialize()))
+                    .thenCompose(copy -> identity.secret.signMessage(copy.serialize(), SigningDomain.RECOVERY_COPY))
                     .thenCompose(signed -> network.identityRouting.addRecoveryCopy(identity.publicKeyHash, signed));
         }).exceptionally(t -> {
             LOG.log(Level.WARNING, "Couldn't update the recovery copy of the login data: " + t.getMessage(), t);
@@ -5715,7 +5715,7 @@ public class UserContext {
             progress.accept("Deriving keys from your recovery key");
             return RecoveryKey.derive(recoveryKey, owner, crypto).thenCompose(derived -> {
                 SigningKeyPair next = derived.nextIdentity;
-                return next.secretSigningKey.signMessage(new IdentityRouting.RecoveryRequest(owner, System.currentTimeMillis()).serialize())
+                return next.secretSigningKey.signMessage(new IdentityRouting.RecoveryRequest(owner, System.currentTimeMillis()).serialize(), SigningDomain.RECOVERY_REQUEST)
                         .thenCompose(signedReq -> network.identityRouting.recoveryData(owner, next.publicSigningKey, signedReq))
                         .thenCompose(data -> {
                             progress.accept("Restoring your login data");
@@ -5821,12 +5821,12 @@ public class UserContext {
                 WriterData newIdBlock = cwd.props.get().withAlgorithm(newAlgorithm);
                 byte[] rawBlock = newIdBlock.serialize();
                 return crypto.hasher.sha256(rawBlock)
-                        .thenCompose(blockHash -> signer.secret.signMessage(blockHash)
+                        .thenCompose(blockHash -> signer.secret.signMessage(blockHash, SigningDomain.BLOCK)
                                 .thenCompose(signedBlock -> {
                                     OpLog.BlockWrite blockWrite = new OpLog.BlockWrite(owner, signedBlock, rawBlock, false, Optional.empty());
                                     MaybeMultihash newHash = MaybeMultihash.of(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, blockHash));
                                     PointerUpdate cas = new PointerUpdate(cwd.hash, newHash, PointerUpdate.increment(cwd.sequence));
-                                    return signer.secret.signMessage(cas.serialize())
+                                    return signer.secret.signMessage(cas.serialize(), SigningDomain.POINTER)
                                             .thenCompose(signedCas -> network.account.setLoginData(
                                                     new LoginData(username, staticData, login.getUser().publicSigningKey,
                                                             Optional.of(new Pair<>(blockWrite, new OpLog.PointerWrite(owner, signedCas)))),

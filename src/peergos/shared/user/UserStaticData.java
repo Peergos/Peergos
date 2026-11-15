@@ -85,6 +85,8 @@ public class UserStaticData implements Cborable {
             if (replaced.equals(entries))
                 throw new IllegalStateException("No such entry point to replace");
             return new EntryPoints(version, replaced, identity, boxer);
+        }
+
         public EntryPoints withIdentity(Optional<SigningKeyPair> identity) {
             return new EntryPoints(version, entries, identity, boxer);
         }

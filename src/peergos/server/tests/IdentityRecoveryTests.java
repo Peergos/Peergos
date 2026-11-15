@@ -145,9 +145,9 @@ public class IdentityRecoveryTests {
         PublicKeyHash owner = recovered.signer.publicKeyHash;
         CommittedWriterData current = WriterData.getWriterData(owner, owner, net.mutable, net.dhtClient).join();
         PointerUpdate cas = new PointerUpdate(current.hash, earlier.hash, PointerUpdate.increment(current.sequence));
-        byte[] byThief = thief.signer.secret.signMessage(cas.serialize()).join();
+        byte[] byThief = thief.signer.secret.signMessage(cas.serialize(), SigningDomain.POINTER).join();
         Assert.assertFalse("the old identity key no longer signs for the identity", net.mutable.setPointer(owner, owner, byThief).join());
-        byte[] byOwner = recovered.signer.secret.signMessage(cas.serialize()).join();
+        byte[] byOwner = recovered.signer.secret.signMessage(cas.serialize(), SigningDomain.POINTER).join();
         Assert.assertTrue("the same update signed by the new key is taken", net.mutable.setPointer(owner, owner, byOwner).join());
     }
 

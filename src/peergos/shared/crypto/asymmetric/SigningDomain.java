@@ -23,7 +23,10 @@ public enum SigningDomain {
     IPNS("ipns"),
     LOGIN("login"),
     IDENTITY_LINK("identity-link"),
-    FOLLOW_REQUEST_REMOVAL("follow-request-removal");
+    FOLLOW_REQUEST_REMOVAL("follow-request-removal"),
+    ROUTING_RECORD("routing-record"),
+    RECOVERY_COPY("recovery-copy"),
+    RECOVERY_REQUEST("recovery-request");
 
     public final String label;
 
