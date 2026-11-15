@@ -2,6 +2,8 @@ package peergos.server.login;
 
 import com.eatthepath.otp.*;
 import com.webauthn4j.*;
+import com.webauthn4j.converter.*;
+import com.webauthn4j.converter.util.*;
 import com.webauthn4j.data.client.*;
 import peergos.server.sql.*;
 import peergos.server.util.Logging;
@@ -14,6 +16,7 @@ import peergos.shared.login.mfa.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
+import javax.crypto.*;
 import javax.crypto.spec.*;
 import java.nio.charset.*;
 import java.security.*;
@@ -44,9 +47,11 @@ public class JdbcAccount implements LoginCache {
     private static final String BURN_BACKUP_CODE = "UPDATE mfa SET value=?, name=? WHERE username = ? AND credid = ? AND value = ?;";
     private static final String GET_TYPE = "SELECT type FROM mfa WHERE username = ? AND credid = ?;";
     private static final String GET_AUTH = "SELECT value FROM mfa WHERE username = ? AND credid = ?;";
-    private static final String CREATE_CHALLENGE = "INSERT INTO mfa_challenge (challenge, username) VALUES(?, ?);";
-    private static final String UPDATE_CHALLENGE = "UPDATE mfa_challenge SET challenge=? WHERE username=?;";
-    private static final String GET_CHALLENGE = "SELECT challenge FROM mfa_challenge WHERE username = ?;";
+    private static final String GET_CHALLENGE_KEY = "SELECT secret FROM mfa_challenge_key WHERE id = 1;";
+    private static final String USE_CHALLENGE = "INTO mfa_used_challenge (challenge, expiry) VALUES(?, ?)";
+    private static final String PRUNE_USED_CHALLENGES = "DELETE FROM mfa_used_challenge WHERE expiry < ?;";
+    private static final long CHALLENGE_TTL_MILLIS = 5 * 60_000;
+    private static final String LOGIN_CHALLENGE = "login", REGISTER_CHALLENGE = "register";
     private static final String ENABLE_AUTH = "UPDATE mfa SET enabled=? WHERE username = ? AND credid = ?;";
     private static final String DELETE_AUTH = "DELETE FROM mfa WHERE username = ? AND credid = ?";
     private static final String GET_AUTH_METHODS = "SELECT name, credid, created, type, enabled FROM mfa WHERE username = ?;";
@@ -78,12 +83,16 @@ public class JdbcAccount implements LoginCache {
     private final Origin origin;
     private final String rpId;
     private final LoginThrottle throttle;
+    private final SqlSupplier commands;
+    private final byte[] challengeKey;
 
     public JdbcAccount(Supplier<Connection> conn, SqlSupplier commands, Origin origin, String rpId) {
         this.conn = conn;
         this.origin = origin;
         this.rpId = rpId;
+        this.commands = commands;
         init(commands);
+        this.challengeKey = getOrCreateChallengeKey();
         this.throttle = new LoginThrottle(this::getConnection, commands);
     }
 
@@ -106,7 +115,8 @@ public class JdbcAccount implements LoginCache {
             commands.createTable(commands.createAccountTableCommand(), conn);
             commands.createTable(commands.createPendingAccountTableCommand(), conn);
             commands.createTable(commands.createMfaTableCommand(), conn);
-            commands.createTable(commands.createMfaChallengeTableCommand(), conn);
+            commands.createTable(commands.createMfaChallengeKeyTableCommand(), conn);
+            commands.createTable(commands.createMfaUsedChallengeTableCommand(), conn);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -325,8 +335,12 @@ public class JdbcAccount implements LoginCache {
         // something we can challenge a person with
         boolean needsMfa = ! enabled.stream().allMatch(m -> m.type == MultiFactorAuthMethod.Type.BACKUP_CODES || ! m.type.interactive);
         if (needsMfa && mfa.isEmpty()) {
-            byte[] challenge = createChallenge(username);
-            return Futures.of(new LoginResponse(Either.b(new MultiFactorAuthRequest(enabled, challenge)), Optional.empty()));
+            // nobody has proven the password yet, so offer only what picking and answering a factor needs
+            List<MultiFactorAuthMethod> offered = enabled.stream()
+                    .map(m -> new MultiFactorAuthMethod("", m.credentialId, LocalDate.EPOCH, m.type, true))
+                    .collect(Collectors.toList());
+            byte[] challenge = createChallenge(username, LOGIN_CHALLENGE);
+            return Futures.of(new LoginResponse(Either.b(new MultiFactorAuthRequest(offered, challenge)), Optional.empty()));
         }
         // recording guesses for a user that doesn't exist would let anybody grow the failures table
         if (! hasEntry(username))
@@ -360,12 +374,13 @@ public class JdbcAccount implements LoginCache {
             if (type != MultiFactorAuthMethod.Type.WEBAUTHN)
                 throw new IllegalStateException("Not a webauthn credential!");
             Webauthn.Verifier verifier = Webauthn.Verifier.fromCbor(CborObject.fromByteArray(getMfa(username, credentialId)));
-            byte[] challenge = getChallenge(username);
             byte[] authenticatorData = mfaAuth.response.b().authenticatorData;
             byte[] clientDataJson = mfaAuth.response.b().clientDataJson;
             byte[] signature = mfaAuth.response.b().signature;
+            byte[] challenge = checkChallenge(username, LOGIN_CHALLENGE, clientDataJson);
             long newSignCount = Webauthn.validateLogin(webauthn, origin, rpId, challenge, verifier, credentialId, username.getBytes(),
                     authenticatorData, clientDataJson, signature);
+            useChallenge(challenge);
             // Update counter
             verifier.setCounter(newSignCount);
             updateMFA(username, credentialId, verifier.serialize());
@@ -771,51 +786,87 @@ public class JdbcAccount implements LoginCache {
         List<MultiFactorAuthMethod> existing = getSecondAuthMethods(username).join();
         if (existing.size() > MAX_MFA)
             throw new IllegalStateException("Too many multi factor auth methods. Please delete some.");
-        return createChallenge(username);
+        return createChallenge(username, REGISTER_CHALLENGE);
     }
 
-    private byte[] createChallenge(String username) {
-        byte[] challenge = new byte[32];
-        rnd.nextBytes(challenge);
-        boolean hasChallenge = hasChallenge(username);
-        try (Connection conn = getConnection();
-             PreparedStatement update = hasChallenge ? conn.prepareStatement(UPDATE_CHALLENGE) : conn.prepareStatement(CREATE_CHALLENGE)) {
-            update.setBytes(1, challenge);
-            update.setString(2, username);
-            update.executeUpdate();
-            return challenge;
-        } catch (Exception e) {
-            LOG.log(Level.WARNING, e.getMessage(), e);
-            throw new IllegalStateException(e);
-        }
+    // A challenge is signed by us rather than stored, so asking for one leaves nothing behind that could
+    // displace a challenge somebody else is answering. Only answered challenges are recorded, to stop replays.
+    private byte[] createChallenge(String username, String purpose) {
+        byte[] nonce = new byte[8];
+        rnd.nextBytes(nonce);
+        byte[] body = ArrayOps.concat(longBytes(System.currentTimeMillis() + CHALLENGE_TTL_MILLIS), nonce);
+        return ArrayOps.concat(body, challengeMac(username, purpose, body));
     }
 
-    private boolean hasChallenge(String username) {
-        try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement(GET_CHALLENGE)) {
-            stmt.setString(1, username);
-            ResultSet rs = stmt.executeQuery();
-            if (rs.next()) {
-                return true;
-            }
+    private byte[] checkChallenge(String username, String purpose, byte[] clientDataJson) {
+        byte[] challenge = new CollectedClientDataConverter(new ObjectConverter()).convert(clientDataJson).getChallenge().getValue();
+        if (challenge.length != 32)
+            throw new IllegalStateException("Invalid challenge");
+        byte[] body = Arrays.copyOfRange(challenge, 0, 16);
+        if (! MessageDigest.isEqual(challengeMac(username, purpose, body), Arrays.copyOfRange(challenge, 16, 32)))
+            throw new IllegalStateException("Invalid challenge");
+        if (challengeExpiry(challenge) < System.currentTimeMillis())
+            throw new IllegalStateException("Challenge expired, please try again");
+        return challenge;
+    }
 
-            return false;
+    private void useChallenge(byte[] challenge) {
+        try (Connection conn = getConnection();
+             PreparedStatement prune = conn.prepareStatement(PRUNE_USED_CHALLENGES);
+             PreparedStatement insert = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ", USE_CHALLENGE))) {
+            prune.setLong(1, System.currentTimeMillis());
+            prune.executeUpdate();
+            insert.setBytes(1, challenge);
+            insert.setLong(2, challengeExpiry(challenge));
+            if (insert.executeUpdate() != 1)
+                throw new IllegalStateException("Challenge already used, please try again");
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            throw new RuntimeException(sqe);
+            throw new IllegalStateException(sqe);
         }
     }
 
-    private byte[] getChallenge(String username) {
-        try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement(GET_CHALLENGE)) {
-            stmt.setString(1, username);
-            ResultSet rs = stmt.executeQuery();
-            if (rs.next()) {
-                return rs.getBytes("challenge");
-            }
+    private static long challengeExpiry(byte[] challenge) {
+        long res = 0;
+        for (int i = 0; i < 8; i++)
+            res = (res << 8) | (challenge[i] & 0xff);
+        return res;
+    }
 
-            throw new IllegalStateException("No challenge for " + username);
+    private static byte[] longBytes(long val) {
+        byte[] res = new byte[8];
+        for (int i = 7; i >= 0; i--) {
+            res[i] = (byte) val;
+            val >>>= 8;
+        }
+        return res;
+    }
+
+    private byte[] challengeMac(String username, String purpose, byte[] body) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(challengeKey, "HmacSHA256"));
+            mac.update((purpose + "\0" + username + "\0").getBytes(StandardCharsets.UTF_8));
+            // truncated so the whole challenge stays 32 bytes, which the web-ui's key registration assumes
+            return Arrays.copyOfRange(mac.doFinal(body), 0, 16);
+        } catch (GeneralSecurityException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    // kept in the database so that every server sharing it accepts each other's challenges
+    private byte[] getOrCreateChallengeKey() {
+        byte[] fresh = new byte[32];
+        rnd.nextBytes(fresh);
+        try (Connection conn = getConnection();
+             PreparedStatement insert = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ", "INTO mfa_challenge_key (id, secret) VALUES(1, ?)"));
+             PreparedStatement get = conn.prepareStatement(GET_CHALLENGE_KEY)) {
+            insert.setBytes(1, fresh);
+            insert.executeUpdate();
+            ResultSet rs = get.executeQuery();
+            if (! rs.next())
+                throw new IllegalStateException("No mfa challenge key");
+            return rs.getBytes("secret");
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
@@ -825,13 +876,14 @@ public class JdbcAccount implements LoginCache {
     public void registerSecurityKeyComplete(String username, String keyName, MultiFactorAuthResponse resp) {
         if (keyName.length() > 32)
             throw new IllegalStateException("Max second factor name length is 32 characters");
-        byte[] challenge = getChallenge(username);
         if (resp.response.isA())
             throw new IllegalStateException("Not MFA response!");
         byte[] attestationObject = resp.response.b().authenticatorData;
         byte[] clientDataJson = resp.response.b().clientDataJson;
+        byte[] challenge = checkChallenge(username, REGISTER_CHALLENGE, clientDataJson);
         Webauthn.Verifier authenticator = Webauthn.validateRegistration(webauthn, origin, rpId, challenge,
                 attestationObject, clientDataJson);
+        useChallenge(challenge);
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(CREATE_MFA)) {
             stmt.setString(1, username);

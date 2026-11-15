@@ -68,9 +68,13 @@ public interface SqlSupplier {
                 "CREATE INDEX IF NOT EXISTS mfa_index ON mfa (username);";
     }
 
-    default String createMfaChallengeTableCommand() {
-        return "CREATE TABLE IF NOT EXISTS mfa_challenge (username text primary key not null, challenge " + getByteArrayType() + " not null); " +
-                "CREATE UNIQUE INDEX IF NOT EXISTS mfa_challenge_index ON mfa_challenge (username);";
+    default String createMfaChallengeKeyTableCommand() {
+        return "CREATE TABLE IF NOT EXISTS mfa_challenge_key (id " + sqlInteger() + " primary key not null, secret " + getByteArrayType() + " not null);";
+    }
+
+    default String createMfaUsedChallengeTableCommand() {
+        return "CREATE TABLE IF NOT EXISTS mfa_used_challenge (challenge " + getByteArrayType() + " primary key not null, expiry " + sqlInteger() + " not null); " +
+                "CREATE INDEX IF NOT EXISTS mfa_used_challenge_expiry_index ON mfa_used_challenge (expiry);";
     }
 
     default String createLoginFailuresTableCommand() {
