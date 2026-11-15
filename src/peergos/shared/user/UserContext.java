@@ -619,7 +619,7 @@ public class UserContext {
                                     CryptreeNode newRoot = root.withWriterLink(oldCap.rBaseKey,
                                             SymmetricLinkToSigner.fromPair(oldCap.wBaseKey.get(), newSigner));
                                     if (from.isPresent())
-                                        newRoot = newRoot.withParentLink(root.getParentKey(oldCap.rBaseKey),
+                                        newRoot = newRoot.withParentLink(oldCap.rBaseKey,
                                                 root.getParentCapability(oldCap.rBaseKey).get()
                                                         .withWritingKey(Optional.of(from.get().holderSigner.publicKeyHash)));
                                     CryptreeNode rewritten = newRoot;
