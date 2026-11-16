@@ -7,16 +7,53 @@ import peergos.server.sync.FileState;
 import peergos.shared.Crypto;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.Chunk;
+import peergos.shared.user.fs.HashBranch;
 import peergos.shared.user.fs.HashTree;
 import peergos.shared.util.Pair;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.Random;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class HashTreeTests {
     private static Crypto crypto = Main.initCrypto();
+
+    @Test
+    public void treeFromStoredBranches() {
+        Random r = new Random(1);
+        for (int chunkSize : List.of(Chunk.LEGACY_SIZE, Chunk.DEFAULT_SIZE)) {
+            for (int nChunks : List.of(1024, 1025, 2500, 1024 * 1024 + 5)) {
+                List<byte[]> chunkHashes = IntStream.range(0, nChunks).mapToObj(i -> {
+                    byte[] h = new byte[32];
+                    r.nextBytes(h);
+                    return h;
+                }).collect(Collectors.toList());
+                HashTree tree = HashTree.build(chunkHashes, chunkSize, crypto.hasher).join();
+                long size = (long) nChunks * chunkSize - 7;
+                List<HashBranch> branches = IntStream.range(0, (nChunks + 1023) / 1024)
+                        .mapToObj(b -> tree.branch(b * 1024L))
+                        .collect(Collectors.toList());
+                HashTree stored = HashTree.fromBranches(branches);
+                Assert.assertEquals(tree, stored);
+                Assert.assertEquals(Optional.of(tree), HashTree.verified(stored, size, chunkSize, crypto.hasher).join());
+
+                // a file that has grown since
+                Assert.assertEquals(Optional.empty(), HashTree.verified(stored, size + chunkSize, chunkSize, crypto.hasher).join());
+                if (branches.size() > 1) {
+                    // a later branch left over from an earlier version of the file
+                    List<byte[]> changed = new java.util.ArrayList<>(chunkHashes);
+                    changed.set(nChunks - 1, new byte[32]);
+                    HashTree other = HashTree.build(changed, chunkSize, crypto.hasher).join();
+                    List<HashBranch> mixed = new java.util.ArrayList<>(branches);
+                    mixed.set(mixed.size() - 1, other.branch((mixed.size() - 1) * 1024L));
+                    Assert.assertEquals(Optional.empty(),
+                            HashTree.verified(HashTree.fromBranches(mixed), size, chunkSize, crypto.hasher).join());
+                }
+            }
+        }
+    }
 
     @Test
     public void chunks1K() {
