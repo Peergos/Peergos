@@ -75,11 +75,35 @@ public class HashTree implements Cborable {
         return Objects.hash(rootHash, level1, level2, level3);
     }
 
+    /** @param branches one per 1024 chunks, in order. Each carries the level 2 and 3 blobs above it, so
+     *                 those repeat across branches and are only taken where a new one starts. */
     public static HashTree fromBranches(List<HashBranch> branches) {
-        List<ChunkHashList> level1 = branches.stream().flatMap(b -> b.level1.stream()).collect(Collectors.toList());
-        List<ChunkHashList> level2 = branches.stream().flatMap(b -> b.level2.stream()).collect(Collectors.toList());
-        List<ChunkHashList> level3 = branches.stream().flatMap(b -> b.level3.stream()).collect(Collectors.toList());
+        List<ChunkHashList> level1 = new ArrayList<>();
+        List<ChunkHashList> level2 = new ArrayList<>();
+        List<ChunkHashList> level3 = new ArrayList<>();
+        for (int i = 0; i < branches.size(); i++) {
+            HashBranch b = branches.get(i);
+            b.level1.ifPresent(level1::add);
+            if (i % 1024 == 0)
+                b.level2.ifPresent(level2::add);
+            if (i % (1024 * 1024) == 0)
+                b.level3.ifPresent(level3::add);
+        }
         return new HashTree(branches.get(0).rootHash, level1, level2, level3);
+    }
+
+    /** Rebuild a tree from the chunk hashes of one read back from a file's chunks, which is only
+     *  to be trusted if they are all there and still give the file's root hash.
+     */
+    public static CompletableFuture<Optional<HashTree>> verified(HashTree stored, long fileSize, int chunkSize, Hasher hasher) {
+        List<byte[]> chunkHashes = stored.level1.stream()
+                .flatMap(l -> l.hashes().stream())
+                .collect(Collectors.toList());
+        long nChunks = fileSize == 0 ? 1 : (fileSize + chunkSize - 1) / chunkSize;
+        if (chunkHashes.size() != nChunks)
+            return Futures.of(Optional.empty());
+        return build(chunkHashes, chunkSize, hasher)
+                .thenApply(rebuilt -> rebuilt.equals(stored) ? Optional.of(rebuilt) : Optional.empty());
     }
 
     /**

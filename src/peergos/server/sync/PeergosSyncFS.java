@@ -33,6 +33,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -500,6 +501,9 @@ public class PeergosSyncFS implements SyncFilesystem {
                         .orElseThrow(() -> new IllegalStateException("Invalid hash branch")),
                         Collections.emptyList(),
                         Collections.emptyList());
+            Optional<HashTree> stored = storedHash(f);
+            if (stored.isPresent())
+                return stored.get();
         }
 
         long size = f.getSize();
@@ -535,6 +539,21 @@ public class PeergosSyncFS implements SyncFilesystem {
             return HashTree.build(chunkHashes, fileChunkSize, context.crypto.hasher).join();
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    /** The rest of a large file's tree is on every 1024th chunk, which saves downloading the file to hash it. */
+    private Optional<HashTree> storedHash(FileWrapper f) {
+        FileProperties props = f.getFileProperties();
+        try {
+            Optional<HashTree> stored = f.getHash(context.network, context.crypto.hasher).join();
+            if (stored.isEmpty())
+                return Optional.empty();
+            return HashTree.verified(stored.get(), props.size, props.chunkSize, context.crypto.hasher).join();
+        } catch (Exception e) {
+            // a chunk without its part of the tree, so hash the file itself
+            LOG.log(Level.FINE, e, () -> "Couldn't read the stored hash of " + f.getName());
+            return Optional.empty();
         }
     }
 
