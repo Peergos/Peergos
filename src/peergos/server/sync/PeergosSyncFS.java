@@ -598,7 +598,12 @@ public class PeergosSyncFS implements SyncFilesystem {
         Consumer<Set<FileWrapper>> collector = children -> {
             directChildCount.addAndGet(children.size());
             for (FileWrapper child : children) {
-                Path childPath = basePath.resolve(child.getName());
+                String name = child.getName();
+                if (name.isEmpty() || name.equals(".") || name.equals("..") || name.contains("/") || name.contains("\\")) {
+                    LOG.warning("Sync: skipped a file whose name can't be a local file name: " + name);
+                    continue;
+                }
+                Path childPath = basePath.resolve(name);
                 FileProps childProps = new FileProps(root.relativize(childPath).normalize().toString().replaceAll("\\\\", "/"),
                         child.getFileProperties().modified.toInstant(ZoneOffset.UTC).toEpochMilli(),
                         child.getSize(), Optional.of(child));

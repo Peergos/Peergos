@@ -48,7 +48,7 @@ public class LocalFileSystem extends StagedFileSystem {
     public static final long MIN_DIFF_STAGED_SIZE = 100 * 1024 * 1024;
     private final Hasher hasher;
     private final long minDiffStagedSize;
-    private final Path root;
+    private final Path root, base;
     private final boolean hasBackSlashes;
 
     public LocalFileSystem(Path root, Hasher hasher) {
@@ -57,6 +57,7 @@ public class LocalFileSystem extends StagedFileSystem {
 
     public LocalFileSystem(Path root, Hasher hasher, long minDiffStagedSize) {
         this.root = root;
+        this.base = root.toAbsolutePath().normalize();
         this.hasher = hasher;
         this.minDiffStagedSize = minDiffStagedSize;
         if (! root.toFile().exists())
@@ -92,23 +93,34 @@ public class LocalFileSystem extends StagedFileSystem {
         return PathUtil.getUntrimmed(p);
     }
 
+    private Path local(Path p) {
+        Path full = base.resolve(p).normalize();
+        if (p.isAbsolute() || ! full.startsWith(base))
+            throw new IllegalStateException("Refusing a path outside the sync folder: " + p);
+        return full;
+    }
+
+    private Path local(String p) {
+        return local(root.getFileSystem().getPath(p));
+    }
+
     @Override
     public boolean exists(Path p) {
-        return root.resolve(p).toFile().exists();
+        return local(p).toFile().exists();
     }
 
     @Override
     public void mkdirs(Path p) {
-        File f = root.resolve(p).toFile();
+        File f = local(p).toFile();
         if (f.exists() && f.isDirectory())
             return;
         if (!f.mkdirs() && ! f.exists())
-            throw new IllegalStateException("Couldn't create " + root.resolve(p));
+            throw new IllegalStateException("Couldn't create " + local(p));
     }
 
     @Override
     public boolean canCreate(Path p) {
-        for (Path dir = root.resolve(p).getParent(); dir != null && ! dir.equals(root); dir = dir.getParent())
+        for (Path dir = local(p).getParent(); dir != null && ! dir.equals(base); dir = dir.getParent())
             if (Files.exists(dir, LinkOption.NOFOLLOW_LINKS))
                 return Files.isDirectory(dir, LinkOption.NOFOLLOW_LINKS);
         return true;
@@ -116,7 +128,7 @@ public class LocalFileSystem extends StagedFileSystem {
 
     @Override
     public void delete(Path p) {
-        p = root.resolve(p);
+        p = local(p);
         try {
             if (Files.isDirectory(p)) {
                 List<Path> children;
@@ -147,7 +159,7 @@ public class LocalFileSystem extends StagedFileSystem {
         Set<String> deleted = new java.util.HashSet<>();
         for (java.util.Map.Entry<String, FileState> e : scanned.entrySet()) {
             Path p = dir.resolve(e.getKey());
-            Path full = root.resolve(p);
+            Path full = local(p);
             FileState s = e.getValue();
             if (! Files.exists(full, LinkOption.NOFOLLOW_LINKS)) {
                 deleted.add(e.getKey());
@@ -166,8 +178,8 @@ public class LocalFileSystem extends StagedFileSystem {
     @Override
     public void moveTo(Path src, Path target) {
         try {
-            Files.createDirectories(root.resolve(target).getParent());
-            Files.move(root.resolve(src), root.resolve(target));
+            Files.createDirectories(local(target).getParent());
+            Files.move(local(src), local(target));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -175,12 +187,12 @@ public class LocalFileSystem extends StagedFileSystem {
 
     @Override
     public long getLastModified(Path p) {
-        return root.resolve(p).toFile().lastModified();
+        return local(p).toFile().lastModified();
     }
 
     @Override
     public void setModificationTime(Path p, long modificationTime) {
-        root.resolve(p).toFile().setLastModified(modificationTime);
+        local(p).toFile().setLastModified(modificationTime);
     }
 
     @Override
@@ -191,12 +203,12 @@ public class LocalFileSystem extends StagedFileSystem {
 
     @Override
     public long size(Path p) {
-        return root.resolve(p).toFile().length();
+        return local(p).toFile().length();
     }
 
     @Override
     public void truncate(Path p, long size) throws IOException {
-        try (RandomAccessFile raf = new RandomAccessFile(root.resolve(p).toFile(), "rw")) {
+        try (RandomAccessFile raf = new RandomAccessFile(local(p).toFile(), "rw")) {
             raf.setLength(size);
         }
     }
@@ -212,7 +224,7 @@ public class LocalFileSystem extends StagedFileSystem {
                                             ResumeUploadProps props,
                                             Supplier<Boolean> isCancelled,
                                             Consumer<String> progress) throws IOException {
-        try (RandomAccessFile raf = new RandomAccessFile(root.resolve(p).toFile(), "rw")) {
+        try (RandomAccessFile raf = new RandomAccessFile(local(p).toFile(), "rw")) {
             raf.seek(fileOffset);
             byte[] buf = new byte[4096];
             long done = 0;
@@ -231,7 +243,7 @@ public class LocalFileSystem extends StagedFileSystem {
             if (modificationTime.isPresent()) {
                 long time = modificationTime.get().toInstant(ZoneOffset.UTC).toEpochMilli();
                 if (time >= 0) {
-                    root.resolve(p).toFile().setLastModified(time);
+                    local(p).toFile().setLastModified(time);
                     return modificationTime;
                 } else
                     return Optional.empty();
@@ -242,7 +254,7 @@ public class LocalFileSystem extends StagedFileSystem {
 
     @Override
     public AsyncReader getBytes(Path p, long fileOffset) throws IOException {
-        FileAsyncReader reader = new FileAsyncReader(root.resolve(p).toFile());
+        FileAsyncReader reader = new FileAsyncReader(local(p).toFile());
         return reader.seek(fileOffset).join();
     }
 
@@ -262,22 +274,22 @@ public class LocalFileSystem extends StagedFileSystem {
     @Override
     protected Path partialCopy(Path p) throws IOException {
         Path partial = partialCopyPath(p);
-        Path full = root.resolve(partial);
+        Path full = local(partial);
         if (Files.exists(full))
             return partial;
         Path diff = withSuffix(partial, ".diff");
-        if (Files.exists(root.resolve(diff)))
+        if (Files.exists(local(diff)))
             return diff;
         Files.createDirectories(full.getParent());
-        if (Files.isRegularFile(root.resolve(p)) && Files.size(root.resolve(p)) > minDiffStagedSize) {
+        if (Files.isRegularFile(local(p)) && Files.size(local(p)) > minDiffStagedSize) {
             // the parts the copy changes are written here at their own offsets, leaving the rest unwritten
-            Files.newByteChannel(root.resolve(diff), Set.of(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE,
+            Files.newByteChannel(local(diff), Set.of(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE,
                     StandardOpenOption.SPARSE)).close();
             return diff;
         }
         Path tmp = full.resolveSibling(full.getFileName() + ".tmp");
-        if (Files.isRegularFile(root.resolve(p)))
-            Files.copy(root.resolve(p), tmp, StandardCopyOption.REPLACE_EXISTING);
+        if (Files.isRegularFile(local(p)))
+            Files.copy(local(p), tmp, StandardCopyOption.REPLACE_EXISTING);
         else
             Files.write(tmp, new byte[0]);
         Files.move(tmp, full, StandardCopyOption.ATOMIC_MOVE);
@@ -285,24 +297,24 @@ public class LocalFileSystem extends StagedFileSystem {
     }
 
     private void moveIntoPlace(Path p) throws IOException {
-        Path target = root.resolve(p);
+        Path target = local(p);
         Files.createDirectories(target.getParent());
-        Files.move(root.resolve(partialCopyPath(p)), target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        Files.move(local(partialCopyPath(p)), target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
     }
 
     @Override
     protected void completeCopy(Path p, List<Pair<Long, Long>> ranges, long size) throws IOException {
         Path partial = partialCopyPath(p);
-        Path diff = root.resolve(withSuffix(partial, ".diff"));
+        Path diff = local(withSuffix(partial, ".diff"));
         if (! Files.exists(diff)) {
             moveIntoPlace(p);
             return;
         }
         // from here the file is part written, so a stop has to be finished from the parts here, with no network needed
-        Path applying = root.resolve(withSuffix(partial, ".applying"));
+        Path applying = local(withSuffix(partial, ".applying"));
         if (! Files.exists(applying))
             Files.createFile(applying);
-        Path target = root.resolve(p);
+        Path target = local(p);
         try (FileChannel from = FileChannel.open(diff, StandardOpenOption.READ);
              FileChannel to = FileChannel.open(target, StandardOpenOption.WRITE)) {
             for (Pair<Long, Long> range : ranges) {
@@ -325,15 +337,15 @@ public class LocalFileSystem extends StagedFileSystem {
 
     @Override
     protected boolean completingCopy(Path p) {
-        return Files.exists(root.resolve(withSuffix(partialCopyPath(p), ".applying")));
+        return Files.exists(local(withSuffix(partialCopyPath(p), ".applying")));
     }
 
     @Override
     protected void discardCopy(Path p) {
         try {
-            Files.deleteIfExists(root.resolve(withSuffix(partialCopyPath(p), ".diff")));
-            Files.deleteIfExists(root.resolve(withSuffix(partialCopyPath(p), ".applying")));
-            Files.deleteIfExists(root.resolve(partialCopyPath(p)));
+            Files.deleteIfExists(local(withSuffix(partialCopyPath(p), ".diff")));
+            Files.deleteIfExists(local(withSuffix(partialCopyPath(p), ".applying")));
+            Files.deleteIfExists(local(partialCopyPath(p)));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -341,7 +353,7 @@ public class LocalFileSystem extends StagedFileSystem {
 
     @Override
     public void discardCopies() {
-        Path dir = root.resolve(PARTIAL_COPIES_DIR);
+        Path dir = local(PARTIAL_COPIES_DIR);
         if (! Files.isDirectory(dir))
             return;
         try (Stream<Path> files = Files.list(dir)) {
@@ -357,13 +369,13 @@ public class LocalFileSystem extends StagedFileSystem {
     public void uploadSubtree(Stream<FileWrapper.FolderUploadProperties> directories) {
         byte[] buf = new byte[5*1024*1024];
         directories.forEach(folder -> {
-            Path dir = root.resolve(folder.path());
+            Path dir = local(folder.path());
             dir.toFile().mkdirs();
             for (FileWrapper.FileUploadProperties file : folder.files) {
                 // written aside and moved into place, as an upload to Peergos is only seen once it is complete
                 Path target = dir.resolve(file.filename);
-                Path partial = root.resolve(partialCopyPath(root.relativize(target))).resolveSibling(
-                        partialCopyPath(root.relativize(target)).getFileName() + ".upload");
+                Path partial = local(partialCopyPath(base.relativize(target))).resolveSibling(
+                        partialCopyPath(base.relativize(target)).getFileName() + ".upload");
                 try (AsyncReader reader = file.fileData.get()) {
                     long written = 0;
                     Files.createDirectories(partial.getParent());
@@ -397,7 +409,7 @@ public class LocalFileSystem extends StagedFileSystem {
 
     @Override
     public Optional<Thumbnail> getThumbnail(Path p) {
-        Path fullPath = root.resolve(p);
+        Path fullPath = local(p);
         try {
             byte[] start = new byte[MimeTypes.HEADER_BYTES_TO_IDENTIFY_MIME_TYPE];
             int read;
@@ -428,7 +440,7 @@ public class LocalFileSystem extends StagedFileSystem {
 
     @Override
     public HashTree hashFile(Path p, Optional<FileWrapper> meta, String relPath, SyncState syncedVersions, long size, int chunkSize) {
-        return ScryptJava.hashFile(root.resolve(p), hasher, size, chunkSize);
+        return ScryptJava.hashFile(local(p), hasher, size, chunkSize);
     }
 
     @Override
