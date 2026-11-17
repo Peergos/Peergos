@@ -49,7 +49,7 @@ public class BlockAuth implements Cborable {
     }
 
     private static long timeToPackedLong(String t) {
-        int year = Integer.parseInt(t.substring(0, 4)) - 2000; // up to 38 bits
+        long year = Integer.parseInt(t.substring(0, 4)) - 2000; // up to 38 bits
         int month = Integer.parseInt(t.substring(4, 6)); // 4 bits
         int day = Integer.parseInt(t.substring(6, 8)); // 5 bits
         int hour = Integer.parseInt(t.substring(9, 11)); // 5 bits
