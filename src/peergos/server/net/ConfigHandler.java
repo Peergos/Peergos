@@ -54,7 +54,7 @@ public class ConfigHandler implements HttpHandler {
                 throw new IllegalStateException("server-url must not include query parameters or fragments");
             boolean plainHttpAllowed = "http".equalsIgnoreCase(target.getProtocol()) && Main.allowsPlainHttp(target.getHost());
             if (! "https".equalsIgnoreCase(target.getProtocol()) && ! plainHttpAllowed)
-                throw new IllegalStateException("desktop/proxy mode requires https, or http only for a server on this machine or the local network");
+                throw new IllegalStateException("desktop/proxy mode requires https, or http only for a server on this machine, the local network or a VPN");
             return target.toString();
         } catch (MalformedURLException e) {
             throw new IllegalStateException("Invalid server-url: " + trimmed, e);

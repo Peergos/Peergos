@@ -18,8 +18,8 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.Optional;
 
-/** The desktop app may talk plain http to a server on this machine or the local network, but
- *  nothing further away.
+/** The desktop app may talk plain http to a server on this machine, the local network or a private
+ *  VPN, but nothing further away.
  */
 public class ServerUrlTests {
 
@@ -31,12 +31,19 @@ public class ServerUrlTests {
                 "http://127.0.0.1:8000",
                 "http://192.168.1.10:8000",
                 "http://10.0.0.5:8000",
-                "http://172.16.4.2:8000"})
+                "http://172.16.4.2:8000",
+                // NetBird and Tailscale peers: the shared address space, and IPv6 unique local
+                "http://100.64.0.10:8000",
+                "http://100.127.255.254:8000",
+                "http://[fd7a:115c:a1e0::1]:8000"})
             Assert.assertEquals(ok, ConfigHandler.validateServerUrl(ok));
 
         for (String refused : new String[]{
                 "http://8.8.8.8:8000",
                 "http://172.32.0.1:8000",
+                "http://100.63.255.254:8000",
+                "http://100.128.0.1:8000",
+                "http://[2001:db8::1]:8000",
                 "http://peergos.net"}) {
             try {
                 ConfigHandler.validateServerUrl(refused);
