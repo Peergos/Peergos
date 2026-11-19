@@ -798,9 +798,27 @@ public class Main extends Builder {
         return false;
     }
 
-    /** Plain http only where the traffic stays on this machine or the local network. */
+    /** Plain http only where the traffic stays on this machine, the local network or a private VPN. */
     public static boolean allowsPlainHttp(String host) {
-        return isLoopbackHost(host) || isLanIP(host);
+        return isLoopbackHost(host) || isLanIP(host) || isPrivateVpnIP(host);
+    }
+
+    /**
+     * An address a mesh VPN gives its peers: the shared address space 100.64.0.0/10 (RFC 6598),
+     * which NetBird and Tailscale both use, or an IPv6 unique local address, fc00::/7. The tunnel
+     * encrypts what crosses it, so http to such a peer is as private as http on the local network.
+     * Neither is only a VPN's - carrier-grade NAT uses the first, local networks the second - but
+     * neither is reachable from the internet at large, which is what this check is for.
+     */
+    static boolean isPrivateVpnIP(String host) {
+        try {
+            byte[] ip = InetAddress.getByName(host).getAddress();
+            if (ip.length == 4)
+                return (ip[0] & 0xff) == 100 && (ip[1] & 0xc0) == 64;
+            return (ip[0] & 0xfe) == 0xfc;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private static String getAppServerUrl(Args args) {
@@ -811,7 +829,7 @@ public class Main extends Builder {
             URL target = new URL(serverUrl);
             boolean plainHttpAllowed = "http".equalsIgnoreCase(target.getProtocol()) && allowsPlainHttp(target.getHost());
             if (! "https".equalsIgnoreCase(target.getProtocol()) && ! plainHttpAllowed)
-                throw new IllegalStateException("Warning: desktop/proxy mode should use https, or http only for a server on this machine or the local network: " + serverUrl);
+                throw new IllegalStateException("Warning: desktop/proxy mode should use https, or http only for a server on this machine, the local network or a VPN: " + serverUrl);
             return serverUrl;
         } catch (MalformedURLException e) {
             throw new IllegalStateException("Invalid server-url: " + serverUrl, e);
