@@ -226,9 +226,8 @@ public class DavServlet extends HttpServlet {
                     caldav("valid-calendar-data") : carddav("valid-address-data"));
             return;
         }
-        slot.store.putObject(slot.collection.directory, slot.name, content.get(), slot.existing);
-        slot.store.getObject(slot.collection.directory, slot.name)
-                .ifPresent(written -> resp.setHeader("ETag", written.etag()));
+        ObjectRef written = slot.store.putObject(slot.collection.directory, slot.name, content.get(), slot.existing);
+        resp.setHeader("ETag", written.etag());
         resp.setStatus(slot.existing.isPresent()
                 ? HttpServletResponse.SC_NO_CONTENT : HttpServletResponse.SC_CREATED);
     }
