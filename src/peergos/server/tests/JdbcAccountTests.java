@@ -317,6 +317,29 @@ public class JdbcAccountTests {
         Assert.assertEquals("ok", attempt(username, reader, Optional.of(right), device));
     }
 
+    @Test
+    public void passwordGuessesWithoutTheSecondFactorDontLockItOut() throws Exception {
+        String username = "alice";
+        PublicSigningKey reader = reader();
+        db.setLoginData(loginFor(username, reader)).join();
+        TimeBasedOneTimePasswordGenerator totp =
+                new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, TotpKey.ALGORITHM);
+        TotpKey key = db.addTotpFactor(username).join();
+        db.enableTotpFactor(username, key.credentialId, code(totp, key)).join();
+
+        for (int i = 0; i < LoginThrottle.MAX_PASSWORD_FAILURES; i++)
+            Assert.assertTrue(attempt(username, reader(), Optional.of(new MultiFactorAuthResponse(key.credentialId,
+                    Either.a(wrongCode(totp, key, i)))), Optional.empty()).contains("Invalid TOTP code"));
+        // without a valid code, the password budget is used up, whether or not the password is right
+        Assert.assertEquals("throttled", attempt(username, reader(), Optional.of(new MultiFactorAuthResponse(key.credentialId,
+                Either.a(wrongCode(totp, key, 0)))), Optional.empty()));
+        Assert.assertEquals("throttled", attempt(username, reader, Optional.of(new MultiFactorAuthResponse(key.credentialId,
+                Either.a(wrongCode(totp, key, 0)))), Optional.empty()));
+
+        MultiFactorAuthResponse right = new MultiFactorAuthResponse(key.credentialId, Either.a(code(totp, key)));
+        Assert.assertEquals("ok", attempt(username, reader, Optional.of(right), Optional.empty()));
+    }
+
     /** Without a valid code, the answer must not depend on whether the password was right; with one, a user who
      *  mistyped the password is told so, rather than to try their code again. */
     @Test

@@ -346,12 +346,25 @@ public class JdbcAccount implements LoginCache {
         if (! hasEntry(username))
             return Futures.errored(new IllegalStateException(INCORRECT_LOGIN));
         LoginThrottle.Device device = throttle.device(username, deviceToken);
-        throttle.reservePasswordAttempt(username, device, authorisedReader);
+        if (! needsMfa)
+            throttle.reservePasswordAttempt(username, device, authorisedReader, false);
         Optional<UserStaticData> entry = lookupEntryData(username, authorisedReader);
+        if (needsMfa) {
+            // The code is checked first so that a guess with a valid one is counted apart from the others, and somebody
+            // guessing without the second factor can't lock out a login with it. Nothing is answered until the password
+            // guess has been recorded, so parallel guesses still can't get past the limit.
+            try {
+                validateSecondFactor(username, enabled, mfa.get(), device, entry.isPresent());
+            } catch (RuntimeException e) {
+                throttle.reservePasswordAttempt(username, device, authorisedReader, false);
+                if (entry.isPresent())
+                    throttle.releasePasswordAttempt(username, device, authorisedReader, false);
+                throw e;
+            }
+            throttle.reservePasswordAttempt(username, device, authorisedReader, true);
+        }
         if (entry.isPresent())
-            throttle.releasePasswordAttempt(username, device, authorisedReader);
-        if (needsMfa)
-            validateSecondFactor(username, enabled, mfa.get(), device, entry.isPresent());
+            throttle.releasePasswordAttempt(username, device, authorisedReader, needsMfa);
         if (entry.isEmpty())
             return Futures.errored(new IllegalStateException(INCORRECT_LOGIN));
         return Futures.of(new LoginResponse(Either.a(entry.get()), throttle.loggedIn(username, device)));

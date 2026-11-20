@@ -129,14 +129,16 @@ public class LoginThrottle {
         }
     }
 
-    /** Throws if this device has used up its password guesses, unless this is one it has already made. */
-    public void reservePasswordAttempt(String username, Device device, PublicSigningKey reader) {
-        if (! reserve(username, passwordBucket(device), readerId(reader), MAX_PASSWORD_FAILURES))
+    /** Throws if this device has used up its password guesses, unless this is one it has already made. Guesses
+     *  sent with a valid second factor have a budget of their own, which nobody without the factor can use up.
+     */
+    public void reservePasswordAttempt(String username, Device device, PublicSigningKey reader, boolean secondFactorValid) {
+        if (! reserve(username, passwordBucket(device, secondFactorValid), readerId(reader), MAX_PASSWORD_FAILURES))
             throw new IllegalStateException(THROTTLED_ERROR);
     }
 
-    public void releasePasswordAttempt(String username, Device device, PublicSigningKey reader) {
-        release(username, passwordBucket(device), readerId(reader));
+    public void releasePasswordAttempt(String username, Device device, PublicSigningKey reader, boolean secondFactorValid) {
+        release(username, passwordBucket(device, secondFactorValid), readerId(reader));
     }
 
     /** Only someone who has the password can use up this budget. */
@@ -165,8 +167,8 @@ public class LoginThrottle {
         release(username, passwordCorrect ? mfaBucket(device) : wrongPasswordMfaBucket(device), codeId(credentialId, code));
     }
 
-    private static String passwordBucket(Device device) {
-        return "pw:" + device.bucketId();
+    private static String passwordBucket(Device device, boolean secondFactorValid) {
+        return (secondFactorValid ? "pw-mfa:" : "pw:") + device.bucketId();
     }
 
     private static String mfaBucket(Device device) {
