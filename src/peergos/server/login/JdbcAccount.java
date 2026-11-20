@@ -346,12 +346,25 @@ public class JdbcAccount implements LoginCache {
         if (! hasEntry(username))
             return Futures.errored(new IllegalStateException(INCORRECT_LOGIN));
         LoginThrottle.Device device = throttle.device(username, deviceToken);
-        throttle.reservePasswordAttempt(username, device, authorisedReader);
+        if (! needsMfa)
+            throttle.reservePasswordAttempt(username, device, authorisedReader, false);
         Optional<UserStaticData> entry = lookupEntryData(username, authorisedReader);
+        if (needsMfa) {
+            // The code is checked first so that a guess with a valid one is counted apart from the others, and somebody
+            // guessing without the second factor can't lock out a login with it. Nothing is answered until the password
+            // guess has been recorded, so parallel guesses still can't get past the limit.
+            try {
+                validateSecondFactor(username, enabled, mfa.get(), device, entry.isPresent());
+            } catch (RuntimeException e) {
+                throttle.reservePasswordAttempt(username, device, authorisedReader, false);
+                if (entry.isPresent())
+                    throttle.releasePasswordAttempt(username, device, authorisedReader, false);
+                throw e;
+            }
+            throttle.reservePasswordAttempt(username, device, authorisedReader, true);
+        }
         if (entry.isPresent())
-            throttle.releasePasswordAttempt(username, device, authorisedReader);
-        if (needsMfa)
-            validateSecondFactor(username, enabled, mfa.get(), device, entry.isPresent());
+            throttle.releasePasswordAttempt(username, device, authorisedReader, needsMfa);
         if (entry.isEmpty())
             return Futures.errored(new IllegalStateException(INCORRECT_LOGIN));
         return Futures.of(new LoginResponse(Either.a(entry.get()), throttle.loggedIn(username, device)));
@@ -392,18 +405,23 @@ public class JdbcAccount implements LoginCache {
                 type != MultiFactorAuthMethod.Type.MOUNT)
             throw new IllegalStateException("Not a code based credential!");
         String code = mfaAuth.response.a();
+        // The code is checked with a wrong password too, so only someone holding a valid one is told it was the
+        // password that was wrong. That makes it an oracle for the code, so those guesses are limited as well, and
+        // past the limit get the answer a wrong code does. A backup code is only used up by a login it lets in.
         if (passwordCorrect)
             throttle.reserveMfaAttempt(username, device, credentialId, code);
-        else
-            throttle.checkMfaAttempt(username, device, credentialId, code);
-        // The code is checked with a wrong password too, so only someone holding a valid one is told it was the
-        // password that was wrong. A backup code is only used up by a login it lets in.
+        else if (! throttle.reserveWrongPasswordMfaAttempt(username, device, credentialId, code))
+            throw invalidCode(type, credentialId);
         if (type == MultiFactorAuthMethod.Type.BACKUP_CODES)
             validateBackupCode(username, credentialId, code, passwordCorrect);
         else
             validateTotpCode(username, credentialId, code);
-        if (passwordCorrect)
-            throttle.releaseMfaAttempt(username, device, credentialId, code);
+        throttle.releaseMfaAttempt(username, device, passwordCorrect, credentialId, code);
+    }
+
+    private static IllegalStateException invalidCode(MultiFactorAuthMethod.Type type, byte[] credentialId) {
+        String kind = type == MultiFactorAuthMethod.Type.BACKUP_CODES ? "backup" : "TOTP";
+        return new IllegalStateException("Invalid " + kind + " code for credId " + ArrayOps.bytesToHex(credentialId));
     }
 
     public CompletableFuture<UserStaticData> getEntryData(String username, PublicSigningKey authorisedReader) {
@@ -679,7 +697,7 @@ public class JdbcAccount implements LoginCache {
                     .filter(h -> ! MessageDigest.isEqual(h, hash))
                     .collect(Collectors.toList());
             if (remaining.size() == unused.size())
-                throw new IllegalStateException("Invalid backup code for credId " + ArrayOps.bytesToHex(credentialId));
+                throw invalidCode(MultiFactorAuthMethod.Type.BACKUP_CODES, credentialId);
             if (! useUp)
                 return;
             if (burnBackupCode(username, credentialId, current, remaining))
@@ -732,7 +750,7 @@ public class JdbcAccount implements LoginCache {
             String previousCode = totp.generateOneTimePasswordString(key, now.minusSeconds(30));
             if (previousCode.equals(code))
                 return;
-            throw new IllegalStateException("Invalid TOTP code for credId " + ArrayOps.bytesToHex(credentialId));
+            throw invalidCode(MultiFactorAuthMethod.Type.TOTP, credentialId);
         } catch (InvalidKeyException e) {
             throw new RuntimeException(e);
         }
