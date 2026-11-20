@@ -3,6 +3,7 @@ package peergos.server.tests;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.Assert;
 import org.junit.Test;
+import peergos.server.Main;
 import peergos.server.UserService;
 import peergos.server.net.ConfigHandler;
 import peergos.shared.io.ipfs.api.JSONParser;
@@ -35,7 +36,11 @@ public class ServerUrlTests {
                 // NetBird and Tailscale peers: the shared address space, and IPv6 unique local
                 "http://100.64.0.10:8000",
                 "http://100.127.255.254:8000",
-                "http://[fd7a:115c:a1e0::1]:8000"})
+                "http://[fd7a:115c:a1e0::1]:8000",
+                "http://[0:0:0:0:0:0:0:1]:8000",
+                // a VPN's own names: Tailscale MagicDNS and NetBird
+                "http://machine.tailnet.ts.net:8000",
+                "http://peer.netbird.cloud:8000"})
             Assert.assertEquals(ok, ConfigHandler.validateServerUrl(ok));
 
         for (String refused : new String[]{
@@ -44,12 +49,39 @@ public class ServerUrlTests {
                 "http://100.63.255.254:8000",
                 "http://100.128.0.1:8000",
                 "http://[2001:db8::1]:8000",
-                "http://peergos.net"}) {
+                "http://peergos.net",
+                // a name is never looked up, as it could resolve to a private address now and a public one later
+                "http://nas.local:8000",
+                "http://myserver:8000",
+                "http://attacker-ts.net:8000",
+                "http://peer.netbird.cloud.attacker.com:8000",
+                // forms some parsers read differently: octal, a single number, a zone
+                "http://010.0.0.1:8000",
+                "http://2130706433:8000",
+                "http://167772161:8000",
+                "http://10.1:8000",
+                "http://[fe80::1%25eth0]:8000",
+                // link local is not the local network's addressing
+                "http://169.254.1.1:8000"}) {
             try {
                 ConfigHandler.validateServerUrl(refused);
                 Assert.fail("Plain http to " + refused + " should be refused");
             } catch (IllegalStateException expected) {}
         }
+    }
+
+    /** The Android app checks the host of every request it sends, as it comes, so the rule can't lean on a url parser. */
+    @Test
+    public void plainHttpRuleOnRawHosts() {
+        for (String ok : new String[]{"localhost", "LOCALHOST", "127.0.0.2", "[::1]", "[FD00::1]", "172.16.0.1",
+                "172.31.255.255", "192.168.0.1", "100.64.0.1", "a.ts.net", "Machine.Tailnet.TS.NET", "peer-1.netbird.cloud"})
+            Assert.assertTrue(ok, Main.allowsPlainHttp(ok));
+        for (String refused : new String[]{null, "", "172.15.255.255", "172.32.0.1", "192.169.0.1", "100.63.255.255",
+                "100.128.0.1", "[fbff::1]", "[fe00::1]", "[::]", "0.0.0.0", "[:::]", "[1::2::3]", "[fd00::1:2:3:4:5:6:7]",
+                "[fd00:1:2:3:4:5:6:7:8]", "[fd00::12345]", "[::ffff:192.168.1.10]", "fd00::1", "127.1", "1.2.3.4.5",
+                "ts.net", ".ts.net", "a..ts.net", "a_b.ts.net", "evil%2ecom.ts.net", "a.ts.net.", "localhost.",
+                "a.".repeat(2000) + "ts.net"})
+            Assert.assertFalse(String.valueOf(refused), Main.allowsPlainHttp(refused));
     }
 
     /** The web ui sends the url through encodeURIComponent, and must read back what was typed. */
