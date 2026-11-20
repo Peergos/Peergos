@@ -350,11 +350,133 @@ public class FileWrapper {
             if (parentRFP == null)
                 return Futures.of(Optional.empty());
             FileProperties parentProps = parentRFP.getProperties();
+            // a pending node's parent link is what its maker wrote, so we can't tell what is above it
+            RetrievedCapability up = cap.isPending() ? new RetrievedCapability(parentRFP.capability.asPending(), parentRFP.fileAccess) : parentRFP;
             if (! parentProps.isLink)
-                return version.withWriter(parentRFP.capability.owner, parentRFP.capability.writer, network)
-                        .thenApply(fullVersion -> Optional.of(new FileWrapper(parentRFP, Optional.empty(),
+                return version.withWriter(up.capability.owner, up.capability.writer, network)
+                        .thenApply(fullVersion -> Optional.of(new FileWrapper(up, Optional.empty(),
                                 Optional.empty(), ownerName, fullVersion)));
-            return retrieveParent(parentRFP, ownerName, version, network);
+            return retrieveParent(up, ownerName, version, network);
+        });
+    }
+
+    /** Whether we hold a restricted key, which can't reach anything above this. */
+    @JsMethod
+    public boolean isRestrictedKey() {
+        return pointer != null && pointer.fileAccess.isRestrictedKey(pointer.capability.rBaseKey);
+    }
+
+    /** Whether this, or a folder above it, was made through a restricted key, so its maker may know our keys. */
+    public boolean isPending() {
+        if (pointer == null || isRestrictedKey())
+            return false;
+        if (pointer.capability.isPending())
+            return true;
+        SymmetricKey key = pointer.capability.rBaseKey;
+        if (pointer.fileAccess.hasUnverifiedParentKey(key))
+            return true;
+        return pointer.fileAccess.hasParentLink(key) && pointer.fileAccess.getParentCapability(key).isEmpty();
+    }
+
+    /** A file already in the restricted format, or anything copied rather than moved, has nothing to upgrade. */
+    private boolean mayNeedUpgradeAfterMove(FileWrapper target, UserContext context) {
+        if (context.signer == null || context.isSecretLink())
+            return false;
+        if (isRestrictedKey() || isPending() || target.isRestrictedKey() || target.isPending())
+            return false;
+        return isDirectory() || ! pointer.fileAccess.isRestrictedFormat(pointer.capability.rBaseKey);
+    }
+
+    /** Whether this is at dirLocation or below it. Paths can't tell, as they stop where a parent link can't be read. */
+    private CompletableFuture<Boolean> isWithin(Location dirLocation, FileWrapper dir, Hasher hasher, NetworkAccess network) {
+        if (getLocation().equals(dirLocation))
+            return Futures.of(true);
+        if (isRestrictedKey() || isPending())
+            return dir.hasDescendantAt(getLocation(), new HashSet<>(), hasher, network);
+        return retrieveParent(network)
+                .thenCompose(p -> p.isEmpty() ? Futures.of(false) : p.get().isWithin(dirLocation, dir, hasher, network));
+    }
+
+    /** Where loc is below this, which is at ourPath, found by walking down, since a pending node's parent link can't be read. */
+    public CompletableFuture<Optional<Path>> pathTo(Location loc, Path ourPath, Hasher hasher, NetworkAccess network) {
+        return pathTo(loc, ourPath, new HashSet<>(), hasher, network);
+    }
+
+    private CompletableFuture<Optional<Path>> pathTo(Location loc, Path ourPath, Set<Location> seen, Hasher hasher, NetworkAccess network) {
+        if (getLocation().equals(loc))
+            return Futures.of(Optional.of(ourPath));
+        if (! isDirectory() || ! seen.add(getLocation()))
+            return Futures.of(Optional.empty());
+        return getChildren(hasher, network)
+                .thenCompose(children -> Futures.reduceAll(children, Optional.<Path>empty(),
+                        (found, child) -> found.isPresent() ?
+                                Futures.of(found) :
+                                child.pathTo(loc, ourPath.resolve(child.getName()), seen, hasher, network),
+                        (a, b) -> a.isPresent() ? a : b));
+    }
+
+    private CompletableFuture<Boolean> hasDescendantAt(Location loc, Set<Location> seen, Hasher hasher, NetworkAccess network) {
+        // a restricted key holder can link to a folder from below it
+        if (! isDirectory() || ! seen.add(getLocation()))
+            return Futures.of(false);
+        return getChildren(hasher, network)
+                .thenCompose(children -> Futures.reduceAll(children, false,
+                        (found, child) -> found || child.getLocation().equals(loc) ?
+                                Futures.of(true) :
+                                child.hasDescendantAt(loc, seen, hasher, network),
+                        (a, b) -> a || b));
+    }
+
+    /** Rewrite this, the link node in front of it if any, and everything below it, into the restricted format. */
+    public CompletableFuture<Boolean> upgradeToRestrictedFormat(NetworkAccess network, Crypto crypto) {
+        if (! isWritable())
+            return Futures.errored(new IllegalStateException("Couldn't hide the location of " + getName() + " without write access"));
+        // a link node in front is a folder holding the target, so the walk covers both
+        RetrievedCapability top = linkPointer.orElse(pointer);
+        WritableAbsoluteCapability cap = (WritableAbsoluteCapability) top.capability;
+        SigningPrivateKeyAndPublicHash signer = top.fileAccess.getSigner(cap.rBaseKey, cap.wBaseKey.get(), entryWriter);
+        return network.synchronizer.applyComplexUpdate(cap.owner, signer,
+                        (s, c) -> upgradeSubtree(top, signer, s, c, network, crypto))
+                .thenApply(s -> true);
+    }
+
+    private static CompletableFuture<Snapshot> upgradeSubtree(RetrievedCapability node,
+                                                              SigningPrivateKeyAndPublicHash parentSigner,
+                                                              Snapshot s,
+                                                              Committer c,
+                                                              NetworkAccess network,
+                                                              Crypto crypto) {
+        if (! (node.capability instanceof WritableAbsoluteCapability))
+            return Futures.errored(new IllegalStateException("Upgrading a node needs write access"));
+        WritableAbsoluteCapability cap = (WritableAbsoluteCapability) node.capability;
+        SigningPrivateKeyAndPublicHash signer = node.fileAccess.getSigner(cap.rBaseKey, cap.wBaseKey.get(), Optional.of(parentSigner));
+        boolean isDir = node.fileAccess.isDirectory();
+        Optional<byte[]> streamSecret = isDir ? Optional.empty() : node.getProperties().streamSecret;
+        return s.withWriter(cap.owner, cap.writer, network)
+                .thenCompose(s1 -> upgradeChunks(cap, signer, streamSecret, s1, c, network, crypto))
+                .thenCompose(s2 -> ! isDir ?
+                        Futures.of(s2) :
+                        network.getMetadata(s2.get(cap.writer), cap)
+                                .thenCompose(updated -> updated.get().getChildren(s2, crypto.hasher, network, cap))
+                                .thenCompose(children -> Futures.reduceAll(children, s2,
+                                        (s3, child) -> upgradeSubtree(child, signer, s3, c, network, crypto),
+                                        (a, b) -> b)));
+    }
+
+    private static CompletableFuture<Snapshot> upgradeChunks(WritableAbsoluteCapability cap,
+                                                             SigningPrivateKeyAndPublicHash signer,
+                                                             Optional<byte[]> streamSecret,
+                                                             Snapshot s,
+                                                             Committer c,
+                                                             NetworkAccess network,
+                                                             Crypto crypto) {
+        return network.getMetadata(s.get(cap.writer), cap).thenCompose(opt -> {
+            if (opt.isEmpty())
+                return Futures.of(s);
+            CryptreeNode chunk = opt.get();
+            return chunk.upgradeToRestrictedFormat(s, c, cap, signer, network, crypto)
+                    .thenCompose(s2 -> chunk.getNextChunkLocation(cap.rBaseKey, streamSecret, cap.getMapKey(), cap.bat, crypto.hasher)
+                            .thenCompose(next -> upgradeChunks(cap.withMapKey(next.left, next.right), signer, streamSecret, s2, c, network, crypto)));
         });
     }
 
@@ -588,6 +710,8 @@ public class FileWrapper {
             return CompletableFuture.completedFuture(new Pair<>(this, current));
         if (isDirectory()) {
             throw new IllegalStateException("Directories are never dirty (they are cleaned immediately)!");
+        } else if (isRestrictedKey() || isPending()) {
+            return Futures.errored(new IllegalStateException("The owner must open " + getName() + " before it can be changed"));
         } else {
             WritableAbsoluteCapability currentCap = writableFilePointer();
             boolean isLink = isLink();
@@ -767,7 +891,7 @@ public class FileWrapper {
                             monitor.accept(startChunkIndex * props.chunkSize);
                             FileUploader uploader = new FileUploader(txn.targetFilename(), data, startChunkIndex*(long)props.chunkSize,
                                     txn.size(), txn.baseKey, txn.dataKey, getLocation(), getPointer().capability.bat, getParentKey(),
-                                    monitor, props, hash, txn.getFirstLocation().getMapKey(), txn.firstBat, isCancelled);
+                                    monitor, props, hash, txn.getFirstLocation().getMapKey(), txn.firstBat, isCancelled, isRestrictedKey());
                             return uploader.uploadFrom(s, c, network, startChunkIndex.intValue(), txn.getFirstLocation().owner,
                                     signingPair(), mirrorBatId(), crypto.random, crypto.hasher);
                         })).thenApply(v -> new Pair<>(v, Optional.of(new NamedRelativeCapability(txn.targetFilename(), fromParent,
@@ -1578,9 +1702,14 @@ public class FileWrapper {
 
         Supplier<Location> legacyLocs = () -> new Location(getLocation().owner, getLocation().writer, crypto.random.randomBytes(32));
 
-        SymmetricKey parentParentKey = getPointer().getParentParentKey();
-        Location parentLocation = getPointer().getParentCap().getLocation(owner(), writer());
-        Optional<Bat> parentBat = getPointer().getParentCap().bat;
+        // a restricted writer can't read the parent link, only copy it, and nor can anyone else if it's pending
+        boolean restricted = isRestrictedKey() || isPending();
+        Optional<PaddedCipherText> encryptedParentLink = restricted ?
+                pointer.fileAccess.getEncryptedParentLink(pointer.capability.rBaseKey) :
+                Optional.empty();
+        SymmetricKey parentParentKey = restricted ? null : getPointer().getParentParentKey();
+        Location parentLocation = restricted ? null : getPointer().getParentCap().getLocation(owner(), writer());
+        Optional<Bat> parentBat = restricted ? Optional.empty() : getPointer().getParentCap().bat;
         WritableAbsoluteCapability ourCap = writableFilePointer();
         boolean updateTreeHash = inputStartIndex == 0 && endIndex >= props.size;
         HashTreeBuilder treeHasher = updateTreeHash ? new HashTreeBuilder(endIndex, props.chunkSize) : null;
@@ -1662,10 +1791,15 @@ public class FileWrapper {
                                                         props.thumbnail, props.streamSecret, Optional.empty(), props.chunkSize);
 
                                                 Optional<BatId> mirrorBat = mirrorBatId();
-                                                CompletableFuture<Snapshot> chunkUploaded = FileUploader.uploadChunk(version, committer, us.signingPair(),
-                                                        newProps, parentLocation, parentBat, parentParentKey, baseKey, located,
-                                                        nextChunkLocation, nextChunkBat, writerLink, mirrorBat,
-                                                        crypto.random, crypto.hasher, network, monitor);
+                                                CompletableFuture<Snapshot> chunkUploaded = restricted ?
+                                                        FileUploader.uploadRestrictedChunk(version, committer, us.signingPair(),
+                                                                newProps, encryptedParentLink, fileAccess.restrictedKey(baseKey), located,
+                                                                nextChunkLocation, nextChunkBat, writerLink, mirrorBat,
+                                                                crypto.random, crypto.hasher, network, monitor) :
+                                                        FileUploader.uploadChunk(version, committer, us.signingPair(),
+                                                                newProps, parentLocation, parentBat, parentParentKey, baseKey, located,
+                                                                nextChunkLocation, nextChunkBat, writerLink, mirrorBat,
+                                                                crypto.random, crypto.hasher, network, monitor);
 
                                                 return chunkUploaded.thenCompose(updatedBase -> {
                                                     //update indices to be relative to next chunk
@@ -1976,7 +2110,7 @@ public class FileWrapper {
 
                     FileUploader chunks = new FileUploader(filename, resetReader,
                             startIndex, endIndex, fileKey, dataKey, parentLocation, parentBat,
-                            dirParentKey, monitor, fileProps, hash, firstChunkMapKey, firstBat, isCancelled);
+                            dirParentKey, monitor, fileProps, hash, firstChunkMapKey, firstBat, isCancelled, isRestrictedKey());
 
                     SigningPrivateKeyAndPublicHash signer = signingPair();
                     WritableAbsoluteCapability fileWriteCap = new
@@ -2568,6 +2702,39 @@ public class FileWrapper {
                                              String newName,
                                              UserContext context,
                                              Supplier<CompletableFuture<Boolean>> preserveAccess) {
+        boolean ours = context.signer != null && owner().equals(context.signer.publicKeyHash);
+        boolean restricted = isRestrictedKey() || parent.isRestrictedKey() || target.isRestrictedKey();
+        if (! ours || restricted || ! (isPending() || parent.isPending() || target.isPending()))
+            return moveWithoutAdopting(target, parent, ourPath, newName, context, preserveAccess);
+        // something pending can only be copied, which re-uploads its data, so adopt it first, which only rewrites
+        // metadata, and then move it in place
+        return (target.isPending() ?
+                context.findPendingPath(target) :
+                target.getPath(context.network).thenApply(p -> Optional.of(PathUtil.get(p))))
+                .thenCompose(targetPath -> {
+                    if (targetPath.isEmpty())
+                        return moveWithoutAdopting(target, parent, ourPath, newName, context, preserveAccess);
+                    // adopting rotates keys, so everything is retrieved again after it
+                    return context.adoptPending(ourPath)
+                            .thenCompose(x -> context.adoptPending(targetPath.get()))
+                            .thenCompose(x -> context.getByPath(ourPath))
+                            .thenCompose(us -> context.getByPath(ourPath.getParent())
+                                    .thenCompose(freshParent -> context.getByPath(targetPath.get())
+                                            .thenCompose(freshTarget -> {
+                                                if (us.isEmpty() || freshParent.isEmpty() || freshTarget.isEmpty())
+                                                    throw new IllegalStateException("Couldn't find " + ourPath + " or where it's moving to after giving them new keys");
+                                                return us.get().moveWithoutAdopting(freshTarget.get(), freshParent.get(), ourPath,
+                                                        newName, context, preserveAccess);
+                                            })));
+                });
+    }
+
+    private CompletableFuture<Boolean> moveWithoutAdopting(FileWrapper target,
+                                                           FileWrapper parent,
+                                                           Path ourPath,
+                                                           String newName,
+                                                           UserContext context,
+                                                           Supplier<CompletableFuture<Boolean>> preserveAccess) {
         ensureUnmodified();
 
         if (! isLegalName(newName))
@@ -2583,16 +2750,16 @@ public class FileWrapper {
             return true;
         }).thenCompose(x -> {
             // ensure we aren't trying to move a folder to a descendant folder, which will result in data loss!
-            return target.getPath(context.network).thenApply(targetPath -> {
-                        List<String> targetNames = Arrays.asList(TrieNode.canonicalise(targetPath).split("/"));
-                        List<String> ourNames = PathUtil.components(ourPath);
-                        if (targetNames.size() >= ourNames.size() && targetNames.subList(0, ourNames.size()).equals(ourNames))
+            if (! isDirectory())
+                return Futures.of(true);
+            return target.isWithin(getLocation(), this, context.crypto.hasher, context.network).thenApply(within -> {
+                        if (within)
                             throw new IllegalStateException("You cannot move a folder to a descendant folder");
                         return true;
                     });
         }).thenCompose(x -> {
             Optional<BatId> targetMirrorBatId = target.mirrorBatId()
-                    .or(() -> target.owner().equals(context.signer.publicKeyHash) ?
+                    .or(() -> context.signer != null && target.owner().equals(context.signer.publicKeyHash) ?
                             context.mirrorBatId() :
                             Optional.empty());
 
@@ -2614,7 +2781,15 @@ public class FileWrapper {
                                                             throw new IllegalStateException("Cannot move " + name + ", it is no longer in its folder");
                                                         return freshUs.get().moveIn(v, c, freshTarget, freshParent, ourPath, newName, isPublic,
                                                                 targetMirrorBatId, context, preserveAccess);
-                                                    }))))).thenApply(s -> true);
+                                                    })))))
+                    // a link that hides where its items are can only read them in the restricted format
+                    .thenCompose(s -> ! mayNeedUpgradeAfterMove(target, context) ?
+                            Futures.of(true) :
+                            target.getPath(net).thenCompose(targetPath -> context.isInHiddenLink(PathUtil.get(targetPath))
+                            .thenCompose(hidden -> ! hidden ?
+                                    Futures.of(true) :
+                                    context.getByPath(PathUtil.get(targetPath).resolve(newName))
+                                            .thenCompose(moved -> moved.get().upgradeToRestrictedFormat(net, context.crypto)))));
         });
     }
 
@@ -2638,8 +2813,16 @@ public class FileWrapper {
                                     ? Futures.of(true) : preserveAccess.get())
                             .thenCompose(keepAccess -> {
                                 boolean differentParentWriter = !target.writer().equals(parent.writer());
+                                // a restricted key can't write where we now are, nor give the new folder our full key, so copy instead
+                                boolean restricted = isRestrictedKey() || target.isRestrictedKey() || parent.isRestrictedKey();
+                                if (! keepAccess || differentParentWriter || restricted)
+                                    return Futures.of(false);
+                                // whoever made a pending node knows its keys, so re-pointing would show them where we now are
+                                return Futures.of(! isPending() && ! parent.isPending() && ! target.isPending());
+                            })
+                            .thenCompose(repoint -> {
                                 // TODO optimise different parent writer case by correcting owned keys
-                                if (keepAccess && !differentParentWriter) {
+                                if (repoint) {
                                     // just update parent and child pointers, no need to re-upload, rotate keys etc.
                                     boolean differentWriter = !target.writer().equals(writer());
                                     boolean ourFile = context.signer != null && target.owner().equals(context.signer.publicKeyHash);
@@ -2649,8 +2832,8 @@ public class FileWrapper {
                                             target.getLocation().getMapKey(), target.writableFilePointer().bat, target.getParentKey(), Optional.empty());
                                     boolean renamed = ! newName.equals(getName());
                                     CryptreeNode newMetadata = renamed ?
-                                            pointer.fileAccess.withParentLinkAndProperties(getParentKey(), newParentLink, pointer.getProperties().withName(newName)) :
-                                            pointer.fileAccess.withParentLink(getParentKey(), newParentLink);
+                                            pointer.fileAccess.withParentLinkAndProperties(pointer.capability.rBaseKey, newParentLink, pointer.getProperties().withName(newName)) :
+                                            pointer.fileAccess.withParentLink(pointer.capability.rBaseKey, newParentLink);
                                     RelativeCapability ourNewcap = target.writableFilePointer().relativise(pointer.capability);
                                     return IpfsTransaction.call(owner(),
                                             tid -> target.getPath(net).thenCompose(newPath -> v.withWriter(owner(), target.writer(), net)
@@ -2708,7 +2891,7 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
     }
 
     Optional<BatId> targetMirrorBatId = target.mirrorBatId()
-            .or(() -> target.owner().equals(context.signer.publicKeyHash) ?
+            .or(() -> context.signer != null && target.owner().equals(context.signer.publicKeyHash) ?
                     context.mirrorBatId() :
                     Optional.empty());
     return context.network.synchronizer.applyComplexUpdate(target.owner(), target.signingPair(),

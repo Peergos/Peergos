@@ -4,8 +4,10 @@ import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 import peergos.shared.storage.auth.*;
+import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -24,13 +26,29 @@ public class RelativeCapability implements Cborable {
     public final Optional<Bat> bat; // Only absent on legacy data
     public final SymmetricKey rBaseKey;
     public final Optional<SymmetricLink> wBaseKeyLink;
+    // Only in child links of a restricted format directory, where rBaseKey is the child's restricted key. The child's
+    // full key is linked from the directory's, or sealed to it by someone who only has the directory's restricted key.
+    public final Optional<SymmetricLink> fullKeyLink;
+    public final Optional<SealedKey> sealedFullKey;
+    // whether the full key came from someone with only the directory's restricted key, so they may know it
+    private boolean pending;
+
+    public RelativeCapability(Optional<PublicKeyHash> writer,
+                              byte[] mapKey,
+                              Optional<Bat> bat,
+                              SymmetricKey rBaseKey,
+                              Optional<SymmetricLink> wBaseKeyLink) {
+        this(writer, mapKey, bat, rBaseKey, wBaseKeyLink, Optional.empty(), Optional.empty());
+    }
 
     @JsConstructor
     public RelativeCapability(Optional<PublicKeyHash> writer,
                               byte[] mapKey,
                               Optional<Bat> bat,
                               SymmetricKey rBaseKey,
-                              Optional<SymmetricLink> wBaseKeyLink) {
+                              Optional<SymmetricLink> wBaseKeyLink,
+                              Optional<SymmetricLink> fullKeyLink,
+                              Optional<SealedKey> sealedFullKey) {
         this.writer = writer;
         if (mapKey.length != RelativeCapability.MAP_KEY_LENGTH)
             throw new IllegalStateException("Invalid map key length: " + mapKey.length);
@@ -38,6 +56,8 @@ public class RelativeCapability implements Cborable {
         this.bat = bat;
         this.rBaseKey = rBaseKey;
         this.wBaseKeyLink = wBaseKeyLink;
+        this.fullKeyLink = fullKeyLink;
+        this.sealedFullKey = sealedFullKey;
     }
 
     @JsMethod
@@ -56,13 +76,68 @@ public class RelativeCapability implements Cborable {
     public AbsoluteCapability toAbsolute(AbsoluteCapability source) {
         Optional<SymmetricKey> wBaseKey = source.wBaseKey.flatMap(w -> wBaseKeyLink.map(link -> link.target(w)));
         PublicKeyHash writer = this.writer.orElse(source.writer);
-        if (wBaseKey.isPresent())
-            return new WritableAbsoluteCapability(source.owner, writer, mapKey, bat, rBaseKey, wBaseKey.get());
-        return new AbsoluteCapability(source.owner, writer, mapKey, bat, rBaseKey, wBaseKey);
+        AbsoluteCapability res = wBaseKey.isPresent() ?
+                new WritableAbsoluteCapability(source.owner, writer, mapKey, bat, rBaseKey, wBaseKey.get()) :
+                new AbsoluteCapability(source.owner, writer, mapKey, bat, rBaseKey, wBaseKey);
+        return pending || source.isPending() ? res.asPending() : res;
     }
 
     public RelativeCapability withWritingKey(Optional<PublicKeyHash> writingKey) {
-        return new RelativeCapability(writingKey, mapKey, bat, rBaseKey, wBaseKeyLink);
+        return new RelativeCapability(writingKey, mapKey, bat, rBaseKey, wBaseKeyLink, fullKeyLink, sealedFullKey).pending(pending);
+    }
+
+    public RelativeCapability withBaseKey(SymmetricKey newBaseKey) {
+        return new RelativeCapability(writer, mapKey, bat, newBaseKey, wBaseKeyLink, fullKeyLink, sealedFullKey).pending(pending);
+    }
+
+    public boolean isPending() {
+        return pending;
+    }
+
+    public RelativeCapability asPending() {
+        return new RelativeCapability(writer, mapKey, bat, rBaseKey, wBaseKeyLink, fullKeyLink, sealedFullKey).pending(true);
+    }
+
+    private RelativeCapability pending(boolean pending) {
+        this.pending = pending;
+        return this;
+    }
+
+    public boolean hasWrappedFullKey() {
+        return fullKeyLink.isPresent() || sealedFullKey.isPresent();
+    }
+
+    /** Replace our full key with the restricted key derived from it, and link to the full key from the parent's. */
+    public RelativeCapability wrapFullKey(SymmetricKey parentFullKey) {
+        return new RelativeCapability(writer, mapKey, bat, rBaseKey.derive(CryptreeNode.RESTRICTED), wBaseKeyLink,
+                Optional.of(SymmetricLink.fromPair(parentFullKey.derive(linkLabel()), rBaseKey)), Optional.empty()).pending(pending);
+    }
+
+    /** Replace our full key with the restricted key derived from it, and seal the full key to the parent. */
+    public RelativeCapability sealFullKey(byte[] parentPublicKey, SafeRandom random) {
+        return new RelativeCapability(writer, mapKey, bat, rBaseKey.derive(CryptreeNode.RESTRICTED), wBaseKeyLink,
+                Optional.empty(), Optional.of(SealedKey.seal(rBaseKey, parentPublicKey, random))).pending(true);
+    }
+
+    public RelativeCapability unwrapFullKey(SymmetricKey parentFullKey, Optional<byte[]> parentPublicKey) {
+        if (fullKeyLink.isPresent())
+            return new RelativeCapability(writer, mapKey, bat, matching(fullKeyLink.get().target(parentFullKey.derive(linkLabel()))),
+                    wBaseKeyLink, Optional.empty(), Optional.empty()).pending(pending);
+        if (sealedFullKey.isPresent())
+            return new RelativeCapability(writer, mapKey, bat, matching(sealedFullKey.get().open(parentFullKey, parentPublicKey.get())),
+                    wBaseKeyLink, Optional.empty(), Optional.empty()).pending(true);
+        return this;
+    }
+
+    /** A restricted key holder could pair a full key with someone else's restricted key, showing us a different child. */
+    private SymmetricKey matching(SymmetricKey fullKey) {
+        if (! fullKey.derive(CryptreeNode.RESTRICTED).equals(rBaseKey))
+            throw new IllegalStateException("A child's full key doesn't match its restricted key");
+        return fullKey;
+    }
+
+    private String linkLabel() {
+        return pending ? CryptreeNode.PENDING_CHILD_KEYS : CryptreeNode.CHILD_KEYS;
     }
 
     public static RelativeCapability buildSubsequentChunk(byte[] mapkey, Optional<Bat> bat, SymmetricKey baseKey) {
@@ -77,6 +152,8 @@ public class RelativeCapability implements Cborable {
         bat.ifPresent(b -> cbor.put("a", b));
         cbor.put("k", rBaseKey.toCbor());
         wBaseKeyLink.ifPresent(w -> cbor.put("l", w.toCbor()));
+        fullKeyLink.ifPresent(f -> cbor.put(pending ? "h" : "f", f.toCbor()));
+        sealedFullKey.ifPresent(g -> cbor.put("g", g.toCbor()));
         return CborObject.CborMap.build(cbor);
     }
 
@@ -95,7 +172,11 @@ public class RelativeCapability implements Cborable {
         Optional<Bat> bat = map.getOptional("a", Bat::fromCbor);
         SymmetricKey baseKey = SymmetricKey.fromCbor(map.get("k"));
         Optional<SymmetricLink> writerLink = Optional.ofNullable(map.get("l")).map(SymmetricLink::fromCbor);
-        return new RelativeCapability(writer, mapKey, bat, baseKey, writerLink);
+        Optional<SymmetricLink> pendingKeyLink = Optional.ofNullable(map.get("h")).map(SymmetricLink::fromCbor);
+        Optional<SymmetricLink> fullKeyLink = Optional.ofNullable(map.get("f")).map(SymmetricLink::fromCbor).or(() -> pendingKeyLink);
+        Optional<SealedKey> sealedFullKey = Optional.ofNullable(map.get("g")).map(SealedKey::fromCbor);
+        return new RelativeCapability(writer, mapKey, bat, baseKey, writerLink, fullKeyLink, sealedFullKey)
+                .pending(pendingKeyLink.isPresent() && map.get("f") == null);
     }
 
     @Override
@@ -107,7 +188,9 @@ public class RelativeCapability implements Cborable {
                 Arrays.equals(mapKey, that.mapKey) &&
                 Objects.equals(bat, that.bat) &&
                 Objects.equals(rBaseKey, that.rBaseKey) &&
-                Objects.equals(wBaseKeyLink, that.wBaseKeyLink);
+                Objects.equals(wBaseKeyLink, that.wBaseKeyLink) &&
+                Objects.equals(fullKeyLink, that.fullKeyLink) &&
+                Objects.equals(sealedFullKey, that.sealedFullKey);
     }
 
     @Override
