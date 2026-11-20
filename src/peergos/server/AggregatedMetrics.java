@@ -49,7 +49,14 @@ public class AggregatedMetrics {
             .exponentialBuckets(0.01, 2, 16)
             .register();
 
-    public static final Counter MUTABLE_POINTERS_SET  = build("mutable_pointers_set", "Total mutable-pointers set calls.");
+    public static final Histogram STORAGE_BULK_COMMIT_DURATION = Histogram.build()
+            .labelNames("outcome")
+            .name("storage_bulk_commit_seconds")
+            .help("Time to process a bulk commit, by outcome (ok or error)")
+            .exponentialBuckets(0.01, 2, 16)
+            .register();
+
+    public static final Counter MUTABLE_POINTERS_SET = build("mutable_pointers_set", "Total mutable-pointers set calls.");
     public static final Counter MUTABLE_POINTERS_GET  = build("mutable_pointers_get", "Total mutable-pointers get calls.");
 
     public static final Counter LOGIN_SET  = build("login_set", "Total login set calls.");
