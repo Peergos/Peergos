@@ -402,7 +402,7 @@ public class NetworkAccess {
         return this;
     }
 
-    public Committer buildCommitter(Committer com, PublicKeyHash owner, Supplier<Boolean> commitWatcher) {
+    public Committer buildCommitter(Committer com, PublicKeyHash owner, Supplier<Set<PublicKeyHash>> updateWriters, Supplier<Boolean> commitWatcher) {
         return (o, w, updated, e, tid) -> Futures.asyncExceptionally(() -> com.commit(o, w, updated, e, tid),
                 t -> {
                     Throwable cause = Exceptions.getRootCause(t);

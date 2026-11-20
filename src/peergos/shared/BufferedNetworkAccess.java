@@ -69,12 +69,12 @@ public class BufferedNetworkAccess extends NetworkAccess {
     }
 
     @Override
-    public Committer buildCommitter(Committer c, PublicKeyHash owner, Supplier<Boolean> commitWatcher) {
+    public Committer buildCommitter(Committer c, PublicKeyHash owner, Supplier<Set<PublicKeyHash>> updateWriters, Supplier<Boolean> commitWatcher) {
         return (o, w, wd, e, tid) -> (wd.isEmpty() ? Futures.of(MaybeMultihash.empty()) :
                 blockBuffer.put(o, w.publicKeyHash, new byte[0], wd.get().serialize(), tid).thenApply(MaybeMultihash::new))
                 .thenCompose(newHash -> {
                     PointerUpdate update = pointerBuffer.addWrite(o, w, newHash, e.hash, e.sequence);
-                    return maybeCommit(o, commitWatcher, Collections.singleton(w.publicKeyHash))
+                    return maybeCommit(o, commitWatcher, updateWriters.get())
                             .thenApply(x -> new Snapshot(w.publicKeyHash, new CommittedWriterData(newHash, wd, update.sequence)));
                 });
     }
@@ -173,9 +173,26 @@ public class BufferedNetworkAccess extends NetworkAccess {
     }
 
     private CompletableFuture<Boolean> maybeCommit(PublicKeyHash owner, Supplier<Boolean> commitWatcher, Set<PublicKeyHash> writers) {
-        if (safeToCommit && isFull())
+        if (safeToCommit && (isFull() || createsWriterAndNearsOneCall(writers)))
             return commit(owner, commitWatcher, writers);
         return Futures.of(true);
+    }
+
+    /** A commit too big for one call is split, and the server only takes a new writer's blocks in the same call as
+     *  the update that owns it. So an update creating a writer commits while the new writer still fits in one call,
+     *  with room for the operation in progress. Once it has landed, the rest of the update can be split as usual.
+     */
+    private synchronized boolean createsWriterAndNearsOneCall(Set<PublicKeyHash> writers) {
+        if (! nearsOneCall() || pointerBuffer.getUpdates(writers).stream().allMatch(u -> u.prevHash.isPresent()))
+            return false;
+        // most of what an update buffers is blocks its later writes replaced, which a commit drops, so drop them first
+        blockBuffer.gc(pointerBuffer.getRoots(), writers);
+        return nearsOneCall();
+    }
+
+    private boolean nearsOneCall() {
+        return blockBuffer.size() >= ContentAddressedStorage.MAX_BULK_COMMIT_BLOCKS / 2
+                || bufferedSize() >= ContentAddressedStorage.MAX_BULK_COMMIT_SIZE / 2;
     }
 
     /** Throw away what is buffered for these writers, leaving other writers' buffered updates in place. */
