@@ -635,10 +635,9 @@ public class GarbageCollector {
             return new Pair<>(0L, 0L);
         long deletedCborBlocks = toDelete.stream().filter(v -> ! v.cid.isRaw()).count();
         long deletedRawBlocks = toDelete.size() - deletedCborBlocks;
-        for (BlockVersion block : toDelete) {
-            metadata.remove(block.cid);
+        metadata.remove(toDelete.stream().map(v -> v.cid).toList());
+        for (BlockVersion block : toDelete)
             reachability.removeBlock(block);
-        }
         getWithBackoff(() -> {storage.bulkDelete(owner, toDelete); return true;});
 
         long logEvery = Math.max(1_000, totalBlocksToDelete / 10);

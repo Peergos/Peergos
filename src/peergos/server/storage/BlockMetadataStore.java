@@ -44,6 +44,10 @@ public interface BlockMetadataStore {
 
     void remove(Cid block);
 
+    default void remove(List<Cid> blocks) {
+        blocks.forEach(this::remove);
+    }
+
     long size(PublicKeyHash owner);
 
     boolean isEmpty();

@@ -122,6 +122,15 @@ public class CachingBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
+    public void remove(List<Cid> blocks) {
+        target.remove(blocks);
+        for (Cid block : blocks) {
+            cache.remove(block);
+            ownedCache.remove(block);
+        }
+    }
+
+    @Override
     public long size(PublicKeyHash owner) {
         return target.size(owner);
     }

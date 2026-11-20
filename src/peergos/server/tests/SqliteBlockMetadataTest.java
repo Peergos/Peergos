@@ -284,6 +284,27 @@ public class SqliteBlockMetadataTest {
     }
 
     @Test
+    public void bulkRemoveDeletesOnlyTheGivenBlocksAndEvictsCaches() throws Exception {
+        Path dir = Files.createTempDirectory("peergos-block-metadata");
+        BlockMetadataStore store = new CachingBlockMetadataStore(buildStore(dir.resolve("meta.sql")), 5000);
+        PublicKeyHash owner = new PublicKeyHash(randomCid());
+
+        List<Cid> toRemove = randomCids(2_500);
+        List<Cid> toKeep = randomCids(10);
+        for (Cid block : Stream.concat(toRemove.stream(), toKeep.stream()).toList())
+            store.put(owner, block, null, new BlockMetadata(1024, Collections.emptyList(), Collections.emptyList()));
+        Assert.assertEquals(toRemove.size(), store.getAll(owner, toRemove).size());
+        Assert.assertTrue(store.get(toRemove.get(0)).isPresent());
+
+        store.remove(toRemove);
+
+        Assert.assertTrue(store.getAll(owner, toRemove).isEmpty());
+        Assert.assertTrue(toRemove.stream().noneMatch(b -> store.get(b).isPresent()));
+        Assert.assertEquals(toKeep.size(), store.getAll(owner, toKeep).size());
+        Assert.assertEquals(toKeep.size(), store.size(owner));
+    }
+
+    @Test
     public void aNewOwnerEvictsTheOwnerScopedCache() throws Exception {
         Path dir = Files.createTempDirectory("peergos-block-metadata");
         BlockMetadataStore store = new CachingBlockMetadataStore(buildStore(dir.resolve("meta.sql")), 1000);

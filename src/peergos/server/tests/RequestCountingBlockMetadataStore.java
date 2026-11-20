@@ -91,6 +91,11 @@ class RequestCountingBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
+    public void remove(List<Cid> blocks) {
+        target.remove(blocks);
+    }
+
+    @Override
     public long size(PublicKeyHash owner) {
         return target.size(owner);
     }
