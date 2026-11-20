@@ -921,7 +921,7 @@ public class Main extends Builder {
 
             Supplier<Connection> usageDb = getDBConnector(a, "space-usage-sql-file", dbConnectionPool);
             UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
-            Supplier<Connection> statusDb = Main.getDBConnector(a, "partition-status-file");
+            Supplier<Connection> statusDb = getDBConnector(a, "partition-status-file", dbConnectionPool);
             PartitionStatus partitionStatus = new JdbcPartitionStatus(statusDb, sqlCommands);
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a,
                     getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
