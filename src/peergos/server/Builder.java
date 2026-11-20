@@ -1,6 +1,7 @@
 package peergos.server;
 
 import com.zaxxer.hikari.*;
+import com.zaxxer.hikari.metrics.prometheus.PrometheusMetricsTrackerFactory;
 import io.libp2p.core.*;
 import peergos.server.corenode.*;
 import peergos.server.crypto.*;
@@ -44,6 +45,7 @@ import java.sql.*;
 import java.sql.Connection;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -100,6 +102,9 @@ public class Builder {
         return getDBConnector(a, dbName);
     }
 
+    private static final PrometheusMetricsTrackerFactory POOL_METRICS = new PrometheusMetricsTrackerFactory();
+    private static final Map<String, AtomicInteger> POSTGRES_POOL_COUNTS = new ConcurrentHashMap<>();
+
     public static Supplier<Connection> getPostgresConnector(Args a, String prefix) {
         String postgresHost = a.getArg(prefix + "postgres.host");
         int postgresPort = a.getInt(prefix + "postgres.port", 5432);
@@ -116,6 +121,10 @@ public class Builder {
         props.setProperty("dataSource.databaseName", databaseName);
         HikariConfig config = new HikariConfig(props);
         config.setMaximumPoolSize(a.getInt(prefix + "postgres.pool-size", 5));
+        // pool names label the metrics, and a repeated name would export duplicate series
+        int poolIndex = POSTGRES_POOL_COUNTS.computeIfAbsent(prefix, p -> new AtomicInteger()).getAndIncrement();
+        config.setPoolName(prefix + "postgres" + (poolIndex == 0 ? "" : "-" + poolIndex));
+        config.setMetricsTrackerFactory(POOL_METRICS);
         HikariDataSource ds = new HikariDataSource(config);
 
         return () -> {

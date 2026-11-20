@@ -293,10 +293,18 @@ public class StorageHandler implements HttpHandler {
                     byte[] body = Serialize.readFully(httpExchange.getRequestBody(),
                             ContentAddressedStorage.MAX_BULK_COMMIT_SIZE);
                     BulkCommit commit = BulkCommit.fromCbor(CborObject.fromByteArray(body));
-                    List<Cid> written = dht.bulkCommit(ownerHash.get(), commit).join();
-                    replyBytes(httpExchange, new CborObject.CborList(written.stream()
-                            .map(CborObject.CborMerkleLink::new)
-                            .collect(Collectors.toList())).serialize(), Optional.empty());
+                    long commitStart = System.nanoTime();
+                    String outcome = "error";
+                    try {
+                        List<Cid> written = dht.bulkCommit(ownerHash.get(), commit).join();
+                        outcome = "ok";
+                        replyBytes(httpExchange, new CborObject.CborList(written.stream()
+                                .map(CborObject.CborMerkleLink::new)
+                                .collect(Collectors.toList())).serialize(), Optional.empty());
+                    } finally {
+                        AggregatedMetrics.STORAGE_BULK_COMMIT_DURATION.labels(outcome)
+                                .observe((System.nanoTime() - commitStart) / 1e9);
+                    }
                     break;
                 }
                 case BLOCK_PUT_BULK_V2: {
