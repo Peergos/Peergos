@@ -298,16 +298,19 @@ public class JdbcAccountTests {
         Optional<String> device = db.getEntryData(username, reader, Optional.of(new MultiFactorAuthResponse(key.credentialId,
                 Either.a(code(totp, key)))), Optional.empty()).join().deviceToken;
 
-        // without the password, guesses at the code don't use up the second factor budget
+        // with a wrong password, guesses are limited, then answered as a wrong code even when the code is valid,
+        // and the right password still gets in
         PublicSigningKey wrongPassword = reader();
-        for (int i = 0; i < 2 * LoginThrottle.MAX_MFA_FAILURES; i++)
+        MultiFactorAuthResponse right = new MultiFactorAuthResponse(key.credentialId, Either.a(code(totp, key)));
+        for (int i = 0; i < LoginThrottle.MAX_MFA_FAILURES; i++)
             Assert.assertTrue(attempt(username, wrongPassword, Optional.of(new MultiFactorAuthResponse(key.credentialId,
                     Either.a(wrongCode(totp, key, i)))), Optional.empty()).contains("Invalid TOTP code"));
+        Assert.assertTrue(attempt(username, wrongPassword, Optional.of(right), Optional.empty()).contains("Invalid TOTP code"));
+        Assert.assertEquals("ok", attempt(username, reader, Optional.of(right), Optional.empty()));
 
         for (int i = 0; i < LoginThrottle.MAX_MFA_FAILURES; i++)
             Assert.assertTrue(attempt(username, reader, Optional.of(new MultiFactorAuthResponse(key.credentialId,
                     Either.a(wrongCode(totp, key, i)))), Optional.empty()).contains("Invalid TOTP code"));
-        MultiFactorAuthResponse right = new MultiFactorAuthResponse(key.credentialId, Either.a(code(totp, key)));
         Assert.assertEquals("throttled", attempt(username, reader, Optional.of(right), Optional.empty()));
         // the same whether or not the password is right
         Assert.assertEquals("throttled", attempt(username, reader(), Optional.of(right), Optional.empty()));

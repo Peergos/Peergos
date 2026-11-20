@@ -139,29 +139,30 @@ public class LoginThrottle {
         release(username, passwordBucket(device), readerId(reader));
     }
 
-    /** Second factor guesses only count once the password is known to be right, which keeps an attacker
-     *  without it from filling the table with buckets for made up passwords. The budget is per device,
-     *  not per password, so that a full one is no hint as to whether the password was right.
-     */
+    /** Only someone who has the password can use up this budget. */
     public void reserveMfaAttempt(String username, Device device, byte[] credentialId, String code) {
         if (! reserve(username, mfaBucket(device), codeId(credentialId, code), MAX_MFA_FAILURES))
             throw new IllegalStateException(THROTTLED_ERROR);
     }
 
-    public void checkMfaAttempt(String username, Device device, byte[] credentialId, String code) {
-        String bucket = mfaBucket(device);
+    /** Guesses with a wrong password have a budget of their own, so that nobody without the password can lock
+     *  out a login with it. Returns false once it is used up, and the code must then not be checked. A full
+     *  budget for the right password throttles here too, so being throttled says nothing about the password.
+     */
+    public boolean reserveWrongPasswordMfaAttempt(String username, Device device, byte[] credentialId, String code) {
         String attempt = codeId(credentialId, code);
         try (Connection c = conn.get()) {
-            if (! has(c, username, bucket, attempt) && count(c, username, bucket) >= MAX_MFA_FAILURES)
+            if (! has(c, username, mfaBucket(device), attempt) && count(c, username, mfaBucket(device)) >= MAX_MFA_FAILURES)
                 throw new IllegalStateException(THROTTLED_ERROR);
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new IllegalStateException(THROTTLED_ERROR);
         }
+        return reserve(username, wrongPasswordMfaBucket(device), attempt, MAX_MFA_FAILURES);
     }
 
-    public void releaseMfaAttempt(String username, Device device, byte[] credentialId, String code) {
-        release(username, mfaBucket(device), codeId(credentialId, code));
+    public void releaseMfaAttempt(String username, Device device, boolean passwordCorrect, byte[] credentialId, String code) {
+        release(username, passwordCorrect ? mfaBucket(device) : wrongPasswordMfaBucket(device), codeId(credentialId, code));
     }
 
     private static String passwordBucket(Device device) {
@@ -170,6 +171,10 @@ public class LoginThrottle {
 
     private static String mfaBucket(Device device) {
         return "mfa:" + device.bucketId();
+    }
+
+    private static String wrongPasswordMfaBucket(Device device) {
+        return "mfa-wrongpw:" + device.bucketId();
     }
 
     private static String readerId(PublicSigningKey reader) {
