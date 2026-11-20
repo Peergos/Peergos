@@ -23,6 +23,7 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
     private static final int INSERT_COLUMNS = 6;
     // keep the bound parameter count per statement well below sqlite's limit of 32766
     private static final int MAX_INSERT_ROWS = 1_000;
+    private static final int MAX_DELETE_ROWS = 1_000;
     private static final String LIST_PAGINATED_FIRST = "SELECT cid, version FROM blockmetadata ORDER BY cid LIMIT " + PAGE_LIMIT + ";";
     private static final String LIST_PAGINATED = "SELECT cid, version FROM blockmetadata WHERE cid > ? ORDER BY cid LIMIT " + PAGE_LIMIT + ";";
     private static final String LIST_SIZE_PAGINATED_FIRST = "SELECT cid, size FROM blockmetadata ORDER BY cid LIMIT " + PAGE_LIMIT + ";";
@@ -94,6 +95,25 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
+    public void remove(List<Cid> blocks) {
+        for (int start = 0; start < blocks.size(); start += MAX_DELETE_ROWS) {
+            List<Cid> chunk = blocks.subList(start, Math.min(start + MAX_DELETE_ROWS, blocks.size()));
+            String placeholders = chunk.stream()
+                    .map(b -> "?")
+                    .collect(Collectors.joining(","));
+            try (Connection conn = getConnection();
+                 PreparedStatement delete = conn.prepareStatement("DELETE FROM blockmetadata WHERE cid IN (" + placeholders + ");")) {
+                for (int i = 0; i < chunk.size(); i++)
+                    delete.setBytes(i + 1, chunk.get(i).toBytes());
+                delete.executeUpdate();
+            } catch (SQLException sqe) {
+                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+                throw new RuntimeException(sqe);
+            }
         }
     }
 
