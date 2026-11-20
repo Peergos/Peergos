@@ -1,6 +1,8 @@
 package peergos.server.webdav.caldav;
 
+import peergos.shared.MaybeMultihash;
 import peergos.shared.io.ipfs.api.JSONParser;
+import peergos.shared.mutable.PointerUpdate;
 import peergos.shared.user.App;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.AsyncReader;
@@ -69,7 +71,7 @@ public abstract class AppDataStore {
         /** Where it sits relative to the collection directory; empty for a flat collection. */
         public final String shard;
         public final FileWrapper file;
-        /** Filled in on first read. Each ref belongs to one listing, so this is not shared. */
+        /** Filled in on first read, and kept when the ref is carried into a later listing: its file never changes. */
         private byte[] content;
 
         public ObjectRef(String name, String shard, FileWrapper file) {
@@ -129,7 +131,8 @@ public abstract class AppDataStore {
     private volatile App app;
 
     private final Map<String, Listing> listings = new HashMap<>();
-    private final Map<String, String> writerVersions = new HashMap<>();
+    /** The writer's root each cached listing describes. */
+    private final Map<String, MaybeMultihash> writerVersions = new HashMap<>();
     private final Map<String, Map<String, Map<String, String>>> history = new HashMap<>();
 
     protected AppDataStore(UserContext context, String appName, String configKey, String infoFilename,
@@ -211,12 +214,14 @@ public abstract class AppDataStore {
      * one pointer read against a full directory walk.
      */
     public synchronized Listing listing(String directory) {
-        Optional<String> version = writerVersion(directory);
+        Optional<MaybeMultihash> version = writerVersion(directory).map(v -> v.updated);
         Listing cached = listings.get(directory);
         if (cached != null && version.isPresent() && version.get().equals(writerVersions.get(directory)))
             return cached;
+        return remember(directory, readObjects(directory), version);
+    }
 
-        List<ObjectRef> objects = readObjects(directory);
+    private Listing remember(String directory, List<ObjectRef> objects, Optional<MaybeMultihash> version) {
         Map<String, String> etags = new TreeMap<>();
         for (ObjectRef object : objects)
             etags.put(object.name, object.etag());
@@ -302,11 +307,13 @@ public abstract class AppDataStore {
     }
 
     /** @return the object as it now stands, so a caller needing its ETag does not re-list. */
-    public ObjectRef putObject(String directory, String name, byte[] content, Optional<ObjectRef> existing) {
+    public synchronized ObjectRef putObject(String directory, String name, byte[] content, Optional<ObjectRef> existing) {
         String shard = shardFor(content)
                 .orElseThrow(() -> new IllegalArgumentException("Nowhere to file this object"));
         existing.filter(o -> ! o.shard.equals(shard)).ifPresent(old -> deleteObject(directory, old));
-        return new ObjectRef(name, shard, write(join(directory, shard, name), content));
+        ObjectRef written = new ObjectRef(name, shard, write(join(directory, shard, name), content));
+        afterOwnWrite(directory, name, shard, Optional.of(written));
+        return written;
     }
 
     /** One object to be written as part of a batch. */
@@ -378,8 +385,11 @@ public abstract class AppDataStore {
         return segments;
     }
 
-    public void deleteObject(String directory, ObjectRef object) {
-        remove(collectionPath(directory).resolve(object.shard).resolve(object.name));
+    public synchronized void deleteObject(String directory, ObjectRef object) {
+        if (remove(collectionPath(directory).resolve(object.shard).resolve(object.name)))
+            afterOwnWrite(directory, object.name, object.shard, Optional.empty());
+        else
+            forget(directory);
     }
 
     /**
@@ -394,10 +404,12 @@ public abstract class AppDataStore {
         if (! colour.isEmpty())
             json.append(",\"color\":").append(quote(colour));
         write(join(directory, "", infoFilename), json.append("}").toString().getBytes(StandardCharsets.UTF_8));
+        forget(directory);
     }
 
     public void deleteCollection(String directory) {
         remove(collectionPath(directory));
+        forget(directory);
     }
 
     /** The collection's info file, or empty when it has none or it does not parse. */
@@ -427,6 +439,7 @@ public abstract class AppDataStore {
                 info.remove(key);
         });
         write(join(directory, "", infoFilename), JSONParser.toString(info).getBytes(StandardCharsets.UTF_8));
+        forget(directory);
     }
 
     private static String join(String... segments) {
@@ -449,8 +462,6 @@ public abstract class AppDataStore {
     /** Writes through App, so the layout is exactly what a web app for it would produce. */
     private FileWrapper write(String relativePath, byte[] content) {
         app().writeInternal(PathUtil.get(relativePath), content, null).join();
-        int slash = relativePath.indexOf('/');
-        forget(slash < 0 ? relativePath : relativePath.substring(0, slash));
         // Read back by path rather than through a listing: the write has just invalidated
         // the cached one, and rebuilding it walks every object in the collection.
         return getByPath(dataDir.resolve(relativePath))
@@ -467,16 +478,36 @@ public abstract class AppDataStore {
         writerVersions.remove(directory);
     }
 
-    private void remove(Path path) {
-        Path relative = dataDir.relativize(path);
-        if (relative.getNameCount() > 0)
-            forget(relative.getName(0).toString());
+    /**
+     * After we have written or removed one object, applies that to the cached listing instead of
+     * dropping it, which would make the next request walk every directory of the collection again
+     * — a round trip to the server for each. Only when the writer's latest commit replaced the
+     * root the listing describes: our writes hold this store's lock until they get here, so no
+     * listing was taken in between and that commit is the one just made. A commit from anywhere
+     * else, before or after ours, leaves a different root behind, and the listing is dropped.
+     */
+    private void afterOwnWrite(String directory, String name, String shard, Optional<ObjectRef> written) {
+        Listing cached = listings.get(directory);
+        Optional<PointerUpdate> now = cached == null ? Optional.empty() : writerVersion(directory);
+        if (now.isEmpty() || ! now.get().original.equals(writerVersions.get(directory))) {
+            forget(directory);
+            return;
+        }
+        List<ObjectRef> objects = new ArrayList<>(cached.objects);
+        objects.removeIf(o -> o.name.equals(name) && o.shard.equals(shard));
+        written.ifPresent(objects::add);
+        remember(directory, objects, Optional.of(now.get().updated));
+    }
+
+    /** @return whether there was anything to remove */
+    private boolean remove(Path path) {
         Optional<FileWrapper> file = getByPath(path);
         if (file.isEmpty())
-            return;
+            return false;
         FileWrapper parent = getByPath(path.getParent())
                 .orElseThrow(() -> new IllegalStateException("No parent of " + path));
         file.get().remove(parent, path, context).join();
+        return true;
     }
 
     /**
@@ -519,12 +550,14 @@ public abstract class AppDataStore {
         }
     }
 
-    private Optional<String> writerVersion(String directory) {
+    /** The writer's latest commit: the root it is at now, and the one it replaced. */
+    private Optional<PointerUpdate> writerVersion(String directory) {
         Optional<FileWrapper> collection = getByPath(collectionPath(directory));
         if (collection.isEmpty())
             return Optional.empty();
-        return context.network.mutable.getPointer(collection.get().owner(), collection.get().writer()).join()
-                .map(ArrayOps::bytesToHex);
+        PointerUpdate current = context.network.mutable.getPointerTarget(collection.get().owner(),
+                collection.get().writer(), context.network.dhtClient).join();
+        return current.updated.isPresent() ? Optional.of(current) : Optional.empty();
     }
 
     /** Adds every object file directly inside a directory to the listing. */

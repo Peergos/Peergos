@@ -11,6 +11,8 @@ import peergos.server.tests.util.TestPorts;
 import peergos.server.util.Args;
 import peergos.server.webdav.MountConfig;
 import peergos.server.webdav.WebdavServer;
+import peergos.server.webdav.caldav.AppDataStore;
+import peergos.server.webdav.caldav.CalendarStore;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.io.ipfs.api.JSONParser;
@@ -28,9 +30,13 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Drives the CalDAV bridge over raw HTTP against a RAM Peergos instance, seeding the
@@ -675,6 +681,161 @@ public class CalDavTests {
         } finally {
             server.stop();
         }
+    }
+
+    /**
+     * Dragging an event into another month is a removal and a write in one PUT. The bridge keeps
+     * its listing up to date through its own writes rather than walking the whole collection again,
+     * so what it lists afterwards must be exactly what a fresh walk of the calendar finds.
+     */
+    @Test
+    public void ownWritesKeepTheListingWhole() throws Exception {
+        String username = "caldav-own" + Math.abs(random.nextInt() % 1_000_000);
+        String password = "testpassword";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        App calendar = App.init(context, "calendar").join();
+        write(calendar, "App.config",
+                "{\"calendars\":[{\"name\":\"Work\",\"directory\":\"work\",\"color\":\"#ff0000\"}]}");
+        write(calendar, "work/calendar.inf", "{\"name\":\"Work\",\"color\":\"#ff0000\"}");
+        write(calendar, "work/2024/3/a.ics", event("a", "20240315T090000Z", "20240315T100000Z", ""));
+        write(calendar, "work/2024/3/b.ics", event("b", "20240316T090000Z", "20240316T100000Z", ""));
+        write(calendar, "work/2024/7/c.ics", event("c", "20240715T090000Z", "20240715T100000Z", ""));
+        write(calendar, "work/2025/1/d.ics", event("d", "20250115T090000Z", "20250115T100000Z", ""));
+        UserContext verifier = verifier(username, password);
+
+        int port = TestPorts.getPort();
+        Server server = WebdavServer.startNonBlocking(port, WEBDAV_USER, WEBDAV_PASSWORD,
+                username, password, "http://localhost:" + args.getInt("port"), "basic", MountConfig.disabled());
+        try {
+            HttpClient client = HttpClient.newHttpClient();
+            String base = "http://localhost:" + port;
+            String auth = "Basic " + Base64.getEncoder()
+                    .encodeToString((WEBDAV_USER + ":" + WEBDAV_PASSWORD).getBytes());
+            String work = base + "/dav/calendars/" + username + "/work/";
+
+            HttpResponse<String> initial = report(client, auth, work, syncRequest(""));
+            Assert.assertEquals(207, initial.statusCode());
+            String token = between(initial.body(), "<D:sync-token>", "</D:sync-token>");
+            Assert.assertEquals(4, members(propfind(client, auth, work, "1", null)).size());
+
+            // into another month that already holds an event, as a drag usually does
+            HttpResponse<String> moved = put(client, auth, work + "a.ics",
+                    event("a", "20240720T090000Z", "20240720T100000Z", ""), etagOf(client, auth, work + "a.ics"));
+            Assert.assertEquals(204, moved.statusCode());
+            Assert.assertTrue("moved to its new month", exists(verifier, username, "work/2024/7/a.ics"));
+            Assert.assertFalse("gone from its old month", exists(verifier, username, "work/2024/3/a.ics"));
+            Assert.assertEquals("the PUT's ETag is the stored object's", etagOf(client, auth, work + "a.ics"),
+                    moved.headers().firstValue("ETag").orElse("none"));
+
+            // a sync from before reports the moved one and nothing else
+            HttpResponse<String> sinceMove = report(client, auth, work, syncRequest(token));
+            Assert.assertEquals(207, sinceMove.statusCode());
+            Assert.assertTrue("moved member: " + sinceMove.body(), sinceMove.body().contains("a.ics"));
+            for (String untouched : new String[]{"b.ics", "c.ics", "d.ics"})
+                Assert.assertFalse(untouched + " was not touched: " + sinceMove.body(),
+                        sinceMove.body().contains(untouched));
+
+            // a new one, an edit in place and a removal
+            Assert.assertEquals(201, put(client, auth, work + "e.ics",
+                    event("e", "20240901T090000Z", "20240901T100000Z", ""), "if-none-match").statusCode());
+            Assert.assertEquals(204, put(client, auth, work + "c.ics",
+                    event("c", "20240716T090000Z", "20240716T100000Z", ""), etagOf(client, auth, work + "c.ics")).statusCode());
+            Assert.assertEquals(204, send(client, auth, "DELETE", work + "b.ics", null, null).statusCode());
+
+            Map<String, String> listed = members(propfind(client, auth, work, "1", null));
+            Assert.assertEquals(Set.of("a.ics", "c.ics", "d.ics", "e.ics"), listed.keySet());
+            Map<String, String> walked = new TreeMap<>();
+            for (AppDataStore.ObjectRef object : new CalendarStore(verifier).listObjects("work"))
+                walked.put(object.name, object.etag());
+            Assert.assertEquals("what the bridge lists after its own writes is what a fresh walk finds", walked, listed);
+        } finally {
+            server.stop();
+        }
+    }
+
+    /**
+     * Keeping the listing through our own writes must never hide somebody else's. The bridge caches
+     * each writer's pointer for a few seconds, so a write from the web app just before ours is not
+     * seen when our PUT starts: ours then lands on top of it, and the listing has to be rebuilt.
+     */
+    @Test
+    public void anotherClientsWriteIsNotHiddenByOurs() throws Exception {
+        String username = "caldav-race" + Math.abs(random.nextInt() % 1_000_000);
+        String password = "testpassword";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        App calendar = App.init(context, "calendar").join();
+        write(calendar, "App.config",
+                "{\"calendars\":[{\"name\":\"Work\",\"directory\":\"work\",\"color\":\"#ff0000\"}]}");
+        write(calendar, "work/calendar.inf", "{\"name\":\"Work\",\"color\":\"#ff0000\"}");
+        write(calendar, "work/2024/3/a.ics", event("a", "20240315T090000Z", "20240315T100000Z", ""));
+
+        int port = TestPorts.getPort();
+        Server server = WebdavServer.startNonBlocking(port, WEBDAV_USER, WEBDAV_PASSWORD,
+                username, password, "http://localhost:" + args.getInt("port"), "basic", MountConfig.disabled());
+        try {
+            HttpClient client = HttpClient.newHttpClient();
+            String base = "http://localhost:" + port;
+            String auth = "Basic " + Base64.getEncoder()
+                    .encodeToString((WEBDAV_USER + ":" + WEBDAV_PASSWORD).getBytes());
+            String work = base + "/dav/calendars/" + username + "/work/";
+            Assert.assertEquals(Set.of("a.ics"), members(propfind(client, auth, work, "1", null)).keySet());
+
+            // The web app adds one, then a client adds another through the bridge straight after,
+            // before the bridge's cached pointer has seen the first. In another month, as two writes
+            // into one directory this close together conflict, and the second fails outright.
+            write(calendar, "work/2024/7/from-web.ics", event("from-web", "20240720T090000Z", "20240720T100000Z", ""));
+            Assert.assertEquals(201, put(client, auth, work + "from-dav.ics",
+                    event("from-dav", "20240321T090000Z", "20240321T100000Z", ""), "if-none-match").statusCode());
+
+            Assert.assertEquals(Set.of("a.ics", "from-web.ics", "from-dav.ics"),
+                    members(propfind(client, auth, work, "1", null)).keySet());
+        } finally {
+            server.stop();
+        }
+    }
+
+    /**
+     * What keeping the listing is for: a client moving an event into another month is applied to
+     * the listing the bridge holds, rather than paid for with a walk of every month of the calendar.
+     */
+    @Test
+    public void anOwnMoveDoesNotWalkTheCalendarAgain() throws Exception {
+        String username = "caldav-walks" + Math.abs(random.nextInt() % 1_000_000);
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, "testpassword", network, crypto);
+        App calendar = App.init(context, "calendar").join();
+        write(calendar, "work/2024/3/a.ics", event("a", "20240315T090000Z", "20240315T100000Z", ""));
+        write(calendar, "work/2024/7/c.ics", event("c", "20240715T090000Z", "20240715T100000Z", ""));
+        AtomicInteger walks = new AtomicInteger();
+        CalendarStore store = new CalendarStore(context) {
+            @Override
+            protected List<AppDataStore.ObjectRef> readObjects(String directory) {
+                walks.incrementAndGet();
+                return super.readObjects(directory);
+            }
+        };
+
+        store.putObject("work", "a.ics", event("a", "20240720T090000Z", "20240720T100000Z", "")
+                .getBytes(StandardCharsets.UTF_8), store.getObject("work", "a.ics"));
+        List<AppDataStore.ObjectRef> listed = store.listObjects("work");
+        Assert.assertEquals(2, listed.size());
+        Assert.assertTrue("both now in July", listed.stream().allMatch(o -> o.shard.equals("2024/7")));
+        Assert.assertEquals("the move is applied to the listing, not walked again", 1, walks.get());
+    }
+
+    /** The objects in a depth 1 PROPFIND, by name, with their ETags. */
+    private static Map<String, String> members(HttpResponse<String> multistatus) {
+        Assert.assertEquals(multistatus.body(), 207, multistatus.statusCode());
+        Map<String, String> members = new TreeMap<>();
+        for (String response : multistatus.body().split("<D:response>")) {
+            String href = between(response, "<D:href>", "</D:href>");
+            if (! href.endsWith(".ics"))
+                continue;
+            members.put(href.substring(href.lastIndexOf('/') + 1),
+                    between(response, "<D:getetag>", "</D:getetag>").replace("&quot;", "\""));
+        }
+        return members;
     }
 
     private static String syncRequest(String token) {
