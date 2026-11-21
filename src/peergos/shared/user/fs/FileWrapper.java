@@ -1740,7 +1740,12 @@ public class FileWrapper {
                                     });
                         };
 
-                        return Futures.reduceAll(startIndexes, base, composer, (a, b) -> b)
+                        // an update too big for the write buffer is committed in parts, so our old hash must go
+                        // before the first of our chunks can land; writing chunk 0 drops it anyway
+                        CompletableFuture<Snapshot> unhashed = startIndexes.isEmpty() || inputStartIndex < props.chunkSize ?
+                                Futures.of(base) :
+                                dropTreeHash(base, committer, network);
+                        return unhashed.thenCompose(start -> Futures.reduceAll(startIndexes, start, composer, (a, b) -> b))
                                 .thenCompose(preHashVersion -> {
                                     if (! updateHash)
                                         return Futures.of(preHashVersion);
@@ -1785,6 +1790,11 @@ public class FileWrapper {
                                     .filter(u -> ! u.newProps.treeHash.equals(u.meta.getProperties(u.cap.rBaseKey).treeHash))
                                     .collect(Collectors.toList()))
                             .thenCompose(hashUpdates -> bulkSetSameNameProperties(s, committer, owner(), hashUpdates, network)));
+        return dropTreeHash(s, committer, network);
+    }
+
+    private CompletableFuture<Snapshot> dropTreeHash(Snapshot s, Committer committer, NetworkAccess network) {
+        WritableAbsoluteCapability cap = writableFilePointer();
         return network.getFile(s, cap, entryWriter, ownername).thenCompose(updatedUs -> {
             FileProperties now = updatedUs.get().getPointer().fileAccess.getProperties(cap.rBaseKey);
             if (now.treeHash.isEmpty())

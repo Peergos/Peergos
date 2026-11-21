@@ -5,6 +5,7 @@ import peergos.server.*;
 import peergos.server.sync.*;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -13,6 +14,7 @@ import peergos.shared.util.*;
 import java.nio.file.*;
 import java.time.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.*;
 
 /** A write to part of a file must leave the file's stored tree hash describing what the file now holds, as a write of
@@ -256,6 +258,54 @@ public class PartialWriteHashTests {
         writeSection(get(user, "a"), user, 3 * CHUNK + 10, section);
 
         assertHoldsWithNoOldHash(user, "a", with(original, 3 * CHUNK + 10, section));
+    }
+
+    /** A session whose write buffer sends what it holds to the server once it holds this many bytes */
+    private static NetworkAccess network(int bufferSize) {
+        BufferedStorage blocks = new BufferedStorage(service.storage, crypto.hasher);
+        BufferedPointers pointers = new BufferedPointers(service.mutable);
+        WriteSynchronizer synchronizer = new WriteSynchronizer(pointers, blocks, crypto.hasher);
+        MutableTree tree = new MutableTreeImpl(pointers, blocks, crypto.hasher, synchronizer);
+        return new BufferedNetworkAccess(blocks, pointers, bufferSize, service.coreNode, service.account, service.social,
+                service.mutable, service.bats, Optional.empty(), tree, synchronizer, service.controller, service.usage,
+                service.serverMessages, crypto.hasher, Arrays.asList("peergos"), false);
+    }
+
+    /** An update bigger than the write buffer reaches the server in parts, so a write that fails part way can leave some
+     *  of its chunks written, which the old hash must not describe */
+    @Test
+    public void aWriteThatFailsPartWayLeavesNoOldHash() {
+        UserContext user = user();
+        byte[] original = upload(user, "a", random(4 * CHUNK + CHUNK / 2));
+        UserContext smallBuffer = PeergosNetworkUtils.ensureSignedUp(user.username, "password", network(1024 * 1024), crypto);
+        byte[] edited = original.clone();
+        for (int c = 1; c < 5; c++)
+            edited[c * CHUNK + 10] ^= 1;
+        // a mount's save whose data stops coming inside chunk 3, after chunks 1 and 2 are written
+        try {
+            smallBuffer.getByPath(PathUtil.get(user.username, "dir", "a")).join().get().overwriteChangedChunks(
+                    AsyncReader.build(Arrays.copyOf(edited, 3 * CHUNK + 100)), edited.length, smallBuffer.network, crypto, x -> {}).join();
+            Assert.fail("the save should have failed");
+        } catch (CompletionException expected) {}
+        byte[] saved = read(user, "a");
+        Assert.assertFalse("part of the save should have reached the server", Arrays.equals(original, saved));
+        assertHoldsWithNoOldHash(user, "a", saved);
+
+        // a write cancelled after two chunks
+        upload(user, "b", original);
+        long[] written = new long[1];
+        try {
+            smallBuffer.getByPath(PathUtil.get(user.username, "dir", "b")).join().get().overwriteSectionJS(
+                    AsyncReader.build(random(3 * CHUNK)), 0, CHUNK + 10, 0, 4 * CHUNK + 10, Optional.empty(),
+                    smallBuffer.network, crypto, x -> {
+                        if ((written[0] += x) > 2L * CHUNK)
+                            throw new IllegalStateException("Upload cancelled!");
+                    }).join();
+            Assert.fail("the write should have failed");
+        } catch (CompletionException expected) {}
+        byte[] cut = read(user, "b");
+        Assert.assertFalse("part of the write should have reached the server", Arrays.equals(original, cut));
+        assertHoldsWithNoOldHash(user, "b", cut);
     }
 
     @Test
