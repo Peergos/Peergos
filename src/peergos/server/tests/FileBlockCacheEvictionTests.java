@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.stream.Stream;
 
@@ -118,6 +119,7 @@ public class FileBlockCacheEvictionTests {
 
         try {
             cache.put(failing, data).join();
+            Assert.fail("the put should have failed");
         } catch (RuntimeException expected) {}
         for (Cid hash : cached)
             Assert.assertTrue("a put error cleared the cache", cache.hasBlock(hash));
@@ -160,10 +162,17 @@ public class FileBlockCacheEvictionTests {
         new Random(42).nextBytes(data);
         Cid hash = crypto.hasher.hash(data, false).join();
         AtomicBoolean done = new AtomicBoolean(false);
+        AtomicInteger deletes = new AtomicInteger();
         Thread evictor = new Thread(() -> {
             while (! done.get()) {
-                cache.put(hash, data).join();
+                try {
+                    cache.put(hash, data).join();
+                } catch (RuntimeException e) {
+                    // Windows refuses to replace a file whose delete still waits on a read: put it again
+                    continue;
+                }
                 cache.delete(hash);
+                deletes.incrementAndGet();
             }
         });
         evictor.start();
@@ -175,6 +184,7 @@ public class FileBlockCacheEvictionTests {
             done.set(true);
             evictor.join();
         }
+        Assert.assertTrue("no block was deleted during the reads", deletes.get() > 0);
     }
 
     private static long blocksSize(Path dir) throws IOException {
