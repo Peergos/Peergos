@@ -160,6 +160,63 @@ public class App implements StoreAppData, UseChosenFolder {
         Path path = fullPath(relativePath, username);
         return writeFileContents(path, data);
     }
+
+    /** Overwrites a file only if it is still as the app read it (If-Match, RFC 9110 13.1.1): ifMatch holds the ETag a
+     *  read gave, the file's tree hash in quotes, or a list of them, or "*" for any version. The tree hash is checked
+     *  on the version the write is made on, and a write from another device committed meanwhile makes the commit fail,
+     *  so the file is never overwritten from a version the app didn't read. Completes with false, having written
+     *  nothing, when the condition fails or the file isn't there.
+     */
+    @JsMethod
+    public CompletableFuture<Boolean> writeInternalIfMatch(Path relativePath, byte[] data, String ifMatch, String username) {
+        return writeIfMatch(ctx, fullPath(relativePath, username), data, ifMatch);
+    }
+
+    /** As writeInternalIfMatch, for a file given by its full path: an app run from a folder keeps its data there. */
+    @JsMethod
+    public static CompletableFuture<Boolean> writeIfMatch(UserContext ctx, Path path, byte[] data, String ifMatch) {
+        return ctx.getByPath(path).thenCompose(opt -> {
+            if (opt.isEmpty() || opt.get().isDirectory())
+                return Futures.of(false);
+            FileWrapper file = opt.get();
+            return Futures.asyncExceptionally(
+                    () -> ctx.network.synchronizer.applyComplexUpdate(file.owner(), file.signingPair(),
+                            (s, committer) -> file.getUpdated(s, ctx.network).thenCompose(current -> {
+                                if (! ifMatches(ifMatch, current.getFileProperties().treeHash))
+                                    throw new PreconditionFailedException();
+                                return current.overwriteFile(AsyncReader.build(data), data.length, ctx.network,
+                                        ctx.crypto, x -> {}, s, committer);
+                            })).thenApply(v -> true),
+                    t -> isConflict(t) ? Futures.of(false) : Futures.errored(t));
+        });
+    }
+
+    /** Whether an If-Match value holds the tag of a file with this tree hash. Tags compare strongly: a weak one
+     *  (W/"...") never matches. */
+    public static boolean ifMatches(String ifMatch, Optional<HashBranch> treeHash) {
+        String condition = ifMatch.trim();
+        if (condition.equals("*"))
+            return true;
+        if (treeHash.isEmpty())
+            return false;
+        String current = "\"" + treeHash.get().toString() + "\"";
+        return Arrays.stream(condition.split(","))
+                .map(String::trim)
+                .anyMatch(current::equals);
+    }
+
+    private static boolean isConflict(Throwable t) {
+        Throwable cause = Exceptions.getRootCause(t);
+        return cause instanceof PreconditionFailedException ||
+                (cause.getMessage() != null && cause.getMessage().toLowerCase().contains("concurrent modification"));
+    }
+
+    private static class PreconditionFailedException extends RuntimeException {
+        PreconditionFailedException() {
+            super("Precondition failed");
+        }
+    }
+
     @JsMethod
     public CompletableFuture<Boolean> deleteInternal(Path relativePath, String username) {
         Path path = fullPath(relativePath, username);
