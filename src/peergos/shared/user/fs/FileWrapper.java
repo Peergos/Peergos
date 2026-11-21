@@ -1646,6 +1646,7 @@ public class FileWrapper {
 
                         for (long startIndex = inputStartIndex; startIndex < endIndex; startIndex = startIndex + props.chunkSize - (startIndex % props.chunkSize))
                             startIndexes.add(startIndex);
+                        long lastStart = startIndexes.isEmpty() ? -1 : startIndexes.get(startIndexes.size() - 1);
 
                         BiFunction<Snapshot, Long, CompletableFuture<Snapshot>> composer = (version, startIndex) -> {
                             MaybeMultihash currentHash = us.pointer.fileAccess.committedHash();
@@ -1696,19 +1697,25 @@ public class FileWrapper {
 
                                             return fileData.readIntoArray(raw, internalStart, internalEnd - internalStart)
                                                     .thenCompose(read -> treeHasher.isPresent() ?
-                                                            treeHasher.get().setChunk((int)(startIndex / props.chunkSize), raw, crypto.hasher).thenApply(x -> read) :
-                                                            Futures.of(read))
-                                                    .thenCompose(read -> {
+                                                            treeHasher.get().setChunk((int)(startIndex / props.chunkSize), raw, crypto.hasher) :
+                                                            Futures.of(true))
+                                                    // our last chunk completes our new hash, which then goes in the node write that makes
+                                                    // our new contents readable rather than in one of its own
+                                                    .thenCompose(x -> startIndex == lastStart ?
+                                                            completedHash(treeHasher, crypto) :
+                                                            Futures.of(Optional.<HashBranch>empty()))
+                                                    .thenCompose(newHash -> {
 
                                                 Chunk updated = new Chunk(raw, dataKey, currentOriginal.location.getMapKey(), dataKey.createNonce());
                                                 LocatedChunk located = new LocatedChunk(currentOriginal.location, currentOriginal.bat, currentOriginal.existingHash, updated);
                                                 long currentSize = filesSize.get();
-                                                // remove hash from properties as we are changing the file
+                                                // our old hash goes as we are changing the file
                                                 FileProperties newProps = new FileProperties(props.name, false,
                                                         props.isLink, props.mimeType,
                                                         endIndex > currentSize ? endIndex : currentSize,
                                                         modified.orElseGet(() -> LocalDateTime.now(ZoneOffset.UTC)), props.created, props.isHidden,
-                                                        props.thumbnail, props.streamSecret, Optional.empty(), props.chunkSize);
+                                                        props.thumbnail, props.streamSecret, startIndex < props.chunkSize ? newHash : Optional.empty(),
+                                                        props.chunkSize);
 
                                                 Optional<BatId> mirrorBat = mirrorBatId();
                                                 CompletableFuture<Snapshot> chunkUploaded = FileUploader.uploadChunk(version, committer, us.signingPair(),
@@ -1723,13 +1730,13 @@ public class FileWrapper {
                                                         filesSize.set(updatedLength);
 
                                                         if (updatedLength > props.chunkSize) {
-                                                            // update file size and remove treehash in FileProperties of first chunk
+                                                            // update file size and replace treehash in FileProperties of first chunk
                                                             return network.getFile(updatedBase, ourCap, entryWriter, ownername)
                                                                     .thenCompose(updatedUs -> {
                                                                         FileProperties correctedSize = updatedUs.get()
                                                                                 .getPointer().fileAccess.getProperties(ourCap.rBaseKey)
                                                                                 .withSize(endIndex)
-                                                                                .withHash(Optional.empty());
+                                                                                .withHash(newHash);
                                                                         return updatedUs.get()
                                                                                 .getPointer().fileAccess.updateProperties(updatedBase,
                                                                                         committer, ourCap, entryWriter, correctedSize, network);
@@ -1743,26 +1750,24 @@ public class FileWrapper {
                                     });
                         };
 
+                        // once we are longer, a part chunk at our old end reads padded with zeros, so it has changed even
+                        // if this didn't write it
+                        int kept = endIndex > props.size ? (int) (props.size / props.chunkSize) : props.chunkCount();
+                        CompletableFuture<Boolean> hashed = treeHasher.isEmpty() ? Futures.of(true) :
+                                wholeFile ?
+                                        (endIndex == 0 ? treeHasher.get().setChunk(0, new byte[0], crypto.hasher) : Futures.of(true)) :
+                                        keepStoredHashes(treeHasher.get(), base, kept, network);
                         // an update too big for the write buffer is committed in parts, so our old hash must go
                         // before the first of our chunks can land; writing chunk 0 drops it anyway, and bytes past our
                         // old end aren't read until our size grows, which drops it too
-                        CompletableFuture<Snapshot> unhashed = startIndexes.isEmpty() || inputStartIndex < props.chunkSize
+                        CompletableFuture<Snapshot> unhashed = hashed.thenCompose(x -> startIndexes.isEmpty() || inputStartIndex < props.chunkSize
                                 || inputStartIndex >= props.size ?
                                 Futures.of(base) :
-                                dropTreeHash(base, committer, network);
+                                dropTreeHash(base, committer, network));
                         return unhashed.thenCompose(start -> Futures.reduceAll(startIndexes, start, composer, (a, b) -> b))
-                                .thenCompose(preHashVersion -> {
-                                    if (! updateHash)
-                                        return Futures.of(preHashVersion);
-                                    // once we are longer, a part chunk at our old end reads padded with zeros, so it has
-                                    // changed even if this didn't write it
-                                    int kept = endIndex > props.size ? (int) (props.size / props.chunkSize) : props.chunkCount();
-                                    CompletableFuture<Boolean> hashed = treeHasher.isEmpty() ? Futures.of(true) :
-                                            wholeFile ?
-                                                    (endIndex == 0 ? treeHasher.get().setChunk(0, new byte[0], crypto.hasher) : Futures.of(true)) :
-                                                    keepStoredHashes(treeHasher.get(), base, kept, network);
-                                    return hashed.thenCompose(x -> storeTreeHash(preHashVersion, committer, treeHasher, network, crypto));
-                                });
+                                .thenCompose(written -> updateHash ?
+                                        storeTreeHash(written, committer, treeHasher, network, crypto) :
+                                        Futures.of(written));
                     });
                 });
     }
@@ -1778,6 +1783,15 @@ public class FileWrapper {
         });
     }
 
+    /** The complete hash of a write, if the node write of chunk 0 can hold it: that of a file of up to 1024 chunks with
+     *  a stream secret, which are those whose hash getHashUpdates puts on chunk 0 alone. */
+    private CompletableFuture<Optional<HashBranch>> completedHash(Optional<HashTreeBuilder> hashes, Crypto crypto) {
+        if (hashes.isEmpty() || ! hashes.get().isComplete() || getFileProperties().streamSecret.isEmpty())
+            return Futures.of(Optional.empty());
+        return hashes.get().complete(crypto.hasher)
+                .thenApply(tree -> tree.level1.size() == 1 ? Optional.of(tree.branch(0)) : Optional.empty());
+    }
+
     /** Store the hash of what a write left in the file, or if it couldn't build that, drop the hash of what was there. */
     private CompletableFuture<Snapshot> storeTreeHash(Snapshot s,
                                                       Committer committer,
@@ -1790,7 +1804,7 @@ public class FileWrapper {
             return hashes.get().complete(crypto.hasher)
                     .thenCompose(treeHash -> network.getFile(s, cap, entryWriter, ownername)
                             .thenCompose(updatedUs -> updatedUs.get().getHashUpdates(treeHash, network, crypto.hasher))
-                            // a write that changed nothing has nothing to commit
+                            // nothing to commit for a write that changed nothing, or that stored this with its last chunk
                             .thenApply(hashUpdates -> hashUpdates.stream()
                                     .filter(u -> ! u.newProps.treeHash.equals(u.meta.getProperties(u.cap.rBaseKey).treeHash))
                                     .collect(Collectors.toList()))

@@ -15,6 +15,7 @@ import java.nio.file.*;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
 import java.util.stream.*;
 
 /** A write to part of a file must leave the file's stored tree hash describing what the file now holds, as a write of
@@ -245,6 +246,36 @@ public class PartialWriteHashTests {
                     .appendFileJS("a", AsyncReader.build(tail), 0, tail.length, user.network, crypto, x -> {}).join();
             contents = with(contents, contents.length, tail);
             assertHolds("an append of " + length, user, "a", contents);
+        }
+    }
+
+    /** The node writes of an append of tail, through the overwriteSection a chat log's append uses */
+    private static int appendWrites(UserContext user, String name, byte[] tail) {
+        FileWrapper file = get(user, name);
+        AtomicInteger writes = new AtomicInteger();
+        user.network.synchronizer.applyComplexUpdate(file.owner(), file.signingPair(), (s, c) -> file.getUpdated(s, user.network)
+                .thenCompose(f -> f.overwriteSection(s, (o, w, wd, e, tid) -> {
+                    writes.incrementAndGet();
+                    return c.commit(o, w, wd, e, tid);
+                }, AsyncReader.build(tail), f.getSize(), f.getSize() + tail.length, Optional.empty(), user.network, crypto, x -> {})))
+                .join();
+        return writes.get();
+    }
+
+    /** Keeping a file's hash current costs an append no more node writes than dropping it does */
+    @Test
+    public void anAppendWritesNoMoreNodesThanWithoutAHash() {
+        UserContext user = user();
+        // within chunk 0, then past it
+        for (int size : new int[]{CHUNK / 2, CHUNK + CHUNK / 2}) {
+            byte[] hashed = upload(user, "h" + size, random(size));
+            upload(user, "u" + size, random(size));
+            FileWrapper unhashed = get(user, "u" + size);
+            unhashed.setSameNameProperties(unhashed.getFileProperties().withHash(Optional.empty()), user.network).join();
+            byte[] tail = random(1000);
+
+            Assert.assertEquals("an append to " + size + " bytes", appendWrites(user, "u" + size, tail), appendWrites(user, "h" + size, tail));
+            assertHolds("an append to " + size + " bytes", user, "h" + size, with(hashed, size, tail));
         }
     }
 
