@@ -328,8 +328,10 @@ public class WebdavFileSystem implements IWebdavStore {
                 if (existingFile.isPresent() && !existingFile.get().isDirectory()
                         && !existingFile.get().getFileProperties().isHidden) {
                     FileWrapper fw = existingFile.get();
+                    // a write queued ahead of this one may have grown the file, so write into it as it is now
                     context.network.synchronizer.applyComplexUpdate(fw.owner(), fw.signingPair(),
-                            (s, committer) -> fw.clean(s, committer, context.network, context.crypto)
+                            (s, committer) -> fw.getUpdated(s, context.network)
+                                    .thenCompose(now -> now.clean(s, committer, context.network, context.crypto))
                                     .thenCompose(cleaned -> cleaned.left.overwriteSection(
                                             cleaned.right, committer,
                                             readerPair.left, rangeStart, rangeEnd,

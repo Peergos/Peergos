@@ -2,14 +2,18 @@ package peergos.server.tests;
 
 import org.eclipse.jetty.server.Server;
 import org.junit.*;
+import org.peergos.util.Pair;
 import peergos.server.*;
 import peergos.server.tests.util.TestPorts;
 import peergos.server.util.Args;
 import peergos.server.webdav.MountConfig;
+import peergos.server.webdav.WebdavFileSystem;
 import peergos.server.webdav.WebdavMount;
 import peergos.server.webdav.WebdavServer;
 import peergos.shared.*;
 import peergos.shared.user.*;
+import peergos.shared.user.fs.*;
+import peergos.shared.util.*;
 
 import java.net.*;
 import java.net.http.HttpClient;
@@ -17,6 +21,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.*;
 
 public class WebdavTests {
 
@@ -231,6 +236,93 @@ public class WebdavTests {
             Assert.assertArrayEquals("Modified content must round-trip through mount", modifiedContent, Files.readAllBytes(renamed));
         } finally {
             webdavServer.stop();
+        }
+    }
+
+    private static byte[] randomBytes(int size) {
+        byte[] data = new byte[size];
+        random.nextBytes(data);
+        return data;
+    }
+
+    /** Holds its data back until released, and says when it is first asked for it */
+    private static class HeldReader implements AsyncReader {
+        private final AsyncReader data;
+        private final CompletableFuture<Boolean> asked, release;
+
+        HeldReader(byte[] data, CompletableFuture<Boolean> asked, CompletableFuture<Boolean> release) {
+            this.data = AsyncReader.build(data);
+            this.asked = asked;
+            this.release = release;
+        }
+
+        @Override
+        public CompletableFuture<Integer> readIntoArray(byte[] res, int offset, int length) {
+            asked.complete(true);
+            return release.thenCompose(x -> data.readIntoArray(res, offset, length));
+        }
+
+        @Override
+        public CompletableFuture<AsyncReader> seek(long offset) {
+            return data.seek(offset).thenApply(x -> this);
+        }
+
+        @Override
+        public CompletableFuture<AsyncReader> reset() {
+            return data.reset().thenApply(x -> this);
+        }
+
+        @Override
+        public void close() {
+            data.close();
+        }
+    }
+
+    /** A mount sends range writes in parallel, and each waits for the one before. One that looked the file up before
+     *  an earlier write grew it must write into the file as it is now, not cut it back to the size it saw. */
+    @Test
+    public void aRangeWriteQueuedBehindAnAppendKeepsTheAppend() throws Exception {
+        String username = generateUsername();
+        String password = "testpassword";
+        UserContext user = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        int chunk = FileProperties.chunkSizeForNewFiles();
+        byte[] original = randomBytes(2 * chunk + chunk / 2);
+        user.getUserRoot().join().uploadOrReplaceFile("a", AsyncReader.build(original), original.length,
+                user.network, crypto, () -> false, x -> {}).join();
+        WebdavFileSystem fs = new WebdavFileSystem(username, password, "http://localhost:" + args.getInt("port"),
+                MountConfig.disabled());
+        String uri = "/" + username + "/a";
+        ExecutorService requests = Executors.newFixedThreadPool(2);
+        try {
+            byte[] tail = randomBytes(1000);
+            CompletableFuture<Boolean> appending = new CompletableFuture<>();
+            CompletableFuture<Boolean> release = new CompletableFuture<>();
+            CompletableFuture<Long> append = CompletableFuture.supplyAsync(() -> fs.setResourceContent(null, uri,
+                    new Pair<>(new HeldReader(tail, appending, release), (long) tail.length),
+                    original.length, original.length + tail.length, null, null), requests);
+            appending.get(60, TimeUnit.SECONDS);
+            // past the end the file had when this looked it up, but short of the end the append leaves
+            byte[] section = randomBytes(510);
+            CompletableFuture<Long> write = CompletableFuture.supplyAsync(() -> fs.setResourceContent(null, uri,
+                    new Pair<>(AsyncReader.build(section), (long) section.length),
+                    original.length - 10, original.length + 500, null, null), requests);
+            // time for it to look the file up, which doesn't wait for the append, and queue behind it
+            Thread.sleep(3_000);
+            release.complete(true);
+            append.get(60, TimeUnit.SECONDS);
+            write.get(60, TimeUnit.SECONDS);
+
+            byte[] expected = ArrayOps.concat(original, tail);
+            System.arraycopy(section, 0, expected, original.length - 10, section.length);
+            UserContext fresh = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
+            FileWrapper file = fresh.getByPath(uri).join().get();
+            Assert.assertArrayEquals(expected, Serialize.readFully(file.getInputStream(fresh.network, crypto, x -> {}).join(),
+                    file.getSize()).join());
+            Optional<HashBranch> stored = file.getFileProperties().treeHash;
+            HashBranch exact = HashTree.build(AsyncReader.build(expected), 0, expected.length, chunk, crypto.hasher).join().branch(0);
+            Assert.assertTrue("stored " + stored, stored.isEmpty() || stored.get().equals(exact));
+        } finally {
+            requests.shutdownNow();
         }
     }
 }
