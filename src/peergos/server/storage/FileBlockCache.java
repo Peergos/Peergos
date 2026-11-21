@@ -19,8 +19,7 @@ import java.util.concurrent.atomic.*;
 import java.util.function.*;
 import java.util.logging.*;
 
-/** A local file based block cache LRU
- *
+/** A local file based block cache. Over its size limit it evicts the biggest blocks first.
  */
 public class FileBlockCache implements BlockCache {
     private static final Logger LOG = Logging.LOG();
@@ -307,15 +306,16 @@ public class FileBlockCache implements BlockCache {
         applyToAll((p, a) -> bytesByKiB[kib(a.size())] += a.size());
         // The walk is the real size, which the running count can have drifted from, as when another cache shared the
         // folder: evicting by a count above it deletes more than needed, down to blocks a cached sign-in offline needs.
-        totalSize.set(Arrays.stream(bytesByKiB).sum());
+        long walked = Arrays.stream(bytesByKiB).sum();
+        totalSize.set(walked);
         needToCommitSize.set(true);
-        if (totalSize.get() <= maxSize) {
+        if (walked <= maxSize) {
             cleaning.set(false);
             return;
         }
-        Logging.LOG().info("Starting FileBlockCache reduction from " + totalSize.get());
+        LOG.info("Starting FileBlockCache reduction from " + walked);
         // every size above the smallest that has to go, and as much of that one as is still needed
-        long excess = totalSize.get() - maxSize / 2;
+        long excess = walked - maxSize / 2;
         int smallest = bytesByKiB.length - 1;
         long above = 0;
         while (smallest > 0 && above + bytesByKiB[smallest] < excess)
@@ -327,7 +327,7 @@ public class FileBlockCache implements BlockCache {
             if (kib > smallestToGo || (kib == smallestToGo && stillNeeded.getAndAdd(-a.size()) > 0))
                 delete(p.toFile()); // delete() already subtracts the file's size
         });
-        Logging.LOG().info("Reduced FileBlockCache down to " + totalSize.get());
+        LOG.info("Reduced FileBlockCache down to " + totalSize.get());
         cleaning.set(false);
     }
 
