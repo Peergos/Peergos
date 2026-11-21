@@ -227,14 +227,8 @@ public class FileBlockCache implements BlockCache {
 
     public CompletableFuture<Optional<Integer>> getSize(Multihash h) {
         Path path = getFilePath((Cid)h);
-        try {
-            // one look, so a block evicted between an exists() and a length() can't read as 0 bytes
-            return CompletableFuture.completedFuture(Optional.of((int) Files.size(root.resolve(path))));
-        } catch (NoSuchFileException e) {
-            return CompletableFuture.completedFuture(Optional.empty());
-        } catch (IOException e) {
-            throw new RuntimeException(e.getMessage(), e);
-        }
+        File file = root.resolve(path).toFile();
+        return CompletableFuture.completedFuture(file.exists() ? Optional.of((int) file.length()) : Optional.empty());
     }
 
     @Override

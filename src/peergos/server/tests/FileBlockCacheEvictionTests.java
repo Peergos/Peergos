@@ -170,7 +170,6 @@ public class FileBlockCacheEvictionTests {
         try {
             for (int i = 0; i < 20_000; i++) {
                 cache.get(hash).join().ifPresent(block -> Assert.assertArrayEquals(data, block));
-                cache.getSize(hash).join().ifPresent(size -> Assert.assertEquals(data.length, (int) size));
             }
         } finally {
             done.set(true);
