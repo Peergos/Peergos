@@ -1,7 +1,9 @@
 package peergos.server.tests;
 
 import org.junit.Assert;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 import peergos.server.Main;
 import peergos.server.storage.FileBlockCache;
 import peergos.shared.Crypto;
@@ -17,27 +19,31 @@ import java.util.stream.Stream;
 
 public class FileBlockCacheEvictionTests {
 
+    @Rule
+    public TemporaryFolder folder = new TemporaryFolder();
+
+    private static List<Cid> put(FileBlockCache cache, Crypto crypto, Random rnd, int count, int size, boolean raw) {
+        List<Cid> hashes = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            byte[] data = new byte[size];
+            rnd.nextBytes(data);
+            Cid hash = crypto.hasher.hash(data, raw).join();
+            cache.put(hash, data).join();
+            hashes.add(hash);
+        }
+        return hashes;
+    }
+
     /** The Android app signs in offline from this cache, so going over its limit with file contents must not take
      *  the small metadata blocks with them */
     @Test
     public void evictsBigBlocksFirst() throws IOException {
         Crypto crypto = Main.initCrypto();
-        Path tmpDir = Files.createTempDirectory("peergos-test");
+        Path tmpDir = folder.newFolder().toPath();
         FileBlockCache cache = new FileBlockCache(tmpDir, 100_000_000);
         Random rnd = new Random(42);
-        List<Cid> small = new ArrayList<>();
-        for (int i = 0; i < 200; i++) {
-            byte[] data = new byte[1_000];
-            rnd.nextBytes(data);
-            Cid hash = crypto.hasher.hash(data, false).join();
-            cache.put(hash, data).join();
-            small.add(hash);
-        }
-        for (int i = 0; i < 12; i++) {
-            byte[] data = new byte[100_000];
-            rnd.nextBytes(data);
-            cache.put(crypto.hasher.hash(data, true).join(), data).join();
-        }
+        List<Cid> small = put(cache, crypto, rnd, 200, 1_000, false);
+        put(cache, crypto, rnd, 12, 100_000, true);
 
         int limit = 1_000_000;
         cache.ensureWithinSizeLimit(limit);
@@ -51,25 +57,11 @@ public class FileBlockCacheEvictionTests {
     @Test
     public void evictionGoesByTheFilesNotADriftedCount() throws IOException {
         Crypto crypto = Main.initCrypto();
-        Path tmpDir = Files.createTempDirectory("peergos-test");
+        Path tmpDir = folder.newFolder().toPath();
         FileBlockCache cache = new FileBlockCache(tmpDir, 100_000_000);
         Random rnd = new Random(42);
-        List<Cid> small = new ArrayList<>();
-        for (int i = 0; i < 200; i++) {
-            byte[] data = new byte[1_000];
-            rnd.nextBytes(data);
-            Cid hash = crypto.hasher.hash(data, false).join();
-            cache.put(hash, data).join();
-            small.add(hash);
-        }
-        List<Cid> big = new ArrayList<>();
-        for (int i = 0; i < 12; i++) {
-            byte[] data = new byte[100_000];
-            rnd.nextBytes(data);
-            Cid hash = crypto.hasher.hash(data, true).join();
-            cache.put(hash, data).join();
-            big.add(hash);
-        }
+        List<Cid> small = put(cache, crypto, rnd, 200, 1_000, false);
+        List<Cid> big = put(cache, crypto, rnd, 12, 100_000, true);
         // another cache over the same folder evicts most of the big ones, which this one still counts
         try (Stream<Path> files = Files.walk(tmpDir)) {
             for (Path p : files.filter(p -> p.toString().endsWith(".data") && p.toFile().length() == 100_000).limit(7).toList())
@@ -87,17 +79,9 @@ public class FileBlockCacheEvictionTests {
     @Test
     public void deleteRemovesAFolderOnlyOnceItIsEmpty() throws IOException {
         Crypto crypto = Main.initCrypto();
-        Path tmpDir = Files.createTempDirectory("peergos-test");
+        Path tmpDir = folder.newFolder().toPath();
         FileBlockCache cache = new FileBlockCache(tmpDir, 100_000_000);
-        Random rnd = new Random(42);
-        List<Cid> blocks = new ArrayList<>();
-        for (int i = 0; i < 200; i++) {
-            byte[] data = new byte[100];
-            rnd.nextBytes(data);
-            Cid hash = crypto.hasher.hash(data, false).join();
-            cache.put(hash, data).join();
-            blocks.add(hash);
-        }
+        List<Cid> blocks = put(cache, crypto, new Random(42), 200, 100, false);
         while (! blocks.isEmpty()) {
             cache.delete(blocks.remove(blocks.size() - 1));
             for (Cid hash : blocks)
