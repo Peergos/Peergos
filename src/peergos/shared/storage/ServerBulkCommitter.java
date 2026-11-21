@@ -144,12 +144,18 @@ public class ServerBulkCommitter implements BulkCommitter {
                         ordered.add(fromRootFirst(perWriter.get(i),
                                 context.roots.getOrDefault(commit.writers.get(i).writer, MaybeMultihash.empty())));
 
-                    List<List<Block>> finalCall = new ArrayList<>();
-                    List<List<Block>> deferred = new ArrayList<>();
+                    List<List<Block>> finalCall = new ArrayList<>(Collections.nCopies(ordered.size(), null));
+                    List<List<Block>> deferred = new ArrayList<>(Collections.nCopies(ordered.size(), null));
                     int budget = maxInlineBytes;
                     // the pre-written hashes ride along on the final call, and count against it too
                     int countBudget = maxBlocks - preWrittenCount(commit);
-                    for (List<Block> blocks : ordered) {
+                    // the server only takes a new writer's blocks in the call that carries the pointer update owning
+                    // it, so they can't go ahead in an earlier call, and the new writers take the final call first
+                    List<Integer> fillOrder = IntStream.range(0, ordered.size()).boxed()
+                            .sorted(Comparator.comparing(i -> ! context.newWriters.contains(commit.writers.get(i).writer)))
+                            .collect(Collectors.toList());
+                    for (int i : fillOrder) {
+                        List<Block> blocks = ordered.get(i);
                         List<Block> keep = new ArrayList<>();
                         int taken = 0;
                         while (taken < blocks.size() && blocks.get(taken).data.length <= budget && countBudget > 0) {
@@ -158,8 +164,8 @@ public class ServerBulkCommitter implements BulkCommitter {
                             keep.add(blocks.get(taken));
                             taken++;
                         }
-                        finalCall.add(keep);
-                        deferred.add(new ArrayList<>(blocks.subList(taken, blocks.size())));
+                        finalCall.set(i, keep);
+                        deferred.set(i, new ArrayList<>(blocks.subList(taken, blocks.size())));
                     }
 
                     return blocksOnlyCalls(commit, context, deferred, tid)
