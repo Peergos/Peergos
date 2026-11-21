@@ -308,4 +308,19 @@ public class PartialWriteHashTests {
 
         assertHoldsWithNoOldHash(user, "a", with(longer, CHUNK + 10, section));
     }
+
+    /** A stored hash listing more chunks than the file has, as an older client's truncate to a chunk boundary left
+     *  it, describes other contents: a save of those contents must still write them. */
+    @Test
+    public void aStoredHashOfMoreChunksThanTheFileIsNotTrusted() {
+        UserContext user = user();
+        byte[] original = upload(user, "a", random(2 * CHUNK + CHUNK / 2));
+        get(user, "a").truncate(2 * CHUNK, user.network, crypto).join();
+        FileWrapper cut = get(user, "a");
+        FileWrapper.bulkSetSameNameProperties(cut.getHashUpdates(treeOf(original), user.network, crypto.hasher).join(),
+                user.network).join();
+
+        get(user, "a").overwriteChangedChunks(AsyncReader.build(original), original.length, user.network, crypto, x -> {}).join();
+        assertHolds("the original bytes written back", user, "a", original);
+    }
 }

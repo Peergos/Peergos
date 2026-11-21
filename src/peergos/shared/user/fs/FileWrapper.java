@@ -1166,7 +1166,10 @@ public class FileWrapper {
         int nChunks = newSize == 0 ? 1 : (int) ((newSize + chunkSize - 1) / chunkSize);
         Optional<HashBranch> existingBranch = getFileProperties().treeHash;
 
-        if (existingBranch.isEmpty() || existingBranch.get().level1.isEmpty() || nChunks > 1024)
+        // a stored list of another length than the file's chunks describes other contents (an older client's truncate
+        // left such hashes), and a chunk that matched it could go unwritten
+        if (existingBranch.isEmpty() || existingBranch.get().level1.isEmpty() || nChunks > 1024
+                || existingBranch.get().level1.get().nChunks() != getFileProperties().chunkCount())
             return overwriteFile(newData, newSize, network, crypto, monitor, s, committer);
 
         ChunkHashList existingChunkHashes = existingBranch.get().level1.get();
