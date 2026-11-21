@@ -1251,10 +1251,11 @@ public class FileWrapper {
                                                              NetworkAccess network,
                                                              Crypto crypto,
                                                              ProgressConsumer<Long> monitor) {
+        // the file may have grown since we were retrieved, and a write sized by our copy would cut it short
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
-                (s, committer) -> overwriteSection(s, committer, fileData,
+                (s, committer) -> getUpdated(s, network).thenCompose(us -> us.overwriteSection(s, committer, fileData,
                         LongUtil.intsToLong(startHigh, startLow),
-                        LongUtil.intsToLong(endHigh, endLow), modified, network, crypto, monitor))
+                        LongUtil.intsToLong(endHigh, endLow), modified, network, crypto, monitor)))
                 .thenCompose(v -> getUpdated(v, network));
     }
 

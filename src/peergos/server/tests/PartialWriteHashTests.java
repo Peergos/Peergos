@@ -360,6 +360,20 @@ public class PartialWriteHashTests {
         assertHoldsWithNoOldHash(user, "a", with(longer, CHUNK + 10, section));
     }
 
+    @Test
+    public void aWriteThroughACopyFromBeforeTheFileGrewKeepsItsSize() {
+        UserContext user = user();
+        byte[] original = upload(user, "a", random(2 * CHUNK + CHUNK / 2));
+        FileWrapper stale = get(user, "a");
+        byte[] longer = upload(user, "a", with(original, original.length, random(1000)));
+
+        // past the end our copy has, but short of the file's
+        byte[] section = random(510);
+        writeSection(stale, user, original.length - 10, section);
+
+        assertHoldsWithNoOldHash(user, "a", with(longer, original.length - 10, section));
+    }
+
     /** A stored hash listing more chunks than the file has describes other contents: a save of those contents must
      *  still write them. */
     @Test
