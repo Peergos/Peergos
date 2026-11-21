@@ -630,6 +630,16 @@ public class FileWrapper {
     }
 
     public CompletableFuture<Snapshot> truncate(Snapshot initialVersion, Committer committer, long newSize, NetworkAccess network, Crypto crypto) {
+        return truncate(initialVersion, committer, newSize, true, network, crypto);
+    }
+
+    /** @param updateHash false if the caller sets our hash itself, later in the same update */
+    private CompletableFuture<Snapshot> truncate(Snapshot initialVersion,
+                                                 Committer committer,
+                                                 long newSize,
+                                                 boolean updateHash,
+                                                 NetworkAccess network,
+                                                 Crypto crypto) {
         if (isDirectory())
             return Futures.errored(new IllegalStateException("You cannot truncate a directory!"));
         FileProperties props = getFileProperties();
@@ -662,7 +672,17 @@ public class FileWrapper {
                                         entryWriter, props.withSize(startOfLastChunk), network).thenCompose(resized ->
                                         getUpdated(resized, network).thenCompose(f -> f.clean(resized, committer, network, crypto)
                                                 .thenCompose(p -> p.left.overwriteSection(p.right, committer,
-                                                AsyncReader.build(lastChunk), startOfLastChunk, newSize, Optional.empty(), network, crypto, x -> {})))));
+                                                AsyncReader.build(lastChunk), startOfLastChunk, newSize, Optional.empty(), false, network, crypto, x -> {})))))
+                                        .thenCompose(cut -> {
+                                            if (! updateHash)
+                                                return Futures.of(cut);
+                                            // the whole chunks before the cut are as they were
+                                            int whole = (int) (newSize / props.chunkSize);
+                                            HashTreeBuilder hashes = new HashTreeBuilder(newSize, props.chunkSize);
+                                            return (lastChunk.length > 0 || newSize == 0 ? hashes.setChunk(whole, lastChunk, crypto.hasher) : Futures.of(true))
+                                                    .thenCompose(x -> keepStoredHashes(hashes, snapshot, whole, network))
+                                                    .thenCompose(x -> storeTreeHash(cut, committer, Optional.of(hashes), network, crypto));
+                                        });
                             });
                         }))
                 );
@@ -1150,6 +1170,7 @@ public class FileWrapper {
             return overwriteFile(newData, newSize, network, crypto, monitor, s, committer);
 
         ChunkHashList existingChunkHashes = existingBranch.get().level1.get();
+        HashTreeBuilder newHashes = new HashTreeBuilder(newSize, chunkSize);
 
         return clean(s, committer, network, crypto)
                         .thenCompose(cleaned ->
@@ -1163,6 +1184,7 @@ public class FileWrapper {
                                             return readFully(newData, chunkBuf, 0, chunkLen)
                                                     .thenCompose(ignored -> HashTree.chunkHash(chunkBuf, chunkIndex, chunkSize, nChunks == 1, crypto.hasher))
                                                     .thenCompose(chunkHash -> {
+                                                        newHashes.setChunkHash(chunkIndex, chunkHash);
                                                         if (chunkIndex < existingChunkHashes.nChunks()) {
                                                             byte[] existing = Arrays.copyOfRange(
                                                                     existingChunkHashes.chunkHashes,
@@ -1175,7 +1197,7 @@ public class FileWrapper {
                                                                         state.right, committer,
                                                                         new AsyncReader.ArrayBacked(chunkBuf),
                                                                         chunkStart, chunkStart + chunkLen,
-                                                                        Optional.empty(), network, crypto, monitor))
+                                                                        Optional.empty(), false, network, crypto, monitor))
                                                                 .thenApply(newSnap -> new Pair<>(state.left, newSnap));
                                                     });
                                         },
@@ -1184,7 +1206,8 @@ public class FileWrapper {
                                                 ? Futures.of(finalState.right)
                                                 : finalState.left.getUpdated(finalState.right, network)
                                                         .thenCompose(f -> f.truncate(finalState.right, committer,
-                                                                newSize, network, crypto))));
+                                                                newSize, false, network, crypto))))
+                .thenCompose(written -> storeTreeHash(written, committer, Optional.of(newHashes), network, crypto));
     }
 
     private CompletableFuture<Snapshot> setHashAndModified(Snapshot s,
@@ -1195,7 +1218,10 @@ public class FileWrapper {
                                                            Crypto crypto) {
         return (newHash.isEmpty() ? Futures.of(s) :
                 getUpdated(s, network)
-                        .thenCompose(f -> f.getHashUpdates(newHash.get(), network, crypto.hasher))
+                        // a hash the write stored is of the bytes it wrote, which a hash of their source may not be
+                        .thenCompose(f -> f.getFileProperties().treeHash.isPresent() ?
+                                Futures.of(Collections.<PropsUpdate>emptyList()) :
+                                f.getHashUpdates(newHash.get(), network, crypto.hasher))
                         .thenCompose(updates -> updates.isEmpty() ? Futures.of(s) :
                                 bulkSetSameNameProperties(s, committer, owner(), updates, network)))
                 .thenCompose(hashed -> modified.isEmpty() ? Futures.of(hashed) :
@@ -1567,6 +1593,20 @@ public class FileWrapper {
                                                         NetworkAccess network,
                                                         Crypto crypto,
                                                         ProgressConsumer<Long> monitor) {
+        return overwriteSection(current, committer, fileData, inputStartIndex, endIndex, modified, true, network, crypto, monitor);
+    }
+
+    /** @param updateHash false if the caller sets our hash itself, later in the same update */
+    private CompletableFuture<Snapshot> overwriteSection(Snapshot current,
+                                                         Committer committer,
+                                                         AsyncReader fileData,
+                                                         long inputStartIndex,
+                                                         long endIndex,
+                                                         Optional<LocalDateTime> modified,
+                                                         boolean updateHash,
+                                                         NetworkAccess network,
+                                                         Crypto crypto,
+                                                         ProgressConsumer<Long> monitor) {
         if (! isWritable())
             return Futures.errored(new IllegalStateException("Unable to modify file without write access!"));
         if (isDirty())
@@ -1582,8 +1622,11 @@ public class FileWrapper {
         Location parentLocation = getPointer().getParentCap().getLocation(owner(), writer());
         Optional<Bat> parentBat = getPointer().getParentCap().bat;
         WritableAbsoluteCapability ourCap = writableFilePointer();
-        boolean updateTreeHash = inputStartIndex == 0 && endIndex >= props.size;
-        HashTreeBuilder treeHasher = updateTreeHash ? new HashTreeBuilder(endIndex, props.chunkSize) : null;
+        boolean wholeFile = inputStartIndex == 0 && endIndex >= props.size;
+        // a write to part of the file can only hash the chunks it writes, and needs the stored hashes of the rest
+        Optional<HashTreeBuilder> treeHasher = updateHash && (wholeFile || props.treeHash.isPresent()) ?
+                Optional.of(new HashTreeBuilder(Math.max(endIndex, props.size), props.chunkSize)) :
+                Optional.empty();
         return current.withWriter(owner(), writer(), network)
                 .thenCompose(base -> {
                     FileWrapper us = this;
@@ -1646,8 +1689,8 @@ public class FileWrapper {
                                                     Optional.empty();
 
                                             return fileData.readIntoArray(raw, internalStart, internalEnd - internalStart)
-                                                    .thenCompose(read -> updateTreeHash ?
-                                                            treeHasher.setChunk((int)(startIndex / props.chunkSize), raw, crypto.hasher).thenApply(x -> read) :
+                                                    .thenCompose(read -> treeHasher.isPresent() ?
+                                                            treeHasher.get().setChunk((int)(startIndex / props.chunkSize), raw, crypto.hasher).thenApply(x -> read) :
                                                             Futures.of(read))
                                                     .thenCompose(read -> {
 
@@ -1696,19 +1739,52 @@ public class FileWrapper {
 
                         return Futures.reduceAll(startIndexes, base, composer, (a, b) -> b)
                                 .thenCompose(preHashVersion -> {
-                                    if (! updateTreeHash)
+                                    if (! updateHash)
                                         return Futures.of(preHashVersion);
-                                    // update hash branches every 5 GiB
-                                    return (endIndex == 0 ? treeHasher.setChunk(0, new byte[0], crypto.hasher) : Futures.of(true))
-                                            .thenCompose(x -> treeHasher.complete(crypto.hasher))
-                                            .thenCompose(treeHash -> network.getFile(preHashVersion, ourCap, entryWriter, ownername)
-                                                    .thenCompose(updatedUs -> updatedUs.get()
-                                                            .getHashUpdates(treeHash, network, crypto.hasher))
-                                                    .thenCompose(hashUpdates -> FileWrapper.bulkSetSameNameProperties(preHashVersion, committer, owner(), hashUpdates, network))
-                                            );
+                                    // once we are longer a part chunk at our old end reads padded with zeros, so it has
+                                    // changed even if this didn't write it
+                                    int kept = endIndex > props.size ? (int) (props.size / props.chunkSize) : props.chunkCount();
+                                    CompletableFuture<Boolean> hashed = treeHasher.isEmpty() ? Futures.of(true) :
+                                            wholeFile ?
+                                                    (endIndex == 0 ? treeHasher.get().setChunk(0, new byte[0], crypto.hasher) : Futures.of(true)) :
+                                                    keepStoredHashes(treeHasher.get(), base, kept, network);
+                                    return hashed.thenCompose(x -> storeTreeHash(preHashVersion, committer, treeHasher, network, crypto));
                                 });
                     });
                 });
+    }
+
+    /** Add the hashes of our first count chunks, which a write left as they were, as stored before it. Those of a
+     *  copy of us that is out of date would describe other contents.
+     */
+    private CompletableFuture<Boolean> keepStoredHashes(HashTreeBuilder hashes, Snapshot before, int count, NetworkAccess network) {
+        return getUpdated(before, network).thenApply(then -> {
+            if (then.getSize() == getSize())
+                hashes.keep(then.getFileProperties().treeHash, getSize(), count);
+            return true;
+        });
+    }
+
+    /** Store the hash of what a write left in the file, or if it couldn't build that, drop the hash of what was there. */
+    private CompletableFuture<Snapshot> storeTreeHash(Snapshot s,
+                                                      Committer committer,
+                                                      Optional<HashTreeBuilder> hashes,
+                                                      NetworkAccess network,
+                                                      Crypto crypto) {
+        WritableAbsoluteCapability cap = writableFilePointer();
+        if (hashes.isPresent() && hashes.get().isComplete())
+            // update hash branches every 5 GiB
+            return hashes.get().complete(crypto.hasher)
+                    .thenCompose(treeHash -> network.getFile(s, cap, entryWriter, ownername)
+                            .thenCompose(updatedUs -> updatedUs.get().getHashUpdates(treeHash, network, crypto.hasher))
+                            .thenCompose(hashUpdates -> bulkSetSameNameProperties(s, committer, owner(), hashUpdates, network)));
+        return network.getFile(s, cap, entryWriter, ownername).thenCompose(updatedUs -> {
+            FileProperties now = updatedUs.get().getPointer().fileAccess.getProperties(cap.rBaseKey);
+            if (now.treeHash.isEmpty())
+                return Futures.of(s);
+            return updatedUs.get().getPointer().fileAccess.updateProperties(s, committer, cap, entryWriter,
+                    now.withHash(Optional.empty()), network);
+        });
     }
 
     public CompletableFuture<FileWrapper> uploadFileSection(String filename,
