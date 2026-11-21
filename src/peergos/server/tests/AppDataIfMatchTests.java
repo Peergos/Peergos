@@ -31,8 +31,13 @@ public class AppDataIfMatchTests {
 
     /** A client of its own, as another device has, with its own view of the file. */
     private static NetworkAccess newNetwork() {
+        return newNetwork(0);
+    }
+
+    /** One that trusts a pointer it has read for this long, as the web client does for 7 s. */
+    private static NetworkAccess newNetwork(int cacheMillis) {
         return NetworkAccess.buildBuffered(service.storage, service.bats, service.coreNode, service.account,
-                service.mutable, 0, service.social, service.controller, service.usage, service.serverMessages,
+                service.mutable, cacheMillis, service.social, service.controller, service.usage, service.serverMessages,
                 crypto.hasher, Arrays.asList("peergos"), false);
     }
 
@@ -206,6 +211,21 @@ public class AppDataIfMatchTests {
 
         // the other device writes after this one read
         onB.writeInternal(FILE, text("from b"), null).join();
+        Assert.assertFalse(onA.writeInternalIfMatch(FILE, text("from a"), read, null).join());
+        Assert.assertEquals("from b", read(signInAgain(a)));
+    }
+
+    /** A device still seeing the version it read checks the tag on that version, and finds the other device's save
+     *  only when it commits: the commit is refused and nothing is written. */
+    @Test
+    public void aStaleViewLosesTheRace() {
+        UserContext a = ensureSignedUp(generateUsername(random), PASSWORD, newNetwork(60_000), crypto);
+        App onA = App.init(a, "passwords").join();
+        onA.writeInternal(FILE, text("first"), null).join();
+        String read = tag(a);
+        App.init(signInAgain(a), "passwords").join().writeInternal(FILE, text("from b"), null).join();
+        Assert.assertEquals("a still sees the version it read", read, tag(a));
+
         Assert.assertFalse(onA.writeInternalIfMatch(FILE, text("from a"), read, null).join());
         Assert.assertEquals("from b", read(signInAgain(a)));
     }
