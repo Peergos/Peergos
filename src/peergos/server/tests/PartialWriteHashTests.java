@@ -306,6 +306,23 @@ public class PartialWriteHashTests {
         byte[] cut = read(user, "b");
         Assert.assertFalse("part of the write should have reached the server", Arrays.equals(original, cut));
         assertHoldsWithNoOldHash(user, "b", cut);
+
+        // an append past chunk 0 cancelled after two chunks
+        byte[] shorter = upload(user, "c", random(CHUNK + CHUNK / 2));
+        written[0] = 0;
+        try {
+            smallBuffer.getByPath(PathUtil.get(user.username, "dir", "c")).join().get().overwriteSectionJS(
+                    AsyncReader.build(random(3 * CHUNK)), 0, shorter.length, 0, shorter.length + 3 * CHUNK, Optional.empty(),
+                    smallBuffer.network, crypto, x -> {
+                        if ((written[0] += x) > 2L * CHUNK)
+                            throw new IllegalStateException("Upload cancelled!");
+                    }).join();
+            Assert.fail("the append should have failed");
+        } catch (CompletionException expected) {}
+        // only its hash is looked at: the old one, while the file still has its old size, else none
+        FileProperties after = get(user, "c").getFileProperties();
+        Assert.assertTrue("size " + after.size + ", stored " + after.treeHash, after.treeHash.isEmpty()
+                || after.size == shorter.length && after.treeHash.get().equals(treeOf(shorter).branch(0)));
     }
 
     @Test

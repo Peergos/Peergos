@@ -1744,15 +1744,17 @@ public class FileWrapper {
                         };
 
                         // an update too big for the write buffer is committed in parts, so our old hash must go
-                        // before the first of our chunks can land; writing chunk 0 drops it anyway
-                        CompletableFuture<Snapshot> unhashed = startIndexes.isEmpty() || inputStartIndex < props.chunkSize ?
+                        // before the first of our chunks can land; writing chunk 0 drops it anyway, and bytes past our
+                        // old end aren't read until our size grows, which drops it too
+                        CompletableFuture<Snapshot> unhashed = startIndexes.isEmpty() || inputStartIndex < props.chunkSize
+                                || inputStartIndex >= props.size ?
                                 Futures.of(base) :
                                 dropTreeHash(base, committer, network);
                         return unhashed.thenCompose(start -> Futures.reduceAll(startIndexes, start, composer, (a, b) -> b))
                                 .thenCompose(preHashVersion -> {
                                     if (! updateHash)
                                         return Futures.of(preHashVersion);
-                                    // once we are longer a part chunk at our old end reads padded with zeros, so it has
+                                    // once we are longer, a part chunk at our old end reads padded with zeros, so it has
                                     // changed even if this didn't write it
                                     int kept = endIndex > props.size ? (int) (props.size / props.chunkSize) : props.chunkCount();
                                     CompletableFuture<Boolean> hashed = treeHasher.isEmpty() ? Futures.of(true) :
