@@ -6,6 +6,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.io.ipfs.bases.*;
+import peergos.shared.storage.PointerCasException;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.app.*;
 import peergos.shared.user.fs.*;
@@ -215,7 +216,8 @@ public class App implements StoreAppData, UseChosenFolder {
 
     private static boolean isConflict(Throwable t) {
         Throwable cause = Exceptions.getRootCause(t);
-        return cause instanceof PreconditionFailedException ||
+        // a commit that lost the pointer race to another device wrote nothing (PeergosSyncFS treats it the same)
+        return cause instanceof PreconditionFailedException || cause instanceof PointerCasException ||
                 (cause.getMessage() != null && cause.getMessage().toLowerCase().contains("concurrent modification"));
     }
 
