@@ -11,6 +11,7 @@ import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.nio.file.*;
+import java.time.*;
 import java.util.*;
 import java.util.stream.*;
 
@@ -322,5 +323,29 @@ public class PartialWriteHashTests {
 
         get(user, "a").overwriteChangedChunks(AsyncReader.build(original), original.length, user.network, crypto, x -> {}).join();
         assertHolds("the original bytes written back", user, "a", original);
+    }
+
+    /** Write the file again, with this modified time, after a copy of it has been taken */
+    private static byte[] writtenSince(UserContext user, String name, byte[] contents, LocalDateTime when) {
+        get(user, name).overwriteChangedChunks(AsyncReader.build(contents), contents.length, Optional.empty(), Optional.of(when),
+                user.network, crypto, x -> {}).join();
+        return contents;
+    }
+
+    @Test
+    public void aThumbnailSetThroughAnOutOfDateCopyChangesOnlyTheThumbnail() {
+        UserContext user = user();
+        byte[] original = upload(user, "a", random(2 * CHUNK + CHUNK / 2));
+        FileWrapper stale = get(user, "a");
+        LocalDateTime when = LocalDateTime.of(2021, 2, 3, 4, 5, 6);
+        byte[] longer = writtenSince(user, "a", with(laterChunkEdited(original), original.length, random(1000)), when);
+
+        byte[] thumbnail = random(100);
+        stale.updateThumbnail("data:image/jpeg;base64," + Base64.getEncoder().encodeToString(thumbnail), user.network).join();
+
+        assertHolds("the write before the thumbnail", user, "a", longer);
+        FileProperties now = get(user, "a").getFileProperties();
+        Assert.assertEquals(when, now.modified);
+        Assert.assertArrayEquals(thumbnail, now.thumbnail.get().data);
     }
 }

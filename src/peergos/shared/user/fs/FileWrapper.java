@@ -1869,13 +1869,13 @@ public class FileWrapper {
 
     @JsMethod
     public CompletableFuture<FileWrapper> updateThumbnail(String base64Str, NetworkAccess network) {
-        Optional<Thumbnail> thumbData = Optional.empty();
-        if (base64Str != null && base64Str.length() > 0) {
-            thumbData = convertFromBase64(base64Str);
-        }
-        FileProperties updatedProperties = this.props.withThumbnail(thumbData);
+        Optional<Thumbnail> thumbData = base64Str != null && base64Str.length() > 0 ?
+                convertFromBase64(base64Str) :
+                Optional.empty();
+        // the file may have been written since we were retrieved: change only the thumbnail, on its properties as they are now
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
-                (s, committer) -> updateProperties(s, committer, updatedProperties, network)
+                (s, committer) -> getUpdated(s, network).thenCompose(us -> us.updateProperties(s, committer,
+                        us.getPointer().getProperties().withThumbnail(thumbData), network))
         ).thenCompose(finished -> getUpdated(finished, network));
     }
 
