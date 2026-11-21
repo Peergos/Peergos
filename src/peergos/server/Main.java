@@ -60,6 +60,7 @@ import java.util.List;
 import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.logging.*;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -681,7 +682,7 @@ public class Main extends Builder {
                         System.out.println("Using http proxy " + proxy.get());
                     JavaPoster poster = new JavaPoster(target,
                             // a LAN server is usually a private one, which only accepts POSTs
-                            ! allowsPlainHttp(target.getHost()),
+                            ! isPrivateServer(target.getHost()),
                             Optional.empty(),
                             Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-proxy"),
                             proxy);
@@ -790,25 +791,95 @@ public class Main extends Builder {
         }
     }
 
-    private static boolean isLoopbackHost(String host) {
-        if (host == null || host.isEmpty())
+    /** A name a mesh VPN gives its peers: Tailscale's MagicDNS, or NetBird's default. Whole labels only, so it can't
+     *  depend on how an http stack reads an odd host. */
+    private static final Pattern VPN_NAME = Pattern.compile("([a-z0-9-]+\\.)+(ts\\.net|netbird\\.cloud)");
+    private static final Pattern IPV4_PART = Pattern.compile("0|[1-9][0-9]{0,2}");
+    private static final Pattern IPV6_GROUP = Pattern.compile("[0-9a-f]{1,4}");
+
+    /** Plain http only where the traffic stays on this machine, the local network or a private VPN: localhost, an IP
+     *  address in those ranges, or a name under a VPN's own DNS. Any other name is refused rather than looked up, as
+     *  it could resolve to a private address now and a public one later, and a lookup would hold up start up.
+     */
+    public static boolean allowsPlainHttp(String host) {
+        // no name or address is longer, and a far longer one would only make the patterns below recurse deeply
+        if (host == null || host.length() > 253)
             return false;
-        if ("localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host) || "::1".equals(host) || "[::1]".equals(host))
+        String name = host.toLowerCase(Locale.ROOT);
+        if (name.equals("localhost") || VPN_NAME.matcher(name).matches())
             return true;
-        return false;
+        int[] ip = parseIpLiteral(name);
+        if (ip == null)
+            return false;
+        if (ip.length == 4)
+            return ip[0] == 127 || ip[0] == 10 || ip[0] == 172 && (ip[1] & 0xf0) == 16 || ip[0] == 192 && ip[1] == 168
+                    // the shared address space, which NetBird and Tailscale use
+                    || ip[0] == 100 && (ip[1] & 0xc0) == 64;
+        // loopback, or a unique local address
+        return Arrays.equals(ip, new int[]{0, 0, 0, 0, 0, 0, 0, 1}) || (ip[0] & 0xfe00) == 0xfc00;
     }
 
-    /** Plain http only where the traffic stays on this machine, the local network or a private VPN. */
-    public static boolean allowsPlainHttp(String host) {
-        return isLoopbackHost(host) || isLanIP(host) || isPrivateVpnIP(host);
+    /** An IPv4 address in dotted decimal, as its four parts, or a bracketed IPv6 address, as its eight groups, read
+     *  without any lookup. Forms that parsers read differently - octal or hex parts, fewer than four parts, a zone, an
+     *  embedded IPv4 address - are not taken as one.
+     */
+    private static int[] parseIpLiteral(String host) {
+        if (host.startsWith("[") && host.endsWith("]")) {
+            String[] halves = host.substring(1, host.length() - 1).split("::", -1);
+            if (halves.length > 2)
+                return null;
+            List<Integer> head = hexGroups(halves[0]);
+            List<Integer> tail = halves.length == 2 ? hexGroups(halves[1]) : Collections.emptyList();
+            if (head == null || tail == null)
+                return null;
+            int missing = 8 - head.size() - tail.size();
+            if (halves.length == 2 ? missing < 1 : missing != 0)
+                return null;
+            int[] groups = new int[8];
+            for (int i = 0; i < head.size(); i++)
+                groups[i] = head.get(i);
+            for (int i = 0; i < tail.size(); i++)
+                groups[8 - tail.size() + i] = tail.get(i);
+            return groups;
+        }
+        String[] parts = host.split("\\.", -1);
+        if (parts.length != 4)
+            return null;
+        int[] octets = new int[4];
+        for (int i = 0; i < 4; i++) {
+            if (! IPV4_PART.matcher(parts[i]).matches())
+                return null;
+            octets[i] = Integer.parseInt(parts[i]);
+            if (octets[i] > 255)
+                return null;
+        }
+        return octets;
+    }
+
+    private static List<Integer> hexGroups(String part) {
+        List<Integer> groups = new ArrayList<>();
+        if (part.isEmpty())
+            return groups;
+        for (String group : part.split(":", -1)) {
+            if (! IPV6_GROUP.matcher(group).matches())
+                return null;
+            groups.add(Integer.parseInt(group, 16));
+        }
+        return groups;
+    }
+
+    /** Whether a server is probably a private one, which only accepts POSTs. Unlike allowsPlainHttp this looks a name
+     *  up, which is fine for choosing how to talk to a server we already trust, as with an https one on the LAN.
+     */
+    private static boolean isPrivateServer(String host) {
+        return allowsPlainHttp(host) || isLanIP(host) || isPrivateVpnIP(host);
     }
 
     /**
      * An address a mesh VPN gives its peers: the shared address space 100.64.0.0/10 (RFC 6598),
-     * which NetBird and Tailscale both use, or an IPv6 unique local address, fc00::/7. The tunnel
-     * encrypts what crosses it, so http to such a peer is as private as http on the local network.
-     * Neither is only a VPN's - carrier-grade NAT uses the first, local networks the second - but
-     * neither is reachable from the internet at large, which is what this check is for.
+     * which NetBird and Tailscale both use, or an IPv6 unique local address, fc00::/7. This looks a
+     * name up, so it only helps choose how to talk to a server; allowsPlainHttp decides where plain
+     * http may go.
      */
     static boolean isPrivateVpnIP(String host) {
         try {
