@@ -134,6 +134,28 @@ public class AppDataIfMatchTests {
     }
 
     @Test
+    public void theNewContentsGetTheirTypeAndThumbnail() {
+        UserContext context = newUser();
+        App app = App.init(context, "passwords").join();
+        byte[] png = Base64.getDecoder().decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==");
+        Path dir = App.getDataDir("passwords", context.username);
+        Path conditional = PathUtil.get("a.png"), plain = PathUtil.get("b.png");
+        for (Path p : List.of(conditional, plain))
+            app.writeInternal(p, text("some text"), null).join();
+        String read = "\"" + context.getByPath(dir.resolve(conditional)).join().get().getFileProperties().treeHash.get() + "\"";
+        Assert.assertTrue(app.writeInternalIfMatch(conditional, png, read, null).join());
+        app.writeInternal(plain, png, null).join();
+
+        FileProperties written = context.getByPath(dir.resolve(conditional)).join().get().getFileProperties();
+        FileProperties expected = context.getByPath(dir.resolve(plain)).join().get().getFileProperties();
+        Assert.assertTrue("a plain write makes a thumbnail", expected.thumbnail.isPresent());
+        Assert.assertEquals("as a plain write", expected.mimeType, written.mimeType);
+        Assert.assertTrue("as a plain write", written.thumbnail.isPresent());
+        Assert.assertArrayEquals("as a plain write", expected.thumbnail.get().data, written.thumbnail.get().data);
+    }
+
+    @Test
     public void anyVersionAndMissingFiles() {
         UserContext context = newUser();
         App app = App.init(context, "passwords").join();

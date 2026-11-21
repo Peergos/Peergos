@@ -6,6 +6,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.io.ipfs.bases.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.app.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -175,22 +176,25 @@ public class App implements StoreAppData, UseChosenFolder {
     /** As writeInternalIfMatch, for a file given by its full path: an app run from a folder keeps its data there. */
     @JsMethod
     public static CompletableFuture<Boolean> writeIfMatch(UserContext ctx, Path path, byte[] data, String ifMatch) {
-        return ctx.getByPath(path).thenCompose(opt -> {
-            if (opt.isEmpty() || opt.get().isDirectory())
+        String name = path.getFileName().toString();
+        return ctx.getByPath(path.getParent()).thenCompose(opt -> {
+            if (opt.isEmpty() || ! opt.get().isDirectory())
                 return Futures.of(false);
-            FileWrapper file = opt.get();
+            FileWrapper dir = opt.get();
             return Futures.asyncExceptionally(
-                    () -> ctx.network.synchronizer.applyComplexUpdate(file.owner(), file.signingPair(),
-                            (s, committer) -> file.getUpdated(s, ctx.network).thenCompose(current -> {
-                                if (! ifMatches(ifMatch, current.getFileProperties().treeHash))
-                                    throw new PreconditionFailedException();
-                                // cut to the new length first, as a plain write does: a write that then covers the
-                                // whole file sets its tree hash, which one cut after leaves unset past the first chunk
-                                return current.truncate(s, committer, data.length, ctx.network, ctx.crypto)
-                                        .thenCompose(cut -> current.getUpdated(cut, ctx.network)
-                                                .thenCompose(f -> f.overwriteFile(AsyncReader.build(data), data.length,
-                                                        ctx.network, ctx.crypto, x -> {}, cut, committer)));
-                            })).thenApply(v -> true),
+                    () -> ctx.network.synchronizer.applyComplexUpdate(dir.owner(), dir.signingPair(),
+                            (s, committer) -> dir.getUpdated(s, ctx.network).thenCompose(latest -> latest.getChild(s, name, ctx.network)
+                                    .thenCompose(current -> {
+                                        if (current.isEmpty() || current.get().isDirectory() ||
+                                                ! ifMatches(ifMatch, current.get().getFileProperties().treeHash))
+                                            throw new PreconditionFailedException();
+                                        // the update a plain write makes, so the file gets the same size, type,
+                                        // thumbnail and tree hash as one written without If-Match
+                                        return latest.uploadOrReplaceFile(name, AsyncReader.build(data), data.length, false,
+                                                s, committer, ctx.network, ctx.crypto, () -> false, x -> {},
+                                                ctx.crypto.random.randomBytes(32), Optional.of(Bat.random(ctx.crypto.random)),
+                                                latest.mirrorBatId());
+                                    }))).thenApply(v -> true),
                     t -> isConflict(t) ? Futures.of(false) : Futures.errored(t));
         });
     }
