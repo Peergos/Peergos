@@ -1777,6 +1777,10 @@ public class FileWrapper {
             return hashes.get().complete(crypto.hasher)
                     .thenCompose(treeHash -> network.getFile(s, cap, entryWriter, ownername)
                             .thenCompose(updatedUs -> updatedUs.get().getHashUpdates(treeHash, network, crypto.hasher))
+                            // a write that changed nothing has nothing to commit
+                            .thenApply(hashUpdates -> hashUpdates.stream()
+                                    .filter(u -> ! u.newProps.treeHash.equals(u.meta.getProperties(u.cap.rBaseKey).treeHash))
+                                    .collect(Collectors.toList()))
                             .thenCompose(hashUpdates -> bulkSetSameNameProperties(s, committer, owner(), hashUpdates, network)));
         return network.getFile(s, cap, entryWriter, ownername).thenCompose(updatedUs -> {
             FileProperties now = updatedUs.get().getPointer().fileAccess.getProperties(cap.rBaseKey);

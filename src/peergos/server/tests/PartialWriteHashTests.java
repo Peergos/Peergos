@@ -110,6 +110,18 @@ public class PartialWriteHashTests {
     }
 
     @Test
+    public void anUnchangedSaveWritesNothing() {
+        UserContext user = user();
+        byte[] original = upload(user, "a", random(2 * CHUNK + CHUNK / 2));
+        FileWrapper before = get(user, "a");
+
+        before.overwriteChangedChunks(AsyncReader.build(original), original.length, user.network, crypto, x -> {}).join();
+
+        Assert.assertEquals(before.version, get(user, "a").version);
+        assertHolds("the original", user, "a", original);
+    }
+
+    @Test
     public void overwriteChangedChunksToANewSize() {
         UserContext user = user();
         byte[] original = random(2 * CHUNK + CHUNK / 2);
