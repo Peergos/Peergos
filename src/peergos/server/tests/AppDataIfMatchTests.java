@@ -299,6 +299,22 @@ public class AppDataIfMatchTests {
         Assert.assertEquals("from b", read(signInAgain(a)));
     }
 
+    /** A write that fails for a reason other than the version is an error for the app, not a 412 to retry on. */
+    @Test
+    public void aWriteThatFailsOtherwiseIsAnError() {
+        UserContext a = newUser();
+        App.init(a, "passwords").join().writeInternal(FILE, text("first"), null).join();
+        LinkProperties link = a.createSecretLink(full(a).getParent().toString(), false, Optional.empty(),
+                Optional.empty(), "", false).join();
+        UserContext viewer = UserContext.fromSecretLinkV2(link.toLinkString(a.signer.publicKeyHash),
+                () -> Futures.of(""), newNetwork(), crypto).join();
+        try {
+            boolean written = App.writeIfMatch(viewer, full(a), text("from a viewer"), "*").join();
+            Assert.fail("a write without write access answered " + written);
+        } catch (CompletionException expected) {}
+        Assert.assertEquals("first", read(signInAgain(a)));
+    }
+
     @Test
     public void twoDevicesFromTheSameVersion() {
         UserContext a = newUser();
