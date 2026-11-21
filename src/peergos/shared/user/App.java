@@ -6,6 +6,8 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.io.ipfs.bases.*;
+import peergos.shared.storage.PointerCasException;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.app.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -160,6 +162,73 @@ public class App implements StoreAppData, UseChosenFolder {
         Path path = fullPath(relativePath, username);
         return writeFileContents(path, data);
     }
+
+    /** Overwrites a file only if it is still as the app read it (If-Match, RFC 9110 13.1.1): ifMatch holds the ETag a
+     *  read gave, the file's tree hash in quotes, or a list of them, or "*" for any version. The tree hash is checked
+     *  on the version the write is made on, and a write from another device committed meanwhile makes the commit fail,
+     *  so the file is never overwritten from a version the app didn't read. Completes with false, having written
+     *  nothing, when the condition fails or the file isn't there.
+     */
+    @JsMethod
+    public CompletableFuture<Boolean> writeInternalIfMatch(Path relativePath, byte[] data, String ifMatch, String username) {
+        return writeIfMatch(ctx, fullPath(relativePath, username), data, ifMatch);
+    }
+
+    /** As writeInternalIfMatch, for a file given by its full path: an app run from a folder keeps its data there. */
+    @JsMethod
+    public static CompletableFuture<Boolean> writeIfMatch(UserContext ctx, Path path, byte[] data, String ifMatch) {
+        String name = path.getFileName().toString();
+        return ctx.getByPath(path.getParent()).thenCompose(opt -> {
+            if (opt.isEmpty() || ! opt.get().isDirectory())
+                return Futures.of(false);
+            FileWrapper dir = opt.get();
+            return Futures.asyncExceptionally(
+                    () -> ctx.network.synchronizer.applyComplexUpdate(dir.owner(), dir.signingPair(),
+                            (s, committer) -> dir.getUpdated(s, ctx.network).thenCompose(latest -> latest.getChild(s, name, ctx.network)
+                                    .thenCompose(current -> {
+                                        if (current.isEmpty() || current.get().isDirectory() ||
+                                                ! ifMatches(ifMatch, current.get().getFileProperties().treeHash))
+                                            throw new PreconditionFailedException();
+                                        // the update a plain write makes, so the file gets the same size, type,
+                                        // thumbnail and tree hash as one written without If-Match. It builds on the
+                                        // version checked: a file with a writer of its own was read for the check, and
+                                        // reading it again could find another device's save
+                                        return latest.uploadOrReplaceFile(name, AsyncReader.build(data), data.length, false,
+                                                current.get().version, committer, ctx.network, ctx.crypto, () -> false, x -> {},
+                                                ctx.crypto.random.randomBytes(32), Optional.of(Bat.random(ctx.crypto.random)),
+                                                latest.mirrorBatId());
+                                    }))).thenApply(v -> true),
+                    t -> isConflict(t) ? Futures.of(false) : Futures.errored(t));
+        });
+    }
+
+    /** Whether an If-Match value holds the tag of a file with this tree hash. Tags compare strongly: a weak one
+     *  (W/"...") never matches. */
+    public static boolean ifMatches(String ifMatch, Optional<HashBranch> treeHash) {
+        String condition = ifMatch.trim();
+        if (condition.equals("*"))
+            return true;
+        if (treeHash.isEmpty())
+            return false;
+        String current = "\"" + treeHash.get().toString() + "\"";
+        return Arrays.stream(condition.split(","))
+                .map(String::trim)
+                .anyMatch(current::equals);
+    }
+
+    private static boolean isConflict(Throwable t) {
+        Throwable cause = Exceptions.getRootCause(t);
+        // a commit that lost the pointer race to another device wrote nothing (PeergosSyncFS treats it the same)
+        return cause instanceof PreconditionFailedException || cause instanceof PointerCasException ||
+                (cause.getMessage() != null && cause.getMessage().toLowerCase().contains("concurrent modification"));
+    }
+
+    private static class PreconditionFailedException extends RuntimeException {
+        PreconditionFailedException() {
+            super("Precondition failed");
+        }
+    }
+
     @JsMethod
     public CompletableFuture<Boolean> deleteInternal(Path relativePath, String username) {
         Path path = fullPath(relativePath, username);
