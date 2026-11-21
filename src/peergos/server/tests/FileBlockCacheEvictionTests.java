@@ -12,9 +12,12 @@ import peergos.shared.io.ipfs.Cid;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiConsumer;
 import java.util.stream.Stream;
 
 public class FileBlockCacheEvictionTests {
@@ -118,6 +121,32 @@ public class FileBlockCacheEvictionTests {
         } catch (RuntimeException expected) {}
         for (Cid hash : cached)
             Assert.assertTrue("a put error cleared the cache", cache.hasBlock(hash));
+    }
+
+    /** An eviction that fails part way must not stop every later one */
+    @Test
+    public void evictsAgainAfterAFailedEviction() throws IOException {
+        Crypto crypto = Main.initCrypto();
+        Path tmpDir = folder.newFolder().toPath();
+        AtomicBoolean failWalk = new AtomicBoolean(false);
+        FileBlockCache cache = new FileBlockCache(tmpDir, 100_000_000) {
+            @Override
+            public void applyToAll(BiConsumer<Path, BasicFileAttributes> processor) {
+                if (failWalk.getAndSet(false))
+                    throw new IllegalStateException("walk failed");
+                super.applyToAll(processor);
+            }
+        };
+        put(cache, crypto, new Random(42), 12, 100_000, true);
+        int limit = 500_000;
+        failWalk.set(true);
+        try {
+            cache.ensureWithinSizeLimit(limit);
+            Assert.fail("the walk should have failed");
+        } catch (IllegalStateException expected) {}
+
+        cache.ensureWithinSizeLimit(limit);
+        Assert.assertTrue(blocksSize(tmpDir) <= limit);
     }
 
     private static long blocksSize(Path dir) throws IOException {

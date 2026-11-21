@@ -305,6 +305,15 @@ public class FileBlockCache implements BlockCache {
             return;
         if (! cleaning.compareAndSet(false, true))
             return;
+        try {
+            evict(maxSize);
+        } finally {
+            // however it ends: a walk that threw would otherwise stop every later eviction
+            cleaning.set(false);
+        }
+    }
+
+    private void evict(long maxSize) {
         // Biggest first: those are file contents, which free the space fastest and are only needed again to open that
         // file. The small ones are mostly metadata, which every listing needs, as does a cached sign-in offline.
         // Sizes are counted to the KiB over two walks: a list of every block would not fit in memory for a server's
@@ -316,10 +325,8 @@ public class FileBlockCache implements BlockCache {
         long walked = Arrays.stream(bytesByKiB).sum();
         totalSize.set(walked);
         needToCommitSize.set(true);
-        if (walked <= maxSize) {
-            cleaning.set(false);
+        if (walked <= maxSize)
             return;
-        }
         LOG.info("Starting FileBlockCache reduction from " + walked);
         // every size above the smallest that has to go, and as much of that one as is still needed
         long excess = walked - maxSize / 2;
@@ -335,7 +342,6 @@ public class FileBlockCache implements BlockCache {
                 delete(p.toFile()); // delete() already subtracts the file's size
         });
         LOG.info("Reduced FileBlockCache down to " + totalSize.get());
-        cleaning.set(false);
     }
 
     private static int kib(long size) {
