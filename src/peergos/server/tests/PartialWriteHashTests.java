@@ -348,4 +348,33 @@ public class PartialWriteHashTests {
         Assert.assertEquals(when, now.modified);
         Assert.assertArrayEquals(thumbnail, now.thumbnail.get().data);
     }
+
+    @Test
+    public void aThumbnailCalculatedThroughAnOutOfDateCopyIsOfWhatTheFileHolds() throws Exception {
+        UserContext user = user();
+        upload(user, "a.png", Files.readAllBytes(PathUtil.get("assets", "logo.png")));
+        FileWrapper stale = get(user, "a.png");
+        LocalDateTime when = LocalDateTime.of(2021, 2, 3, 4, 5, 6);
+        byte[] bigger = writtenSince(user, "a.png", Files.readAllBytes(PathUtil.get("assets", "logos", "Peergos-full-hor.png")), when);
+
+        Assert.assertTrue(stale.calculateAndUpdateThumbnail(user.network, crypto).join());
+
+        assertHolds("the write before the thumbnail", user, "a.png", bigger);
+        FileProperties now = get(user, "a.png").getFileProperties();
+        Assert.assertEquals(when, now.modified);
+        Assert.assertArrayEquals(ThumbnailGenerator.get().generateThumbnail(bigger).get().data, now.thumbnail.get().data);
+    }
+
+    @Test
+    public void replacingAnImageWithAShorterOneThumbnailsTheNewOne() throws Exception {
+        UserContext user = user();
+        upload(user, "a.png", Files.readAllBytes(PathUtil.get("assets", "logos", "Peergos-full-hor.png")));
+        Assert.assertTrue(get(user, "a.png").getFileProperties().thumbnail.isPresent());
+
+        byte[] shorter = upload(user, "a.png", Files.readAllBytes(PathUtil.get("assets", "logo.png")));
+
+        assertHolds("the replacement", user, "a.png", shorter);
+        Assert.assertArrayEquals(ThumbnailGenerator.get().generateThumbnail(shorter).get().data,
+                get(user, "a.png").getFileProperties().thumbnail.get().data);
+    }
 }

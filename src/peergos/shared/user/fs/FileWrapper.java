@@ -1981,7 +1981,9 @@ public class FileWrapper {
                                                                 child.getUpdated(updatedSnapshot, network).thenCompose( updatedChild ->
                                                                     updatedParent.updateExistingChild(updatedSnapshot, committer, updatedChild, fileData,
                                                                         startIndex, endIndex, network, crypto, monitor)
-                                                                            .thenCompose(latestSnapshot ->  updatePropsIfNecessary.apply(updatedChild, latestSnapshot, endIndex)))))
+                                                                            // thumbnail what was just written, not what was there before
+                                                                            .thenCompose(latestSnapshot -> updatedChild.getUpdated(latestSnapshot, network)
+                                                                                    .thenCompose(written -> updatePropsIfNecessary.apply(written, latestSnapshot, endIndex))))))
                                                             .thenApply(s -> new Pair<>(s, Optional.<NamedRelativeCapability>empty()));
                                                 } else {
                                                     return updateExistingChild(current, committer, child, fileData,
@@ -2091,11 +2093,13 @@ public class FileWrapper {
     @JsMethod
     public CompletableFuture<Boolean> calculateAndUpdateThumbnail(NetworkAccess network, Crypto crypto) {
         return network.synchronizer.applyComplexComputation(owner(), signingPair(),
-                (latestSnapshot, committer) -> getInputStream(latestSnapshot.get(writer()), network, crypto, l -> {})
-                        .thenCompose(is -> recalculateThumbnail(
-                                latestSnapshot, committer, getName(), is, props.isHidden,
-                                getSize(), props.created, network, (WritableAbsoluteCapability)pointer.capability,
-                                getFileProperties().streamSecret))
+                // the file may have been written since we were retrieved: thumbnail it, and keep its properties, as it is now
+                (latestSnapshot, committer) -> getUpdated(latestSnapshot, network)
+                        .thenCompose(us -> us.getInputStream(latestSnapshot.get(writer()), network, crypto, l -> {})
+                                .thenCompose(is -> us.recalculateThumbnail(
+                                        latestSnapshot, committer, us.getName(), is, us.props.isHidden,
+                                        us.getSize(), us.props.created, network, (WritableAbsoluteCapability)us.pointer.capability,
+                                        us.getFileProperties().streamSecret)))
                         .thenApply(res -> new Pair<>(res, true))
                         .exceptionally(ex -> new Pair<>(latestSnapshot, false))
         ).thenApply(p -> p.right);
