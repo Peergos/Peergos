@@ -14,7 +14,7 @@ import java.util.*;
 import static peergos.server.tests.PeergosNetworkUtils.ensureSignedUp;
 import static peergos.server.tests.PeergosNetworkUtils.generateUsername;
 
-/** An app's data write with If-Match: written only from the version the app read. */
+/** An app's data read of one version, and its write with If-Match: written only over the version the app read. */
 public class AppDataIfMatchTests {
 
     private static final Crypto crypto = Main.initCrypto();
@@ -131,6 +131,23 @@ public class AppDataIfMatchTests {
                 .join().get().getFileProperties().treeHash;
         Assert.assertTrue("a plain write sets the tree hash", plainHash.isPresent());
         Assert.assertEquals("a shortened file has the tag of its contents", plainHash.map(h -> "\"" + h + "\"").orElse(null), tag(context));
+    }
+
+    /** The app sandbox takes a file's size and ETag from the version getLatest gives, then reads its bytes: a save
+     *  landing in between mustn't give that version's first chunk with the next version's others. */
+    @Test
+    public void aReadIsOfOneVersion() {
+        UserContext context = newUser();
+        App app = App.init(context, "passwords").join();
+        byte[] first = new byte[6 * 1024 * 1024], second = new byte[6 * 1024 * 1024];
+        random.nextBytes(first);
+        random.nextBytes(second);
+        app.writeInternal(FILE, first, null).join();
+        FileWrapper found = context.getByPath(full(context)).join().get().getLatest(context.network).join();
+        app.writeInternal(FILE, second, null).join();
+
+        AsyncReader in = found.getVersionInputStream(context.network, context.crypto, 1, x -> {}).join();
+        Assert.assertArrayEquals(first, Serialize.readFully(in, found.getSize()).join());
     }
 
     @Test

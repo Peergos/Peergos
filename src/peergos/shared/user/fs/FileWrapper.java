@@ -3456,6 +3456,18 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
         return getInputStream(network, crypto, fileSize(fileSizeHi, fileSizeLow), nBufferedChunks, monitor);
     }
 
+    /** A stream of the version this holds. The streams above read the chunks after the first from the latest version,
+     *  so a file overwritten meanwhile comes out mixed; this one's bytes are those its size and properties describe.
+     */
+    @JsMethod
+    public CompletableFuture<? extends AsyncReader> getVersionInputStream(NetworkAccess network,
+                                                                          Crypto crypto,
+                                                                          int nBufferedChunks,
+                                                                          ProgressConsumer<Long> monitor) {
+        return version.withWriter(owner(), writer(), network)
+                .thenCompose(v -> getInputStream(v.get(writer()), network, crypto, getFileProperties().size, nBufferedChunks, monitor));
+    }
+
     private static long fileSize(int fileSizeHi, int fileSizeLow) {
         return (fileSizeLow & 0xFFFFFFFFL) + ((fileSizeHi & 0xFFFFFFFFL) << 32);
     }
