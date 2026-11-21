@@ -92,6 +92,34 @@ public class FileBlockCacheEvictionTests {
         }
     }
 
+    /** Only a full disk may clear the cache, which a cached sign-in offline needs. Other errors name their file, so
+     *  under a folder such as .../workspace/... their message holds "space". */
+    @Test
+    public void otherPutErrorsKeepTheCache() throws IOException {
+        Crypto crypto = Main.initCrypto();
+        Path tmpDir = folder.newFolder("workspace").toPath();
+        FileBlockCache cache = new FileBlockCache(tmpDir, 100_000_000);
+        Random rnd = new Random(42);
+        byte[] data = new byte[1_000];
+        rnd.nextBytes(data);
+        Cid failing = crypto.hasher.hash(data, false).join();
+        cache.put(failing, data).join();
+        // a file where its folder was fails its next put
+        Path dir;
+        try (Stream<Path> files = Files.walk(tmpDir)) {
+            dir = files.filter(p -> p.toString().endsWith(".data")).findFirst().get().getParent();
+        }
+        cache.delete(failing);
+        Files.createFile(dir);
+        List<Cid> cached = put(cache, crypto, rnd, 20, 1_000, false);
+
+        try {
+            cache.put(failing, data).join();
+        } catch (RuntimeException expected) {}
+        for (Cid hash : cached)
+            Assert.assertTrue("a put error cleared the cache", cache.hasBlock(hash));
+    }
+
     private static long blocksSize(Path dir) throws IOException {
         try (Stream<Path> files = Files.walk(dir)) {
             return files.filter(p -> p.toString().endsWith(".data")).mapToLong(p -> p.toFile().length()).sum();

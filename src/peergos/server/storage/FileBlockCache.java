@@ -204,15 +204,22 @@ public class FileBlockCache implements BlockCache {
             needToCommitSize.set(true);
             return Futures.of(true);
         } catch (IOException e) {
-            String msg = e.getMessage();
-            // handle running out of inodes by clearing cache
-            if (msg != null && msg.toLowerCase(Locale.ROOT).contains("space")) {
+            // handle running out of space or inodes by clearing cache
+            if (isOutOfSpace(e)) {
                 LOG.info("Clearing block cache after running out of space/inodes...");
                 clear();
                 return Futures.of(false);
             }
-            throw new RuntimeException(msg, e);
+            throw new RuntimeException(e.getMessage(), e);
         }
+    }
+
+    /** The OS's no-space error, which is also how it reports running out of inodes. Matched whole, never searched for:
+     *  a message names its file, so any error under a folder such as .../workspace/... holds "space". */
+    private static boolean isOutOfSpace(IOException e) {
+        String error = e instanceof FileSystemException fse ? fse.getReason() : e.getMessage();
+        return "No space left on device".equals(error) // ENOSPC
+                || "There is not enough space on the disk".equals(error); // Windows' ERROR_DISK_FULL
     }
 
     public CompletableFuture<Optional<Integer>> getSize(Multihash h) {
