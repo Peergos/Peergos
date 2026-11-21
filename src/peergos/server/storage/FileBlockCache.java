@@ -303,7 +303,6 @@ public class FileBlockCache implements BlockCache {
         // file. The small ones are mostly metadata, which every listing needs, as does a cached sign-in offline.
         // Sizes are counted to the KiB over two walks: a list of every block would not fit in memory for a server's
         // cache of millions of small blocks.
-        Logging.LOG().info("Starting FileBlockCache reduction from " + totalSize.get());
         long[] bytesByKiB = new long[kib(ContentAddressedStorage.MAX_BLOCK_SIZE) + 1];
         applyToAll((p, a) -> bytesByKiB[kib(a.size())] += a.size());
         // The walk is the real size, which the running count can have drifted from, as when another cache shared the
@@ -314,6 +313,7 @@ public class FileBlockCache implements BlockCache {
             cleaning.set(false);
             return;
         }
+        Logging.LOG().info("Starting FileBlockCache reduction from " + totalSize.get());
         // every size above the smallest that has to go, and as much of that one as is still needed
         long excess = totalSize.get() - maxSize / 2;
         int smallest = bytesByKiB.length - 1;
