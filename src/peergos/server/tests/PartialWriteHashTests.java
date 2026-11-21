@@ -374,6 +374,46 @@ public class PartialWriteHashTests {
         assertHoldsWithNoOldHash(user, "a", with(longer, original.length - 10, section));
     }
 
+    /** Writes through a folder the writer can't write, to a file shared with it for writing, with a copy of the
+     *  folder from before the file grew */
+    @Test
+    public void writesToASharedFileThroughAFolderFromBeforeItGrewKeepItsEnd() {
+        UserContext sharer = user();
+        UserContext sharee = PeergosNetworkUtils.ensureSignedUp(PeergosNetworkUtils.generateUsername(random), "password",
+                network(), crypto);
+        PeergosNetworkUtils.friendBetweenGroups(List.of(sharer), List.of(sharee));
+        Path dir = PathUtil.get(sharer.username, "dir");
+        byte[] contents = upload(sharer, "a", random(2 * CHUNK + CHUNK / 2));
+        sharer.shareWriteAccessWith(dir.resolve("a"), Set.of(sharee.username)).join();
+        UserContext fresh = PeergosNetworkUtils.ensureSignedUp(sharer.username, "password", network(), crypto);
+
+        // a section past the end the folder's copy of the file has, but short of the file's
+        FileWrapper staleFolder = sharee.getByPath(dir).join().get();
+        Assert.assertFalse(staleFolder.isWritable());
+        int size = contents.length;
+        contents = appendThroughFolder(sharee, dir, contents);
+        byte[] section = random(510);
+        staleFolder.uploadFileSection("a", AsyncReader.build(section), false, size - 10, size + 500, Optional.empty(),
+                true, sharee.network, crypto, () -> false, x -> {}).join();
+        assertHoldsWithNoOldHash(fresh, "a", with(contents, size - 10, section));
+
+        // a replacement longer than the folder's copy of the file, but shorter than the file
+        staleFolder = sharee.getByPath(dir).join().get();
+        size = contents.length;
+        appendThroughFolder(sharee, dir, contents);
+        byte[] replacement = random(size + 500);
+        staleFolder.uploadOrReplaceFile("a", AsyncReader.build(replacement), replacement.length, sharee.network, crypto,
+                () -> false, x -> {}).join();
+        assertHoldsWithNoOldHash(fresh, "a", replacement);
+    }
+
+    private byte[] appendThroughFolder(UserContext user, Path dir, byte[] contents) {
+        byte[] tail = random(1000);
+        user.getByPath(dir).join().get().uploadFileSection("a", AsyncReader.build(tail), false, contents.length,
+                contents.length + tail.length, Optional.empty(), true, user.network, crypto, () -> false, x -> {}).join();
+        return with(contents, contents.length, tail);
+    }
+
     /** A stored hash listing more chunks than the file has describes other contents: a save of those contents must
      *  still write them. */
     @Test

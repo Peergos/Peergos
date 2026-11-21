@@ -1001,8 +1001,10 @@ public class FileWrapper {
                     FileWrapper child = c.get();
                     if (! child.isWritable())
                         return Futures.errored(new IllegalStateException("Cannot overwrite a file without write access!"));
+                    // the file may have grown since our copy of this folder was taken, so cut it as it is now
                     return network.synchronizer.applyComplexUpdate(owner(), child.signingPair(),
-                                    (current, committer) -> child.truncate(current, committer, length, network, crypto)
+                                    (current, committer) -> child.getUpdated(current, network)
+                                            .thenCompose(now -> now.truncate(current, committer, length, network, crypto))
                                             .thenCompose(truncated -> child.getUpdated(truncated, network)
                                                     .thenCompose(updatedChild -> updateExistingChild(truncated, committer,
                                                             updatedChild, fileData, 0, length, network, crypto, monitor))))
@@ -1864,9 +1866,11 @@ public class FileWrapper {
                     if (! c.isPresent())
                         return Futures.errored(new IllegalStateException("No child with name " + filename));
                     FileWrapper child = c.get();
+                    // the file may have grown since our copy of this folder was taken, so write into it as it is now
                     return network.synchronizer.applyComplexUpdate(owner(), child.signingPair(),
-                            (current, committer) -> updateExistingChild(current, committer, child,
-                                    fileData, startIndex, endIndex, network, crypto, monitor))
+                            (current, committer) -> child.getUpdated(current, network)
+                                    .thenCompose(now -> updateExistingChild(current, committer, now,
+                                            fileData, startIndex, endIndex, network, crypto, monitor)))
                             .thenApply(childVersion -> withVersion(version.mergeAndOverwriteWith(childVersion)));
                 });
     }
