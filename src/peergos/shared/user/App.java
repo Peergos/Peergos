@@ -184,8 +184,12 @@ public class App implements StoreAppData, UseChosenFolder {
                             (s, committer) -> file.getUpdated(s, ctx.network).thenCompose(current -> {
                                 if (! ifMatches(ifMatch, current.getFileProperties().treeHash))
                                     throw new PreconditionFailedException();
-                                return current.overwriteFile(AsyncReader.build(data), data.length, ctx.network,
-                                        ctx.crypto, x -> {}, s, committer);
+                                // cut to the new length first, as a plain write does: a write that then covers the
+                                // whole file sets its tree hash, which one cut after leaves unset past the first chunk
+                                return current.truncate(s, committer, data.length, ctx.network, ctx.crypto)
+                                        .thenCompose(cut -> current.getUpdated(cut, ctx.network)
+                                                .thenCompose(f -> f.overwriteFile(AsyncReader.build(data), data.length,
+                                                        ctx.network, ctx.crypto, x -> {}, cut, committer)));
                             })).thenApply(v -> true),
                     t -> isConflict(t) ? Futures.of(false) : Futures.errored(t));
         });

@@ -22,23 +22,26 @@ public class AppDataIfMatchTests {
     private static final String PASSWORD = "password";
     private static final Path FILE = PathUtil.get("vault.json");
     private static UserService service;
-    private static NetworkAccess network;
     private static final Random random = new Random(1789);
 
     @BeforeClass
     public static void init() {
         service = Main.PKI_INIT.main(args).localApi;
-        network = NetworkAccess.buildBuffered(service.storage, service.bats, service.coreNode, service.account,
+    }
+
+    /** A client of its own, as another device has, with its own view of the file. */
+    private static NetworkAccess newNetwork() {
+        return NetworkAccess.buildBuffered(service.storage, service.bats, service.coreNode, service.account,
                 service.mutable, 0, service.social, service.controller, service.usage, service.serverMessages,
                 crypto.hasher, Arrays.asList("peergos"), false);
     }
 
     private static UserContext newUser() {
-        return ensureSignedUp(generateUsername(random), PASSWORD, network, crypto);
+        return ensureSignedUp(generateUsername(random), PASSWORD, newNetwork(), crypto);
     }
 
     private static UserContext signInAgain(UserContext context) {
-        return UserContext.signIn(context.username, PASSWORD, UserTests::noMfa, network, crypto).join();
+        return UserContext.signIn(context.username, PASSWORD, UserTests::noMfa, newNetwork(), crypto).join();
     }
 
     private static Path full(UserContext context) {
@@ -118,6 +121,16 @@ public class AppDataIfMatchTests {
         Assert.assertNotEquals(first, second);
         Assert.assertArrayEquals(bigger, app.readInternal(FILE, null).join());
         Assert.assertFalse(app.writeInternalIfMatch(FILE, big, first, null).join());
+
+        // shorter, still of several chunks: the tag is that of a plain write of the same bytes
+        Assert.assertTrue(app.writeInternalIfMatch(FILE, big, second, null).join());
+        Assert.assertArrayEquals(big, app.readInternal(FILE, null).join());
+        Path plain = PathUtil.get("plain.bin");
+        app.writeInternal(plain, big, null).join();
+        Optional<HashBranch> plainHash = context.getByPath(App.getDataDir("passwords", context.username).resolve(plain))
+                .join().get().getFileProperties().treeHash;
+        Assert.assertTrue("a plain write sets the tree hash", plainHash.isPresent());
+        Assert.assertEquals("a shortened file has the tag of its contents", plainHash.map(h -> "\"" + h + "\"").orElse(null), tag(context));
     }
 
     @Test
