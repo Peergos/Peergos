@@ -4,12 +4,15 @@ import org.junit.*;
 import peergos.server.*;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.crypto.hash.*;
+import peergos.shared.mutable.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.*;
 
 import static peergos.server.tests.PeergosNetworkUtils.ensureSignedUp;
 import static peergos.server.tests.PeergosNetworkUtils.generateUsername;
@@ -36,9 +39,54 @@ public class AppDataIfMatchTests {
 
     /** One that trusts a pointer it has read for this long, as the web client does for 7 s. */
     private static NetworkAccess newNetwork(int cacheMillis) {
+        return newNetwork(service.mutable, cacheMillis);
+    }
+
+    private static NetworkAccess newNetwork(MutablePointers mutable, int cacheMillis) {
         return NetworkAccess.buildBuffered(service.storage, service.bats, service.coreNode, service.account,
-                service.mutable, cacheMillis, service.social, service.controller, service.usage, service.serverMessages,
+                mutable, cacheMillis, service.social, service.controller, service.usage, service.serverMessages,
                 crypto.hasher, Arrays.asList("peergos"), false);
+    }
+
+    /** Pointers whose next read of one writer gives the version current when it was frozen: a device that checks a
+     *  tag on what it read a moment ago, while another device saves. */
+    private static class FreezeNextRead implements MutablePointers {
+        private final MutablePointers target;
+        private volatile PublicKeyHash writer;
+        private volatile Optional<byte[]> frozen;
+
+        FreezeNextRead(MutablePointers target) {
+            this.target = target;
+        }
+
+        void freezeNext(PublicKeyHash owner, PublicKeyHash writer) {
+            this.frozen = target.getPointer(owner, writer).join();
+            this.writer = writer;
+        }
+
+        @Override
+        public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash w) {
+            if (w.equals(writer)) {
+                writer = null;
+                return Futures.of(frozen);
+            }
+            return target.getPointer(owner, w);
+        }
+
+        @Override
+        public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash w, byte[] signedUpdate) {
+            return target.setPointer(owner, w, signedUpdate);
+        }
+
+        @Override
+        public CompletableFuture<Boolean> setPointers(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
+            return target.setPointers(owner, updates);
+        }
+
+        @Override
+        public MutablePointers clearCache() {
+            return target.clearCache();
+        }
     }
 
     private static UserContext newUser() {
@@ -225,6 +273,27 @@ public class AppDataIfMatchTests {
         String read = tag(a);
         App.init(signInAgain(a), "passwords").join().writeInternal(FILE, text("from b"), null).join();
         Assert.assertEquals("a still sees the version it read", read, tag(a));
+
+        Assert.assertFalse(onA.writeInternalIfMatch(FILE, text("from a"), read, null).join());
+        Assert.assertEquals("from b", read(signInAgain(a)));
+    }
+
+    /** A file shared on its own has a writing space of its own, which the write reads again after the check: it
+     *  must build on the version the check saw, or a save made in between is written over. */
+    @Test
+    public void aFileWithItsOwnWriterIsWrittenOnTheVersionChecked() {
+        FreezeNextRead pointers = new FreezeNextRead(service.mutable);
+        UserContext a = ensureSignedUp(generateUsername(random), PASSWORD, newNetwork(pointers, 0), crypto);
+        App onA = App.init(a, "passwords").join();
+        onA.writeInternal(FILE, text("first"), null).join();
+        a.shareWriteAccessWith(full(a), Collections.emptySet()).join();
+        FileWrapper file = a.getByPath(full(a)).join().get();
+        Assert.assertNotEquals("the file has a writer of its own",
+                a.getByPath(full(a).getParent()).join().get().writer(), file.writer());
+        String read = tag(a);
+
+        pointers.freezeNext(file.owner(), file.writer());
+        App.init(signInAgain(a), "passwords").join().writeInternal(FILE, text("from b"), null).join();
 
         Assert.assertFalse(onA.writeInternalIfMatch(FILE, text("from a"), read, null).join());
         Assert.assertEquals("from b", read(signInAgain(a)));

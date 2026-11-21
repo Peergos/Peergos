@@ -190,9 +190,11 @@ public class App implements StoreAppData, UseChosenFolder {
                                                 ! ifMatches(ifMatch, current.get().getFileProperties().treeHash))
                                             throw new PreconditionFailedException();
                                         // the update a plain write makes, so the file gets the same size, type,
-                                        // thumbnail and tree hash as one written without If-Match
+                                        // thumbnail and tree hash as one written without If-Match. It builds on the
+                                        // version checked: a file with a writer of its own was read for the check, and
+                                        // reading it again could find another device's save
                                         return latest.uploadOrReplaceFile(name, AsyncReader.build(data), data.length, false,
-                                                s, committer, ctx.network, ctx.crypto, () -> false, x -> {},
+                                                current.get().version, committer, ctx.network, ctx.crypto, () -> false, x -> {},
                                                 ctx.crypto.random.randomBytes(32), Optional.of(Bat.random(ctx.crypto.random)),
                                                 latest.mirrorBatId());
                                     }))).thenApply(v -> true),
