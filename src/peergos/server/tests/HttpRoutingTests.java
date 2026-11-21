@@ -137,6 +137,26 @@ public class HttpRoutingTests {
     }
 
     @Test
+    public void aCallerOverItsLimitIsRefusedBeforeItsBodyIsRead() throws Exception {
+        Node a = new Node();
+        Multihash stranger = ServerKeys.peerId(key().publicSigningKey);
+        byte[] notCbor = new byte[64 * 1024];
+        Arrays.fill(notCbor, (byte) 0x9f);
+        int refused = 0;
+        for (int i = 0; i < RoutingHandler.UNPROVEN_OFFERS.burst + 5; i++) {
+            HttpURLConnection conn = (HttpURLConnection) new URL("http://localhost:" + ports.get(a.id) + "/" + Constants.ROUTING_URL + "announce").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Source", stranger.toString());
+            conn.getOutputStream().write(notCbor);
+            if (conn.getResponseCode() == 429)
+                refused++;
+            conn.disconnect();
+        }
+        Assert.assertTrue("requests past the limit are refused, though their bodies don't decode", refused >= 5);
+    }
+
+    @Test
     public void aRelayAnswersWhetherItVouchesForAServer() throws Exception {
         Node relay = new Node(), asker = new Node();
         Multihash own = ServerKeys.peerId(key().publicSigningKey), stranger = ServerKeys.peerId(key().publicSigningKey);

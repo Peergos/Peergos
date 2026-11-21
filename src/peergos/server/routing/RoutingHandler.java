@@ -33,6 +33,8 @@ public class RoutingHandler implements HttpHandler {
     public static final RateLimits.Rate PAGES = new RateLimits.Rate(600, 100), UNPROVEN_PAGES = new RateLimits.Rate(60, 1_000);
     public static final RateLimits.Rate UNPROVEN_SCANS = new RateLimits.Rate(100, 1_000),
             UNPROVEN_RECORDS = new RateLimits.Rate(1_000, 50), UNPROVEN_OFFERS = new RateLimits.Rate(100, 1_000);
+    private static final Set<String> METHODS = Set.of("announce", "records", "records-of", "page", "summaries",
+            "children", "states", "states-in", "offer", "vouches");
     private static final Multihash POOL = new Multihash(Multihash.Type.id, new byte[0]);
 
     private final RoutingNode node;
@@ -102,11 +104,18 @@ public class RoutingHandler implements HttpHandler {
                 HttpUtil.replyErrorWithCode(exchange, 403, "Routing is only served to authenticated peers");
                 return;
             }
+            if (! METHODS.contains(method))
+                throw new IllegalStateException("Unknown routing method " + method);
+            // charged before the body is read or decoded, so neither is free to a caller over its limit
+            if (! allow(method, caller.get(), 1)) {
+                HttpUtil.replyErrorWithCode(exchange, 429, "Too many routing requests");
+                return;
+            }
             Cborable body = CborObject.fromByteArray(Serialize.readFully(exchange.getRequestBody(), MAX_BODY));
             int cost = method.equals("records-of") ? ((CborObject.CborMap) body).getList("s", Subject::fromCbor).size() : 1;
             if (cost > RoutingNode.FETCH_BATCH)
                 throw new IllegalStateException("Too many subjects");
-            if (! allow(method, caller.get(), Math.max(1, cost))) {
+            if (cost > 1 && ! allow(method, caller.get(), cost - 1)) {
                 HttpUtil.replyErrorWithCode(exchange, 429, "Too many routing requests");
                 return;
             }
