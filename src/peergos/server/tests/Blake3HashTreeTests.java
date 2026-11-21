@@ -10,11 +10,13 @@ import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.Chunk;
 import peergos.shared.user.fs.ChunkHashList;
 import peergos.shared.user.fs.HashTree;
+import peergos.shared.user.fs.HashTreeBuilder;
 import peergos.shared.util.ArrayOps;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.Random;
 
 /**
@@ -207,6 +209,43 @@ public class Blake3HashTreeTests {
         HashTree twoChunks = treeOf(ArrayOps.concat(first, random(SMALL_CHUNK)), SMALL_CHUNK);
         Assert.assertEquals(ArrayOps.bytesToHex(alone), ArrayOps.bytesToHex(oneChunk.level1.get(0).hashes().get(0)));
         Assert.assertEquals(ArrayOps.bytesToHex(inATree), ArrayOps.bytesToHex(twoChunks.level1.get(0).hashes().get(0)));
+    }
+
+    /**
+     * A write to part of a file hashes the chunks it writes and keeps the stored values of the rest, which must give
+     * the tree a whole write would. The exception is the first chunk of a file that goes from one chunk to several or
+     * back: its value changes with its bytes unchanged, so unless the write rewrote it there is no tree to build.
+     */
+    @Test
+    public void keptAndRewrittenChunksMakeTheWholeTree() {
+        List<Integer> sizes = Arrays.asList(0, SMALL_CHUNK / 2, SMALL_CHUNK, SMALL_CHUNK + 1, 2 * SMALL_CHUNK, 3 * SMALL_CHUNK - 7);
+        for (int oldSize : sizes) {
+            for (int newSize : sizes) {
+                byte[] before = random(oldSize);
+                // the whole chunks both have are kept, the rest written
+                int keep = Math.min(oldSize, newSize) / SMALL_CHUNK;
+                byte[] after = Arrays.copyOf(before, newSize);
+                System.arraycopy(random(newSize + 1), 0, after, keep * SMALL_CHUNK, newSize - keep * SMALL_CHUNK);
+                int oldChunks = Math.max(1, (oldSize + SMALL_CHUNK - 1) / SMALL_CHUNK);
+                int newChunks = Math.max(1, (newSize + SMALL_CHUNK - 1) / SMALL_CHUNK);
+
+                HashTreeBuilder hashes = new HashTreeBuilder(newSize, SMALL_CHUNK);
+                for (int i = keep; i < newChunks; i++)
+                    hashes.setChunk(i, Arrays.copyOfRange(after, i * SMALL_CHUNK, Math.min(newSize, (i + 1) * SMALL_CHUNK)), hasher).join();
+                hashes.keep(Optional.of(treeOf(before, SMALL_CHUNK).branch(0)), oldSize, keep);
+
+                String at = oldSize + " to " + newSize;
+                boolean firstChanged = keep > 0 && (oldChunks == 1) != (newChunks == 1);
+                Assert.assertEquals(at, ! firstChanged, hashes.isComplete());
+                if (! firstChanged)
+                    Assert.assertEquals(at, treeOf(after, SMALL_CHUNK), hashes.complete(hasher).join());
+            }
+        }
+        // past 1024 chunks no one stored branch holds every chunk's value
+        byte[] big = random(1025 * SMALL_CHUNK);
+        HashTreeBuilder hashes = new HashTreeBuilder(big.length, SMALL_CHUNK);
+        hashes.keep(Optional.of(treeOf(big, SMALL_CHUNK).branch(0)), big.length, 1025);
+        Assert.assertFalse(hashes.isComplete());
     }
 
     /**
