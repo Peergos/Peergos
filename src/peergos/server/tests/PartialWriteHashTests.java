@@ -309,8 +309,8 @@ public class PartialWriteHashTests {
         assertHoldsWithNoOldHash(user, "a", with(longer, CHUNK + 10, section));
     }
 
-    /** A stored hash listing more chunks than the file has, as an older client's truncate to a chunk boundary left
-     *  it, describes other contents: a save of those contents must still write them. */
+    /** A stored hash listing more chunks than the file has describes other contents: a save of those contents must
+     *  still write them. */
     @Test
     public void aStoredHashOfMoreChunksThanTheFileIsNotTrusted() {
         UserContext user = user();
