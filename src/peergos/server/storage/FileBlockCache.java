@@ -160,6 +160,9 @@ public class FileBlockCache implements BlockCache {
             try (DataInputStream din = new DataInputStream(new BufferedInputStream(new FileInputStream(file)))) {
                 byte[] block = Serialize.readFully(din);
                 return CompletableFuture.completedFuture(Optional.of(block));
+            } catch (FileNotFoundException e) {
+                // gone since the check above, as when an eviction deleted it: absent, so the caller fetches it again
+                return CompletableFuture.completedFuture(Optional.empty());
             }
         } catch (IOException e) {
             throw new RuntimeException(e.getMessage(), e);
@@ -224,8 +227,14 @@ public class FileBlockCache implements BlockCache {
 
     public CompletableFuture<Optional<Integer>> getSize(Multihash h) {
         Path path = getFilePath((Cid)h);
-        File file = root.resolve(path).toFile();
-        return CompletableFuture.completedFuture(file.exists() ? Optional.of((int) file.length()) : Optional.empty());
+        try {
+            // one look, so a block evicted between an exists() and a length() can't read as 0 bytes
+            return CompletableFuture.completedFuture(Optional.of((int) Files.size(root.resolve(path))));
+        } catch (NoSuchFileException e) {
+            return CompletableFuture.completedFuture(Optional.empty());
+        } catch (IOException e) {
+            throw new RuntimeException(e.getMessage(), e);
+        }
     }
 
     @Override

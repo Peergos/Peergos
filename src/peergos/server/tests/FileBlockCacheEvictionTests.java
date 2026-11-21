@@ -149,6 +149,35 @@ public class FileBlockCacheEvictionTests {
         Assert.assertTrue(blocksSize(tmpDir) <= limit);
     }
 
+    /** An eviction can delete a block between a read's check and its open: that reads as absent, so the caller fetches
+     *  the block again rather than fail */
+    @Test
+    public void blockDeletedDuringAReadIsAbsent() throws Exception {
+        Crypto crypto = Main.initCrypto();
+        Path tmpDir = folder.newFolder().toPath();
+        FileBlockCache cache = new FileBlockCache(tmpDir, 100_000_000);
+        byte[] data = new byte[1_000];
+        new Random(42).nextBytes(data);
+        Cid hash = crypto.hasher.hash(data, false).join();
+        AtomicBoolean done = new AtomicBoolean(false);
+        Thread evictor = new Thread(() -> {
+            while (! done.get()) {
+                cache.put(hash, data).join();
+                cache.delete(hash);
+            }
+        });
+        evictor.start();
+        try {
+            for (int i = 0; i < 20_000; i++) {
+                cache.get(hash).join().ifPresent(block -> Assert.assertArrayEquals(data, block));
+                cache.getSize(hash).join().ifPresent(size -> Assert.assertEquals(data.length, (int) size));
+            }
+        } finally {
+            done.set(true);
+            evictor.join();
+        }
+    }
+
     private static long blocksSize(Path dir) throws IOException {
         try (Stream<Path> files = Files.walk(dir)) {
             return files.filter(p -> p.toString().endsWith(".data")).mapToLong(p -> p.toFile().length()).sum();
