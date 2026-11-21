@@ -7,6 +7,7 @@ import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 import java.util.stream.*;
 
 /** The key an identity signs with now. An identity's hash contains the key it began with, which is the key to verify
@@ -59,35 +60,51 @@ public interface IdentityKeys {
         });
     }
 
-    /** For a client: from the records its home server holds, verified here, and cached. */
+    /** For a client: from the records its home server holds, verified here, and cached. When the server can't answer,
+     *  the last key verified is used. With none, the lookup fails: falling back to the key in the hash would let anyone
+     *  who can make the server refuse, by using up its limits, have a stolen key from before a rotation accepted.
+     */
     class Verifying implements IdentityKeys {
         private static final long TTL_MILLIS = 10 * 60_000;
+        /** A failure is remembered this long, so callers don't each ask again a server that is refusing. */
+        private static final long FAILURE_MILLIS = 10_000;
 
         private final IdentityRouting routing;
         private final Hasher hasher;
+        private final LongSupplier clock;
         private final Map<PublicKeyHash, Pair<Long, Optional<PublicSigningKey>>> cache = new LRUCache<>(1_000);
+        private final Map<PublicKeyHash, Pair<Long, Throwable>> failures = new LRUCache<>(1_000);
 
         public Verifying(IdentityRouting routing, Hasher hasher) {
+            this(routing, hasher, System::currentTimeMillis);
+        }
+
+        public Verifying(IdentityRouting routing, Hasher hasher, LongSupplier clock) {
             this.routing = routing;
             this.hasher = hasher;
+            this.clock = clock;
         }
 
         @Override
         public CompletableFuture<Optional<PublicSigningKey>> rotated(PublicKeyHash identity) {
             Pair<Long, Optional<PublicSigningKey>> cached;
+            Pair<Long, Throwable> failed;
             synchronized (cache) {
                 cached = cache.get(identity);
+                failed = failures.get(identity);
             }
-            long now = System.currentTimeMillis();
+            long now = clock.getAsLong();
             if (cached != null && now - cached.left < TTL_MILLIS)
                 return Futures.of(cached.right);
-            // a home server without the routing log has no records, and one that can't be reached is not taken to
-            // mean the identity rotated, so neither failure stops data being read
+            if (failed != null && now - failed.left < FAILURE_MILLIS)
+                return cached != null ? Futures.of(cached.right) : Futures.errored(failed.right);
+            // a home server without the routing log answers with no records, so the key in the hash is used
             return routing.records(identity)
                     .thenCompose(records -> IdentityKeys.rotated(identity, records, hasher))
                     .thenApply(res -> {
                         synchronized (cache) {
                             cache.put(identity, new Pair<>(now, res));
+                            failures.remove(identity);
                         }
                         return res;
                     })
@@ -95,13 +112,19 @@ public interface IdentityKeys {
                         for (Throwable c = t; c != null; c = c.getCause())
                             if (c instanceof Frozen)
                                 throw (Frozen) c;
-                        return Optional.empty();
+                        synchronized (cache) {
+                            failures.put(identity, new Pair<>(now, t));
+                        }
+                        if (cached != null)
+                            return cached.right;
+                        throw new IllegalStateException("Couldn't get the current key of " + identity, t);
                     });
         }
 
         public void invalidate(PublicKeyHash identity) {
             synchronized (cache) {
                 cache.remove(identity);
+                failures.remove(identity);
             }
         }
     }

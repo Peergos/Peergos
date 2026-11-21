@@ -35,11 +35,31 @@ public class IdentityRoutingHandler implements HttpHandler {
         this.isPublicServer = isPublicServer;
     }
 
-    /** The address a request came from, or one name for all of those from this machine, as behind a reverse proxy. */
+    /** The address a request came from. Behind a reverse proxy on this machine that is the last address the proxy
+     *  added to X-Forwarded-For, as any before it were sent by the client and can be anything.
+     */
     private static String client(HttpExchange exchange) {
-        java.net.InetAddress addr = exchange.getRemoteAddress().getAddress();
-        if (addr == null || addr.isLoopbackAddress())
+        return client(exchange.getRemoteAddress().getAddress(), exchange.getRequestHeaders().get("X-Forwarded-For"));
+    }
+
+    public static String client(java.net.InetAddress addr, List<String> forwarded) {
+        if (addr == null)
             return "local";
+        if (addr.isLoopbackAddress()) {
+            if (forwarded == null || forwarded.isEmpty())
+                return "local";
+            String all = forwarded.get(forwarded.size() - 1);
+            String last = all.substring(all.lastIndexOf(',') + 1).trim();
+            try {
+                return key(java.net.InetAddress.ofLiteral(last));
+            } catch (IllegalArgumentException e) {
+                return "local";
+            }
+        }
+        return key(addr);
+    }
+
+    private static String key(java.net.InetAddress addr) {
         byte[] raw = addr.getAddress();
         // one IPv6 customer holds a /64 at least
         return ArrayOps.bytesToHex(raw.length == 16 ? Arrays.copyOf(raw, 8) : raw);
@@ -62,7 +82,9 @@ public class IdentityRoutingHandler implements HttpHandler {
                     result = routing.status(identity(params)).join();
                     break;
                 case "records":
-                    if (! recordRequests.tryTake(client(exchange))) {
+                    // only an answer that makes this server ask others is limited, so the clients of one address, or
+                    // of a proxy that sends no forwarded address, don't slow each other's checks of identity keys
+                    if (! answersLocally(identity(params)) && ! recordRequests.tryTake(client(exchange))) {
                         HttpUtil.replyErrorWithCode(exchange, 429, "Too many requests for routing records");
                         return;
                     }
@@ -127,6 +149,11 @@ public class IdentityRoutingHandler implements HttpHandler {
         } finally {
             exchange.close();
         }
+    }
+
+    private boolean answersLocally(PublicKeyHash identity) {
+        return routing instanceof peergos.server.routing.HostedIdentityRouting &&
+                ((peergos.server.routing.HostedIdentityRouting) routing).answersLocally(identity);
     }
 
     private static PublicKeyHash identity(Map<String, List<String>> params) {

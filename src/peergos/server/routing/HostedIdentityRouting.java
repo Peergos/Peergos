@@ -282,6 +282,13 @@ public class HostedIdentityRouting implements IdentityRouting {
         }
     }
 
+    /** Whether a records request for this identity is answered from this server's own log, without asking others. */
+    public boolean answersLocally(PublicKeyHash identity) {
+        if (routing.isEmpty() || lookup.identity(identity).isEmpty())
+            return true;
+        return running().replica.servesAtOnce(Subject.identity(identity));
+    }
+
     @Override
     public CompletableFuture<List<SignedRecord>> records(PublicKeyHash identity) {
         if (routing.isEmpty())
