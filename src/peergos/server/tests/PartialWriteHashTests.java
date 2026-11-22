@@ -291,6 +291,27 @@ public class PartialWriteHashTests {
         assertHoldsWithNoOldHash(user, "a", with(original, 3 * CHUNK + 10, section));
     }
 
+    /** A write that starts a chunk or more past the end leaves the chunks before it reading as zeros, which they store
+     *  as no bytes */
+    @Test
+    public void aWriteChunksPastTheEndReadsZerosBeforeIt() {
+        UserContext user = user();
+        // from part of a chunk, a whole one, nothing and several, to the chunk after next
+        for (int size : new int[]{1000, CHUNK, 0, 2 * CHUNK + CHUNK / 2}) {
+            String name = "f" + size;
+            byte[] original = upload(user, name, random(size));
+            int at = (size / CHUNK + 2) * CHUNK + 10;
+            byte[] section = random(1000);
+            long[] uploaded = new long[1];
+
+            get(user, name).overwriteSectionJS(AsyncReader.build(section), 0, at, 0, at + section.length, Optional.empty(),
+                    user.network, crypto, x -> uploaded[0] += x).join();
+
+            assertHolds("a write past " + size + " bytes", user, name, with(original, at, section));
+            Assert.assertTrue("uploaded " + uploaded[0] + " bytes past " + size, uploaded[0] < CHUNK);
+        }
+    }
+
     /** A session whose write buffer sends what it holds to the server once it holds this many bytes */
     private static NetworkAccess network(int bufferSize) {
         BufferedStorage blocks = new BufferedStorage(service.storage, crypto.hasher);
