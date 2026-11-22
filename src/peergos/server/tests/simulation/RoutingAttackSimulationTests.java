@@ -66,6 +66,37 @@ public class RoutingAttackSimulationTests {
         return String.format("%.0f%%", 100 * d);
     }
 
+    /** R9: two sync peers claim the same made-up states and leave them out of their answers. */
+    @Test
+    public void twoSyncPeersClaimingStatesNoOneHasDontKeepANewNodeUnsynced() {
+        Net net = new Net(13, 10_000);
+        List<SimNode> all = fleet(net, 8, 2, Behaviour.PHANTOM);
+        List<SimNode> good = all.subList(0, 8), bad = all.subList(8, 10);
+        Map<Subject, byte[]> made = new TreeMap<>();
+        for (int i = 0; i < 50; i++) {
+            byte[] state = new byte[Reconciliation.HASH_BYTES];
+            net.random.nextBytes(state);
+            made.put(Subject.identity(peergos.shared.storage.ContentAddressedStorage.hashKey(key().publicSigningKey)), state);
+        }
+        for (SimNode n : bad)
+            n.phantoms.putAll(made);
+
+        SimNode newcomer = net.node(Optional.of(500), ServerAddresses.Mode.Archival, Behaviour.HONEST).configure(good.get(1));
+        for (SimNode n : bad)
+            newcomer.routing.addSyncPeer(new RoutingSimulation.SimPeer(newcomer.id, n.id, net));
+        int rounds = 0;
+        while (! newcomer.routing.isSynced() && rounds < 8) {
+            net.step(10 * MINUTE);
+            rounds++;
+        }
+        log("A new node with two sync peers claiming 50 states no one has was synced after " + rounds + " rounds, suspecting "
+                + suspected(List.of(newcomer), bad) + " of them");
+        Assert.assertTrue("the new node becomes synced", newcomer.routing.isSynced());
+        Assert.assertEquals("and suspects both", 2, suspected(List.of(newcomer), bad));
+        Assert.assertEquals("and no honest node", 0, suspected(List.of(newcomer), good) + suspected(good, good));
+        Assert.assertTrue("no made-up subject is taken", made.keySet().stream().noneMatch(newcomer::holds));
+    }
+
     @Test
     public void halfTheFullNodesWithholdingSlowsNothingAndTheyAreDropped() {
         Net net = new Net(11, 10_000);

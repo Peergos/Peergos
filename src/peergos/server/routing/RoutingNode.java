@@ -107,6 +107,12 @@ public class RoutingNode {
     public static final int MAX_HELD = 100_000;
     private final Map<Multihash, Tally> tallies = new ConcurrentHashMap<>();
     private final Map<Multihash, Integer> strikes = new ConcurrentHashMap<>();
+    /** Claims an archival peer listed and then left out of an answer asking for them alone, last round. */
+    private Map<Multihash, Map<Subject, ByteArrayWrapper>> omitted = new HashMap<>();
+    /** Subjects asked for at once when asking again for those a peer left out, few enough that an honest
+     *  archival peer answers for all of them.
+     */
+    public static final int RECHECK_BATCH = 16;
     private final Map<Multihash, Long> suspects = new ConcurrentHashMap<>();
     /** How long a record may take to reach every honest node before a peer without it counts as behind. */
     public static final long BEHIND_GRACE_MILLIS = 20 * 60_000L;
@@ -160,6 +166,8 @@ public class RoutingNode {
         final Subject subject;
         final byte[] state;
         final List<RoutingPeer> holders;
+        /** Holders that answered without it. */
+        final Set<Multihash> omittedBy = new HashSet<>();
         int next;
 
         Claim(Subject subject, byte[] state, List<RoutingPeer> holders) {
@@ -987,6 +995,83 @@ public class RoutingNode {
                 && replica.holdsAll(s, served);
     }
 
+    private boolean archival(RoutingPeer peer) {
+        return replica.serverForPeer(peer.id())
+                .flatMap(ServerLog::addresses)
+                .map(a -> a.mode == ServerAddresses.Mode.Archival)
+                .orElse(false);
+    }
+
+    private static final class Recheck {
+        int changed, failed;
+    }
+
+    /** Asks each holder again, a few at a time, for the claims all their holders left out. One it leaves out again
+     *  that it also left out last round, while claiming the same state, is a state it can't have: an honest archival
+     *  peer serves all it lists. Those claims don't keep this node from being synced.
+     */
+    private Recheck recheck(List<Claim> leftOut, Map<Multihash, Budget> budgets) {
+        Recheck res = new Recheck();
+        Map<Multihash, Map<Subject, ByteArrayWrapper>> now = new HashMap<>();
+        Map<Multihash, RoutingPeer> holders = new HashMap<>();
+        Map<Multihash, List<Claim>> byHolder = new LinkedHashMap<>();
+        for (Claim c : leftOut)
+            for (RoutingPeer h : c.holders) {
+                Multihash id = h.id().bareMultihash();
+                holders.put(id, h);
+                byHolder.computeIfAbsent(id, x -> new ArrayList<>()).add(c);
+            }
+        Set<Claim> delivered = new HashSet<>();
+        for (Map.Entry<Multihash, List<Claim>> e : byHolder.entrySet()) {
+            RoutingPeer holder = holders.get(e.getKey());
+            Budget budget = budgets.get(e.getKey());
+            List<Claim> claims = e.getValue();
+            for (int i = 0; i < claims.size(); i += RECHECK_BATCH) {
+                List<Claim> batch = claims.subList(i, Math.min(claims.size(), i + RECHECK_BATCH));
+                List<Subject> subjects = batch.stream().map(c -> c.subject).distinct().collect(Collectors.toList());
+                Map<Subject, List<SignedRecord>> got;
+                try {
+                    got = ask(holder, budget, () -> holder.recordsOf(subjects));
+                } catch (Throwable t) {
+                    LOG.log(Level.FINE, "Asking " + holder.id() + " again for " + subjects.size() + " subjects failed: " + t.getMessage());
+                    batch.forEach(delivered::add);
+                    continue;
+                }
+                for (Claim c : batch) {
+                    List<SignedRecord> records = got.get(c.subject);
+                    if (records == null) {
+                        now.computeIfAbsent(e.getKey(), x -> new HashMap<>()).put(c.subject, new ByteArrayWrapper(c.state));
+                        continue;
+                    }
+                    delivered.add(c);
+                    try {
+                        roundBudget.set(budget);
+                        if (accept(holder, c.subject, records, false) == Outcome.Added)
+                            res.changed++;
+                    } catch (Throwable t) {
+                        LOG.log(Level.FINE, "Taking " + c.subject + " failed: " + t.getMessage());
+                    } finally {
+                        roundBudget.remove();
+                    }
+                }
+            }
+        }
+        // A claim a holder answered for this time, or couldn't be asked about, still counts as before.
+        for (Claim c : leftOut)
+            if (delivered.contains(c) && ! Arrays.equals(replica.stateHash(c.subject), c.state))
+                res.failed++;
+        for (Map.Entry<Multihash, Map<Subject, ByteArrayWrapper>> e : now.entrySet()) {
+            Map<Subject, ByteArrayWrapper> before = omitted.getOrDefault(e.getKey(), Map.of());
+            for (Map.Entry<Subject, ByteArrayWrapper> claim : e.getValue().entrySet())
+                if (claim.getValue().equals(before.get(claim.getKey()))) {
+                    suspect(e.getKey(), "it twice claimed a state of " + claim.getKey() + " and left it out of its answers");
+                    break;
+                }
+        }
+        omitted = now;
+        return res;
+    }
+
     /** Strikes each peer far further behind than the second most current, and suspects it after a few rounds in a
      *  row. Relative, so peers lagging alike while a flood is taken at each node's own pace are not struck; it needs
      *  two current peers to compare with.
@@ -1413,6 +1498,7 @@ public class RoutingNode {
                 missed(peer);
         }
         int changed = 0, failed = 0;
+        List<Claim> leftOut = new ArrayList<>();
         Predicate<RoutingPeer> usable = h -> ! isSuspect(h.id()) && ! budgets.get(h.id().bareMultihash()).spent()
                 && rejections.has(h.id().bareMultihash());
         for (int kind : new int[]{Subject.SERVER, Subject.IDENTITY}) {
@@ -1444,7 +1530,13 @@ public class RoutingNode {
                     // What a single drawn peer claims and then can't deliver may not exist, so it doesn't keep
                     // this node from being synced; anything real it alone holds comes in a later round.
                     boolean corroborated = c.holders.size() > 1 || c.holders.stream().anyMatch(h -> configured.contains(h.id().bareMultihash()));
-                    if (corroborated && c.holders.stream().anyMatch(h -> ! isSuspect(h.id())))
+                    if (! corroborated || c.holders.stream().allMatch(h -> isSuspect(h.id())))
+                        continue;
+                    // Holders that all claimed a state and left it out of their answers may have made it up
+                    // together (R9), so they are asked again before it can keep this node from being synced.
+                    if (c.holders.stream().allMatch(h -> c.omittedBy.contains(h.id().bareMultihash()) && archival(h)))
+                        leftOut.add(c);
+                    else
                         failed++;
                 }
                 List<Claim> undelivered = new ArrayList<>();
@@ -1463,8 +1555,10 @@ public class RoutingNode {
                         for (Claim c : batch) {
                             List<SignedRecord> records = got == null ? null : got.get(c.subject);
                             if (records == null) {
-                                if (got != null)
+                                if (got != null) {
                                     budget.undelivered++;
+                                    c.omittedBy.add(e.getKey());
+                                }
                                 undelivered.add(c);
                                 continue;
                             }
@@ -1488,6 +1582,9 @@ public class RoutingNode {
                 claims = undelivered;
             }
         }
+        Recheck recheck = recheck(leftOut, budgets);
+        changed += recheck.changed;
+        failed += recheck.failed;
         for (Iterator<RoutingPeer> it = answered.iterator(); it.hasNext(); ) {
             RoutingPeer peer = it.next();
             if (budgets.get(peer.id().bareMultihash()).failing()) {

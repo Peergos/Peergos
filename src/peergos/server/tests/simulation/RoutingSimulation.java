@@ -106,10 +106,13 @@ public class RoutingSimulation {
          *  consistently, so it looks like a node that is behind on them. */
         CENSOR,
         /** Like a censor, but claims a made-up state for its frozen subjects, and serves the old one. */
-        LIAR;
+        LIAR,
+        /** Syncs like an honest node, but also claims states for subjects it doesn't have, and leaves them out of
+         *  its answers: with others claiming the same, a new node can't tell them from records it is missing. */
+        PHANTOM;
 
         boolean syncs() {
-            return this == HONEST || this == CENSOR || this == LIAR;
+            return this == HONEST || this == CENSOR || this == LIAR || this == PHANTOM;
         }
     }
 
@@ -197,6 +200,8 @@ public class RoutingSimulation {
         /** What a censor or liar answers for a subject: the records it had when it froze it, and the state it claims. */
         final Map<Subject, List<SignedRecord>> frozen = new HashMap<>();
         final Map<Subject, byte[]> claimed = new HashMap<>();
+        /** States a phantom claims for subjects it doesn't have. */
+        final Map<Subject, byte[]> phantoms = new TreeMap<>();
         /** The servers this one, as a relay, vouches for. */
         final Set<Multihash> vouchFor = new HashSet<>();
         long addressCounter = 1;
@@ -293,7 +298,22 @@ public class RoutingSimulation {
                 JdbcRoutingStore.State held = new JdbcRoutingStore.State(s, replica.stateHash(s));
                 res = res.minus(held).plus(answer(held));
             }
+            for (Map.Entry<Subject, byte[]> e : phantoms.entrySet())
+                if (e.getKey().kind == kind && r.contains(e.getKey().idBytes()))
+                    res = res.plus(new JdbcRoutingStore.State(e.getKey(), e.getValue()));
             return res;
+        }
+
+        /** A range's states as this node answers it, with its phantoms in their place in the order. */
+        List<JdbcRoutingStore.State> states(int kind, Reconciliation.Range range, Reconciliation.Cursor after, int limit) {
+            List<JdbcRoutingStore.State> res = new ArrayList<>(routing.states(kind, range, after, limit).stream()
+                    .map(this::answer).collect(Collectors.toList()));
+            for (Map.Entry<Subject, byte[]> e : phantoms.entrySet())
+                if (e.getKey().kind == kind && range.contains(e.getKey().idBytes()) && after.isBefore(e.getKey()))
+                    res.add(new JdbcRoutingStore.State(e.getKey(), e.getValue()));
+            res.sort(Comparator.comparingInt((JdbcRoutingStore.State st) -> Reconciliation.slot(st.subject.idBytes()))
+                    .thenComparing(st -> st.subject.idBytes(), Subject::compareBytes));
+            return res.subList(0, Math.min(limit, res.size()));
         }
     }
 
@@ -344,6 +364,17 @@ public class RoutingSimulation {
             });
         }
 
+        public CompletableFuture<Map<Subject, List<SignedRecord>>> recordsOf(List<Subject> subjects) {
+            return call(() -> {
+                SimNode n = node();
+                Map<Subject, List<SignedRecord>> res = new HashMap<>();
+                for (Subject s : subjects)
+                    if (! n.phantoms.containsKey(s))
+                        res.put(s, records(s).join());
+                return res;
+            });
+        }
+
         public CompletableFuture<List<SignedRecord>> records(Subject s) {
             return call(() -> {
                 SimNode n = node();
@@ -381,7 +412,7 @@ public class RoutingSimulation {
         public CompletableFuture<List<JdbcRoutingStore.State>> states(int kind, Reconciliation.Range range, Reconciliation.Cursor after, int limit) {
             return call(() -> {
                 SimNode n = node();
-                return n.routing.states(kind, range, after, limit).stream().map(n::answer).collect(Collectors.toList());
+                return n.states(kind, range, after, limit);
             });
         }
 
