@@ -66,6 +66,118 @@ public class RoutingAttackSimulationTests {
         return String.format("%.0f%%", 100 * d);
     }
 
+    /** An identity admitted by a server, offered by another to one node. The admitter, its home, holds it or not. */
+    private static Subject offerAdmitted(Net net, SimNode admitter, boolean holds, SimNode deliverer, SimNode to) {
+        SigningKeyPair identity = key();
+        IdentityInception inc = IdentityInception.build(identity, List.of(admitter.id), key().publicSigningKey, crypto.hasher).join()
+                .withAdmission(Admission.build(identity.publicSigningKey, GOOD_PROOF, admitter.key.secretSigningKey).join());
+        Subject s = Subject.identity(inc.identityHash());
+        if (holds)
+            admitter.replica.add(s, inc);
+        new RoutingSimulation.SimPeer(deliverer.id, to.id, net).offer(s, List.of(inc)).join();
+        return s;
+    }
+
+    private static final class Spread {
+        final List<Integer> delays = new ArrayList<>();
+        long unspread, fetches, flagged;
+        final Map<SimNode, Long> takenFromFlood = new LinkedHashMap<>();
+    }
+
+    /** Honest signups on one server, spread with announcements lost, while a flooder offers each node a set of
+     *  identities that no other node is offered, at {@code floodPerStep} a node a step. Their admitter is the flooder,
+     *  which doesn't hold them, or with {@code colluding} another server, their home, which holds and serves them.
+     */
+    private static Spread equivocation(int floodPerStep, boolean colluding, int steps, long stepMillis, int perDay) {
+        Net net = new Net(17, perDay);
+        List<SimNode> all = fleet(net, 10, 0, Behaviour.HONEST);
+        List<SimNode> good = all.subList(0, 8);
+        SimNode flooder = all.get(8), home = good.get(0);
+        SimNode admitter = colluding ? all.get(9) : flooder;
+        net.dropAnnouncements = true;
+        Spread res = new Spread();
+        Map<Subject, Integer> born = new HashMap<>();
+        Set<Subject> flood = new HashSet<>();
+        long fetchesBefore = good.stream().mapToLong(n -> n.recordRequests.get()).sum();
+        Set<SimNode> flagging = new HashSet<>(), flaggingHome = new HashSet<>();
+        for (int step = 1; step <= steps; step++) {
+            for (int i = 0; i < 2; i++)
+                born.put(home.admit(key()), step);
+            for (SimNode n : good)
+                for (int i = 0; i < floodPerStep; i++)
+                    flood.add(offerAdmitted(net, admitter, colluding, flooder, n));
+            net.step(stepMillis);
+            for (SimNode n : good) {
+                if (n.routing.isNotServing(admitter.id))
+                    flagging.add(n);
+                if (n.routing.isNotServing(home.id))
+                    flaggingHome.add(n);
+            }
+            if (step % 3 == 0)
+                net.choosePeers();
+            for (Map.Entry<Subject, Integer> e : born.entrySet())
+                if (e.getValue() > 0 && good.stream().allMatch(n -> n.holds(e.getKey()))) {
+                    res.delays.add(step - e.getValue() + 1);
+                    e.setValue(-e.getValue());
+                }
+        }
+        res.unspread = born.values().stream().filter(v -> v > 0).count();
+        res.fetches = good.stream().mapToLong(n -> n.recordRequests.get()).sum() - fetchesBefore;
+        res.flagged = flagging.size() + 1000L * flaggingHome.size();
+        for (SimNode n : good)
+            res.takenFromFlood.put(n, flood.stream().filter(n::holds).count());
+        return res;
+    }
+
+    private static String delays(Spread s) {
+        return new TreeMap<>(s.delays.stream().collect(Collectors.groupingBy(d -> d, Collectors.counting()))) + " (" + s.unspread + " not yet)";
+    }
+
+    /** A server offering every node a different set of identities it admitted gets no more into any one node than
+     *  its range's rate and catch-up, honest signups spread as fast as without it, and as it doesn't serve them as
+     *  their home must, nodes take its identities only as catch-up once they have asked it for some twice.
+     */
+    @Test
+    public void aServerOfferingEachNodeDifferentIdentitiesGetsNoMoreIntoAnyNode() {
+        int perDay = 144, steps = 24;
+        long stepMillis = 2 * HOUR;
+        Spread quiet = equivocation(0, false, steps, stepMillis, perDay);
+        Spread flooded = equivocation(30, false, steps, stepMillis, perDay);
+        long allowed = perDay + perDay * steps * stepMillis / DAY;
+        long most = flooded.takenFromFlood.values().stream().mapToLong(l -> l).max().orElse(0);
+        log("A server offering 8 nodes 30 different identities each every 2 hours, for 2 days: each node took at most "
+                + most + " of them (its range allows " + allowed + "), " + flooded.takenFromFlood.values()
+                + "; " + flooded.flagged + " nodes found it not serving them");
+        log("Honest signups, announcements lost, rounds to reach every node: without the flood " + delays(quiet)
+                + ", with it " + delays(flooded));
+        log("Records fetched from honest nodes: " + quiet.fetches + " without the flood, " + flooded.fetches + " with it");
+        // beyond its own limit a node takes only catch-up: what most of its peers took under theirs
+        Assert.assertTrue("no node takes more of them than the range allows, and catch-up", most <= 2 * allowed);
+        Assert.assertEquals("honest signups spread as fast", quiet.delays, flooded.delays);
+        Assert.assertTrue("and the flood isn't fetched again and again", flooded.fetches < 2 * 8 * 30 * steps);
+        Assert.assertEquals("every node finds the admitter doesn't serve them, and none the honest home", 8, flooded.flagged);
+    }
+
+    /** The same, with the identities admitted by a home server that holds and serves them, colluding with the
+     *  server offering each node a different set to spread them faster: still no more than the rate and catch-up.
+     */
+    @Test
+    public void aHomeServerAndAnotherOfferingEachNodeDifferentSignupsGetNoMoreIntoAnyNode() {
+        int perDay = 144, steps = 24;
+        long stepMillis = 2 * HOUR;
+        Spread quiet = equivocation(0, true, steps, stepMillis, perDay);
+        Spread flooded = equivocation(30, true, steps, stepMillis, perDay);
+        long allowed = perDay + perDay * steps * stepMillis / DAY;
+        long most = flooded.takenFromFlood.values().stream().mapToLong(l -> l).max().orElse(0);
+        log("A home server's signups, offered by another server to 8 nodes 30 different ones each every 2 hours, for 2 days: "
+                + "each node took at most " + most + " (the home's range allows " + allowed + "), " + flooded.takenFromFlood.values());
+        log("Honest signups elsewhere, rounds to reach every node: without the flood " + delays(quiet) + ", with it " + delays(flooded));
+        log("Records fetched from honest nodes: " + quiet.fetches + " without the flood, " + flooded.fetches + " with it");
+        Assert.assertTrue("no node takes more of them than the range allows, and catch-up", most <= 2 * allowed);
+        Assert.assertEquals("honest signups spread as fast", quiet.delays, flooded.delays);
+        Assert.assertEquals("a home serving its signups isn't taken for one that doesn't", 0, flooded.flagged);
+    }
+
     /** R9: two sync peers claim the same made-up states and leave them out of their answers. */
     @Test
     public void twoSyncPeersClaimingStatesNoOneHasDontKeepANewNodeUnsynced() {

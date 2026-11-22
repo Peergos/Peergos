@@ -338,6 +338,45 @@ public class RateLimits {
             return all.contains(offer);
         }
 
+        /** How many offers wait for each admitting server, across buckets. */
+        public synchronized Map<Multihash, Integer> waitingByServer() {
+            Map<Multihash, Integer> res = new HashMap<>();
+            for (LinkedHashMap<Multihash, ArrayDeque<O>> servers : offers.values())
+                servers.forEach((server, queue) -> res.merge(server, queue.size(), Integer::sum));
+            return res;
+        }
+
+        /** Up to max of a server's waiting offers, from anywhere in its queues. */
+        public synchronized List<O> sample(Multihash server, int max, Random random) {
+            List<O> all = new ArrayList<>();
+            for (LinkedHashMap<Multihash, ArrayDeque<O>> servers : offers.values())
+                all.addAll(servers.getOrDefault(server, new ArrayDeque<>()));
+            Collections.shuffle(all, random);
+            return all.subList(0, Math.min(max, all.size()));
+        }
+
+        /** Drops every offer waiting for a server. */
+        public synchronized int drop(Multihash server) {
+            int dropped = 0;
+            for (AddressBucket bucket : new ArrayList<>(offers.keySet())) {
+                LinkedHashMap<Multihash, ArrayDeque<O>> servers = offers.get(bucket);
+                ArrayDeque<O> queue = servers.remove(server);
+                if (queue == null)
+                    continue;
+                dropped += queue.size();
+                queue.forEach(all::remove);
+                waiting -= queue.size();
+                int left = waitingIn.getOrDefault(bucket, 0) - queue.size();
+                if (left > 0)
+                    waitingIn.put(bucket, left);
+                else
+                    waitingIn.remove(bucket);
+                if (servers.isEmpty())
+                    offers.remove(bucket);
+            }
+            return dropped;
+        }
+
         /** Across every bucket, to bound memory. */
         public static final int MAX_WAITING = 200_000;
 

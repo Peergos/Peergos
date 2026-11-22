@@ -753,6 +753,8 @@ public class RoutingNode {
                     unproven.put(s, replica.preview(s, records));
                 return Outcome.Ignored;
             }
+            if (! catchUp && admitter.isPresent() && isNotServing(admitter.get()))
+                return Outcome.Ignored;
             if (! catchUp && ! fromQueue) {
                 if (pulled)
                     unproven.put(s, replica.preview(s, records));
@@ -993,6 +995,97 @@ public class RoutingNode {
         return ! Arrays.equals(servedHash, claimed)
                 && ! Arrays.equals(servedHash, replica.stateHash(s))
                 && replica.holdsAll(s, served);
+    }
+
+    /** New subjects a round fetched and couldn't take, which it doesn't fetch again for a while: a server
+     *  offering each node different identities would otherwise have every node fetch the others' each round.
+     */
+    private final Map<Subject, Long> limited = new LRUCache<>(100_000);
+    public static final long LIMITED_MILLIS = 3600_000L;
+
+    private void limited(Subject s) {
+        synchronized (limited) {
+            limited.put(s, clock.getAsLong());
+        }
+    }
+
+    private boolean isWaitingOrLimited(Subject s) {
+        if (replica.log(s).inception().isPresent())
+            return false;
+        if (inceptions.isWaiting(new Offer(null, s)))
+            return true;
+        synchronized (limited) {
+            Long at = limited.get(s);
+            if (at == null)
+                return false;
+            if (clock.getAsLong() - at < LIMITED_MILLIS)
+                return true;
+            limited.remove(s);
+            return false;
+        }
+    }
+
+    /** Admitting servers seen not serving the identities they admitted, all of which name them as home, until when. */
+    private final Map<Multihash, Long> notServing = new ConcurrentHashMap<>();
+    private final Map<Multihash, Integer> notServingStrikes = new ConcurrentHashMap<>();
+    /** An admitter with this many identities waiting here is asked for some of them, a few admitters a round. */
+    public static final int CHECK_BACKLOG = 64, CHECKED_ADMITTERS = 4;
+    private final Random checkRandom = new Random();
+
+    /** Asks the admitters with the most waiting here for a sample of what they admitted. An honest home server
+     *  serves all its users' records however many signed up; one that leaves most of them out twice running made
+     *  them up to flood with, as when it offers each node a different set. Its identities then get in only as
+     *  catch-up, for a day. One that serves them all is no worse than a busy honest server, held to its range's
+     *  rate here however its identities arrive.
+     */
+    private void checkAdmitters() {
+        List<Map.Entry<Multihash, Integer>> backlogs = new ArrayList<>(inceptions.waitingByServer().entrySet());
+        backlogs.removeIf(e -> e.getValue() < CHECK_BACKLOG || isNotServing(e.getKey()));
+        backlogs.sort(Map.Entry.<Multihash, Integer>comparingByValue().reversed());
+        for (Map.Entry<Multihash, Integer> e : backlogs.subList(0, Math.min(CHECKED_ADMITTERS, backlogs.size()))) {
+            Multihash server = e.getKey();
+            List<Subject> asked = inceptions.sample(server, RECHECK_BATCH, checkRandom).stream()
+                    .map(o -> o.subject)
+                    .collect(Collectors.toList());
+            Map<Subject, List<SignedRecord>> got;
+            try {
+                RoutingPeer home = dial(endpointOf(server));
+                got = ask(home, new Budget(), () -> home.recordsOf(asked));
+            } catch (Throwable t) {
+                // an offline home server shows nothing
+                continue;
+            }
+            long left = asked.stream().filter(s -> got.get(s) == null || got.get(s).isEmpty()).count();
+            if (left * 2 <= asked.size()) {
+                notServingStrikes.remove(server);
+                continue;
+            }
+            if (notServingStrikes.merge(server, 1, Integer::sum) < 2)
+                continue;
+            notServingStrikes.remove(server);
+            notServing.put(server, clock.getAsLong() + SUSPECT_MILLIS);
+            int dropped = inceptions.drop(server);
+            LOG.info("Taking identities admitted by " + server + " only as catch-up for a day: it left out " + left + " of "
+                    + asked.size() + " it was asked for, twice; dropped " + dropped + " waiting");
+        }
+    }
+
+    public boolean isNotServing(Multihash admitter) {
+        Long until = notServing.get(admitter.bareMultihash());
+        if (until == null)
+            return false;
+        if (until < clock.getAsLong()) {
+            notServing.remove(admitter.bareMultihash(), until);
+            return false;
+        }
+        return true;
+    }
+
+    private Multihash endpointOf(Multihash server) {
+        return replica.server(Subject.server(server))
+                .flatMap(ServerLog::addresses)
+                .map(a -> ServerKeys.peerId(a.endpoint).bareMultihash())
+                .orElse(server);
     }
 
     private boolean archival(RoutingPeer peer) {
@@ -1520,6 +1613,10 @@ public class RoutingNode {
                 for (Claim c : claims) {
                     if (Arrays.equals(replica.stateHash(c.subject), c.state))
                         continue;
+                    // Waiting its turn, or recently turned away, it comes from the queue rather than being fetched
+                    // again, unless most peers now hold it, which takes it at once as catch-up.
+                    if (isWaitingOrLimited(c.subject) && ! isCatchUp(c.subject, c.state))
+                        continue;
                     Optional<RoutingPeer> holder = c.nextHolder(usable);
                     if (holder.isPresent()) {
                         Multihash id = holder.get().id().bareMultihash();
@@ -1564,8 +1661,11 @@ public class RoutingNode {
                             }
                             try {
                                 roundBudget.set(budget);
-                                if (accept(holder, c.subject, records, false) == Outcome.Added)
+                                Outcome o = accept(holder, c.subject, records, false);
+                                if (o == Outcome.Added)
                                     changed++;
+                                else if (o == Outcome.Limited || o == Outcome.Ignored)
+                                    limited(c.subject);
                                 if (misrepresented(c.subject, c.state, records)) {
                                     suspect(holder.id(), "it served a state of " + c.subject + " other than the one it claimed");
                                     undelivered.add(c);
@@ -1583,6 +1683,7 @@ public class RoutingNode {
             }
         }
         Recheck recheck = recheck(leftOut, budgets);
+        checkAdmitters();
         changed += recheck.changed;
         failed += recheck.failed;
         for (Iterator<RoutingPeer> it = answered.iterator(); it.hasNext(); ) {
