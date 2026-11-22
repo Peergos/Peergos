@@ -727,6 +727,15 @@ public interface ContentAddressedStorage {
             return grouped;
         }
 
+        @Override
+        public CompletableFuture<List<Cid>> putBatch(PublicKeyHash owner,
+                                                     PublicKeyHash writer,
+                                                     BlockWriteBatch batch,
+                                                     boolean isRaw,
+                                                     TransactionId tid) {
+            return putBatch(owner, writer, batch, isRaw ? "raw" : "dag-cbor", tid);
+        }
+
         private CompletableFuture<List<Cid>> putBatch(PublicKeyHash owner,
                                                       PublicKeyHash writer,
                                                       BlockWriteBatch batch,
