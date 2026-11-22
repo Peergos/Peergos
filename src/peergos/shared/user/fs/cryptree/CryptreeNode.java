@@ -44,6 +44,7 @@ import java.util.stream.*;
  *       The parent link is present on the first chunk of all files and directories except your home directory
  */
 public class CryptreeNode implements Cborable {
+    private static final java.util.logging.Logger LOG = java.util.logging.Logger.getGlobal();
     private static final int CURRENT_VERSION = 1;
     private static final int META_DATA_PADDING_BLOCKSIZE = 16;
     private static final int BASE_BLOCK_PADDING_BLOCKSIZE = 64;
@@ -734,6 +735,91 @@ public class CryptreeNode implements Cborable {
             Crypto crypto,
             Snapshot version,
             Committer committer) {
+        return rotateAllKeys(isFirstChunk, us, newUs, parent, newParent, firstChunkOrParentCap, fileStreamSecret, mirrorBat,
+                rotateSigner, rotatedSigners, new Listings(version, network), network, crypto, version, committer);
+    }
+
+    /** The directory listings of a subtree, each fetched as soon as its parent's arrives.
+     *  The rotation itself is sequential, as each commit builds on the last, so without this it
+     *  waits for every directory in turn rather than once per level of the tree.
+     *  Listings are of the tree before the rotation, which leaves the old nodes in place until it finishes.
+     */
+    private static class Listings {
+        private final Map<ByteArrayWrapper, CompletableFuture<Set<RetrievedCapability>>> byMapKey = new ConcurrentHashMap<>();
+        private final Map<ByteArrayWrapper, CompletableFuture<Optional<RetrievedCapability>>> nextChunks = new ConcurrentHashMap<>();
+        private final Snapshot version;
+        private final NetworkAccess network;
+
+        Listings(Snapshot version, NetworkAccess network) {
+            this.version = version;
+            this.network = network;
+        }
+
+        CompletableFuture<Set<RetrievedCapability>> get(CryptreeNode dir, AbsoluteCapability cap) {
+            ByteArrayWrapper key = new ByteArrayWrapper(cap.getMapKey());
+            CompletableFuture<Set<RetrievedCapability>> existing = byMapKey.get(key);
+            if (existing != null)
+                return existing;
+            CompletableFuture<Set<RetrievedCapability>> res = new CompletableFuture<>();
+            existing = byMapKey.putIfAbsent(key, res);
+            if (existing != null)
+                return existing;
+            Futures.asyncExceptionally(() -> version.withWriter(cap.owner, cap.writer, network)
+                            .thenCompose(v -> dir.getDirectChildren(network, cap, v)),
+                    Futures::errored)
+                    .whenComplete((children, t) -> {
+                        if (t != null) {
+                            res.completeExceptionally(t);
+                            return;
+                        }
+                        res.complete(children);
+                        // only a prefetch, so a failure here is left for the rotation to meet when it gets there
+                        try {
+                            for (RetrievedCapability child : children)
+                                if (child.fileAccess.isDirectory()) {
+                                    get(child.fileAccess, child.capability);
+                                    prefetchNextChunk(child.fileAccess, child.capability);
+                                }
+                        } catch (Throwable e) {
+                            LOG.log(java.util.logging.Level.FINE, "Couldn't prefetch below a directory being rotated", e);
+                        }
+                    });
+            return res;
+        }
+
+        private void prefetchNextChunk(CryptreeNode dir, AbsoluteCapability cap) {
+            FileProperties props = dir.getProperties(dir.getParentKey(cap.rBaseKey));
+            dir.getNextChunkLocation(cap.rBaseKey, props.streamSecret, cap.getMapKey(), cap.bat, network.hasher)
+                    .thenAccept(next -> {
+                        AbsoluteCapability nextCap = cap.withMapKey(next.left, next.right);
+                        nextChunks.putIfAbsent(new ByteArrayWrapper(nextCap.getMapKey()),
+                                version.withWriter(cap.owner, cap.writer, network)
+                                        .thenCompose(v -> dir.getNextChunk(v, nextCap, network)));
+                    });
+        }
+
+        CompletableFuture<Optional<RetrievedCapability>> nextChunk(CryptreeNode chunk, Snapshot current, AbsoluteCapability nextChunkCap) {
+            CompletableFuture<Optional<RetrievedCapability>> prefetched = nextChunks.remove(new ByteArrayWrapper(nextChunkCap.getMapKey()));
+            return prefetched != null ? prefetched : chunk.getNextChunk(current, nextChunkCap, network);
+        }
+    }
+
+    private CompletableFuture<Pair<Snapshot, WritableAbsoluteCapability>> rotateAllKeys(
+            boolean isFirstChunk,
+            CapAndSigner us,
+            CapAndSigner newUs,
+            CapAndSigner parent,
+            CapAndSigner newParent,
+            Optional<RelativeCapability> firstChunkOrParentCap,
+            Optional<byte[]> fileStreamSecret,
+            Optional<BatId> mirrorBat,
+            boolean rotateSigner,
+            Map<PublicKeyHash, PublicKeyHash> rotatedSigners,
+            Listings listings,
+            NetworkAccess network,
+            Crypto crypto,
+            Snapshot version,
+            Committer committer) {
         // If our new signer is different from the parent signer then we first need to add the new signer as an owned
         // key to authorise it to write to our storage. We also need to keep track of old signing keys to remove
         // at the end
@@ -766,9 +852,13 @@ public class CryptreeNode implements Cborable {
                         Optional.of(new RelativeCapability(Optional.empty(), newUs.cap.getMapKey(), newUs.cap.bat, newParentKey, Optional.empty())) :
                         firstChunkOrParentCap;
 
+                // a file that fits in one chunk has no next chunk, and looking for one is a round trip per file
+                boolean singleChunkFile = isFirstChunk && ! isDirectory() && props.streamSecret.isPresent() && props.chunkCount() <= 1;
                 // do for subsequent chunks first
                 return version.withWriter(us.cap.owner, us.cap.writer, network)
-                        .thenCompose(s -> getNextChunk(s, nextChunkCap, network)
+                        .thenCompose(s -> (singleChunkFile ?
+                                Futures.of(Optional.<RetrievedCapability>empty()) :
+                                listings.nextChunk(this, s, nextChunkCap))
                                 .thenCompose(opt -> {
                                     if (!opt.isPresent())
                                         return Futures.of(new Pair<>(s, newNextChunkCap));
@@ -782,6 +872,7 @@ public class CryptreeNode implements Cborable {
                                             mirrorBat,
                                             rotateSigner,
                                             rotatedSigners,
+                                            listings,
                                             network,
                                             crypto,
                                             s,
@@ -789,7 +880,7 @@ public class CryptreeNode implements Cborable {
                                 })).thenCompose(nextChunk -> {
                             if (isDirectory()) {
                                 Set<NamedAbsoluteCapability> empty = Collections.emptySet();
-                                return getDirectChildren(network, us.cap, version)
+                                return listings.get(this, us.cap)
                                         .thenCompose(children -> Futures.reduceAll(children,
                                                 new Pair<>(nextChunk.left, empty),
                                                 (p, c) -> {
@@ -811,6 +902,7 @@ public class CryptreeNode implements Cborable {
                                                                     mirrorBat,
                                                                     rotateSigner,
                                                                     rotatedSigners,
+                                                                    listings,
                                                                     network,
                                                                     crypto,
                                                                     newChild.left,

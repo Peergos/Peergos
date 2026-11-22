@@ -25,6 +25,12 @@ public class BufferedStorage extends DelegatingStorage {
     /** Blocks taken out of the buffer for a commit that hasn't landed yet. They are still ours to serve:
      *  until the server has them, a reader that goes looking would find them in neither place. */
     private final Map<Cid, OpLog.BlockWrite> inFlight = new LinkedHashMap<>();
+    /** Small cbor blocks of commits that landed. An update too big for one commit goes on to read
+     *  the champ nodes it has just committed, and without these each is a round trip. */
+    private final LinkedHashMap<Cid, byte[]> committed = new LinkedHashMap<>(16, 0.75f, true);
+    private long committedBytes = 0;
+    private static final int MAX_COMMITTED_BLOCK_SIZE = 16 * 1024;
+    private static final long MAX_COMMITTED_BYTES = 32 * 1024 * 1024;
     private int bufferedBytes = 0;
     private final ContentAddressedStorage target;
     private final Hasher hasher;
@@ -48,6 +54,12 @@ public class BufferedStorage extends DelegatingStorage {
         synchronized (storage) {
             OpLog.BlockWrite block = storage.get(hash);
             return block != null ? block : inFlight.get(hash);
+        }
+    }
+
+    private byte[] recentlyCommitted(Cid hash) {
+        synchronized (storage) {
+            return committed.get(hash);
         }
     }
 
@@ -339,6 +351,9 @@ public class BufferedStorage extends DelegatingStorage {
         OpLog.BlockWrite local = buffered(hash);
         if (local != null)
             return Futures.of(Optional.of(local.block));
+        byte[] landed = recentlyCommitted(hash);
+        if (landed != null)
+            return Futures.of(Optional.of(landed));
         return target.getRaw(owner, hash, bat);
     }
 
@@ -376,9 +391,26 @@ public class BufferedStorage extends DelegatingStorage {
     }
 
     /** A commit for these writers has finished, landed or not, so stop holding the blocks it took. */
-    public void commitFinished(Set<PublicKeyHash> writers) {
+    /** Must be called whilst holding the storage monitor. */
+    private void keepCommitted(Cid cid, byte[] block) {
+        byte[] previous = committed.put(cid, block);
+        committedBytes += block.length - (previous == null ? 0 : previous.length);
+        Iterator<Map.Entry<Cid, byte[]>> eldest = committed.entrySet().iterator();
+        while (committedBytes > MAX_COMMITTED_BYTES && eldest.hasNext()) {
+            committedBytes -= eldest.next().getValue().length;
+            eldest.remove();
+        }
+    }
+
+    public void commitFinished(Set<PublicKeyHash> writers, boolean landed) {
         synchronized (storage) {
-            inFlight.entrySet().removeIf(e -> writers.contains(e.getValue().writer));
+            inFlight.entrySet().removeIf(e -> {
+                if (! writers.contains(e.getValue().writer))
+                    return false;
+                if (landed && ! e.getKey().isRaw() && e.getValue().block.length <= MAX_COMMITTED_BLOCK_SIZE)
+                    keepCommitted(e.getKey(), e.getValue().block);
+                return true;
+            });
         }
     }
 
@@ -551,6 +583,8 @@ public class BufferedStorage extends DelegatingStorage {
         synchronized (storage) {
             storage.clear();
             inFlight.clear();
+            committed.clear();
+            committedBytes = 0;
             bufferedBytes = 0;
         }
     }
