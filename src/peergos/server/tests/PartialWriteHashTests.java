@@ -356,6 +356,86 @@ public class PartialWriteHashTests {
                 || after.size == shorter.length && after.treeHash.get().equals(treeOf(shorter).branch(0)));
     }
 
+    /** Reads data, holding back any read from at onwards until resumed */
+    private static AsyncReader pausedAt(byte[] data, long at, CompletableFuture<Boolean> paused, CompletableFuture<Boolean> resume) {
+        AsyncReader in = AsyncReader.build(data);
+        long[] read = {0};
+        return new AsyncReader() {
+            @Override
+            public CompletableFuture<Integer> readIntoArray(byte[] res, int offset, int length) {
+                if (read[0] >= at)
+                    paused.complete(true);
+                return (read[0] < at ? Futures.of(true) : resume)
+                        .thenCompose(x -> in.readIntoArray(res, offset, length))
+                        .thenApply(n -> {
+                            read[0] += n;
+                            return n;
+                        });
+            }
+
+            @Override
+            public CompletableFuture<AsyncReader> reset() {
+                read[0] = 0;
+                return in.reset().thenApply(x -> this);
+            }
+
+            @Override
+            public void close() {}
+        };
+    }
+
+    /** A write committed in parts, and another session's write into a later chunk landing between its parts: one of
+     *  them may fail, but the file must not be left with a hash of what it held before the other's bytes */
+    @Test
+    public void aWriteBetweenThePartsOfAnotherLeavesNoOldHash() throws Exception {
+        UserContext user = user();
+        UserContext smallBuffer = PeergosNetworkUtils.ensureSignedUp(user.username, "password", network(1024 * 1024), crypto);
+        // chunks 1 to 3 in place, then 3 chunks appended
+        for (int start : new int[]{CHUNK, 5 * CHUNK}) {
+            String name = "f" + start;
+            upload(user, name, random(5 * CHUNK));
+            CompletableFuture<Boolean> paused = new CompletableFuture<>(), resume = new CompletableFuture<>();
+            CompletableFuture<FileWrapper> first = get(smallBuffer, name).overwriteSectionJS(
+                    pausedAt(random(3 * CHUNK), 2 * CHUNK, paused, resume), 0, start, 0, start + 3 * CHUNK, Optional.empty(),
+                    smallBuffer.network, crypto, x -> {});
+            paused.get(300, TimeUnit.SECONDS);
+            // its first two chunks have landed, and the hash has gone
+            Assert.assertTrue(get(user, name).getFileProperties().treeHash.isEmpty());
+
+            writeSection(get(user, name), user, 4 * CHUNK + 10, random(1000));
+            resume.complete(true);
+            try {
+                first.join();
+            } catch (CompletionException clash) {}
+
+            // only a stored hash is checked against what the file reads: an append that fails part way leaves the file
+            // sized to its end, short of its last chunks, and unreadable
+            Optional<HashBranch> stored = get(user, name).getFileProperties().treeHash;
+            if (stored.isPresent())
+                Assert.assertEquals("from " + start, treeOf(read(user, name)).branch(0), stored.get());
+        }
+    }
+
+    @Test
+    public void aWriteIntoALaterChunkTakesItsModifiedTime() {
+        UserContext user = user();
+        LocalDateTime when = LocalDateTime.of(2021, 2, 3, 4, 5, 6);
+        for (String name : new String[]{"hashed", "unhashed"}) {
+            byte[] original = upload(user, name, random(2 * CHUNK + CHUNK / 2));
+            if (name.equals("unhashed")) {
+                FileWrapper file = get(user, name);
+                file.setSameNameProperties(file.getFileProperties().withHash(Optional.empty()), user.network).join();
+            }
+            byte[] section = random(1000);
+
+            get(user, name).overwriteSectionJS(AsyncReader.build(section), 0, CHUNK + 10, 0, CHUNK + 10 + section.length,
+                    Optional.of(when), user.network, crypto, x -> {}).join();
+
+            Assert.assertEquals(name, when, get(user, name).getFileProperties().modified);
+            assertHoldsWithNoOldHash(user, name, with(original, CHUNK + 10, section));
+        }
+    }
+
     @Test
     public void truncateStoresTheNewContentsHash() {
         UserContext user = user();

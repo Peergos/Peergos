@@ -1759,13 +1759,18 @@ public class FileWrapper {
                                 wholeFile ?
                                         (endIndex == 0 ? treeHasher.get().setChunk(0, new byte[0], crypto.hasher) : Futures.of(true)) :
                                         keepStoredHashes(treeHasher.get(), base, kept, network);
-                        // an update too big for the write buffer is committed in parts, so our old hash must go
-                        // before the first of our chunks can land; writing chunk 0 drops it anyway, and bytes past our
-                        // old end aren't read until our size grows, which drops it too
-                        CompletableFuture<Snapshot> unhashed = hashed.thenCompose(x -> startIndexes.isEmpty() || inputStartIndex < props.chunkSize
-                                || inputStartIndex >= props.size ?
-                                Futures.of(base) :
-                                dropTreeHash(base, committer, network));
+                        // an update too big for the write buffer is committed in parts, so before the first of our chunks
+                        // can land we change chunk 0, dropping our old hash and taking our modified time even with no
+                        // hash to drop: of two writes to the file at once, both then change chunk 0 and one fails, rather
+                        // than one storing a hash without the other's chunks. Writing chunk 0 changes it anyway, and bytes
+                        // past our old end aren't read until our size grows, which changes it too. overwriteChangedChunks,
+                        // which sets our hash itself, writes into us only while we have one, so once that has gone,
+                        // chunk 0 has changed in its update.
+                        boolean changeChunk0 = ! startIndexes.isEmpty() && inputStartIndex >= props.chunkSize
+                                && inputStartIndex < props.size && (updateHash || props.treeHash.isPresent());
+                        CompletableFuture<Snapshot> unhashed = hashed.thenCompose(x -> changeChunk0 ?
+                                dropTreeHash(base, committer, Optional.of(modified.orElseGet(() -> LocalDateTime.now(ZoneOffset.UTC))), network) :
+                                Futures.of(base));
                         return unhashed.thenCompose(start -> Futures.reduceAll(startIndexes, start, composer, (a, b) -> b))
                                 .thenCompose(written -> updateHash ?
                                         storeTreeHash(written, committer, treeHasher, network, crypto) :
@@ -1811,17 +1816,18 @@ public class FileWrapper {
                                     .filter(u -> ! u.newProps.treeHash.equals(u.meta.getProperties(u.cap.rBaseKey).treeHash))
                                     .collect(Collectors.toList()))
                             .thenCompose(hashUpdates -> bulkSetSameNameProperties(s, committer, owner(), hashUpdates, network)));
-        return dropTreeHash(s, committer, network);
+        return dropTreeHash(s, committer, Optional.empty(), network);
     }
 
-    private CompletableFuture<Snapshot> dropTreeHash(Snapshot s, Committer committer, NetworkAccess network) {
+    /** Drop our hash, and take a write's modified time if given, which changes chunk 0 even when we have no hash */
+    private CompletableFuture<Snapshot> dropTreeHash(Snapshot s, Committer committer, Optional<LocalDateTime> modified, NetworkAccess network) {
         WritableAbsoluteCapability cap = writableFilePointer();
         return network.getFile(s, cap, entryWriter, ownername).thenCompose(updatedUs -> {
             FileProperties now = updatedUs.get().getPointer().fileAccess.getProperties(cap.rBaseKey);
-            if (now.treeHash.isEmpty())
+            if (now.treeHash.isEmpty() && modified.isEmpty())
                 return Futures.of(s);
             return updatedUs.get().getPointer().fileAccess.updateProperties(s, committer, cap, entryWriter,
-                    now.withHash(Optional.empty()), network);
+                    now.withHash(Optional.empty()).withModified(modified.orElse(now.modified)), network);
         });
     }
 
