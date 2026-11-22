@@ -1655,8 +1655,8 @@ public class FileWrapper {
 
                         List<Long> startIndexes = new ArrayList<>();
 
-                        // a write past our end starts at our end, so every chunk before it exists: those it has no data
-                        // for keep only their bytes before our end, and read as zeros past them
+                        // a write past our end starts at our end, so that every chunk before it exists, holding zeros up to
+                        // its data as a write of zeros would, not as a hole the server could tell from data
                         long writeStart = inputStartIndex > props.size && endIndex > inputStartIndex ? props.size : inputStartIndex;
                         for (long startIndex = writeStart; startIndex < endIndex; startIndex = startIndex + props.chunkSize - (startIndex % props.chunkSize))
                             startIndexes.add(startIndex);
@@ -1707,12 +1707,11 @@ public class FileWrapper {
                                             // as a write grows us, our size goes to the end of each chunk as it lands, not
                                             // straight to the write's end, so a write that stops part way leaves us readable
                                             long updatedLength = startIndex + internalEnd - internalStart;
-                                            // where our data starts in this chunk: at its end in one before the write, which
-                                            // then reads, and hashes, padded with zeros
+                                            // where our data starts in this chunk: at its end in one before the write
                                             int dataStart = (int) Math.min(internalEnd, Math.max(startIndex, inputStartIndex) - (startIndex - internalStart));
                                             byte[] rawData = currentOriginal.chunk.data();
                                             // extend data array if necessary
-                                            if (rawData.length < internalEnd && dataStart < internalEnd)
+                                            if (rawData.length < internalEnd)
                                                 rawData = Arrays.copyOfRange(rawData, 0, internalEnd);
                                             byte[] raw = rawData;
                                             Optional<SymmetricLinkToSigner> writerLink = startIndex < props.chunkSize ?
@@ -1723,8 +1722,7 @@ public class FileWrapper {
                                                     fileData.readIntoArray(raw, dataStart, internalEnd - dataStart) :
                                                     Futures.of(0))
                                                     .thenCompose(read -> treeHasher.isPresent() ?
-                                                            treeHasher.get().setChunk((int)(startIndex / props.chunkSize),
-                                                                    raw.length < internalEnd ? Arrays.copyOf(raw, internalEnd) : raw, crypto.hasher) :
+                                                            treeHasher.get().setChunk((int)(startIndex / props.chunkSize), raw, crypto.hasher) :
                                                             Futures.of(true))
                                                     // our last chunk completes our new hash, which then goes in the node write that makes
                                                     // our new contents readable rather than in one of its own

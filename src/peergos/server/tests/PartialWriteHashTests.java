@@ -5,10 +5,14 @@ import peergos.server.*;
 import peergos.server.sync.*;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.cbor.*;
+import peergos.shared.crypto.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
 import java.nio.file.*;
@@ -291,28 +295,49 @@ public class PartialWriteHashTests {
         assertHoldsWithNoOldHash(user, "a", with(original, 3 * CHUNK + 10, section));
     }
 
-    /** A write that starts a chunk or more past the end leaves the chunks before it reading as zeros, which they store
-     *  as no bytes */
+    /** The bytes of the blocks the chunk at offset stores its data in */
+    private static long storedBytes(UserContext user, String name, long offset) {
+        FileWrapper file = get(user, name);
+        AbsoluteCapability cap = file.getPointer().capability;
+        Pair<byte[], Optional<Bat>> key = FileProperties.calculateMapKey(file.getFileProperties().streamSecret.get(),
+                cap.getMapKey(), cap.bat, offset, CHUNK, crypto.hasher).join();
+        CryptreeNode chunk = user.network.getMetadata(file.version.get(file.writer()), cap.withMapKey(key.left, key.right)).join().get();
+        FragmentedPaddedCipherText data = ((CborObject.CborMap) CborObject.fromByteArray(chunk.serialize()))
+                .get("d", FragmentedPaddedCipherText::fromCbor);
+        return data.getFragments().stream()
+                .mapToLong(fragment -> user.network.dhtClient.getSize(file.owner(), fragment).join().get())
+                .sum();
+    }
+
+    /** A write that starts a chunk or more past the end, or a resize past it, leaves the chunks before it holding zeros,
+     *  stored as a whole chunk of data is */
     @Test
     public void aWriteChunksPastTheEndReadsZerosBeforeIt() {
         UserContext user = user();
+        upload(user, "whole", random(2 * CHUNK));
+        long wholeChunk = storedBytes(user, "whole", 0);
         // from part of a chunk, a whole one, nothing and several, to the chunk after next
         for (int size : new int[]{1000, CHUNK, 0, 2 * CHUNK + CHUNK / 2}) {
-            String name = "f" + size;
+            String name = "f" + size, grown = "g" + size;
             byte[] original = upload(user, name, random(size));
+            upload(user, grown, original);
             int at = (size / CHUNK + 2) * CHUNK + 10;
             byte[] section = random(1000);
-            long[] uploaded = new long[1];
 
-            get(user, name).overwriteSectionJS(AsyncReader.build(section), 0, at, 0, at + section.length, Optional.empty(),
-                    user.network, crypto, x -> uploaded[0] += x).join();
+            writeSection(get(user, name), user, at, section);
+            get(user, grown).resize(at + section.length, user.network, crypto).join();
 
-            // BLAKE3 hashes a file's only chunk as the whole file, so a write past one leaves that to the next whole write
-            if (Chunk.usesBlake3(CHUNK) && size == CHUNK)
-                assertHoldsWithNoOldHash(user, name, with(original, at, section));
-            else
-                assertHolds("a write past " + size + " bytes", user, name, with(original, at, section));
-            Assert.assertTrue("uploaded " + uploaded[0] + " bytes past " + size, uploaded[0] < CHUNK);
+            for (String file : new String[]{name, grown}) {
+                byte[] contents = with(original, at, file.equals(name) ? section : new byte[section.length]);
+                // BLAKE3 hashes a file's only chunk as the whole file, so a write past one leaves that to the next whole write
+                if (Chunk.usesBlake3(CHUNK) && size == CHUNK)
+                    assertHoldsWithNoOldHash(user, file, contents);
+                else
+                    assertHolds(file + ", past " + size + " bytes", user, file, contents);
+                // the chunk the old end is in, and those after it, before the write
+                for (long c = size / CHUNK; c < at / CHUNK; c++)
+                    Assert.assertEquals(file + ": chunk " + c, wholeChunk, storedBytes(user, file, c * CHUNK));
+            }
         }
     }
 
