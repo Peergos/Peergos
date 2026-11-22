@@ -1629,8 +1629,10 @@ public class FileWrapper {
         Optional<Bat> parentBat = getPointer().getParentCap().bat;
         WritableAbsoluteCapability ourCap = writableFilePointer();
         boolean wholeFile = inputStartIndex == 0 && endIndex >= props.size;
-        // a write to part of the file can only hash the chunks it writes, and needs the stored hashes of the rest
-        Optional<HashTreeBuilder> treeHasher = updateHash && (wholeFile || props.treeHash.isPresent()) ?
+        // a write to part of the file can only hash the chunks it writes, and needs the stored hashes of the rest, which
+        // are kept only while one branch holds them all (1024 chunks): past that, its hash is dropped instead
+        Optional<HashTreeBuilder> treeHasher = updateHash && (wholeFile || props.treeHash.isPresent()
+                && getNumberOfChunks(Math.max(endIndex, props.size), props.chunkSize) <= 1024) ?
                 Optional.of(new HashTreeBuilder(Math.max(endIndex, props.size), props.chunkSize)) :
                 Optional.empty();
         return current.withWriter(owner(), writer(), network)
