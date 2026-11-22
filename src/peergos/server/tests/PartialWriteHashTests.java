@@ -483,6 +483,38 @@ public class PartialWriteHashTests {
         }
     }
 
+    /** What the chunk at offset stores, read as a whole chunk whatever the file's size */
+    private static byte[] storedChunk(UserContext user, String name, long offset) {
+        FileWrapper file = get(user, name);
+        AbsoluteCapability cap = file.getPointer().capability;
+        Optional<byte[]> streamSecret = file.getFileProperties().streamSecret;
+        return file.getPointer().fileAccess.retriever(cap.rBaseKey, streamSecret, cap.getMapKey(), cap.bat, crypto.hasher)
+                .thenCompose(r -> r.getChunk(file.version.get(file.writer()), user.network, crypto, offset, offset + CHUNK, CHUNK,
+                        cap, streamSecret, file.getPointer().fileAccess.committedHash(), x -> {}))
+                .join().get().chunk.data();
+    }
+
+    /** Bytes a cut removes are gone from the chunk it is in, and stay gone when the file grows again past that chunk */
+    @Test
+    public void bytesCutOffStayGoneWhenTheFileGrowsAgain() {
+        UserContext user = user();
+        byte[] original = random(2 * CHUNK + CHUNK / 2);
+        for (int size : new int[]{0, 100, CHUNK + 100, CHUNK}) {
+            String name = "f" + size;
+            upload(user, name, original);
+            get(user, name).truncate(size, user.network, crypto).join();
+            byte[] cutChunk = storedChunk(user, name, size - size % CHUNK);
+            byte[] section = random(1000);
+            int at = (size / CHUNK + 1) * CHUNK + 10;
+
+            writeSection(get(user, name), user, at, section);
+
+            assertHoldsWithNoOldHash(user, name, with(Arrays.copyOf(original, size), at, section));
+            Assert.assertArrayEquals("bytes cut to " + size + " kept in the chunk of the cut", new byte[CHUNK - size % CHUNK],
+                    Arrays.copyOfRange(cutChunk, size % CHUNK, CHUNK));
+        }
+    }
+
     /** Cut a file to size, with the failAt'th node write failing, in a session that commits each node write as it makes
      *  it; returns the number of node writes tried */
     private static int truncateFailingAt(UserContext user, String name, long size, int failAt) {
@@ -502,8 +534,8 @@ public class PartialWriteHashTests {
         UserContext user = user();
         UserContext eachWrite = PeergosNetworkUtils.ensureSignedUp(user.username, "password", network(1), crypto);
         byte[] original = random(3 * CHUNK);
-        // inside a later chunk, at the end of one, inside chunk 0
-        for (int size : new int[]{2 * CHUNK + CHUNK / 2, CHUNK, CHUNK / 2}) {
+        // inside a later chunk, at the end of one, inside chunk 0, to nothing
+        for (int size : new int[]{2 * CHUNK + CHUNK / 2, CHUNK, CHUNK / 2, 0}) {
             for (int failAt = 1; ; failAt++) {
                 String name = "f" + size + "-" + failAt;
                 upload(user, name, original);

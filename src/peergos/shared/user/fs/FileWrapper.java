@@ -668,7 +668,8 @@ public class FileWrapper {
                                                                             signingPair(), tid, crypto.hasher, network, resized, committer),
                                                             network.dhtClient));
                                         })
-                                        // and the chunk the cut is in is written again without the bytes past it
+                                        // and the chunk the cut is in is written again without the bytes past it, chunk 0
+                                        // for a cut to nothing
                                         .thenCompose(deleted -> getUpdated(deleted, network).thenCompose(f -> f.clean(deleted, committer, network, crypto)
                                                 .thenCompose(p -> p.left.overwriteSection(p.right, committer,
                                                         AsyncReader.build(lastChunk), startOfLastChunk, newSize, Optional.empty(), false, network, crypto, x -> {}))))
@@ -1649,6 +1650,10 @@ public class FileWrapper {
                         long writeStart = inputStartIndex > props.size && endIndex > inputStartIndex ? props.size : inputStartIndex;
                         for (long startIndex = writeStart; startIndex < endIndex; startIndex = startIndex + props.chunkSize - (startIndex % props.chunkSize))
                             startIndexes.add(startIndex);
+                        // truncate writes a cut to nothing as a write of nothing, without our hash: chunk 0 is written
+                        // again all the same, so that the bytes cut don't stay in it behind our size
+                        if (endIndex == 0 && props.size == 0 && ! updateHash)
+                            startIndexes.add(0L);
                         long lastStart = startIndexes.isEmpty() ? -1 : startIndexes.get(startIndexes.size() - 1);
 
                         BiFunction<Snapshot, Long, CompletableFuture<Snapshot>> composer = (version, startIndex) -> {
