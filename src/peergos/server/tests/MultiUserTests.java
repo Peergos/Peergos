@@ -255,6 +255,11 @@ public class MultiUserTests {
     }
 
     @Test
+    public void chatAppendFromStaleController() {
+        PeergosNetworkUtils.chatAppendFromStaleController(network, random);
+    }
+
+    @Test
     public void chatLeaveAndDelete() {
         PeergosNetworkUtils.memberLeaveAndDeleteChat(network, random);
     }
