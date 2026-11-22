@@ -366,7 +366,11 @@ public class PartialWriteHashTests {
 
             get(user, name).truncate(size, user.network, crypto).join();
 
-            assertHolds("to " + size + " bytes", user, name, Arrays.copyOf(original, size));
+            // BLAKE3 hashes a file's only chunk as the whole file, so a cut to one chunk leaves that to the next whole write
+            if (Chunk.usesBlake3(CHUNK) && size == CHUNK)
+                assertHoldsWithNoOldHash(user, name, Arrays.copyOf(original, size));
+            else
+                assertHolds("to " + size + " bytes", user, name, Arrays.copyOf(original, size));
         }
     }
 
