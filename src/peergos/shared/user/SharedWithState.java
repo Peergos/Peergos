@@ -104,6 +104,8 @@ public class SharedWithState implements Cborable {
     }
 
     public SharedWithState removeLink(String filename, long label) {
+        if (! links.containsKey(filename))
+            return this;
         Map<String, Set<LinkProperties>> newLinks = new HashMap<>();
         links.forEach((k, v) -> {
             newLinks.put(k, new HashSet<>(v));

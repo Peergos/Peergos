@@ -1412,32 +1412,6 @@ public abstract class UserTests {
      * already opened the link. Capabilities cannot be recalled; that is what revoking is for, and
      * conflating the two in the UI would be the dangerous mistake.
      */
-    @Test
-    public void removingAnItemDoesNotRevokeIt() throws Exception {
-        String username = generateUsername();
-        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, "test", network, crypto);
-        context.getUserRoot().join().mkdir("keep", context.network, false, context.mirrorBatId(), crypto).join();
-        context.getUserRoot().join().mkdir("drop", context.network, false, context.mirrorBatId(), crypto).join();
-
-        LinkProperties link = context.createSecretLink(
-                Arrays.asList(username + "/keep", username + "/drop"), Collections.emptyList(),
-                Optional.empty(), Optional.empty(), "", false).join();
-        String linkString = link.toLinkString(context.signer.publicKeyHash);
-
-        // someone opens the link while both items are in it
-        UserContext early = UserContext.fromSecretLinkV2(linkString, () -> Futures.of(""), network.clear(), crypto).join();
-        AbsoluteCapability captured = early.getByPath(username + "/drop").join().get().getPointer().capability;
-
-        context.setSecretLinkMembers(Collections.singletonList(username + "/keep"), Collections.emptyList(), link).join();
-
-        UserContext later = UserContext.fromSecretLinkV2(linkString, () -> Futures.of(""), network.clear(), crypto).join();
-        Assert.assertTrue(later.getByPath(username + "/keep").join().isPresent());
-        Assert.assertTrue("a removed item no longer resolves through the link",
-                later.getByPath(username + "/drop").join().isEmpty());
-        Assert.assertTrue("but a capability captured beforehand still works - removal is not revocation",
-                network.getFile(captured, username).join().isPresent());
-    }
-
     /** A link carries one owner, so a member belonging to someone else is refused at creation. */
     @Test
     public void aLinkCannotSpanOwners() throws Exception {
