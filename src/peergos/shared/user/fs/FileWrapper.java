@@ -647,32 +647,31 @@ public class FileWrapper {
             return CompletableFuture.completedFuture(initialVersion);
 
         return initialVersion.withWriter(owner(), writer(), network)
-                .thenCompose(snapshot -> getMapKey(newSize, network, crypto).thenCompose(endMapKey ->
+                .thenCompose(snapshot ->
                         getInputStream(snapshot.get(writer()), network, crypto, props.size, 1, x -> {}).thenCompose(originalReader -> {
                             long startOfLastChunk = newSize - (newSize % props.chunkSize);
                             return originalReader.seek(startOfLastChunk).thenCompose(seekedOriginal -> {
                                 byte[] lastChunk = new byte[(int)(newSize % props.chunkSize)];
-                                return seekedOriginal.readIntoArray(lastChunk, 0, lastChunk.length).thenCompose(read -> {
-                                    int currentChunk = (int) (newSize / props.chunkSize);
-                                    if (currentChunk == 0) {
-                                        if (props.chunkCount() <= 1)
-                                            return CompletableFuture.completedFuture(snapshot);
-                                        // chunk 0 is the file's entry point, so start deleting from chunk 1
-                                        return getMapKey(props.chunkSize, network, crypto).thenCompose(secondChunk ->
-                                                IpfsTransaction.call(owner(), tid ->
-                                                                deleteFileChunks(props.streamSecret.get(), props.chunkCount() - 1, writableFilePointer().withMapKey(secondChunk.left, secondChunk.right),
-                                                                        signingPair(), tid, crypto.hasher, network, snapshot, committer),
-                                                        network.dhtClient));
-                                    }
-                                    return IpfsTransaction.call(owner(), tid ->
-                                                    deleteFileChunks(props.streamSecret.get(), props.chunkCount() - currentChunk, writableFilePointer().withMapKey(endMapKey.left, endMapKey.right),
-                                                            signingPair(), tid, crypto.hasher, network, snapshot, committer),
-                                            network.dhtClient);
-                                }).thenCompose(deleted -> pointer.fileAccess.updateProperties(deleted, committer, writableFilePointer(),
-                                        entryWriter, props.withSize(startOfLastChunk), network).thenCompose(resized ->
-                                        getUpdated(resized, network).thenCompose(f -> f.clean(resized, committer, network, crypto)
+                                // chunk 0 takes our new size, dropping our hash, before any chunk goes, so however much of
+                                // this lands we read as cut
+                                return seekedOriginal.readIntoArray(lastChunk, 0, lastChunk.length)
+                                        .thenCompose(read -> pointer.fileAccess.updateProperties(snapshot, committer, writableFilePointer(),
+                                                entryWriter, props.withSize(newSize), network))
+                                        .thenCompose(resized -> {
+                                            // then the chunks wholly past the cut go; chunk 0, our entry point, stays
+                                            int kept = getNumberOfChunks(newSize, props.chunkSize);
+                                            if (props.chunkCount() <= kept)
+                                                return Futures.of(resized);
+                                            return getMapKey(kept * (long) props.chunkSize, network, crypto).thenCompose(firstGone ->
+                                                    IpfsTransaction.call(owner(), tid ->
+                                                                    deleteFileChunks(props.streamSecret.get(), props.chunkCount() - kept, writableFilePointer().withMapKey(firstGone.left, firstGone.right),
+                                                                            signingPair(), tid, crypto.hasher, network, resized, committer),
+                                                            network.dhtClient));
+                                        })
+                                        // and the chunk the cut is in is written again without the bytes past it
+                                        .thenCompose(deleted -> getUpdated(deleted, network).thenCompose(f -> f.clean(deleted, committer, network, crypto)
                                                 .thenCompose(p -> p.left.overwriteSection(p.right, committer,
-                                                AsyncReader.build(lastChunk), startOfLastChunk, newSize, Optional.empty(), false, network, crypto, x -> {})))))
+                                                        AsyncReader.build(lastChunk), startOfLastChunk, newSize, Optional.empty(), false, network, crypto, x -> {}))))
                                         .thenCompose(cut -> {
                                             if (! updateHash)
                                                 return Futures.of(cut);
@@ -684,8 +683,7 @@ public class FileWrapper {
                                                     .thenCompose(x -> storeTreeHash(cut, committer, Optional.of(hashes), network, crypto));
                                         });
                             });
-                        }))
-                );
+                        }));
     }
 
     public static int getNumberOfChunks(long size, int chunkSize) {
@@ -1764,9 +1762,9 @@ public class FileWrapper {
                         // can land we change chunk 0, dropping our old hash and taking our modified time even with no
                         // hash to drop: of two writes to the file at once, both then change chunk 0 and one fails, rather
                         // than one storing a hash without the other's chunks. Writing chunk 0 changes it anyway, and bytes
-                        // past our old end aren't read until our size grows, which changes it too. overwriteChangedChunks,
-                        // which sets our hash itself, writes into us only while we have one, so once that has gone,
-                        // chunk 0 has changed in its update.
+                        // past our old end aren't read until our size grows, which changes it too. Callers that set our
+                        // hash themselves have changed chunk 0 before they write into us without one: truncate resizes
+                        // it first, and overwriteChangedChunks starts only with a hash, which its first write drops.
                         boolean changeChunk0 = ! startIndexes.isEmpty() && inputStartIndex >= props.chunkSize
                                 && inputStartIndex < props.size && (updateHash || props.treeHash.isPresent());
                         CompletableFuture<Snapshot> unhashed = hashed.thenCompose(x -> changeChunk0 ?

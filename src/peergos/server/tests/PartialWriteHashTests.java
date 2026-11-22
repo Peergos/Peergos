@@ -462,6 +462,45 @@ public class PartialWriteHashTests {
         }
     }
 
+    /** Cut a file to size, with the failAt'th node write failing, in a session that commits each node write as it makes
+     *  it; returns the number of node writes tried */
+    private static int truncateFailingAt(UserContext user, String name, long size, int failAt) {
+        FileWrapper file = get(user, name);
+        AtomicInteger writes = new AtomicInteger();
+        try {
+            user.network.synchronizer.applyComplexUpdate(file.owner(), file.signingPair(), (s, c) -> file.getUpdated(s, user.network)
+                    .thenCompose(f -> f.truncate(s, (o, w, wd, e, tid) -> writes.incrementAndGet() == failAt ?
+                            Futures.errored(new IllegalStateException("failed")) :
+                            c.commit(o, w, wd, e, tid), size, user.network, crypto))).join();
+        } catch (CompletionException failed) {}
+        return writes.get();
+    }
+
+    @Test
+    public void aTruncateThatFailsPartWayLeavesTheFileReadable() {
+        UserContext user = user();
+        UserContext eachWrite = PeergosNetworkUtils.ensureSignedUp(user.username, "password", network(1), crypto);
+        byte[] original = random(3 * CHUNK);
+        // inside a later chunk, at the end of one, inside chunk 0
+        for (int size : new int[]{2 * CHUNK + CHUNK / 2, CHUNK, CHUNK / 2}) {
+            for (int failAt = 1; ; failAt++) {
+                String name = "f" + size + "-" + failAt;
+                upload(user, name, original);
+
+                int writes = truncateFailingAt(eachWrite, name, size, failAt);
+
+                // as it was, or as cut, but never short of the chunks it claims
+                byte[] now = read(user, name);
+                if (Arrays.equals(original, now))
+                    assertHolds("to " + size + ", failing write " + failAt, user, name, original);
+                else
+                    assertHoldsWithNoOldHash(user, name, Arrays.copyOf(original, size));
+                if (writes < failAt)
+                    break;
+            }
+        }
+    }
+
     @Test
     public void aShorterOverwriteStoresTheNewContentsHash() {
         UserContext user = user();
