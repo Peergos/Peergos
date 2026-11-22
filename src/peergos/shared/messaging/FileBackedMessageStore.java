@@ -129,9 +129,11 @@ public class FileBackedMessageStore implements MessageStore {
                         dout.writeLong(size + totalSize);
                     } catch (IOException e) {} // can't happen
                     byte[] twoLongs = bout.toByteArray();
-                    return indexFile.overwriteSection(s2, committer,
-                                    AsyncReader.build(twoLongs), indexFile.getSize(),
-                            indexFile.getSize() + twoLongs.length, Optional.empty(), network, crypto, x -> {});
+                    // cleaned first too: removing a member leaves the index to be cleaned before it is next written
+                    return indexFile.clean(s2, committer, network, crypto)
+                            .thenCompose(ip -> ip.left.overwriteSection(ip.right, committer,
+                                    AsyncReader.build(twoLongs), ip.left.getSize(),
+                                    ip.left.getSize() + twoLongs.length, Optional.empty(), network, crypto, x -> {}));
 
                 }));
     }

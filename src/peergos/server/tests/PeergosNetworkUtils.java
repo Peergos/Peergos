@@ -2346,6 +2346,66 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(msgCount <= 1);
     }
 
+    /** A controller read before another one updated the chat (the UI holds one per send or poll) still appends at
+     *  the end of the log, past its first chunk too, so no message is overwritten and the index still finds each. */
+    public static void chatAppendFromStaleController(NetworkAccess network, Random random) {
+        UserContext a = PeergosNetworkUtils.ensureSignedUp("a-" + generateUsername(random), "notagoodone", network, crypto);
+        Messenger msgA = new Messenger(a);
+        ChatController controller = msgA.createChat().join();
+        // make the message log multi chunk
+        for (int i=0; i < 6; i++)
+            controller = msgA.sendMessage(controller, ApplicationMessage.text(new String(new byte[1024 * 1024]))).join();
+
+        ChatController stale = msgA.getChat(controller.chatUuid).join();
+        ApplicationMessage first = ApplicationMessage.text("first");
+        // crosses into the third chunk, so it adds an index entry
+        ApplicationMessage second = ApplicationMessage.text(new String(new byte[4 * 1024 * 1024]));
+        ApplicationMessage third = ApplicationMessage.text("third");
+        controller = msgA.sendMessage(controller, first).join();
+        msgA.sendMessage(stale, second).join();
+        controller = msgA.sendMessage(controller, third).join();
+
+        ChatController fresh = msgA.getChat(controller.chatUuid).join();
+        int count = (int) fresh.host().messagesMergedUpto;
+        Assert.assertEquals(11, count);
+        List<MessageEnvelope> all = fresh.getMessages(0, count + 1).join();
+        Assert.assertEquals(count, all.size());
+        Assert.assertEquals(Arrays.asList(first, second, third),
+                all.subList(count - 3, count).stream().map(m -> m.payload).collect(Collectors.toList()));
+        for (int i = count - 3; i < count; i++)
+            Assert.assertEquals("follows the message before it", Arrays.asList(fresh.generateHash(all.get(i - 1)).join()),
+                    all.get(i).previousMessages);
+        for (int i = 0; i < count; i++)
+            Assert.assertEquals("index finds message " + i, all.subList(i, i + 1), fresh.getMessages(i, i + 1).join());
+    }
+
+    /** Removing a member leaves the index file to be cleaned before it is next written: the log still grows past its
+     *  next chunk, and the index still finds each message. */
+    public static void chatGrowsPastAChunkAfterARemoval(NetworkAccess network, Random random) {
+        UserContext a = PeergosNetworkUtils.ensureSignedUp("a-" + generateUsername(random), "notagoodone", network, crypto);
+        UserContext b = PeergosNetworkUtils.ensureSignedUp("b-" + generateUsername(random), "notagoodone", network, crypto);
+        friendBetweenGroups(Arrays.asList(a), Arrays.asList(b));
+        Messenger msgA = new Messenger(a);
+        ChatController controller = msgA.createChat().join();
+        controller = msgA.invite(controller, Arrays.asList(b.username), Arrays.asList(b.signer.publicKeyHash)).join();
+        joinChat(b);
+        controller = msgA.mergeAllUpdates(controller, a.getSocialState().join()).join();
+        for (int i=0; i < 6; i++)
+            controller = msgA.sendMessage(controller, ApplicationMessage.text(new String(new byte[1024 * 1024]))).join();
+        controller = msgA.removeMember(controller, b.username).join();
+        // crosses into the next chunk, so it adds an index entry
+        ApplicationMessage crossing = ApplicationMessage.text(new String(new byte[4 * 1024 * 1024]));
+        controller = msgA.sendMessage(controller, crossing).join();
+
+        ChatController fresh = msgA.getChat(controller.chatUuid).join();
+        int count = (int) fresh.host().messagesMergedUpto;
+        List<MessageEnvelope> all = fresh.getMessages(0, count + 1).join();
+        Assert.assertEquals(count, all.size());
+        Assert.assertEquals(crossing, all.get(count - 1).payload);
+        for (int i = 0; i < count; i++)
+            Assert.assertEquals("index finds message " + i, all.subList(i, i + 1), fresh.getMessages(i, i + 1).join());
+    }
+
     private static Pair<Messenger, ChatController> joinChat(UserContext c) {
         List<Pair<SharedItem, FileWrapper>> feed = c.getSocialFeed().join().update().join().getSharedFiles(0, 10).join();
         FileWrapper chatSharedDir = feed.stream()

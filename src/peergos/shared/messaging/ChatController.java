@@ -132,7 +132,7 @@ public class ChatController {
 
     @JsMethod
     public CompletableFuture<ChatController> sendMessage(Message message) {
-        return applyAndCommit(chat -> chat.sendMessage(message, privateChatState.chatIdentity, context.signer, store,
+        return applyAndCommit((chat, ourStore) -> chat.sendMessage(message, privateChatState.chatIdentity, context.signer, ourStore,
                 context.network.dhtClient, context.crypto), context.username);
     }
 
@@ -175,8 +175,8 @@ public class ChatController {
 
     public CompletableFuture<ChatController> join(SigningPrivateKeyAndPublicHash identity) {
         return OwnerProof.build(identity, privateChatState.chatIdentity.publicKeyHash)
-                .thenCompose(chatId -> applyAndCommit(chat -> chat.join(state.host(), chatId, privateChatState.chatIdPublic,
-                        identity, store, context.network.dhtClient, context.crypto), context.username));
+                .thenCompose(chatId -> applyAndCommit((chat, ourStore) -> chat.join(state.host(), chatId, privateChatState.chatIdPublic,
+                        identity, ourStore, context.network.dhtClient, context.crypto), context.username));
     }
 
     @JsMethod
@@ -204,14 +204,14 @@ public class ChatController {
 
     public CompletableFuture<ChatController> invite(List<String> usernames,
                                                     List<PublicKeyHash> identities) {
-        return applyAndCommit(chat -> chat.inviteMembers(usernames, identities, privateChatState.chatIdentity,
-                context.signer, store, context.network.dhtClient, context.crypto), context.username);
+        return applyAndCommit((chat, ourStore) -> chat.inviteMembers(usernames, identities, privateChatState.chatIdentity,
+                context.signer, ourStore, context.network.dhtClient, context.crypto), context.username);
     }
 
     public CompletableFuture<ChatController> mergeMessages(String username,
                                                            MessageStore mirrorStore) {
         Member mirrorHost = state.getMember(username);
-        return applyAndCommit(chat -> chat.merge(chatUuid, mirrorHost.id, context.signer, mirrorStore, context.network.dhtClient, context.crypto), username);
+        return applyAndCommit((chat, ourStore) -> chat.merge(chatUuid, mirrorHost.id, context.signer, mirrorStore, context.network.dhtClient, context.crypto), username);
     }
 
     private CompletableFuture<Snapshot> copyFile(FileWrapper dir, Path sourcePath, String mirrorUsername, Snapshot v, Committer c) {
@@ -292,19 +292,27 @@ public class ChatController {
                 .thenCompose(file -> file.get().overwriteFile(AsyncReader.build(raw), raw.length, context.network, context.crypto, x -> {}, v, com));
     }
 
-    private CompletableFuture<ChatController> applyAndCommit(Function<Chat, CompletableFuture<ChatUpdate>> modifier,
+    /** The update works on the chat state and message log as they are in its snapshot, not this controller's
+     *  copies, which another controller may since have outdated: appending at an old size overwrites messages. */
+    private CompletableFuture<ChatController> applyAndCommit(BiFunction<Chat, MessageStore, CompletableFuture<ChatUpdate>> modifier,
                                                              String mirrorUsername) {
         NetworkAccess network = context.network;
         return network.synchronizer.applyComplexComputation(context.signer.publicKeyHash, root.signingPair(),
                 (s, c) -> root.getUpdated(s, network)
                         .thenCompose(updated -> updated.getChild("shared", hasher, network)
                                 .thenCompose(sharedDir -> getChatState(sharedDir.get(), network, context.crypto))
-                                .thenCompose(chatState -> modifier.apply(chatState)
-                                        .thenCompose(u -> commitUpdate(u, mirrorUsername, s, c)))))
+                                .thenCompose(chatState -> getChatMessageStore(updated, context)
+                                        .thenCompose(ourStore -> modifier.apply(chatState, ourStore)
+                                                .thenCompose(u -> commitUpdate(u, chatState, ourStore, mirrorUsername, s, c))))))
                 .thenApply(res -> res.right);
     }
 
-    private CompletableFuture<Pair<Snapshot, ChatController>> commitUpdate(ChatUpdate u, String mirrorUsername, Snapshot in, Committer c) {
+    private CompletableFuture<Pair<Snapshot, ChatController>> commitUpdate(ChatUpdate u,
+                                                                           Chat current,
+                                                                           MessageStore ourStore,
+                                                                           String mirrorUsername,
+                                                                           Snapshot in,
+                                                                           Committer c) {
         if (u.isEmpty() && u.state.equals(state))
             return Futures.of(new Pair<>(in, this));
         // 1. rotate access control
@@ -319,8 +327,8 @@ public class ChatController {
                         .thenCompose(s2 -> root.getUpdated(s2, context.network)
                                 .thenCompose(base -> commitPrivateState(u.priv, base, context.network, context.crypto, s2, c)
                                         .thenCompose(s3 -> base.getUpdated(s3, context.network))))
-                        .thenCompose(base -> (noRemovals ? Futures.of(store) : getChatMessageStore(base, context))
-                                .thenCompose(newStore -> newStore.addMessages(base.version, c, state.host().messagesMergedUpto, u.newMessages))
+                        .thenCompose(base -> (noRemovals ? Futures.of(ourStore) : getChatMessageStore(base, context))
+                                .thenCompose(newStore -> newStore.addMessages(base.version, c, current.host().messagesMergedUpto, u.newMessages))
                                 .thenCompose(s4 -> overwriteState(base, u.state, s4, c)))
                         .thenCompose(s5 -> root.getUpdated(s5, context.network)
                                 .thenCompose(newRoot -> getChatMessageStore(newRoot, context)
