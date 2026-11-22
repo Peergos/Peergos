@@ -58,8 +58,17 @@ public class MoveAcrossWritingSpacesTests {
     }
 
     private static void move(UserContext user, Path from, Path targetDir, String newName) {
+        move(user, from, targetDir, newName, true);
+    }
+
+    private static void move(UserContext user, Path from, Path targetDir, String newName, boolean keepAccess) {
         user.getByPath(from).join().get().moveTo(user.getByPath(targetDir).join().get(),
-                user.getByPath(from.getParent()).join().get(), from, newName, user, () -> Futures.of(true)).join();
+                user.getByPath(from.getParent()).join().get(), from, newName, user, () -> Futures.of(keepAccess)).join();
+    }
+
+    private static ByteArrayWrapper dataKey(UserContext user, Path path) {
+        FileWrapper f = user.getByPath(path).join().get();
+        return new ByteArrayWrapper(f.getPointer().fileAccess.getDataKey(f.getPointer().capability.rBaseKey).getKey());
     }
 
     private static PublicKeyHash writer(UserContext user, Path path) {
@@ -137,5 +146,97 @@ public class MoveAcrossWritingSpacesTests {
         Assert.assertArrayEquals(data, read(friendFresh, moved.resolve("n/doc.pdf")));
         byte[] fromFriend = upload(friendFresh, moved.resolve("n"), "reply.pdf", 512);
         Assert.assertArrayEquals(fromFriend, read(signIn(owner.username), moved.resolve("n/reply.pdf")));
+    }
+
+    @Test
+    public void moveWithoutKeepingAccessRevokesSharesButKeepsTheData() {
+        UserContext owner = signIn("mr" + suffix());
+        UserContext friend = signIn("mrf" + suffix());
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(friend));
+        Path home = PathUtil.get(owner.username);
+        mkdir(owner, home, "a");
+        mkdir(owner, home, "t");
+        Path a = home.resolve("a"), t = home.resolve("t");
+        mkdir(owner, a, "big");
+        Path big = a.resolve("big");
+        mkdir(owner, big, "s");
+        byte[] multiChunk = upload(owner, big, "large.bin", 2 * Chunk.LEGACY_SIZE + 1);
+        byte[] small = upload(owner, big.resolve("s"), "doc.pdf", 1024);
+        owner.shareReadAccessWith(big.resolve("s/doc.pdf"), Set.of(friend.username)).join();
+        Assert.assertTrue(signIn(friend.username).getByPath(big.resolve("s/doc.pdf")).join().isPresent());
+        ByteArrayWrapper fileKey = mapKey(owner, big.resolve("large.bin"));
+        ByteArrayWrapper data = dataKey(owner, big.resolve("large.bin"));
+
+        move(owner, big, t, "moved", false);
+
+        UserContext fresh = signIn(owner.username);
+        Path moved = t.resolve("moved");
+        Assert.assertTrue(fresh.getByPath(big).join().isEmpty());
+        Assert.assertArrayEquals(multiChunk, read(fresh, moved.resolve("large.bin")));
+        Assert.assertArrayEquals(small, read(fresh, moved.resolve("s/doc.pdf")));
+        Assert.assertNotEquals(fileKey, mapKey(fresh, moved.resolve("large.bin")));
+        // a copy would have encrypted the data again under a new key
+        Assert.assertEquals(data, dataKey(fresh, moved.resolve("large.bin")));
+        Assert.assertTrue(fresh.sharedWith(moved.resolve("s/doc.pdf")).join().readAccess.isEmpty());
+        UserContext friendFresh = signIn(friend.username);
+        Assert.assertTrue(friendFresh.getByPath(moved.resolve("s/doc.pdf")).join().isEmpty());
+        Assert.assertTrue(friendFresh.getByPath(big.resolve("s/doc.pdf")).join().isEmpty());
+    }
+
+    @Test
+    public void moveOutOfAWritingSpaceWithoutKeepingAccessRevokesANestedWriteShare() {
+        UserContext owner = signIn("mx" + suffix());
+        UserContext friend = signIn("mxf" + suffix());
+        PeergosNetworkUtils.friendBetweenGroups(List.of(owner), List.of(friend));
+        Path home = PathUtil.get(owner.username);
+        mkdir(owner, home, "p");
+        mkdir(owner, home, "t");
+        Path p = home.resolve("p"), t = home.resolve("t");
+        mkdir(owner, p, "big");
+        Path big = p.resolve("big");
+        mkdir(owner, big, "n");
+        Path nested = big.resolve("n");
+        byte[] multiChunk = upload(owner, nested, "large.bin", 2 * Chunk.LEGACY_SIZE + 1);
+        LinkProperties link = owner.createSecretLink(p.toString(), true, Optional.empty(), Optional.empty(), "", false).join();
+        owner.deleteSecretLink(link.label, p, true).join();
+        owner.shareWriteAccessWith(nested, Set.of(friend.username)).join();
+        PublicKeyHash nestedWriter = writer(owner, nested);
+        ByteArrayWrapper data = dataKey(owner, nested.resolve("large.bin"));
+
+        move(owner, big, t, "big", false);
+
+        Path moved = t.resolve("big");
+        owner.getByPath(p).join().get().remove(owner.getUserRoot().join(), p, owner).join();
+        UserContext fresh = signIn(owner.username);
+        Assert.assertEquals(writer(fresh, t), writer(fresh, moved));
+        Assert.assertNotEquals(nestedWriter, writer(fresh, moved.resolve("n")));
+        Assert.assertArrayEquals(multiChunk, read(fresh, moved.resolve("n/large.bin")));
+        Assert.assertEquals(data, dataKey(fresh, moved.resolve("n/large.bin")));
+        Assert.assertTrue(fresh.sharedWith(moved.resolve("n")).join().writeAccess.isEmpty());
+        Assert.assertTrue(signIn(friend.username).getByPath(moved.resolve("n")).join().isEmpty());
+        byte[] more = upload(fresh, moved.resolve("n"), "more.pdf", 512);
+        Assert.assertArrayEquals(more, read(signIn(owner.username), moved.resolve("n/more.pdf")));
+    }
+
+    @Test
+    public void movingAPublicFolderTakesItOutOfPublicView() {
+        UserContext owner = signIn("mp" + suffix());
+        Path home = PathUtil.get(owner.username);
+        mkdir(owner, home, "a");
+        mkdir(owner, home, "t");
+        Path a = home.resolve("a"), t = home.resolve("t");
+        byte[] multiChunk = upload(owner, a, "large.bin", 2 * Chunk.LEGACY_SIZE + 1);
+        owner.makePublic(owner.getByPath(a).join().get()).join();
+        Assert.assertTrue(owner.getPublicFile(a.resolve("large.bin")).join().isPresent());
+        ByteArrayWrapper data = dataKey(owner, a.resolve("large.bin"));
+
+        move(owner, a.resolve("large.bin"), t, "large.bin", true);
+
+        UserContext fresh = signIn(owner.username);
+        Path moved = t.resolve("large.bin");
+        Assert.assertArrayEquals(multiChunk, read(fresh, moved));
+        Assert.assertEquals(data, dataKey(fresh, moved));
+        Assert.assertTrue(fresh.getPublicFile(a.resolve("large.bin")).join().isEmpty());
+        Assert.assertTrue(fresh.getPublicFile(moved).join().isEmpty());
     }
 }

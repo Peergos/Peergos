@@ -2672,6 +2672,8 @@ public class FileWrapper {
                                 if (keepAccess && rootInParentSpace)
                                     return moveAcrossWritingSpaces(v, c, target, parent, ourPath, newName, shared,
                                             targetMirrorBatId, context);
+                                if (! keepAccess && owner().equals(target.owner()))
+                                    return moveRotatingKeys(v, c, target, parent, ourPath, newName, targetMirrorBatId, context);
                                 return v.withWriter(owner(), target.writer(), net)
                                         .thenCompose(both -> target.getUpdated(both, net)
                                                 .thenCompose(freshTarget -> copyToUnlinked(freshTarget, newName, this.props.thumbnail,
@@ -2746,6 +2748,54 @@ public class FileWrapper {
                                 .thenCompose(v10 -> context.reSendAllSharesAndLinksRecursive(
                                         PathUtil.getUntrimmed(newPath).resolve(newName), v10, c)))),
                 net.dhtClient);
+    }
+
+    /** Move without keeping existing access: the subtree is rotated into the target as a revocation would rotate it
+     *  in place. Every cryptree node is written again under new keys, but file data keeps its blocks and data keys,
+     *  which are marked dirty. Writing spaces nested in it get new signers owned by the target's writer.
+     */
+    private CompletableFuture<Snapshot> moveRotatingKeys(Snapshot v,
+                                                         Committer c,
+                                                         FileWrapper target,
+                                                         FileWrapper parent,
+                                                         Path ourPath,
+                                                         String newName,
+                                                         Optional<BatId> targetMirrorBatId,
+                                                         UserContext context) {
+        NetworkAccess net = context.network;
+        Crypto crypto = context.crypto;
+        PublicKeyHash owner = owner();
+        SigningPrivateKeyAndPublicHash to = target.signingPair();
+        CryptreeNode.CapAndSigner us = new CryptreeNode.CapAndSigner(writableFilePointer(), signingPair());
+        CryptreeNode.CapAndSigner newUs = new CryptreeNode.CapAndSigner(new WritableAbsoluteCapability(owner,
+                to.publicKeyHash, crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
+                Optional.of(Bat.random(crypto.random)), SymmetricKey.random(), SymmetricKey.random()), to);
+        CryptreeNode.CapAndSigner oldParent = new CryptreeNode.CapAndSigner(parent.writableFilePointer(), parent.signingPair());
+        CryptreeNode.CapAndSigner newParent = new CryptreeNode.CapAndSigner(target.writableFilePointer(), to);
+        RelativeCapability toTarget = new RelativeCapability(Optional.empty(), target.getLocation().getMapKey(),
+                target.writableFilePointer().bat, target.getParentKey(), Optional.empty());
+        AbsoluteCapability inParent = isLink() ? getLinkPointer().capability : getPointer().capability;
+        return v.withWriter(owner, parent.writer(), net)
+                .thenCompose(v1 -> v1.withWriter(owner, writer(), net))
+                .thenCompose(v1 -> v1.withWriter(owner, to.publicKeyHash, net))
+                .thenCompose(v1 -> pointer.fileAccess.rotateAllKeys(true, us, newUs, oldParent, newParent,
+                        Optional.of(toTarget), Optional.empty(), targetMirrorBatId, true, new HashMap<>(), net, crypto, v1, c))
+                .thenCompose(rotated -> (newName.equals(getName()) ?
+                        Futures.of(rotated.left) :
+                        net.getMetadata(rotated.left.get(to.publicKeyHash), rotated.right)
+                                .thenCompose(node -> node.get().updateProperties(rotated.left, c, rotated.right, Optional.of(to),
+                                        node.get().getProperties(node.get().getParentKey(rotated.right.rBaseKey)).withName(newName), net)))
+                        .thenCompose(v2 -> target.pointer.fileAccess.addChildrenAndCommit(v2, c,
+                                Arrays.asList(new NamedRelativeCapability(newName, target.writableFilePointer().relativise(rotated.right),
+                                        Optional.of(isDirectory()), Optional.of(getFileProperties().mimeType), Optional.of(getFileProperties().created))),
+                                target.writableFilePointer(), to, targetMirrorBatId, net, crypto)))
+                .thenCompose(v3 -> parent.pointer.fileAccess.removeChildren(v3, c, Arrays.asList(inParent),
+                        parent.writableFilePointer(), parent.entryWriter, net, crypto.random, crypto.hasher))
+                .thenCompose(v4 -> IpfsTransaction.call(owner,
+                        tid -> deleteAllChunks((WritableAbsoluteCapability) inParent, parent.signingPair(), tid, crypto.hasher, net, v4, c),
+                        net.dhtClient))
+                .thenCompose(v5 -> context.isSecretLink() ? Futures.of(v5) :
+                        context.sharedWithCache.clearSharedWith(ourPath, v5, c, net));
     }
 
     private CompletableFuture<Snapshot> moveSharedWith(Snapshot v,
