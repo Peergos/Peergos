@@ -11,6 +11,7 @@ import peergos.shared.util.*;
 import java.nio.file.*;
 import java.time.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.*;
 
 /** Callers, like the windows mount, retrieve a file or folder and then queue behind other writes before changing
@@ -335,5 +336,34 @@ public class StaleCopyTests {
         Assert.assertArrayEquals(replacement, read(fresh(user), dir.resolve("a")));
         Assert.assertEquals(h.rootHash, now.getFileProperties().treeHash.get().rootHash);
         Assert.assertEquals(when, now.getFileProperties().modified);
+    }
+
+    private byte[] appendToChild(UserContext user, FileWrapper folder, String name, long expectedSize, byte[] contents) {
+        byte[] tail = new byte[50];
+        random.nextBytes(tail);
+        folder.appendToChild(name, expectedSize, tail, false, user.mirrorBatId(), user.network, crypto, x -> {}).join();
+        byte[] res = Arrays.copyOf(contents, contents.length + tail.length);
+        System.arraycopy(tail, 0, res, contents.length, tail.length);
+        return res;
+    }
+
+    @Test
+    public void appendToChildWithStaleFolder() {
+        UserContext user = user();
+        Path dir = dir(user);
+        byte[] contents = upload(user, dir, "log", 100);
+        FileWrapper stale = get(user, dir);
+        contents = appendToChild(user, get(user, dir), "log", contents.length, contents);
+
+        // our copy of the folder agrees with the size we expect, but the file has grown since
+        try {
+            appendToChild(user, stale, "log", 100, contents);
+            Assert.fail("appended over an append since");
+        } catch (CompletionException expected) {}
+        Assert.assertArrayEquals(contents, read(fresh(user), dir.resolve("log")));
+
+        // and the size the file has now is the one to expect
+        contents = appendToChild(user, stale, "log", contents.length, contents);
+        Assert.assertArrayEquals(contents, read(fresh(user), dir.resolve("log")));
     }
 }

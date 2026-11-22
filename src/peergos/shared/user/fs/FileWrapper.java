@@ -2261,27 +2261,22 @@ public class FileWrapper {
                                                         NetworkAccess network,
                                                         Crypto crypto,
                                                         ProgressConsumer<Long> monitor) {
-        return getChild(filename, crypto.hasher, network)
-                .thenCompose(child -> child
-                        .flatMap(c -> c.getFileProperties().streamSecret)
-                        .map(secret -> FileProperties.calculateMapKey(secret,
-                                child.get().getLocation().getMapKey(),
-                                child.get().pointer.capability.bat,
-                                child.get().getFileProperties().size,
-                                child.get().getFileProperties().chunkSize, crypto.hasher)
-                                .thenApply(p -> new Triple<>(p.left, p.right, Optional.of(secret))))
-                        .orElseGet(() -> Futures.of(new Triple<>(crypto.random.randomBytes(32),
-                                Optional.of(Bat.random(crypto.random)), Optional.empty())))
-                        .thenCompose(x -> {
-                            long size = child.map(f -> f.getSize()).orElse(0L);
+        if (! isWritable())
+            return Futures.errored(new IllegalStateException("Cannot append to a file in a folder without write access!"));
+        // check the size, and write at it, as the file is in the update, so an append that lands first fails this one
+        // rather than being written over
+        return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (current, committer) -> getUpdated(current, network)
+                        .thenCompose(us -> us.getChild(current, filename, network))
+                        .thenCompose(child -> {
+                            long size = child.map(FileWrapper::getSize).orElse(0L);
                             if (size != expectedSize)
-                                throw new IllegalStateException("File has been concurrently modified!");
-                            return uploadFileSection(filename, AsyncReader.build(fileData), isHidden,
-                                    size,
-                                    fileData.length + size,
-                                    child.map(f -> f.getPointer().capability.rBaseKey), true, network, crypto,
-                                    () -> false, monitor, x.left, x.right, x.middle, mirrorBat);
-                        }));
+                                return Futures.errored(new IllegalStateException("File has been concurrently modified!"));
+                            return uploadFileSection(current, committer, filename, AsyncReader.build(fileData), isHidden,
+                                    size, size + fileData.length, Optional.empty(), false, true, false, network, crypto,
+                                    () -> false, monitor, crypto.random.randomBytes(32), Optional.empty(),
+                                    Optional.of(Bat.random(crypto.random)), mirrorBat);
+                        }))
+                .thenCompose(finalBase -> getUpdated(finalBase, network));
     }
 
     public CompletableFuture<Snapshot> append(byte[] fileData,
