@@ -1,0 +1,663 @@
+package peergos.server.tests;
+
+import org.junit.*;
+import peergos.server.*;
+import peergos.server.sync.*;
+import peergos.server.util.*;
+import peergos.shared.*;
+import peergos.shared.mutable.*;
+import peergos.shared.storage.*;
+import peergos.shared.user.*;
+import peergos.shared.user.fs.*;
+import peergos.shared.util.*;
+
+import java.nio.file.*;
+import java.time.*;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+import java.util.stream.*;
+
+/** A write to part of a file must leave the file's stored tree hash describing what the file now holds, as a write of
+ *  the whole file does: sync, uploads and the next partial write all trust it to tell them what they can skip.
+ */
+public class PartialWriteHashTests {
+    private static final Args args = UserTests.useMemoryDbs(UserTests.buildArgs()).with("enable-gc", "false");
+    private static UserService service;
+    private static final Crypto crypto = Main.initCrypto();
+    private static final int CHUNK = FileProperties.chunkSizeForNewFiles();
+    private final Random random = new Random();
+
+    @BeforeClass
+    public static void init() {
+        service = Main.PKI_INIT.main(args).localApi;
+    }
+
+    private NetworkAccess network() {
+        return NetworkAccess.buildBuffered(new CachingStorage(service.storage, 1_000, 50 * 1024),
+                service.bats, service.coreNode, service.account, service.mutable, 0, service.social,
+                service.controller, service.usage, service.serverMessages, crypto.hasher, Arrays.asList("peergos"), false);
+    }
+
+    private UserContext user() {
+        UserContext user = PeergosNetworkUtils.ensureSignedUp(PeergosNetworkUtils.generateUsername(random), "password",
+                network(), crypto);
+        user.getUserRoot().join().mkdir("dir", user.network, false, user.mirrorBatId(), crypto).join();
+        return user;
+    }
+
+    private static FileWrapper get(UserContext user, String name) {
+        return user.getByPath(PathUtil.get(user.username, "dir", name)).join().get();
+    }
+
+    private byte[] random(int size) {
+        byte[] data = new byte[size];
+        random.nextBytes(data);
+        return data;
+    }
+
+    private static byte[] upload(UserContext user, String name, byte[] data) {
+        user.getByPath(PathUtil.get(user.username, "dir")).join().get()
+                .uploadOrReplaceFile(name, AsyncReader.build(data), data.length, user.network, crypto, () -> false, x -> {}).join();
+        return data;
+    }
+
+    private static byte[] read(UserContext user, String name) {
+        FileWrapper file = get(user, name);
+        return Serialize.readFully(file.getInputStream(user.network, crypto, x -> {}).join(), file.getSize()).join();
+    }
+
+    private static HashTree treeOf(byte[] data) {
+        return HashTree.build(AsyncReader.build(data), 0, data.length, CHUNK, crypto.hasher).join();
+    }
+
+    private static byte[] with(byte[] data, int at, byte[] section) {
+        byte[] res = Arrays.copyOf(data, Math.max(data.length, at + section.length));
+        System.arraycopy(section, 0, res, at, section.length);
+        return res;
+    }
+
+    private static void writeSection(FileWrapper file, UserContext user, int at, byte[] section) {
+        file.overwriteSectionJS(AsyncReader.build(section), 0, at, 0, at + section.length, Optional.empty(),
+                user.network, crypto, x -> {}).join();
+    }
+
+    /** One byte changed in the second chunk */
+    private static byte[] laterChunkEdited(byte[] original) {
+        return with(original, CHUNK + 10, new byte[]{(byte) ~original[CHUNK + 10]});
+    }
+
+    /** The file holds contents, and stores the hash a write of all of them would */
+    private static void assertHolds(String message, UserContext user, String name, byte[] contents) {
+        Assert.assertArrayEquals(message, contents, read(user, name));
+        Assert.assertEquals(message, Optional.of(treeOf(contents).branch(0)), get(user, name).getFileProperties().treeHash);
+    }
+
+    /** The file holds contents, and stores either no hash or theirs */
+    private static void assertHoldsWithNoOldHash(UserContext user, String name, byte[] contents) {
+        Assert.assertArrayEquals(contents, read(user, name));
+        Optional<HashBranch> stored = get(user, name).getFileProperties().treeHash;
+        Assert.assertTrue("stored " + stored, stored.isEmpty() || stored.get().equals(treeOf(contents).branch(0)));
+    }
+
+    @Test
+    public void overwriteChangedChunksStoresTheHashOfAWholeWrite() {
+        UserContext user = user();
+        byte[] original = upload(user, "a", random(2 * CHUNK + CHUNK / 2));
+        byte[] edited = laterChunkEdited(original);
+
+        get(user, "a").overwriteChangedChunks(AsyncReader.build(edited), edited.length, user.network, crypto, x -> {}).join();
+
+        assertHolds("an edit of a later chunk", user, "a", edited);
+        upload(user, "whole", edited);
+        Assert.assertEquals(get(user, "whole").getFileProperties().treeHash, get(user, "a").getFileProperties().treeHash);
+    }
+
+    @Test
+    public void anUnchangedSaveWritesNothing() {
+        UserContext user = user();
+        byte[] original = upload(user, "a", random(2 * CHUNK + CHUNK / 2));
+        FileWrapper before = get(user, "a");
+
+        before.overwriteChangedChunks(AsyncReader.build(original), original.length, user.network, crypto, x -> {}).join();
+
+        Assert.assertEquals(before.version, get(user, "a").version);
+        assertHolds("the original", user, "a", original);
+    }
+
+    @Test
+    public void overwriteChangedChunksToANewSize() {
+        UserContext user = user();
+        byte[] original = random(2 * CHUNK + CHUNK / 2);
+        for (int size : new int[]{original.length + 1000, 3 * CHUNK + 7, CHUNK + CHUNK / 3, 2 * CHUNK, CHUNK, CHUNK / 2, 0}) {
+            String name = "f" + size;
+            upload(user, name, original);
+            // the start is unchanged, so only the end is written
+            byte[] replacement = Arrays.copyOf(original, size);
+            if (size > CHUNK + 10)
+                replacement[CHUNK + 10] ^= 1;
+
+            get(user, name).overwriteChangedChunks(AsyncReader.build(replacement), size, user.network, crypto, x -> {}).join();
+
+            assertHolds("to " + size + " bytes", user, name, replacement);
+        }
+    }
+
+    @Test
+    public void theStoredHashIsOfTheBytesWritten() {
+        UserContext user = user();
+        byte[] original = upload(user, "a", random(2 * CHUNK + CHUNK / 2));
+        byte[] edited = laterChunkEdited(original);
+
+        // as if the source changed back between hashing it and reading it
+        get(user, "a").overwriteChangedChunks(AsyncReader.build(edited), edited.length, Optional.of(treeOf(original)),
+                Optional.empty(), user.network, crypto, x -> {}).join();
+
+        assertHolds("the edit", user, "a", edited);
+    }
+
+    @Test
+    public void overwriteChangedChunksWithTheOriginalBytesRestoresThem() {
+        UserContext user = user();
+        byte[] original = upload(user, "a", random(2 * CHUNK + CHUNK / 2));
+        byte[] edited = laterChunkEdited(original);
+        get(user, "a").overwriteChangedChunks(AsyncReader.build(edited), edited.length, user.network, crypto, x -> {}).join();
+
+        get(user, "a").overwriteChangedChunks(AsyncReader.build(original), original.length, user.network, crypto, x -> {}).join();
+
+        assertHolds("the original", user, "a", original);
+    }
+
+    @Test
+    public void uploadingTheOriginalBytesWithTheirHashRestoresThem() {
+        UserContext user = user();
+        byte[] original = upload(user, "a", random(2 * CHUNK + CHUNK / 2));
+        byte[] edited = laterChunkEdited(original);
+        get(user, "a").overwriteChangedChunks(AsyncReader.build(edited), edited.length, user.network, crypto, x -> {}).join();
+
+        FileWrapper.FileUploadProperties file = new FileWrapper.FileUploadProperties("a", () -> AsyncReader.build(original),
+                0, original.length, Optional.empty(), Optional.of(treeOf(original)), false, true, x -> {});
+        user.getUserRoot().join().uploadSubtree(Stream.of(new FileWrapper.FolderUploadProperties(List.of("dir"), List.of(file))),
+                user.mirrorBatId(), user.network, crypto, user.getTransactionService(),
+                x -> Futures.of(true), x -> Futures.of(true), () -> true).join();
+
+        assertHolds("the original", user, "a", original);
+    }
+
+    @Test
+    public void anEditOfALaterChunkReachesEverySyncClient() throws Exception {
+        UserContext user = user();
+        Path remoteRoot = PathUtil.get(user.username, "dir");
+        String link = user.createSecretLink(remoteRoot.toString(), true, Optional.empty(), Optional.<Integer>empty(), "", false)
+                .join().toLinkString(user.signer.publicKeyHash);
+        List<Path> bases = new ArrayList<>();
+        List<LocalFileSystem> locals = new ArrayList<>();
+        List<PeergosSyncFS> remotes = new ArrayList<>();
+        List<SyncState> states = new ArrayList<>();
+        for (int i = 0; i < 2; i++) {
+            bases.add(Files.createTempDirectory("peergos-sync"));
+            locals.add(new LocalFileSystem(bases.get(i), crypto.hasher));
+            remotes.add(DirectorySync.buildRemote(link, user.network, crypto));
+            states.add(new JdbcTreeState(":memory:"));
+        }
+        byte[] original = random(2 * CHUNK + CHUNK / 2);
+        Files.write(bases.get(0).resolve("a"), original);
+        for (int i = 0; i < 2; i++)
+            sync(locals.get(i), remotes.get(i), states.get(i));
+        Assert.assertArrayEquals(original, Files.readAllBytes(bases.get(1).resolve("a")));
+
+        // a mount's save of the file
+        byte[] edited = laterChunkEdited(original);
+        get(user, "a").overwriteChangedChunks(AsyncReader.build(edited), edited.length, user.network, crypto, x -> {}).join();
+
+        for (int i = 0; i < 2; i++)
+            sync(locals.get(i), remotes.get(i), states.get(i));
+        for (int i = 0; i < 2; i++)
+            Assert.assertArrayEquals("client " + i, edited, Files.readAllBytes(bases.get(i).resolve("a")));
+        assertHolds("the edit", user, "a", edited);
+    }
+
+    private static void sync(LocalFileSystem local, PeergosSyncFS remote, SyncState state) throws Exception {
+        DirectorySync.syncDir(local, remote, true, true, null, null, state, 32, 5,
+                Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+    }
+
+    @Test
+    public void aSectionWriteStoresTheNewContentsHash() {
+        UserContext user = user();
+        byte[] contents = upload(user, "a", random(2 * CHUNK + CHUNK / 2));
+        // within a later chunk, then across the boundary of two
+        for (int at : new int[]{CHUNK + 10, 2 * CHUNK - 500}) {
+            byte[] section = random(1000);
+            writeSection(get(user, "a"), user, at, section);
+            contents = with(contents, at, section);
+            assertHolds("a section at " + at, user, "a", contents);
+        }
+    }
+
+    @Test
+    public void anAppendStoresTheNewContentsHash() {
+        UserContext user = user();
+        byte[] contents = upload(user, "a", random(2 * CHUNK + CHUNK / 2));
+        // within the last chunk, then into a new one
+        for (int length : new int[]{1000, CHUNK}) {
+            byte[] tail = random(length);
+            user.getByPath(PathUtil.get(user.username, "dir")).join().get()
+                    .appendFileJS("a", AsyncReader.build(tail), 0, tail.length, user.network, crypto, x -> {}).join();
+            contents = with(contents, contents.length, tail);
+            assertHolds("an append of " + length, user, "a", contents);
+        }
+    }
+
+    /** The node writes of an append of tail, through the overwriteSection a chat log's append uses */
+    private static int appendWrites(UserContext user, String name, byte[] tail) {
+        FileWrapper file = get(user, name);
+        AtomicInteger writes = new AtomicInteger();
+        user.network.synchronizer.applyComplexUpdate(file.owner(), file.signingPair(), (s, c) -> file.getUpdated(s, user.network)
+                .thenCompose(f -> f.overwriteSection(s, (o, w, wd, e, tid) -> {
+                    writes.incrementAndGet();
+                    return c.commit(o, w, wd, e, tid);
+                }, AsyncReader.build(tail), f.getSize(), f.getSize() + tail.length, Optional.empty(), user.network, crypto, x -> {})))
+                .join();
+        return writes.get();
+    }
+
+    /** Keeping a file's hash current costs an append no more node writes than dropping it does */
+    @Test
+    public void anAppendWritesNoMoreNodesThanWithoutAHash() {
+        UserContext user = user();
+        // within chunk 0, then past it
+        for (int size : new int[]{CHUNK / 2, CHUNK + CHUNK / 2}) {
+            byte[] hashed = upload(user, "h" + size, random(size));
+            upload(user, "u" + size, random(size));
+            FileWrapper unhashed = get(user, "u" + size);
+            unhashed.setSameNameProperties(unhashed.getFileProperties().withHash(Optional.empty()), user.network).join();
+            byte[] tail = random(1000);
+
+            Assert.assertEquals("an append to " + size + " bytes", appendWrites(user, "u" + size, tail), appendWrites(user, "h" + size, tail));
+            assertHolds("an append to " + size + " bytes", user, "h" + size, with(hashed, size, tail));
+        }
+    }
+
+    @Test
+    public void aWriteThatLeavesAGapLeavesNoOldHash() {
+        UserContext user = user();
+        byte[] original = upload(user, "a", random(2 * CHUNK + CHUNK / 2));
+        byte[] section = random(1000);
+
+        // the part chunk at the end now reads padded with zeros, which its stored hash doesn't describe
+        writeSection(get(user, "a"), user, 3 * CHUNK + 10, section);
+
+        assertHoldsWithNoOldHash(user, "a", with(original, 3 * CHUNK + 10, section));
+    }
+
+    /** A session whose write buffer sends what it holds to the server once it holds this many bytes */
+    private static NetworkAccess network(int bufferSize) {
+        BufferedStorage blocks = new BufferedStorage(service.storage, crypto.hasher);
+        BufferedPointers pointers = new BufferedPointers(service.mutable);
+        WriteSynchronizer synchronizer = new WriteSynchronizer(pointers, blocks, crypto.hasher);
+        MutableTree tree = new MutableTreeImpl(pointers, blocks, crypto.hasher, synchronizer);
+        return new BufferedNetworkAccess(blocks, pointers, bufferSize, service.coreNode, service.account, service.social,
+                service.mutable, service.bats, Optional.empty(), tree, synchronizer, service.controller, service.usage,
+                service.serverMessages, crypto.hasher, Arrays.asList("peergos"), false);
+    }
+
+    /** An update bigger than the write buffer reaches the server in parts, so a write that fails part way can leave some
+     *  of its chunks written, which the old hash must not describe */
+    @Test
+    public void aWriteThatFailsPartWayLeavesNoOldHash() {
+        UserContext user = user();
+        byte[] original = upload(user, "a", random(4 * CHUNK + CHUNK / 2));
+        UserContext smallBuffer = PeergosNetworkUtils.ensureSignedUp(user.username, "password", network(1024 * 1024), crypto);
+        byte[] edited = original.clone();
+        for (int c = 1; c < 5; c++)
+            edited[c * CHUNK + 10] ^= 1;
+        // a mount's save whose data stops coming inside chunk 3, after chunks 1 and 2 are written
+        try {
+            smallBuffer.getByPath(PathUtil.get(user.username, "dir", "a")).join().get().overwriteChangedChunks(
+                    AsyncReader.build(Arrays.copyOf(edited, 3 * CHUNK + 100)), edited.length, smallBuffer.network, crypto, x -> {}).join();
+            Assert.fail("the save should have failed");
+        } catch (CompletionException expected) {}
+        byte[] saved = read(user, "a");
+        Assert.assertFalse("part of the save should have reached the server", Arrays.equals(original, saved));
+        assertHoldsWithNoOldHash(user, "a", saved);
+
+        // a write cancelled after two chunks
+        upload(user, "b", original);
+        long[] written = new long[1];
+        try {
+            smallBuffer.getByPath(PathUtil.get(user.username, "dir", "b")).join().get().overwriteSectionJS(
+                    AsyncReader.build(random(3 * CHUNK)), 0, CHUNK + 10, 0, 4 * CHUNK + 10, Optional.empty(),
+                    smallBuffer.network, crypto, x -> {
+                        if ((written[0] += x) > 2L * CHUNK)
+                            throw new IllegalStateException("Upload cancelled!");
+                    }).join();
+            Assert.fail("the write should have failed");
+        } catch (CompletionException expected) {}
+        byte[] cut = read(user, "b");
+        Assert.assertFalse("part of the write should have reached the server", Arrays.equals(original, cut));
+        assertHoldsWithNoOldHash(user, "b", cut);
+
+        // an append past chunk 0 cancelled after two chunks
+        byte[] shorter = upload(user, "c", random(CHUNK + CHUNK / 2));
+        byte[] tail = random(3 * CHUNK);
+        written[0] = 0;
+        try {
+            smallBuffer.getByPath(PathUtil.get(user.username, "dir", "c")).join().get().overwriteSectionJS(
+                    AsyncReader.build(tail), 0, shorter.length, 0, shorter.length + 3 * CHUNK, Optional.empty(),
+                    smallBuffer.network, crypto, x -> {
+                        if ((written[0] += x) > 2L * CHUNK)
+                            throw new IllegalStateException("Upload cancelled!");
+                    }).join();
+            Assert.fail("the append should have failed");
+        } catch (CompletionException expected) {}
+        // it ends with the last of its chunks to land: the old bytes, then as much of the append as reached the server
+        byte[] appended = read(user, "c");
+        Assert.assertTrue("part of the append should have reached the server", appended.length > shorter.length);
+        assertHoldsWithNoOldHash(user, "c", with(shorter, shorter.length, Arrays.copyOf(tail, appended.length - shorter.length)));
+    }
+
+    /** Reads data, holding back any read from at onwards until resumed */
+    private static AsyncReader pausedAt(byte[] data, long at, CompletableFuture<Boolean> paused, CompletableFuture<Boolean> resume) {
+        AsyncReader in = AsyncReader.build(data);
+        long[] read = {0};
+        return new AsyncReader() {
+            @Override
+            public CompletableFuture<Integer> readIntoArray(byte[] res, int offset, int length) {
+                if (read[0] >= at)
+                    paused.complete(true);
+                return (read[0] < at ? Futures.of(true) : resume)
+                        .thenCompose(x -> in.readIntoArray(res, offset, length))
+                        .thenApply(n -> {
+                            read[0] += n;
+                            return n;
+                        });
+            }
+
+            @Override
+            public CompletableFuture<AsyncReader> reset() {
+                read[0] = 0;
+                return in.reset().thenApply(x -> this);
+            }
+
+            @Override
+            public void close() {}
+        };
+    }
+
+    /** A write committed in parts, and another session's write into a later chunk landing between its parts: one of
+     *  them may fail, but the file must still read, and must not be left with a hash of what it held before the other's
+     *  bytes */
+    @Test
+    public void aWriteBetweenThePartsOfAnotherLeavesNoOldHash() throws Exception {
+        UserContext user = user();
+        UserContext smallBuffer = PeergosNetworkUtils.ensureSignedUp(user.username, "password", network(1024 * 1024), crypto);
+        // chunks 1 to 3 in place, then 3 chunks appended
+        for (int start : new int[]{CHUNK, 5 * CHUNK}) {
+            String name = "f" + start;
+            byte[] original = upload(user, name, random(5 * CHUNK));
+            byte[] section = random(3 * CHUNK), other = random(1000);
+            CompletableFuture<Boolean> paused = new CompletableFuture<>(), resume = new CompletableFuture<>();
+            CompletableFuture<FileWrapper> first = get(smallBuffer, name).overwriteSectionJS(
+                    pausedAt(section, 2 * CHUNK, paused, resume), 0, start, 0, start + 3 * CHUNK, Optional.empty(),
+                    smallBuffer.network, crypto, x -> {});
+            paused.get(300, TimeUnit.SECONDS);
+            // its first two chunks have landed, and the hash has gone
+            Assert.assertTrue(get(user, name).getFileProperties().treeHash.isEmpty());
+
+            writeSection(get(user, name), user, 4 * CHUNK + 10, other);
+            resume.complete(true);
+            try {
+                first.join();
+            } catch (CompletionException clash) {}
+
+            // each chunk holds what the second write left there, or the first's bytes too if they landed
+            byte[] now = read(user, name);
+            byte[] secondOnly = with(original, 4 * CHUNK + 10, other), both = with(secondOnly, start, section);
+            Assert.assertTrue("from " + start + ", " + now.length + " bytes", now.length >= secondOnly.length && now.length <= both.length);
+            for (int at = 0; at < now.length; at += CHUNK) {
+                byte[] chunk = Arrays.copyOfRange(now, at, Math.min(now.length, at + CHUNK));
+                Assert.assertTrue("from " + start + ", chunk " + at / CHUNK, Arrays.equals(chunk, Arrays.copyOfRange(both, at, at + chunk.length))
+                        || Arrays.equals(chunk, Arrays.copyOfRange(secondOnly, at, Math.min(secondOnly.length, at + CHUNK))));
+            }
+            assertHoldsWithNoOldHash(user, name, now);
+        }
+    }
+
+    @Test
+    public void aWriteIntoALaterChunkTakesItsModifiedTime() {
+        UserContext user = user();
+        LocalDateTime when = LocalDateTime.of(2021, 2, 3, 4, 5, 6);
+        for (String name : new String[]{"hashed", "unhashed"}) {
+            byte[] original = upload(user, name, random(2 * CHUNK + CHUNK / 2));
+            if (name.equals("unhashed")) {
+                FileWrapper file = get(user, name);
+                file.setSameNameProperties(file.getFileProperties().withHash(Optional.empty()), user.network).join();
+            }
+            byte[] section = random(1000);
+
+            get(user, name).overwriteSectionJS(AsyncReader.build(section), 0, CHUNK + 10, 0, CHUNK + 10 + section.length,
+                    Optional.of(when), user.network, crypto, x -> {}).join();
+
+            Assert.assertEquals(name, when, get(user, name).getFileProperties().modified);
+            assertHoldsWithNoOldHash(user, name, with(original, CHUNK + 10, section));
+        }
+    }
+
+    @Test
+    public void truncateStoresTheNewContentsHash() {
+        UserContext user = user();
+        byte[] original = random(2 * CHUNK + CHUNK / 2);
+        for (int size : new int[]{CHUNK + CHUNK / 3, 2 * CHUNK, CHUNK, CHUNK / 2, 0}) {
+            String name = "f" + size;
+            upload(user, name, original);
+
+            get(user, name).truncate(size, user.network, crypto).join();
+
+            // BLAKE3 hashes a file's only chunk as the whole file, so a cut to one chunk leaves that to the next whole write
+            if (Chunk.usesBlake3(CHUNK) && size == CHUNK)
+                assertHoldsWithNoOldHash(user, name, Arrays.copyOf(original, size));
+            else
+                assertHolds("to " + size + " bytes", user, name, Arrays.copyOf(original, size));
+        }
+    }
+
+    /** Cut a file to size, with the failAt'th node write failing, in a session that commits each node write as it makes
+     *  it; returns the number of node writes tried */
+    private static int truncateFailingAt(UserContext user, String name, long size, int failAt) {
+        FileWrapper file = get(user, name);
+        AtomicInteger writes = new AtomicInteger();
+        try {
+            user.network.synchronizer.applyComplexUpdate(file.owner(), file.signingPair(), (s, c) -> file.getUpdated(s, user.network)
+                    .thenCompose(f -> f.truncate(s, (o, w, wd, e, tid) -> writes.incrementAndGet() == failAt ?
+                            Futures.errored(new IllegalStateException("failed")) :
+                            c.commit(o, w, wd, e, tid), size, user.network, crypto))).join();
+        } catch (CompletionException failed) {}
+        return writes.get();
+    }
+
+    @Test
+    public void aTruncateThatFailsPartWayLeavesTheFileReadable() {
+        UserContext user = user();
+        UserContext eachWrite = PeergosNetworkUtils.ensureSignedUp(user.username, "password", network(1), crypto);
+        byte[] original = random(3 * CHUNK);
+        // inside a later chunk, at the end of one, inside chunk 0
+        for (int size : new int[]{2 * CHUNK + CHUNK / 2, CHUNK, CHUNK / 2}) {
+            for (int failAt = 1; ; failAt++) {
+                String name = "f" + size + "-" + failAt;
+                upload(user, name, original);
+
+                int writes = truncateFailingAt(eachWrite, name, size, failAt);
+
+                // as it was, or as cut, but never short of the chunks it claims
+                byte[] now = read(user, name);
+                if (Arrays.equals(original, now))
+                    assertHolds("to " + size + ", failing write " + failAt, user, name, original);
+                else
+                    assertHoldsWithNoOldHash(user, name, Arrays.copyOf(original, size));
+                if (writes < failAt)
+                    break;
+            }
+        }
+    }
+
+    @Test
+    public void aShorterOverwriteStoresTheNewContentsHash() {
+        UserContext user = user();
+        upload(user, "a", random(2 * CHUNK + CHUNK / 2));
+        byte[] replacement = random(CHUNK + CHUNK / 3);
+
+        get(user, "a").overwriteFile(AsyncReader.build(replacement), replacement.length, user.network, crypto, x -> {}).join();
+
+        assertHolds("the replacement", user, "a", replacement);
+    }
+
+    @Test
+    public void aWriteThroughAnOutOfDateCopyStoresTheHashOfWhatTheFileHolds() {
+        UserContext user = user();
+        byte[] original = upload(user, "a", random(2 * CHUNK + CHUNK / 2));
+        FileWrapper stale = get(user, "a");
+        byte[] changed = with(original, 10, random(1000));
+        get(user, "a").overwriteChangedChunks(AsyncReader.build(changed), changed.length, user.network, crypto, x -> {}).join();
+
+        byte[] section = random(1000);
+        writeSection(stale, user, CHUNK + 10, section);
+
+        assertHolds("both writes", user, "a", with(changed, CHUNK + 10, section));
+    }
+
+    @Test
+    public void aWriteThroughACopyOfAnotherSizeLeavesNoOldHash() {
+        UserContext user = user();
+        byte[] original = upload(user, "a", random(2 * CHUNK + CHUNK / 2));
+        FileWrapper stale = get(user, "a");
+        byte[] longer = upload(user, "a", with(original, original.length, random(1000)));
+
+        byte[] section = random(1000);
+        writeSection(stale, user, CHUNK + 10, section);
+
+        assertHoldsWithNoOldHash(user, "a", with(longer, CHUNK + 10, section));
+    }
+
+    @Test
+    public void aWriteThroughACopyFromBeforeTheFileGrewKeepsItsSize() {
+        UserContext user = user();
+        byte[] original = upload(user, "a", random(2 * CHUNK + CHUNK / 2));
+        FileWrapper stale = get(user, "a");
+        byte[] longer = upload(user, "a", with(original, original.length, random(1000)));
+
+        // past the end our copy has, but short of the file's
+        byte[] section = random(510);
+        writeSection(stale, user, original.length - 10, section);
+
+        assertHoldsWithNoOldHash(user, "a", with(longer, original.length - 10, section));
+    }
+
+    /** Writes through a folder the writer can't write, to a file shared with it for writing, with a copy of the
+     *  folder from before the file grew */
+    @Test
+    public void writesToASharedFileThroughAFolderFromBeforeItGrewKeepItsEnd() {
+        UserContext sharer = user();
+        UserContext sharee = PeergosNetworkUtils.ensureSignedUp(PeergosNetworkUtils.generateUsername(random), "password",
+                network(), crypto);
+        PeergosNetworkUtils.friendBetweenGroups(List.of(sharer), List.of(sharee));
+        Path dir = PathUtil.get(sharer.username, "dir");
+        byte[] contents = upload(sharer, "a", random(2 * CHUNK + CHUNK / 2));
+        sharer.shareWriteAccessWith(dir.resolve("a"), Set.of(sharee.username)).join();
+        UserContext fresh = PeergosNetworkUtils.ensureSignedUp(sharer.username, "password", network(), crypto);
+
+        // a section past the end the folder's copy of the file has, but short of the file's
+        FileWrapper staleFolder = sharee.getByPath(dir).join().get();
+        Assert.assertFalse(staleFolder.isWritable());
+        int size = contents.length;
+        contents = appendThroughFolder(sharee, dir, contents);
+        byte[] section = random(510);
+        staleFolder.uploadFileSection("a", AsyncReader.build(section), false, size - 10, size + 500, Optional.empty(),
+                true, sharee.network, crypto, () -> false, x -> {}).join();
+        assertHoldsWithNoOldHash(fresh, "a", with(contents, size - 10, section));
+
+        // a replacement longer than the folder's copy of the file, but shorter than the file
+        staleFolder = sharee.getByPath(dir).join().get();
+        size = contents.length;
+        appendThroughFolder(sharee, dir, contents);
+        byte[] replacement = random(size + 500);
+        staleFolder.uploadOrReplaceFile("a", AsyncReader.build(replacement), replacement.length, sharee.network, crypto,
+                () -> false, x -> {}).join();
+        assertHoldsWithNoOldHash(fresh, "a", replacement);
+    }
+
+    private byte[] appendThroughFolder(UserContext user, Path dir, byte[] contents) {
+        byte[] tail = random(1000);
+        user.getByPath(dir).join().get().uploadFileSection("a", AsyncReader.build(tail), false, contents.length,
+                contents.length + tail.length, Optional.empty(), true, user.network, crypto, () -> false, x -> {}).join();
+        return with(contents, contents.length, tail);
+    }
+
+    /** A stored hash listing more chunks than the file has describes other contents: a save of those contents must
+     *  still write them. */
+    @Test
+    public void aStoredHashOfMoreChunksThanTheFileIsNotTrusted() {
+        UserContext user = user();
+        byte[] original = upload(user, "a", random(2 * CHUNK + CHUNK / 2));
+        get(user, "a").truncate(2 * CHUNK, user.network, crypto).join();
+        FileWrapper cut = get(user, "a");
+        FileWrapper.bulkSetSameNameProperties(cut.getHashUpdates(treeOf(original), user.network, crypto.hasher).join(),
+                user.network).join();
+
+        get(user, "a").overwriteChangedChunks(AsyncReader.build(original), original.length, user.network, crypto, x -> {}).join();
+        assertHolds("the original bytes written back", user, "a", original);
+    }
+
+    /** Write the file again, with this modified time, after a copy of it has been taken */
+    private static byte[] writtenSince(UserContext user, String name, byte[] contents, LocalDateTime when) {
+        get(user, name).overwriteChangedChunks(AsyncReader.build(contents), contents.length, Optional.empty(), Optional.of(when),
+                user.network, crypto, x -> {}).join();
+        return contents;
+    }
+
+    @Test
+    public void aThumbnailSetThroughAnOutOfDateCopyChangesOnlyTheThumbnail() {
+        UserContext user = user();
+        byte[] original = upload(user, "a", random(2 * CHUNK + CHUNK / 2));
+        FileWrapper stale = get(user, "a");
+        LocalDateTime when = LocalDateTime.of(2021, 2, 3, 4, 5, 6);
+        byte[] longer = writtenSince(user, "a", with(laterChunkEdited(original), original.length, random(1000)), when);
+
+        byte[] thumbnail = random(100);
+        stale.updateThumbnail("data:image/jpeg;base64," + Base64.getEncoder().encodeToString(thumbnail), user.network).join();
+
+        assertHolds("the write before the thumbnail", user, "a", longer);
+        FileProperties now = get(user, "a").getFileProperties();
+        Assert.assertEquals(when, now.modified);
+        Assert.assertArrayEquals(thumbnail, now.thumbnail.get().data);
+    }
+
+    @Test
+    public void aThumbnailCalculatedThroughAnOutOfDateCopyIsOfWhatTheFileHolds() throws Exception {
+        UserContext user = user();
+        upload(user, "a.png", Files.readAllBytes(PathUtil.get("assets", "logo.png")));
+        FileWrapper stale = get(user, "a.png");
+        LocalDateTime when = LocalDateTime.of(2021, 2, 3, 4, 5, 6);
+        byte[] bigger = writtenSince(user, "a.png", Files.readAllBytes(PathUtil.get("assets", "logos", "Peergos-full-hor.png")), when);
+
+        Assert.assertTrue(stale.calculateAndUpdateThumbnail(user.network, crypto).join());
+
+        assertHolds("the write before the thumbnail", user, "a.png", bigger);
+        FileProperties now = get(user, "a.png").getFileProperties();
+        Assert.assertEquals(when, now.modified);
+        Assert.assertArrayEquals(ThumbnailGenerator.get().generateThumbnail(bigger).get().data, now.thumbnail.get().data);
+    }
+
+    @Test
+    public void replacingAnImageWithAShorterOneThumbnailsTheNewOne() throws Exception {
+        UserContext user = user();
+        upload(user, "a.png", Files.readAllBytes(PathUtil.get("assets", "logos", "Peergos-full-hor.png")));
+        Assert.assertTrue(get(user, "a.png").getFileProperties().thumbnail.isPresent());
+
+        byte[] shorter = upload(user, "a.png", Files.readAllBytes(PathUtil.get("assets", "logo.png")));
+
+        assertHolds("the replacement", user, "a.png", shorter);
+        Assert.assertArrayEquals(ThumbnailGenerator.get().generateThumbnail(shorter).get().data,
+                get(user, "a.png").getFileProperties().thumbnail.get().data);
+    }
+}
