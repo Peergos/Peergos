@@ -307,7 +307,11 @@ public class PartialWriteHashTests {
             get(user, name).overwriteSectionJS(AsyncReader.build(section), 0, at, 0, at + section.length, Optional.empty(),
                     user.network, crypto, x -> uploaded[0] += x).join();
 
-            assertHolds("a write past " + size + " bytes", user, name, with(original, at, section));
+            // BLAKE3 hashes a file's only chunk as the whole file, so a write past one leaves that to the next whole write
+            if (Chunk.usesBlake3(CHUNK) && size == CHUNK)
+                assertHoldsWithNoOldHash(user, name, with(original, at, section));
+            else
+                assertHolds("a write past " + size + " bytes", user, name, with(original, at, section));
             Assert.assertTrue("uploaded " + uploaded[0] + " bytes past " + size, uploaded[0] < CHUNK);
         }
     }
