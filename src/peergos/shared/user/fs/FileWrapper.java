@@ -1688,6 +1688,9 @@ public class FileWrapper {
                                             int internalStart = (int) (startIndex % props.chunkSize);
                                             int internalEnd = endIndex - (startIndex - internalStart) > props.chunkSize ?
                                                     props.chunkSize : (int) (endIndex - (startIndex - internalStart));
+                                            // as a write grows us, our size goes to the end of each chunk as it lands, not
+                                            // straight to the write's end, so a write that stops part way leaves us readable
+                                            long updatedLength = startIndex + internalEnd - internalStart;
                                             byte[] rawData = currentOriginal.chunk.data();
                                             // extend data array if necessary
                                             if (rawData.length < internalEnd)
@@ -1714,7 +1717,7 @@ public class FileWrapper {
                                                 // our old hash goes as we are changing the file
                                                 FileProperties newProps = new FileProperties(props.name, false,
                                                         props.isLink, props.mimeType,
-                                                        endIndex > currentSize ? endIndex : currentSize,
+                                                        Math.max(currentSize, updatedLength),
                                                         modified.orElseGet(() -> LocalDateTime.now(ZoneOffset.UTC)), props.created, props.isHidden,
                                                         props.thumbnail, props.streamSecret, startIndex < props.chunkSize ? newHash : Optional.empty(),
                                                         props.chunkSize);
@@ -1726,8 +1729,6 @@ public class FileWrapper {
                                                         crypto.random, crypto.hasher, network, monitor);
 
                                                 return chunkUploaded.thenCompose(updatedBase -> {
-                                                    //update indices to be relative to next chunk
-                                                    long updatedLength = startIndex + internalEnd - internalStart;
                                                     if (updatedLength > filesSize.get()) {
                                                         filesSize.set(updatedLength);
 
@@ -1737,7 +1738,7 @@ public class FileWrapper {
                                                                     .thenCompose(updatedUs -> {
                                                                         FileProperties correctedSize = updatedUs.get()
                                                                                 .getPointer().fileAccess.getProperties(ourCap.rBaseKey)
-                                                                                .withSize(endIndex)
+                                                                                .withSize(updatedLength)
                                                                                 .withHash(newHash);
                                                                         return updatedUs.get()
                                                                                 .getPointer().fileAccess.updateProperties(updatedBase,

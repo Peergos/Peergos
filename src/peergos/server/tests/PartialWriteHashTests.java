@@ -340,20 +340,21 @@ public class PartialWriteHashTests {
 
         // an append past chunk 0 cancelled after two chunks
         byte[] shorter = upload(user, "c", random(CHUNK + CHUNK / 2));
+        byte[] tail = random(3 * CHUNK);
         written[0] = 0;
         try {
             smallBuffer.getByPath(PathUtil.get(user.username, "dir", "c")).join().get().overwriteSectionJS(
-                    AsyncReader.build(random(3 * CHUNK)), 0, shorter.length, 0, shorter.length + 3 * CHUNK, Optional.empty(),
+                    AsyncReader.build(tail), 0, shorter.length, 0, shorter.length + 3 * CHUNK, Optional.empty(),
                     smallBuffer.network, crypto, x -> {
                         if ((written[0] += x) > 2L * CHUNK)
                             throw new IllegalStateException("Upload cancelled!");
                     }).join();
             Assert.fail("the append should have failed");
         } catch (CompletionException expected) {}
-        // only its hash is looked at: the old one, while the file still has its old size, else none
-        FileProperties after = get(user, "c").getFileProperties();
-        Assert.assertTrue("size " + after.size + ", stored " + after.treeHash, after.treeHash.isEmpty()
-                || after.size == shorter.length && after.treeHash.get().equals(treeOf(shorter).branch(0)));
+        // it ends with the last of its chunks to land: the old bytes, then as much of the append as reached the server
+        byte[] appended = read(user, "c");
+        Assert.assertTrue("part of the append should have reached the server", appended.length > shorter.length);
+        assertHoldsWithNoOldHash(user, "c", with(shorter, shorter.length, Arrays.copyOf(tail, appended.length - shorter.length)));
     }
 
     /** Reads data, holding back any read from at onwards until resumed */
@@ -385,7 +386,8 @@ public class PartialWriteHashTests {
     }
 
     /** A write committed in parts, and another session's write into a later chunk landing between its parts: one of
-     *  them may fail, but the file must not be left with a hash of what it held before the other's bytes */
+     *  them may fail, but the file must still read, and must not be left with a hash of what it held before the other's
+     *  bytes */
     @Test
     public void aWriteBetweenThePartsOfAnotherLeavesNoOldHash() throws Exception {
         UserContext user = user();
@@ -393,26 +395,32 @@ public class PartialWriteHashTests {
         // chunks 1 to 3 in place, then 3 chunks appended
         for (int start : new int[]{CHUNK, 5 * CHUNK}) {
             String name = "f" + start;
-            upload(user, name, random(5 * CHUNK));
+            byte[] original = upload(user, name, random(5 * CHUNK));
+            byte[] section = random(3 * CHUNK), other = random(1000);
             CompletableFuture<Boolean> paused = new CompletableFuture<>(), resume = new CompletableFuture<>();
             CompletableFuture<FileWrapper> first = get(smallBuffer, name).overwriteSectionJS(
-                    pausedAt(random(3 * CHUNK), 2 * CHUNK, paused, resume), 0, start, 0, start + 3 * CHUNK, Optional.empty(),
+                    pausedAt(section, 2 * CHUNK, paused, resume), 0, start, 0, start + 3 * CHUNK, Optional.empty(),
                     smallBuffer.network, crypto, x -> {});
             paused.get(300, TimeUnit.SECONDS);
             // its first two chunks have landed, and the hash has gone
             Assert.assertTrue(get(user, name).getFileProperties().treeHash.isEmpty());
 
-            writeSection(get(user, name), user, 4 * CHUNK + 10, random(1000));
+            writeSection(get(user, name), user, 4 * CHUNK + 10, other);
             resume.complete(true);
             try {
                 first.join();
             } catch (CompletionException clash) {}
 
-            // only a stored hash is checked against what the file reads: an append that fails part way leaves the file
-            // sized to its end, short of its last chunks, and unreadable
-            Optional<HashBranch> stored = get(user, name).getFileProperties().treeHash;
-            if (stored.isPresent())
-                Assert.assertEquals("from " + start, treeOf(read(user, name)).branch(0), stored.get());
+            // each chunk holds what the second write left there, or the first's bytes too if they landed
+            byte[] now = read(user, name);
+            byte[] secondOnly = with(original, 4 * CHUNK + 10, other), both = with(secondOnly, start, section);
+            Assert.assertTrue("from " + start + ", " + now.length + " bytes", now.length >= secondOnly.length && now.length <= both.length);
+            for (int at = 0; at < now.length; at += CHUNK) {
+                byte[] chunk = Arrays.copyOfRange(now, at, Math.min(now.length, at + CHUNK));
+                Assert.assertTrue("from " + start + ", chunk " + at / CHUNK, Arrays.equals(chunk, Arrays.copyOfRange(both, at, at + chunk.length))
+                        || Arrays.equals(chunk, Arrays.copyOfRange(secondOnly, at, Math.min(secondOnly.length, at + CHUNK))));
+            }
+            assertHoldsWithNoOldHash(user, name, now);
         }
     }
 
