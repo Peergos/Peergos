@@ -620,20 +620,19 @@ public class FileWrapper {
                         .thenApply(Optional::get));
     }
 
+    /** Cut us to newSize if we are longer, as we are in the update rather than as our copy has us */
     @JsMethod
     public CompletableFuture<FileWrapper> truncate(long newSize, NetworkAccess network, Crypto crypto) {
-        if (getSize() <= newSize)
-            return Futures.of(this);
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (current, committer) ->
-                truncate(current, committer, newSize, network, crypto)
+                getUpdated(current, network).thenCompose(us -> us.truncate(current, committer, newSize, network, crypto))
         ).thenCompose(finished -> getUpdated(finished, network));
     }
 
-    /** Grow us to newSize, reading as zeros past our end, from our size as it is in the update rather than as our copy
-     *  has it, so as to write over no byte a write since added */
-    public CompletableFuture<FileWrapper> extendTo(long newSize, NetworkAccess network, Crypto crypto) {
+    /** Make us newSize long, as we are in the update rather than as our copy has us: cut, grown reading as zeros past
+     *  our end, or left as we are */
+    public CompletableFuture<FileWrapper> resize(long newSize, NetworkAccess network, Crypto crypto) {
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (s, committer) -> getUpdated(s, network)
-                        .thenCompose(us -> us.getSize() >= newSize ? Futures.of(s) :
+                        .thenCompose(us -> us.getSize() >= newSize ? us.truncate(s, committer, newSize, network, crypto) :
                                 // a write past our end fills the gap before it with zeros, so one zero as our last byte will do
                                 us.clean(s, committer, network, crypto).thenCompose(c -> c.left.overwriteSection(c.right, committer,
                                         AsyncReader.build(new byte[1]), newSize - 1, newSize, Optional.empty(), network, crypto, x -> {}))))

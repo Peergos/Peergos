@@ -407,4 +407,75 @@ public class StaleCopyTests {
             Assert.assertTrue("stored " + stored, stored.isEmpty() || stored.get().equals(now.branch(0)));
         }
     }
+
+    private static final int CHUNK = FileProperties.chunkSizeForNewFiles();
+
+    /** A file of size bytes, and a copy of it taken before a write since grew it to grownTo; returns the copy and what
+     *  the file holds */
+    private Pair<FileWrapper, byte[]> grownSinceCopy(UserContext user, Path dir, String name, int size, int grownTo) {
+        byte[] contents = upload(user, dir, name, size);
+        FileWrapper copy = get(user, dir.resolve(name));
+        byte[] tail = new byte[grownTo - size];
+        random.nextBytes(tail);
+        get(user, dir.resolve(name)).overwriteSectionJS(AsyncReader.build(tail), 0, size, 0, grownTo, Optional.empty(),
+                user.network, crypto, x -> {}).join();
+        contents = Arrays.copyOf(contents, grownTo);
+        System.arraycopy(tail, 0, contents, size, tail.length);
+        return new Pair<>(copy, contents);
+    }
+
+    /** The file holds contents, in as many chunks as they take, with their hash or none */
+    private static void assertHolds(String message, UserContext user, Path path, byte[] contents) {
+        Assert.assertArrayEquals(message, contents, read(user, path));
+        FileWrapper file = get(user, path);
+        FileProperties props = file.getFileProperties();
+        AbsoluteCapability cap = file.getPointer().capability;
+        long chunks = IntStream.range(0, 8)
+                .filter(i -> FileProperties.calculateMapKey(props.streamSecret.get(), cap.getMapKey(), cap.bat, (long) i * CHUNK,
+                                CHUNK, crypto.hasher)
+                        .thenCompose(k -> user.network.getMetadata(file.version.get(file.writer()), cap.withMapKey(k.left, k.right)))
+                        .join().isPresent())
+                .count();
+        Assert.assertEquals(message + ": chunks", FileWrapper.getNumberOfChunks(contents.length, CHUNK), chunks);
+        HashTree tree = HashTree.build(AsyncReader.build(contents), 0, contents.length, CHUNK, crypto.hasher).join();
+        Assert.assertTrue(message + ": stored " + props.treeHash, props.treeHash.isEmpty() || props.treeHash.get().equals(tree.branch(0)));
+    }
+
+    /** The mount sizes a file with a stat of it from before a write since grew it: to between the two sizes, below both,
+     *  above both, and to the size it has now */
+    @Test
+    public void truncateWithStaleStat() {
+        Assume.assumeTrue("the mount needs libfuse", System.getProperty("os.name").toLowerCase().startsWith("linux"));
+        UserContext user = user();
+        Path dir = dir(user);
+        Mount mount = new Mount(user);
+        int size = CHUNK + 1000, grownTo = 3 * CHUNK + 500;
+        for (int to : new int[]{2 * CHUNK + 100, 500, 5 * CHUNK + 100, grownTo}) {
+            String name = "f" + to;
+            Pair<FileWrapper, byte[]> copy = grownSinceCopy(user, dir, name, size, grownTo);
+            Snapshot before = get(user, dir.resolve(name)).version;
+
+            Assert.assertEquals(0, mount.truncate(get(user, dir), copy.left, to));
+
+            assertHolds("to " + to, fresh(user), dir.resolve(name), Arrays.copyOf(copy.right, to));
+            if (to == grownTo)
+                Assert.assertEquals("wrote to a file already that size", before, get(user, dir.resolve(name)).version);
+        }
+    }
+
+    /** A cut through a copy of a file from before a write since grew it: to between the two sizes, and below both */
+    @Test
+    public void truncateWithStaleCopy() {
+        UserContext user = user();
+        Path dir = dir(user);
+        int size = CHUNK + 1000, grownTo = 3 * CHUNK + 500;
+        for (int to : new int[]{2 * CHUNK + 100, 500}) {
+            String name = "f" + to;
+            Pair<FileWrapper, byte[]> copy = grownSinceCopy(user, dir, name, size, grownTo);
+
+            copy.left.truncate(to, user.network, crypto).join();
+
+            assertHolds("to " + to, fresh(user), dir.resolve(name), Arrays.copyOf(copy.right, to));
+        }
+    }
 }

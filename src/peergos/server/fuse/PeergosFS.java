@@ -582,11 +582,8 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
         debug("TRUNCATE file %s, size %d", file.properties.name, size);
 
         try {
-            // our stat may be out of date, so the file grows from the size it has when the write is made
-            if (size > file.properties.size)
-                file.treeNode.extendTo(size, context.network, context.crypto).get();
-            else
-                file.treeNode.truncate(size, context.network, context.crypto).get();
+            // our stat may be out of date, so the file is grown or cut as it is when the write is made
+            file.treeNode.resize(size, context.network, context.crypto).get();
             return 0;
         } catch (Throwable t) {
             LOG.log(Level.WARNING, t.getMessage(), t);
