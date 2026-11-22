@@ -192,6 +192,18 @@ public class SecretLinkRevocationTests {
                 () -> Futures.of(""), network.clear(), crypto).join().getByPath(dir + "/a").join().isPresent());
     }
 
+    @Test
+    public void linkingAFileUploadedAfterAnotherLink() throws Exception {
+        String username = generateUsername(random);
+        UserContext context = ensureSignedUp(username, "test", network, crypto);
+        for (int i = 0; i < 3; i++) {
+            String dir = "dir" + i;
+            context.getUserRoot().join().mkdir(dir, context.network, false, context.mirrorBatId(), crypto).join();
+            Assert.assertTrue(uploadTo(context, username + "/" + dir, "file.txt"));
+            context.createSecretLink(username + "/" + dir + "/file.txt", false, Optional.empty(), Optional.empty(), "", false).join();
+        }
+    }
+
     private static boolean uploadTo(UserContext holder, String path, String filename) {
         try {
             Optional<FileWrapper> dir = holder.getByPath(path).join();

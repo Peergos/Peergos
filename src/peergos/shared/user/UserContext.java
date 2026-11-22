@@ -1624,7 +1624,9 @@ public class UserContext {
                                     // rotating sends this link again, which replaces the value we wrote
                                     .thenCompose(s -> currentLinkHash(props.label, s)
                                             .thenApply(h -> new Pair<>(s, p.right.withExisting(h))));
-                });
+                })
+                // this becomes the identity lock's state, which mustn't pin other writers at these versions
+                .thenApply(p -> new Pair<>(new Snapshot(signer.publicKeyHash, p.left.get(signer.publicKeyHash)), p.right));
     }
 
     private CompletableFuture<Optional<Multihash>> currentLinkHash(long label, Snapshot in) {
