@@ -3221,8 +3221,82 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                                               NetworkAccess network,
                                                               Snapshot version,
                                                               Committer committer) {
+        return deleteAllChunks(currentCap, signer, removeSigningKeys, new SubtreeReads(hasher, network), tid, hasher,
+                network, version, committer);
+    }
+
+    /** The nodes and child listings of a subtree being deleted, each listing fetched as soon as its parent's arrives.
+     *  The deletes are sequential and bottom up, so without this the reads wait for every directory in turn
+     *  rather than once per level of the tree. A node is only deleted after it has been read, so reads
+     *  made against an earlier version see what a later one would.
+     */
+    private static class SubtreeReads {
+        private final Map<ByteArrayWrapper, CryptreeNode> nodes = new ConcurrentHashMap<>();
+        private final Map<ByteArrayWrapper, CompletableFuture<Pair<Set<NamedAbsoluteCapability>, List<RetrievedCapability>>>> children = new ConcurrentHashMap<>();
+        private final Hasher hasher;
+        private final NetworkAccess network;
+
+        SubtreeReads(Hasher hasher, NetworkAccess network) {
+            this.hasher = hasher;
+            this.network = network;
+        }
+
+        CompletableFuture<Optional<CryptreeNode>> node(AbsoluteCapability cap, Snapshot current) {
+            CryptreeNode known = nodes.remove(new ByteArrayWrapper(cap.getMapKey()));
+            if (known != null)
+                return Futures.of(Optional.of(known));
+            return network.getMetadata(current.get(cap.writer), cap);
+        }
+
+        CompletableFuture<Pair<Set<NamedAbsoluteCapability>, List<RetrievedCapability>>> children(CryptreeNode dir,
+                                                                                                 AbsoluteCapability cap,
+                                                                                                 Snapshot current) {
+            ByteArrayWrapper key = new ByteArrayWrapper(cap.getMapKey());
+            CompletableFuture<Pair<Set<NamedAbsoluteCapability>, List<RetrievedCapability>>> existing = children.get(key);
+            if (existing != null)
+                return existing;
+            CompletableFuture<Pair<Set<NamedAbsoluteCapability>, List<RetrievedCapability>>> res = new CompletableFuture<>();
+            existing = children.putIfAbsent(key, res);
+            if (existing != null)
+                return existing;
+            Futures.asyncExceptionally(() -> dir.getAllChildrenCapabilities(current, cap, hasher, network)
+                            .thenCompose(caps -> network.retrieveAllMetadata(caps.stream().map(c -> c.cap).collect(Collectors.toList()), current)
+                                    .thenApply(retrieved -> new Pair<>(caps, retrieved.left))),
+                    Futures::errored)
+                    .whenComplete((r, t) -> {
+                        if (t != null) {
+                            res.completeExceptionally(t);
+                            return;
+                        }
+                        // the nodes go in before the listing is handed out, so the deletes below find them
+                        try {
+                            for (RetrievedCapability child : r.right) {
+                                if (! child.fileAccess.isDirectory())
+                                    continue;
+                                nodes.put(new ByteArrayWrapper(child.capability.getMapKey()), child.fileAccess);
+                                current.withWriter(child.capability.owner, child.capability.writer, network)
+                                        .thenAccept(v -> children(child.fileAccess, child.capability, v));
+                            }
+                        } catch (Throwable e) {
+                            LOG.log(Level.FINE, "Couldn't prefetch below a directory being deleted", e);
+                        }
+                        res.complete(r);
+                    });
+            return res;
+        }
+    }
+
+    private static CompletableFuture<Snapshot> deleteAllChunks(WritableAbsoluteCapability currentCap,
+                                                               SigningPrivateKeyAndPublicHash signer,
+                                                               boolean removeSigningKeys,
+                                                               SubtreeReads reads,
+                                                               TransactionId tid,
+                                                               Hasher hasher,
+                                                               NetworkAccess network,
+                                                               Snapshot version,
+                                                               Committer committer) {
         return version.withWriter(currentCap.owner, currentCap.writer, network)
-                .thenCompose(current -> network.getMetadata(current.get(currentCap.writer), currentCap)
+                .thenCompose(current -> reads.node(currentCap, current)
                         .thenCompose(mOpt -> {
                             if (! mOpt.isPresent()) {
                                 return CompletableFuture.completedFuture(current);
@@ -3255,14 +3329,13 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                             // Directory: bottom-up. Collect children from ALL chunks first so that
                             // descendants are committed before the directory's own CHAMP entries.
                             // Any partial commit then leaves only reachable entries in the CHAMP.
-                            return chunk.getAllChildrenCapabilities(current, currentCap, hasher, network)
-                                    .thenCompose(childCaps -> {
-                                        List<AbsoluteCapability> childCapList = childCaps.stream()
-                                                .map(c -> c.cap).collect(Collectors.toList());
-                                        return network.retrieveAllMetadata(childCapList, current)
-                                                .thenCompose(retrieved -> {
+                            return reads.children(chunk, currentCap, current)
+                                    .thenCompose(listing -> {
+                                        Set<NamedAbsoluteCapability> childCaps = listing.left;
+                                        return Futures.of(listing.right)
+                                                .thenCompose(retrievedChildren -> {
                                                     Map<ByteArrayWrapper, RetrievedCapability> retrievedMap = new HashMap<>();
-                                                    for (RetrievedCapability rc : retrieved.left)
+                                                    for (RetrievedCapability rc : retrievedChildren)
                                                         retrievedMap.put(new ByteArrayWrapper(rc.capability.getMapKey()), rc);
 
                                                     List<NamedAbsoluteCapability> otherCaps = new ArrayList<>();
@@ -3290,7 +3363,7 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                                     // 1. Cross-writer / dir children first
                                                     return Futures.reduceAll(otherCaps, current,
                                                                     (s, cap) -> deleteAllChunks((WritableAbsoluteCapability) cap.cap, ourSigner,
-                                                                            removeSigningKeys, tid, hasher, network, s, committer),
+                                                                            removeSigningKeys, reads, tid, hasher, network, s, committer),
                                                                     (x, y) -> y)
                                                             // 2. Same-writer batchable files second
                                                             .thenCompose(v -> Futures.combineAllInOrder(locationFutures)

@@ -275,20 +275,20 @@ public class BufferedNetworkAccess extends NetworkAccess {
                         (done, e) -> commitOwner(e.getKey(), e.getValue(), writers).thenApply(b -> done && b),
                         (x, y) -> x && y)
                 .thenApply(x -> {
-                    finishCommit(toCommit);
+                    finishCommit(toCommit, x);
                     return commitWatcher.get();
                 }).thenApply(res::complete)
                 .exceptionally(t -> {
-                    finishCommit(toCommit);
+                    finishCommit(toCommit, false);
                     res.completeExceptionally(t);
                     return true;
                 });
         return res;
     }
 
-    private synchronized void finishCommit(Set<PublicKeyHash> committed) {
+    private synchronized void finishCommit(Set<PublicKeyHash> committed, boolean landed) {
         pointerBuffer.remove(committed);
-        blockBuffer.commitFinished(committed);
+        blockBuffer.commitFinished(committed, landed);
         blockBuffer.gc(pointerBuffer.getRoots(), committed);
     }
 

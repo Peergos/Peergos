@@ -210,6 +210,14 @@ public class UserContext {
                                         .thenCompose(finished -> finished ?
                                                 signIn(username, password, mfa, false, forceProxy, network, crypto, t -> {}) :
                                                 Futures.of(ctx)))))
+                .thenApply(ctx -> {
+                    // in the background, as rotating the keys of a large folder is slow
+                    ctx.deleteExpiredSecretLinks().exceptionally(t -> {
+                        LOG.log(Level.WARNING, "Couldn't delete expired secret links", t);
+                        return 0;
+                    });
+                    return ctx;
+                })
                 .exceptionally(Futures::logAndThrow);
     }
 
@@ -1535,10 +1543,11 @@ public class UserContext {
                     + MAX_LINK_MEMBERS + " items, not " + paths.size() + ". Share a folder instead."));
         Set<String> writable = new HashSet<>(writablePaths);
         List<String> needWritingSpace = paths.stream().filter(writable::contains).collect(Collectors.toList());
+        Map<PublicKeyHash, PublicKeyHash> rotatedSigners = new HashMap<>();
         if (needWritingSpace.isEmpty())
-            return writeSynchronizer.applyComplexComputation(signer.publicKeyHash, signer,
-                            (v, c) -> updateSecretLink(paths, writable, props, v, c))
-                    .thenApply(p -> p.right);
+            return getWriterQuotas(signer.publicKeyHash).thenCompose(quotas -> writeSynchronizer.applyComplexComputation(signer.publicKeyHash, signer,
+                            (v, c) -> updateSecretLinkAndRevoke(paths, writable, props, rotatedSigners, v, c))
+                    .thenCompose(p -> carryOverWriterQuotas(quotas, rotatedSigners).thenApply(x -> p.right)));
         // an interrupted authorisation leaves an owned writer with no pointer, so clear any before
         // adding another. Once for the batch, not once per member.
         return removeOrphanedWriters()
@@ -1548,8 +1557,9 @@ public class UserContext {
                 })
                 .thenCompose(removed -> Futures.reduceAll(needWritingSpace, (Snapshot) null,
                         (s, path) -> splitIntoOwnWritingSpace(PathUtil.get(path), s), (a, b) -> b))
-                .thenCompose(afterSplits -> commitMembers(paths, writable, props, afterSplits))
-                .thenApply(x -> x.right);
+                .thenCompose(afterSplits -> getWriterQuotas(signer.publicKeyHash)
+                        .thenCompose(quotas -> commitMembers(paths, writable, props, rotatedSigners, afterSplits)
+                                .thenCompose(x -> carryOverWriterQuotas(quotas, rotatedSigners).thenApply(b -> x.right))));
     }
 
     /**
@@ -1563,12 +1573,69 @@ public class UserContext {
     private CompletableFuture<Pair<Snapshot, LinkProperties>> commitMembers(List<String> paths,
                                                                             Set<String> writable,
                                                                             LinkProperties props,
+                                                                            Map<PublicKeyHash, PublicKeyHash> rotatedSigners,
                                                                             Snapshot afterSplits) {
         Set<PublicKeyHash> split = afterSplits == null ?
                 Collections.emptySet() :
                 afterSplits.versions.keySet();
         return writeSynchronizer.applyComplexComputation(signer.publicKeyHash, signer,
-                (v, c) -> updateSecretLink(paths, writable, props, readAfresh(v, split), c));
+                (v, c) -> updateSecretLinkAndRevoke(paths, writable, props, rotatedSigners, readAfresh(v, split), c));
+    }
+
+    /**
+     * Write the new membership and, in the same update, rotate the keys of whatever the link no
+     * longer gives: a removed member, one made read only, or every member when the password changes.
+     */
+    private CompletableFuture<Pair<Snapshot, LinkProperties>> updateSecretLinkAndRevoke(List<String> paths,
+                                                                                        Set<String> writable,
+                                                                                        LinkProperties props,
+                                                                                        Map<PublicKeyHash, PublicKeyHash> rotatedSigners,
+                                                                                        Snapshot v,
+                                                                                        Committer c) {
+        Set<String> candidates = new LinkedHashSet<>(paths);
+        props.members.forEach(m -> candidates.add(m.path));
+        return recordedLink(props.label, candidates, v)
+                .thenCompose(old -> (old.isEmpty() ?
+                        Futures.of(Collections.<LinkMember>emptyList()) :
+                        linkMembers(old.get(), v))
+                        .thenCompose(oldMembers -> {
+                            boolean passwordChanged = old.isPresent() && ! old.get().userPassword.equals(props.userPassword);
+                            List<LinkMember> lost = oldMembers.stream()
+                                    .filter(m -> passwordChanged || ! paths.contains(m.path) || (m.writable && ! writable.contains(m.path)))
+                                    .collect(Collectors.toList());
+                            // or sending the link again after a rotation would bring a removed member back
+                            Set<String> removed = new LinkedHashSet<>();
+                            oldMembers.forEach(m -> removed.add(m.path));
+                            old.ifPresent(o -> o.members.forEach(m -> removed.add(m.path)));
+                            removed.removeAll(paths);
+                            return Futures.reduceAll(removed, v,
+                                            (s, path) -> sharedWithCache.removeSecretLink(PathUtil.get(path), props.label, s, c, network),
+                                            (a, b) -> b)
+                                    .thenApply(s -> new Pair<>(s, lost));
+                        }))
+                .thenCompose(cleared -> updateSecretLink(paths, writable, props, cleared.left, c)
+                        .thenApply(p -> new Pair<>(p, cleared.right)))
+                .thenCompose(pl -> {
+                    Pair<Snapshot, LinkProperties> p = pl.left;
+                    List<LinkMember> lost = pl.right;
+                    return lost.isEmpty() ?
+                            Futures.of(p) :
+                            revokeLinkAccess(lost, rotatedSigners, p.left, c)
+                                    // rotating sends this link again, which replaces the value we wrote
+                                    .thenCompose(s -> currentLinkHash(props.label, s)
+                                            .thenApply(h -> new Pair<>(s, p.right.withExisting(h))));
+                })
+                // this becomes the identity lock's state, which mustn't pin other writers at these versions
+                .thenApply(p -> new Pair<>(new Snapshot(signer.publicKeyHash, p.left.get(signer.publicKeyHash)), p.right));
+    }
+
+    private CompletableFuture<Optional<Multihash>> currentLinkHash(long label, Snapshot in) {
+        PublicKeyHash id = signer.publicKeyHash;
+        return in.withWriter(id, id, network)
+                .thenCompose(v -> v.get(id).props.get().secretLinks.isEmpty() ?
+                        Futures.of(Optional.<Multihash>empty()) :
+                        v.get(id).props.get().getSecretLinkChamp(id, mirrorBat, network.dhtClient, crypto.hasher)
+                                .thenCompose(champ -> champ.getValueHash(label)));
     }
 
     /** The write lock is on our identity key, so the state it hands back can still pin another
@@ -1618,7 +1685,7 @@ public class UserContext {
                                                     // rather than losing the link
                                                     .thenCompose(v3 -> recordLinkForEveryMember(withMembers.withExisting(Optional.of(p.right)),
                                                                     v2.mergeAndOverwriteWith(v3), c)
-                                                            .thenApply(v4 -> new Pair<>(new Snapshot(id, v3.get(id)),
+                                                            .thenApply(v4 -> new Pair<>(v4,
                                                                     withMembers.withExisting(Optional.of(p.right))))))), network.dhtClient));
                 });
     }
@@ -1682,18 +1749,174 @@ public class UserContext {
     }
 
     /**
-     * Delete a link and clear it from every path it contained.
+     * Delete a link, clear it from every path it contained, and rotate the keys of its members.
      *
-     * Deleting the champ entry is what stops the link resolving; the per path records are the
-     * owner's own listing, and leaving one behind would show a link that no longer exists.
+     * Deleting the champ entry only stops new visitors: anyone who opened the link holds its
+     * capabilities, so they are only revoked by rotating keys. The records go first, or the
+     * rotation would send this link again. It is all one update, so a failure leaves the link as it was.
      */
     @JsMethod
     public CompletableFuture<Snapshot> deleteSecretLinkFrom(long label, List<String> memberPaths) {
         PublicKeyHash id = signer.publicKeyHash;
-        return writeSynchronizer.applyComplexUpdate(id, signer, (v, c) -> deleteSecretLink(label, PathUtil.get(memberPaths.get(0)), v, c)
+        Map<PublicKeyHash, PublicKeyHash> rotatedSigners = new HashMap<>();
+        return getWriterQuotas(id).thenCompose(quotas -> writeSynchronizer.applyComplexUpdate(id, signer,
+                        (v, c) -> recordedLink(label, memberPaths, v)
+                                .thenCompose(recorded -> (recorded.isPresent() ?
+                                        linkMembers(recorded.get(), v) :
+                                        Futures.of(Collections.<LinkMember>emptyList()))
+                                        .thenCompose(members -> {
+                                            Set<String> recordedPaths = new LinkedHashSet<>(memberPaths);
+                                            recorded.ifPresent(r -> r.members.forEach(m -> recordedPaths.add(m.path)));
+                                            return forgetSecretLink(label, new ArrayList<>(recordedPaths), v, c)
+                                                    .thenCompose(s -> revokeLinkAccess(members, rotatedSigners, s, c));
+                                        })))
+                .thenCompose(res -> carryOverWriterQuotas(quotas, rotatedSigners).thenApply(x -> res)));
+    }
+
+    /** Delete a link without rotating anything, for a link that never handed out a capability */
+    private CompletableFuture<Snapshot> forgetSecretLink(long label, List<String> memberPaths) {
+        return writeSynchronizer.applyComplexUpdate(signer.publicKeyHash, signer,
+                (v, c) -> forgetSecretLink(label, memberPaths, v, c));
+    }
+
+    private CompletableFuture<Snapshot> forgetSecretLink(long label, List<String> memberPaths, Snapshot v, Committer c) {
+        return deleteSecretLink(label, PathUtil.get(memberPaths.get(0)), v, c)
                 .thenCompose(s -> Futures.reduceAll(memberPaths, s,
                         (snapshot, path) -> sharedWithCache.removeSecretLink(PathUtil.get(path), label, snapshot, c, network),
-                        (x, y) -> y)));
+                        (x, y) -> y));
+    }
+
+    /** Delete every link that has expired, rotating the keys of what it held */
+    @JsMethod
+    public CompletableFuture<Integer> deleteExpiredSecretLinks() {
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        return getAllSecretLinks()
+                .thenCompose(links -> Futures.reduceAll(links.stream()
+                                .filter(l -> l.props.expiry.isPresent() && l.props.expiry.get().isBefore(now))
+                                .collect(Collectors.toList()), 0,
+                        (n, l) -> deleteSecretLinkFrom(l.props.label, Arrays.asList(l.paths())).thenApply(x -> n + 1),
+                        (a, b) -> b));
+    }
+
+    /** The owner's record of a link, preferring one that knows its members */
+    private CompletableFuture<Optional<LinkProperties>> recordedLink(long label, Collection<String> paths, Snapshot v) {
+        return getUserRoot().thenCompose(home -> Futures.reduceAll(paths, Optional.<LinkProperties>empty(),
+                (found, path) -> found.isPresent() && ! found.get().members.isEmpty() ?
+                        Futures.of(found) :
+                        sharedWithCache.getSharedWith(PathUtil.get(path), home.version.mergeAndOverwriteWith(v))
+                                .thenApply(state -> {
+                                    Optional<LinkProperties> here = state.links.stream()
+                                            .filter(l -> l.label == label)
+                                            .findFirst();
+                                    return here.isPresent() && (found.isEmpty() || ! here.get().members.isEmpty()) ? here : found;
+                                }),
+                (a, b) -> b));
+    }
+
+    /** What a link holds now, read from the champ rather than the server so an expired link can still be read */
+    private CompletableFuture<List<LinkMember>> linkMembers(LinkProperties props, Snapshot in) {
+        PublicKeyHash id = signer.publicKeyHash;
+        SecretLink link = props.toLink(id);
+        return in.withWriter(id, id, network)
+                .thenCompose(v -> v.get(id).props.get().secretLinks.isEmpty() ?
+                        Futures.of(Optional.<SecretLinkTarget>empty()) :
+                        v.get(id).props.get().getSecretLinkChamp(id, mirrorBat, network.dhtClient, crypto.hasher)
+                                .thenCompose(champ -> champ.get(id, props.label)))
+                .thenCompose(target -> target.isEmpty() ?
+                        Futures.of(Collections.<AbsoluteCapability>emptyList()) :
+                        target.get().decrypt(link.labelString(), props.linkPassword + props.userPassword, crypto))
+                .thenCompose(caps -> Futures.combineAllInOrder(caps.stream()
+                        .map(cap -> NetworkAccess.retrieveEntryPoint(new EntryPoint(cap, username), network)
+                                .thenApply(r -> Optional.of(new LinkMember(r.getPath(), cap.isWritable())))
+                                // a member that has since been deleted has no keys left to rotate
+                                .exceptionally(t -> Optional.empty()))
+                        .collect(Collectors.toList())))
+                .thenApply(members -> members.stream().flatMap(Optional::stream).collect(Collectors.toList()));
+    }
+
+    /**
+     * Rotate the keys of members a link no longer gives, then send every other share and link of
+     * them again. Writable members get a new signer too. A read only member that is public anyway
+     * is left alone, and anything published at or below a rotated path is published with its new cap.
+     */
+    private CompletableFuture<Snapshot> revokeLinkAccess(List<LinkMember> lost,
+                                                         Map<PublicKeyHash, PublicKeyHash> rotatedSigners,
+                                                         Snapshot in,
+                                                         Committer c) {
+        Map<String, Boolean> byPath = new LinkedHashMap<>();
+        for (LinkMember m : lost)
+            byPath.merge(m.path, m.writable, (a, b) -> a || b);
+        return Futures.reduceAll(byPath.entrySet(), in,
+                (s, e) -> rotateForLink(PathUtil.get(e.getKey()), e.getValue(), rotatedSigners, s, c),
+                (a, b) -> b);
+    }
+
+    private CompletableFuture<Snapshot> rotateForLink(Path path,
+                                                      boolean writable,
+                                                      Map<PublicKeyHash, PublicKeyHash> rotatedSigners,
+                                                      Snapshot s,
+                                                      Committer c) {
+        return (writable ? Futures.of(false) : isPublic(path, s)).thenCompose(isPublic -> isPublic ?
+                Futures.of(s) :
+                getByPath(path.toString(), s).thenCompose(fileOpt -> fileOpt.isEmpty() ?
+                        Futures.of(s) :
+                        getByPath(path.getParent().toString(), s)
+                                .thenCompose(parent -> rotateAllKeys(fileOpt.get(), parent.get(), writable, rotatedSigners, s, c))
+                                .thenCompose(s2 -> reSendAllSharesAndLinksRecursive(path, s2, c))
+                                .thenCompose(s3 -> updatePublishedCaps(path, s3, c))));
+    }
+
+    private CompletableFuture<Optional<InodeFileSystem>> publicCaps(Snapshot in) {
+        PublicKeyHash id = signer.publicKeyHash;
+        return in.withWriter(id, id, network).thenCompose(v -> {
+            Optional<Multihash> publicData = v.get(id).props.get().publicData;
+            if (publicData.isEmpty())
+                return Futures.of(Optional.<InodeFileSystem>empty());
+            return network.dhtClient.get(id, (Cid) publicData.get(), Optional.empty())
+                    .thenCompose(rootCbor -> InodeFileSystem.build(id, rootCbor.get(), crypto.hasher, network.dhtClient))
+                    .thenApply(Optional::of);
+        });
+    }
+
+    /** Whether this path or an ancestor is published */
+    private CompletableFuture<Boolean> isPublic(Path path, Snapshot s) {
+        return publicCaps(s).thenCompose(pubCaps -> pubCaps.isEmpty() ?
+                Futures.of(false) :
+                pubCaps.get().getByPath(path.toString())
+                        .thenApply(res -> res.isPresent() && res.get().left.cap.isPresent()));
+    }
+
+    /** Publish anything published at or below this path again, with the caps its keys have now */
+    private CompletableFuture<Snapshot> updatePublishedCaps(Path path, Snapshot in, Committer c) {
+        PublicKeyHash id = signer.publicKeyHash;
+        return publicCaps(in).thenCompose(pubCapsOpt -> {
+            if (pubCapsOpt.isEmpty())
+                return Futures.of(in);
+            InodeFileSystem pubCaps = pubCapsOpt.get();
+            return publishedAt(pubCaps, path)
+                    .thenCompose(at -> publishedBelow(pubCaps, path.toString())
+                            .thenApply(below -> {
+                                List<String> res = new ArrayList<>();
+                                if (at.isPresent() && at.get().cap.isPresent())
+                                    res.add(path.toString());
+                                res.addAll(below);
+                                return res;
+                            }))
+                    .thenCompose(published -> published.isEmpty() ?
+                            Futures.of(in) :
+                            in.withWriter(id, id, network).thenCompose(v -> IpfsTransaction.call(id,
+                                    tid -> Futures.reduceAll(published, pubCaps,
+                                                    (caps, p) -> pubCaps.getByPath(p)
+                                                            .thenCompose(existing -> getByPath(p, v)
+                                                                    .thenCompose(f -> f.isEmpty() ?
+                                                                            Futures.of(caps) :
+                                                                            caps.addCap(id, signer, p, f.get().getPointer().capability.readOnly(),
+                                                                                    existing.flatMap(e -> e.left.link), tid))),
+                                                    (a, b) -> b)
+                                            .thenCompose(updated -> network.dhtClient.put(id, signer, updated.serialize(), crypto.hasher, tid))
+                                            .thenCompose(newRoot -> c.commit(id, signer, v.get(id).props.get().withPublicRoot(newRoot), v.get(id), tid))
+                                            .thenApply(v::mergeAndOverwriteWith), network.dhtClient)));
+        });
     }
 
     public CompletableFuture<Snapshot> deleteSecretLink(long label, Path toFile, Snapshot in, Committer c) {
@@ -2504,7 +2727,7 @@ public class UserContext {
                                 PublishedLink link = new PublishedLink(props.label, props.linkPassword);
                                 return Futures.asyncExceptionally(() -> publish(path, cap, link),
                                         // a link nothing publishes would linger as a share of its own
-                                        t -> deleteSecretLinkFrom(link.label, Collections.singletonList(path))
+                                        t -> forgetSecretLink(link.label, Collections.singletonList(path))
                                                 .thenApply(x -> true)
                                                 .exceptionally(e -> false)
                                                 .thenCompose(x -> Futures.<CommittedWriterData>errored(t)));
@@ -3579,24 +3802,42 @@ public class UserContext {
         return sharedWithCache.getAllDescendantShares(start, in)
                 .thenCompose(toReshare -> Futures.reduceAll(toReshare.entrySet(),
                         in,
-                        (s, e) -> reshareAndUpdateLinks(e.getKey(), e.getValue(), s, c),
-                        (a, b) -> b));
+                        (s, e) -> reshare(e.getKey(), e.getValue(), s, c),
+                        (a, b) -> b)
+                        .thenCompose(s2 -> Futures.reduceAll(linksByLabel(toReshare).values(), s2,
+                                (s, link) -> updateSecretLinkAgain(link.left, link.right, s, c),
+                                (a, b) -> b)));
     }
 
-    private CompletableFuture<Snapshot> reshareAndUpdateLinks(Path start, SharedWithState file, Snapshot in, Committer c) {
+    private CompletableFuture<Snapshot> reshare(Path start, SharedWithState file, Snapshot in, Committer c) {
         return Futures.reduceAll(file.readShares().entrySet(), in,
                         (s, e) -> shareReadAccessWith(start.resolve(e.getKey()), e.getValue(), s, c),
                         (a, b) -> b)
                 .thenCompose(s2 -> Futures.reduceAll(file.writeShares().entrySet(),
                         s2,
                         (s, e) -> sendWriteCapToAll(start.resolve(e.getKey()), e.getValue(), s, c),
-                        (a, b) -> b))
-                .thenCompose(s3 -> Futures.reduceAll(file.links().entrySet(), s3,
-                        (s, e) -> Futures.reduceAll(e.getValue(),
-                                s,
-                                (v, p) -> updateSecretLink(start.resolve(e.getKey()).toString(), p, v, c),
-                                (a, b) -> b),
                         (a, b) -> b));
+    }
+
+    /** A link is recorded under each of its members, but is sent once, from a record that knows its members */
+    private static Map<Long, Pair<String, LinkProperties>> linksByLabel(Map<Path, SharedWithState> shares) {
+        Map<Long, Pair<String, LinkProperties>> res = new LinkedHashMap<>();
+        for (Map.Entry<Path, SharedWithState> dir : shares.entrySet())
+            for (Map.Entry<String, Set<LinkProperties>> file : dir.getValue().links().entrySet())
+                for (LinkProperties props : file.getValue()) {
+                    Pair<String, LinkProperties> existing = res.get(props.label);
+                    if (existing == null || (existing.right.members.isEmpty() && ! props.members.isEmpty()))
+                        res.put(props.label, new Pair<>(dir.getKey().resolve(file.getKey()).toString(), props));
+                }
+        return res;
+    }
+
+    /** A record's champ hash goes stale whenever the link is written, so update from the current value */
+    private CompletableFuture<Snapshot> updateSecretLinkAgain(String path, LinkProperties props, Snapshot in, Committer c) {
+        return currentLinkHash(props.label, in)
+                .thenCompose(current -> current.isEmpty() ?
+                        Futures.of(in) :
+                        updateSecretLink(path, props.withExisting(current), in, c));
     }
 
     private CompletableFuture<Snapshot> shareReadAccessWith(FileWrapper file,
