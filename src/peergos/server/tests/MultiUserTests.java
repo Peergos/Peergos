@@ -260,6 +260,11 @@ public class MultiUserTests {
     }
 
     @Test
+    public void chatGrowsPastAChunkAfterARemoval() {
+        PeergosNetworkUtils.chatGrowsPastAChunkAfterARemoval(network, random);
+    }
+
+    @Test
     public void chatLeaveAndDelete() {
         PeergosNetworkUtils.memberLeaveAndDeleteChat(network, random);
     }

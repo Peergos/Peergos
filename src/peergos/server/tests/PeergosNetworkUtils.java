@@ -2379,6 +2379,33 @@ public class PeergosNetworkUtils {
             Assert.assertEquals("index finds message " + i, all.subList(i, i + 1), fresh.getMessages(i, i + 1).join());
     }
 
+    /** Removing a member leaves the index file to be cleaned before it is next written: the log still grows past its
+     *  next chunk, and the index still finds each message. */
+    public static void chatGrowsPastAChunkAfterARemoval(NetworkAccess network, Random random) {
+        UserContext a = PeergosNetworkUtils.ensureSignedUp("a-" + generateUsername(random), "notagoodone", network, crypto);
+        UserContext b = PeergosNetworkUtils.ensureSignedUp("b-" + generateUsername(random), "notagoodone", network, crypto);
+        friendBetweenGroups(Arrays.asList(a), Arrays.asList(b));
+        Messenger msgA = new Messenger(a);
+        ChatController controller = msgA.createChat().join();
+        controller = msgA.invite(controller, Arrays.asList(b.username), Arrays.asList(b.signer.publicKeyHash)).join();
+        joinChat(b);
+        controller = msgA.mergeAllUpdates(controller, a.getSocialState().join()).join();
+        for (int i=0; i < 6; i++)
+            controller = msgA.sendMessage(controller, ApplicationMessage.text(new String(new byte[1024 * 1024]))).join();
+        controller = msgA.removeMember(controller, b.username).join();
+        // crosses into the next chunk, so it adds an index entry
+        ApplicationMessage crossing = ApplicationMessage.text(new String(new byte[4 * 1024 * 1024]));
+        controller = msgA.sendMessage(controller, crossing).join();
+
+        ChatController fresh = msgA.getChat(controller.chatUuid).join();
+        int count = (int) fresh.host().messagesMergedUpto;
+        List<MessageEnvelope> all = fresh.getMessages(0, count + 1).join();
+        Assert.assertEquals(count, all.size());
+        Assert.assertEquals(crossing, all.get(count - 1).payload);
+        for (int i = 0; i < count; i++)
+            Assert.assertEquals("index finds message " + i, all.subList(i, i + 1), fresh.getMessages(i, i + 1).join());
+    }
+
     private static Pair<Messenger, ChatController> joinChat(UserContext c) {
         List<Pair<SharedItem, FileWrapper>> feed = c.getSocialFeed().join().update().join().getSharedFiles(0, 10).join();
         FileWrapper chatSharedDir = feed.stream()
