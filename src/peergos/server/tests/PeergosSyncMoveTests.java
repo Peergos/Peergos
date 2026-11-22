@@ -136,7 +136,7 @@ public class PeergosSyncMoveTests {
         for (String dir : List.of("a", "w"))
             owner.getUserRoot().join().mkdir(dir, owner.network, false, owner.mirrorBatId(), crypto).join();
         Path a = PathUtil.get(owner.username, "a"), w = PathUtil.get(owner.username, "w");
-        // write access gives the folder a writer of its own, so the move has to copy
+        // write access gives the folder a writer of its own
         owner.shareWriteAccessWith(w, Set.of(friend.username)).join();
         byte[] data = randomBytes();
         Path file = upload(owner, a, "doc.pdf", data);

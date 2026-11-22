@@ -2663,17 +2663,15 @@ public class FileWrapper {
                                                             .thenCompose(freshParent -> freshParent.pointer.fileAccess
                                                                     .removeChildren(v3, c, Arrays.asList(isLink() ? linkPointer.get().capability : getPointer().capability), freshParent.writableFilePointer(),
                                                                             freshParent.entryWriter, net, context.crypto.random, hasher)))
-                                                    .thenCompose(v4 -> !ourFile || shared.isEmpty() ? Futures.of(v4) : context.sharedWithCache.clearSharedWith(ourPath, v4, c, net))
-                                                    // each key is a folder of shares, and is given here as a path in that folder
-                                                    .thenCompose(v5 -> !ourFile || shared.isEmpty() ? Futures.of(v5) : context.sharedWithCache.addAllSharedWith(shared.entrySet().stream()
-                                                            .collect(Collectors.toMap(e -> PathUtil.getUntrimmed(newPath).resolve(ourPath.getParent().relativize(e.getKey())).resolve(getName()),
-                                                                    e -> e.getValue())), v5, c, net))
-                                                    .thenCompose(v6 -> !ourFile || shared.isEmpty() || ! renamed ? Futures.of(v6) :
-                                                            context.sharedWithCache.rename(PathUtil.getUntrimmed(newPath).resolve(getName()),
-                                                                    PathUtil.getUntrimmed(newPath).resolve(newName), v6, c, net))),
+                                                    .thenCompose(v4 -> !ourFile || shared.isEmpty() ? Futures.of(v4) :
+                                                            moveSharedWith(v4, c, ourPath, newPath, newName, shared, context))),
                                             net.dhtClient);
 
                                 }
+                                boolean rootInParentSpace = linkPointer.orElse(pointer).capability.writer.equals(parent.writer());
+                                if (keepAccess && rootInParentSpace)
+                                    return moveAcrossWritingSpaces(v, c, target, parent, ourPath, newName, shared,
+                                            targetMirrorBatId, context);
                                 return v.withWriter(owner(), target.writer(), net)
                                         .thenCompose(both -> target.getUpdated(both, net)
                                                 .thenCompose(freshTarget -> copyToUnlinked(freshTarget, newName, this.props.thumbnail,
@@ -2695,6 +2693,77 @@ public class FileWrapper {
                                         );
                             });
                 });
+    }
+
+    /** Move the subtree's champ entries from its parent's writing space to the target's. Every block is kept, so
+     *  nothing is re-encrypted or uploaded again, and writing spaces nested in it only change their parent link and
+     *  owner. Caps to it now name the target's writer, so its shares and links are sent again.
+     */
+    private CompletableFuture<Snapshot> moveAcrossWritingSpaces(Snapshot v,
+                                                                Committer c,
+                                                                FileWrapper target,
+                                                                FileWrapper parent,
+                                                                Path ourPath,
+                                                                String newName,
+                                                                Map<Path, SharedWithState> shared,
+                                                                Optional<BatId> targetMirrorBatId,
+                                                                UserContext context) {
+        NetworkAccess net = context.network;
+        Hasher hasher = context.crypto.hasher;
+        PublicKeyHash owner = owner();
+        RetrievedCapability root = linkPointer.orElse(pointer);
+        WritableAbsoluteCapability rootCap = (WritableAbsoluteCapability) root.capability;
+        SigningPrivateKeyAndPublicHash from = parent.signingPair();
+        SigningPrivateKeyAndPublicHash to = target.signingPair();
+        WritableAbsoluteCapability movedCap = rootCap.withSigner(to.publicKeyHash);
+        boolean renamed = ! newName.equals(getName());
+        boolean ourFile = context.signer != null && owner.equals(context.signer.publicKeyHash);
+        RelativeCapability newParentLink = new RelativeCapability(Optional.empty(),
+                target.getLocation().getMapKey(), target.writableFilePointer().bat, target.getParentKey(), Optional.empty());
+        CryptreeNode newRoot = renamed ?
+                root.fileAccess.withParentLinkAndProperties(root.getParentKey(), newParentLink, root.getProperties().withName(newName)) :
+                root.fileAccess.withParentLink(root.getParentKey(), newParentLink);
+        MovedSubtree moved = new MovedSubtree();
+        return IpfsTransaction.call(owner, tid -> target.getPath(net).thenCompose(newPath -> v.withWriter(owner, from.publicKeyHash, net)
+                .thenCompose(v1 -> v1.withWriter(owner, to.publicKeyHash, net))
+                .thenCompose(v1 -> net.uploadChunk(v1, c, newRoot, owner, rootCap.getMapKey(), to, tid))
+                .thenCompose(v2 -> copyAllChunks(false, rootCap, to, tid, hasher, net, moved, v2, c))
+                // before the reparenting below, which rewrites the link target from what is stored
+                .thenCompose(v3 -> ! isLink() || ! renamed ? Futures.of(v3) :
+                        v3.withWriter(owner, writer(), net)
+                                .thenCompose(v4 -> pointer.fileAccess.updateProperties(v4, c, writableFilePointer(),
+                                        Optional.of(signingPair()), pointer.getProperties().withName(newName), net)))
+                .thenCompose(v5 -> context.reparentNestedWritingSpaces(moved.nestedWritingSpaces, owner, from, to, tid, v5, c))
+                .thenCompose(v6 -> target.pointer.fileAccess.addChildrenAndCommit(v6, c,
+                        Arrays.asList(new NamedRelativeCapability(newName, target.writableFilePointer().relativise(movedCap),
+                                Optional.of(isDirectory()), Optional.of(getFileProperties().mimeType), Optional.of(getFileProperties().created))),
+                        target.writableFilePointer(), to, targetMirrorBatId, net, context.crypto))
+                .thenCompose(v7 -> parent.pointer.fileAccess.removeChildren(v7, c, Arrays.asList(rootCap),
+                        parent.writableFilePointer(), parent.entryWriter, net, context.crypto.random, hasher))
+                .thenCompose(v8 -> net.deleteAllChunksIfPresent(v8, c, owner, from, moved.moved, moved.movedValues, tid))
+                .thenCompose(v9 -> ! ourFile || shared.isEmpty() ? Futures.of(v9) :
+                        moveSharedWith(v9, c, ourPath, newPath, newName, shared, context)
+                                .thenCompose(v10 -> context.reSendAllSharesAndLinksRecursive(
+                                        PathUtil.getUntrimmed(newPath).resolve(newName), v10, c)))),
+                net.dhtClient);
+    }
+
+    private CompletableFuture<Snapshot> moveSharedWith(Snapshot v,
+                                                       Committer c,
+                                                       Path ourPath,
+                                                       String newPath,
+                                                       String newName,
+                                                       Map<Path, SharedWithState> shared,
+                                                       UserContext context) {
+        NetworkAccess net = context.network;
+        Path newParent = PathUtil.getUntrimmed(newPath);
+        return context.sharedWithCache.clearSharedWith(ourPath, v, c, net)
+                // each key is a folder of shares, and is given here as a path in that folder
+                .thenCompose(v2 -> context.sharedWithCache.addAllSharedWith(shared.entrySet().stream()
+                        .collect(Collectors.toMap(e -> newParent.resolve(ourPath.getParent().relativize(e.getKey())).resolve(getName()),
+                                e -> e.getValue())), v2, c, net))
+                .thenCompose(v3 -> newName.equals(getName()) ? Futures.of(v3) :
+                        context.sharedWithCache.rename(newParent.resolve(getName()), newParent.resolve(newName), v3, c, net));
     }
 
 
