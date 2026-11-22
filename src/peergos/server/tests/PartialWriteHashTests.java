@@ -5,10 +5,14 @@ import peergos.server.*;
 import peergos.server.sync.*;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.cbor.*;
+import peergos.shared.crypto.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
 import java.nio.file.*;
@@ -291,6 +295,52 @@ public class PartialWriteHashTests {
         assertHoldsWithNoOldHash(user, "a", with(original, 3 * CHUNK + 10, section));
     }
 
+    /** The bytes of the blocks the chunk at offset stores its data in */
+    private static long storedBytes(UserContext user, String name, long offset) {
+        FileWrapper file = get(user, name);
+        AbsoluteCapability cap = file.getPointer().capability;
+        Pair<byte[], Optional<Bat>> key = FileProperties.calculateMapKey(file.getFileProperties().streamSecret.get(),
+                cap.getMapKey(), cap.bat, offset, CHUNK, crypto.hasher).join();
+        CryptreeNode chunk = user.network.getMetadata(file.version.get(file.writer()), cap.withMapKey(key.left, key.right)).join().get();
+        FragmentedPaddedCipherText data = ((CborObject.CborMap) CborObject.fromByteArray(chunk.serialize()))
+                .get("d", FragmentedPaddedCipherText::fromCbor);
+        return data.getFragments().stream()
+                .mapToLong(fragment -> user.network.dhtClient.getSize(file.owner(), fragment).join().get())
+                .sum();
+    }
+
+    /** A write that starts a chunk or more past the end, or a resize past it, leaves the chunks before it holding zeros,
+     *  stored as a whole chunk of data is */
+    @Test
+    public void aWriteChunksPastTheEndReadsZerosBeforeIt() {
+        UserContext user = user();
+        upload(user, "whole", random(2 * CHUNK));
+        long wholeChunk = storedBytes(user, "whole", 0);
+        // from part of a chunk, a whole one, nothing and several, to the chunk after next
+        for (int size : new int[]{1000, CHUNK, 0, 2 * CHUNK + CHUNK / 2}) {
+            String name = "f" + size, grown = "g" + size;
+            byte[] original = upload(user, name, random(size));
+            upload(user, grown, original);
+            int at = (size / CHUNK + 2) * CHUNK + 10;
+            byte[] section = random(1000);
+
+            writeSection(get(user, name), user, at, section);
+            get(user, grown).resize(at + section.length, user.network, crypto).join();
+
+            for (String file : new String[]{name, grown}) {
+                byte[] contents = with(original, at, file.equals(name) ? section : new byte[section.length]);
+                // BLAKE3 hashes a file's only chunk as the whole file, so a write past one leaves that to the next whole write
+                if (Chunk.usesBlake3(CHUNK) && size == CHUNK)
+                    assertHoldsWithNoOldHash(user, file, contents);
+                else
+                    assertHolds(file + ", past " + size + " bytes", user, file, contents);
+                // the chunk the old end is in, and those after it, before the write
+                for (long c = size / CHUNK; c < at / CHUNK; c++)
+                    Assert.assertEquals(file + ": chunk " + c, wholeChunk, storedBytes(user, file, c * CHUNK));
+            }
+        }
+    }
+
     /** A session whose write buffer sends what it holds to the server once it holds this many bytes */
     private static NetworkAccess network(int bufferSize) {
         BufferedStorage blocks = new BufferedStorage(service.storage, crypto.hasher);
@@ -462,6 +512,38 @@ public class PartialWriteHashTests {
         }
     }
 
+    /** What the chunk at offset stores, read as a whole chunk whatever the file's size */
+    private static byte[] storedChunk(UserContext user, String name, long offset) {
+        FileWrapper file = get(user, name);
+        AbsoluteCapability cap = file.getPointer().capability;
+        Optional<byte[]> streamSecret = file.getFileProperties().streamSecret;
+        return file.getPointer().fileAccess.retriever(cap.rBaseKey, streamSecret, cap.getMapKey(), cap.bat, crypto.hasher)
+                .thenCompose(r -> r.getChunk(file.version.get(file.writer()), user.network, crypto, offset, offset + CHUNK, CHUNK,
+                        cap, streamSecret, file.getPointer().fileAccess.committedHash(), x -> {}))
+                .join().get().chunk.data();
+    }
+
+    /** Bytes a cut removes are gone from the chunk it is in, and stay gone when the file grows again past that chunk */
+    @Test
+    public void bytesCutOffStayGoneWhenTheFileGrowsAgain() {
+        UserContext user = user();
+        byte[] original = random(2 * CHUNK + CHUNK / 2);
+        for (int size : new int[]{0, 100, CHUNK + 100, CHUNK}) {
+            String name = "f" + size;
+            upload(user, name, original);
+            get(user, name).truncate(size, user.network, crypto).join();
+            byte[] cutChunk = storedChunk(user, name, size - size % CHUNK);
+            byte[] section = random(1000);
+            int at = (size / CHUNK + 1) * CHUNK + 10;
+
+            writeSection(get(user, name), user, at, section);
+
+            assertHoldsWithNoOldHash(user, name, with(Arrays.copyOf(original, size), at, section));
+            Assert.assertArrayEquals("bytes cut to " + size + " kept in the chunk of the cut", new byte[CHUNK - size % CHUNK],
+                    Arrays.copyOfRange(cutChunk, size % CHUNK, CHUNK));
+        }
+    }
+
     /** Cut a file to size, with the failAt'th node write failing, in a session that commits each node write as it makes
      *  it; returns the number of node writes tried */
     private static int truncateFailingAt(UserContext user, String name, long size, int failAt) {
@@ -481,8 +563,8 @@ public class PartialWriteHashTests {
         UserContext user = user();
         UserContext eachWrite = PeergosNetworkUtils.ensureSignedUp(user.username, "password", network(1), crypto);
         byte[] original = random(3 * CHUNK);
-        // inside a later chunk, at the end of one, inside chunk 0
-        for (int size : new int[]{2 * CHUNK + CHUNK / 2, CHUNK, CHUNK / 2}) {
+        // inside a later chunk, at the end of one, inside chunk 0, to nothing
+        for (int size : new int[]{2 * CHUNK + CHUNK / 2, CHUNK, CHUNK / 2, 0}) {
             for (int failAt = 1; ; failAt++) {
                 String name = "f" + size + "-" + failAt;
                 upload(user, name, original);

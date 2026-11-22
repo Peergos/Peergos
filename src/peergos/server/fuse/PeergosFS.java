@@ -582,24 +582,8 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
         debug("TRUNCATE file %s, size %d", file.properties.name, size);
 
         try {
-            if (size > file.properties.size) {
-                long currentPos = file.properties.size;
-                int chunkSize = file.properties.chunkSize;
-                byte[] fullChunk = new byte[chunkSize];
-                FileWrapper parentNode = parent.treeNode;
-                while (currentPos < size) {
-                    long nextBoundary = Math.min(size, currentPos + chunkSize - (currentPos % chunkSize));
-                    int sizeInChunk = (int) (nextBoundary - currentPos);
-                    byte[] data = sizeInChunk == chunkSize ? fullChunk : new byte[sizeInChunk];
-                    parentNode = parentNode.uploadFileSection(file.properties.name, AsyncReader.build(data),
-                            file.properties.isHidden, currentPos, currentPos + sizeInChunk, Optional.empty(),
-                            true, context.network, context.crypto, () -> false, x -> {},
-                            file.treeNode.getLocation().getMapKey(), file.properties.streamSecret, file.treeNode.getPointer().capability.bat,
-                            context.getMirrorBat().join().map(BatWithId::id)).get();
-                    currentPos += sizeInChunk;
-                }
-            } else
-                file.treeNode.truncate(size, context.network, context.crypto).get();
+            // our stat may be out of date, so the file is grown or cut as it is when the write is made
+            file.treeNode.resize(size, context.network, context.crypto).get();
             return 0;
         } catch (Throwable t) {
             LOG.log(Level.WARNING, t.getMessage(), t);
