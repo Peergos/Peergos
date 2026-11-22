@@ -629,6 +629,17 @@ public class FileWrapper {
         ).thenCompose(finished -> getUpdated(finished, network));
     }
 
+    /** Grow us to newSize, reading as zeros past our end, from our size as it is in the update rather than as our copy
+     *  has it, so as to write over no byte a write since added */
+    public CompletableFuture<FileWrapper> extendTo(long newSize, NetworkAccess network, Crypto crypto) {
+        return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (s, committer) -> getUpdated(s, network)
+                        .thenCompose(us -> us.getSize() >= newSize ? Futures.of(s) :
+                                // a write past our end fills the gap before it with zeros, so one zero as our last byte will do
+                                us.clean(s, committer, network, crypto).thenCompose(c -> c.left.overwriteSection(c.right, committer,
+                                        AsyncReader.build(new byte[1]), newSize - 1, newSize, Optional.empty(), network, crypto, x -> {}))))
+                .thenCompose(finished -> getUpdated(finished, network));
+    }
+
     public CompletableFuture<Snapshot> truncate(Snapshot initialVersion, Committer committer, long newSize, NetworkAccess network, Crypto crypto) {
         return truncate(initialVersion, committer, newSize, true, network, crypto);
     }

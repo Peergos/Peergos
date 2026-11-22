@@ -2,6 +2,7 @@ package peergos.server.tests;
 
 import org.junit.*;
 import peergos.server.*;
+import peergos.server.fuse.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.user.*;
@@ -365,5 +366,45 @@ public class StaleCopyTests {
         // and the size the file has now is the one to expect
         contents = appendToChild(user, stale, "log", contents.length, contents);
         Assert.assertArrayEquals(contents, read(fresh(user), dir.resolve("log")));
+    }
+
+    /** The mount, with its stats of a folder and a file in it */
+    private static class Mount extends PeergosFS {
+        Mount(UserContext user) {
+            super(user);
+        }
+
+        int truncate(FileWrapper folder, FileWrapper file, long size) {
+            return truncate(new PeergosStat(folder, folder.getFileProperties()), new PeergosStat(file, file.getFileProperties()), size);
+        }
+    }
+
+    @Test
+    public void growByTruncateWithStaleStat() {
+        Assume.assumeTrue("the mount needs libfuse", System.getProperty("os.name").toLowerCase().startsWith("linux"));
+        UserContext user = user();
+        Path dir = dir(user);
+        Path path = dir.resolve("a");
+        byte[] contents = upload(user, dir, "a", 1000);
+        FileWrapper stale = get(user, path);
+        byte[] tail = new byte[500];
+        random.nextBytes(tail);
+        get(user, path).overwriteSectionJS(AsyncReader.build(tail), 0, 1000, 0, 1500, Optional.empty(),
+                user.network, crypto, x -> {}).join();
+        contents = Arrays.copyOf(contents, 1500);
+        System.arraycopy(tail, 0, contents, 1000, tail.length);
+        Mount mount = new Mount(user);
+        int chunkSize = stale.getFileProperties().chunkSize;
+
+        // from the size the file has now, not the one our stat has; then past the chunk after next
+        for (long size : new long[]{2000, 2L * chunkSize + 5}) {
+            Assert.assertEquals(0, mount.truncate(get(user, dir), stale, size));
+
+            contents = Arrays.copyOf(contents, (int) size);
+            Assert.assertArrayEquals("grown to " + size, contents, read(fresh(user), path));
+            Optional<HashBranch> stored = get(fresh(user), path).getFileProperties().treeHash;
+            HashTree now = HashTree.build(AsyncReader.build(contents), 0, contents.length, chunkSize, crypto.hasher).join();
+            Assert.assertTrue("stored " + stored, stored.isEmpty() || stored.get().equals(now.branch(0)));
+        }
     }
 }
