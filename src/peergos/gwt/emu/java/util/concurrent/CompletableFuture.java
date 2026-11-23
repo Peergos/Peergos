@@ -338,7 +338,26 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
 
     public <U> CompletionStage<U> thenComposeAsync(Function<? super T, ? extends CompletionStage<U>> fn, Executor executor) {     throw new IllegalStateException("Unimplemented!");   }
 
-    public CompletionStage<T> whenComplete(BiConsumer<? super T, ? super Throwable> action) {     throw new IllegalStateException("Unimplemented!");   }
+    public CompletableFuture<T> whenComplete(BiConsumer<? super T, ? super Throwable> action) {
+        CompletableFuture<T> fut = new CompletableFuture<>();
+        thenAccept(v -> {
+            try {
+                action.accept(v, null);
+            } catch (Throwable t) {
+                fut.completeExceptionally(t);
+                return;
+            }
+            fut.complete(v);
+        });
+        exceptionally(err -> {
+            try {
+                action.accept(null, err);
+            } catch (Throwable ignored) {}
+            fut.completeExceptionally(err);
+            return null;
+        });
+        return fut;
+    }
 
     public CompletionStage<T> whenCompleteAsync(BiConsumer<? super T, ? super Throwable> action) {     throw new IllegalStateException("Unimplemented!");   }
 
