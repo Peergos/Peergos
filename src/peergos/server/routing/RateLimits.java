@@ -250,6 +250,8 @@ public class RateLimits {
         private final Map<AddressBucket, Long> busyUntil = new HashMap<>();
         private final Map<AddressBucket, Integer> waitingIn = new HashMap<>();
         private final Set<O> all = new HashSet<>();
+        /** What the last take took, and from which bucket, to give back the tokens of any that don't arrive. */
+        private final Map<O, AddressBucket> taken = new HashMap<>();
         private int maxPerBucket;
         private int waiting;
 
@@ -405,6 +407,7 @@ public class RateLimits {
          *  take turns, one offer each, and a bucket served goes to the back.
          */
         public synchronized List<O> take() {
+            taken.clear();
             List<O> res = new ArrayList<>();
             long busy = clock.getAsLong() + DAY;
             boolean progress = true;
@@ -424,9 +427,10 @@ public class RateLimits {
                     rate.tryTake(bucket);
                     Multihash next = servers.keySet().iterator().next();
                     ArrayDeque<O> queue = servers.remove(next);
-                    O taken = queue.poll();
-                    res.add(taken);
-                    all.remove(taken);
+                    O offer = queue.poll();
+                    res.add(offer);
+                    taken.put(offer, bucket);
+                    all.remove(offer);
                     waitingIn.computeIfPresent(bucket, (b, n) -> n > 1 ? n - 1 : null);
                     waiting--;
                     if (! queue.isEmpty())
@@ -442,6 +446,17 @@ public class RateLimits {
 
         public synchronized int waiting() {
             return waiting;
+        }
+
+        /** Gives back the tokens of an offer the last take took that didn't arrive, so a sender that offers and
+         *  then doesn't deliver costs its range's turns nothing.
+         */
+        public synchronized void refund(O offer) {
+            AddressBucket bucket = taken.remove(offer);
+            if (bucket == null)
+                return;
+            rate.give(bucket, 1);
+            network.give(ALL, 1);
         }
     }
 }

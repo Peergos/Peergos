@@ -8,6 +8,7 @@ import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.routing.*;
+import peergos.shared.storage.*;
 
 import java.net.*;
 import java.util.*;
@@ -324,6 +325,57 @@ public class ReplicationTests {
         b.routing.syncRound();
         Assert.assertEquals("a page of servers and three of identities", 4, archivalPages.get());
         Assert.assertEquals(all, b.replica.store().summary(Subject.IDENTITY, Reconciliation.Range.ALL));
+    }
+
+    @Test
+    public void aCompactSeedAskedFirstLeavesWhereAnArchivalOneGotTo() {
+        Network net = new Network();
+        Server x = new Server();
+        Node provider = net.node(100, x.peerId), compact = net.node(100), archival = net.node(100), b = net.node(100);
+        compact.replica.compact(compact.id);
+        provider.replica.add(x.subject, x.inception);
+        archival.replica.add(x.subject, x.inception);
+        for (int j = 0; j < 2500; j++) {
+            IdentityInception inc = x.admit(key());
+            provider.replica.add(Subject.identity(inc.identityHash()), inc);
+            archival.replica.add(Subject.identity(inc.identityHash()), inc);
+        }
+        compact.syncWith(provider);
+        compact.routing.syncRound();
+        net.nodes.remove(provider.id);
+
+        AtomicBoolean down = new AtomicBoolean(true);
+        AtomicInteger archivalPages = new AtomicInteger(), sizes = new AtomicInteger();
+        b.routing.addSyncPeer(new LocalPeer(b.id, archival) {
+            @Override
+            public CompletableFuture<Page> page(int kind, Reconciliation.Cursor after, int limit) {
+                if (archivalPages.incrementAndGet() == 3 && down.get())
+                    return CompletableFuture.failedFuture(new RateLimitException());
+                return super.page(kind, after, limit);
+            }
+
+            @Override
+            public CompletableFuture<List<Reconciliation.Summary>> summaries(int kind, List<Reconciliation.Range> ranges) {
+                // the snapshot's first look at how far behind this node is gets an answer, reconciliation doesn't
+                if (down.get() && sizes.incrementAndGet() > 2)
+                    return CompletableFuture.failedFuture(new RateLimitException());
+                return super.summaries(kind, ranges);
+            }
+        });
+        b.routing.setConfigured(List.of(archival.id));
+        b.routing.snapshotBelow(100);
+        b.routing.syncRound();
+        Assert.assertEquals("servers, then a page of identities before it failed", 3, archivalPages.get());
+
+        b.routing.addSyncPeer(new LocalPeer(b.id, compact));
+        b.routing.setConfigured(List.of(compact.id));
+        b.routing.syncRound();
+
+        down.set(false);
+        archivalPages.set(0);
+        b.routing.setConfigured(List.of(compact.id, archival.id));
+        b.routing.syncRound();
+        Assert.assertEquals("the two pages of identities left", 2, archivalPages.get());
     }
 
     @Test
@@ -941,6 +993,46 @@ public class ReplicationTests {
             limits.offer(bucket, flooder, "flood " + i);
         limits.offer(bucket, honest, "signup");
         Assert.assertEquals(List.of("flood 0", "signup"), limits.take());
+    }
+
+    @Test
+    public void aTakenOfferThatNeverArrivesGivesItsTurnBack() {
+        AtomicLong clock = new AtomicLong(0);
+        RateLimits.Inceptions<String> limits = new RateLimits.Inceptions<>(2, 1000, clock::get);
+        AddressBucket bucket = AddressBucket.of(addr("10.1.2.3"));
+        Multihash flooder = ServerKeys.peerId(key().publicSigningKey), honest = ServerKeys.peerId(key().publicSigningKey);
+        limits.offer(bucket, flooder, "never sent");
+        limits.offer(bucket, flooder, "never sent either");
+        Assert.assertEquals(List.of("never sent", "never sent either"), limits.take());
+        limits.refund("never sent");
+        limits.offer(bucket, honest, "signup");
+        limits.offer(bucket, honest, "another");
+        Assert.assertEquals(List.of("signup"), limits.take());
+        limits.refund("never sent either");
+        Assert.assertEquals("only what the last take took is given back", List.of(), limits.take());
+    }
+
+    @Test
+    public void anAdmitterWithABacklogThatCantBeReachedRoundAfterRoundIsTakenOnlyAsCatchUp() {
+        Network net = new Network();
+        Node a = net.node(1), b = net.node(1);
+        Server x = new Server();
+        for (Node n : List.of(a, b))
+            n.replica.add(x.subject, x.inception);
+        for (int i = 0; i < RoutingNode.CHECK_BACKLOG + 1; i++) {
+            IdentityInception inc = x.admit(key());
+            Subject s = Subject.identity(inc.identityHash());
+            a.replica.add(s, inc);
+            b.routing.offered(a.id, s, a.routing.records(s));
+        }
+        Assert.assertTrue(b.routing.waitingInceptions() >= RoutingNode.CHECK_BACKLOG);
+        for (int i = 1; i < RoutingNode.UNREACHED_STRIKES; i++) {
+            b.routing.syncRound();
+            Assert.assertFalse(b.routing.isNotServing(x.peerId));
+        }
+        b.routing.syncRound();
+        Assert.assertTrue(b.routing.isNotServing(x.peerId));
+        Assert.assertEquals(0, b.routing.waitingInceptions());
     }
 
     @Test

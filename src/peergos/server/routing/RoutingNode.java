@@ -143,6 +143,16 @@ public class RoutingNode {
     private final class Budget {
         int failures, undelivered;
         long waitedNanos;
+        final long millis;
+
+        Budget() {
+            this(-1);
+        }
+
+        /** @param millis how long it may wait in all, or -1 for a sync peer's share of the round */
+        Budget(long millis) {
+            this.millis = millis;
+        }
         /** Admitting servers already asked of this peer this round. */
         final Set<Subject> askedFor = new HashSet<>();
 
@@ -151,7 +161,8 @@ public class RoutingNode {
         }
 
         boolean spent() {
-            return failing() || undelivered >= MAX_UNDELIVERED_PER_PEER || waitedNanos > peerRoundMillis * 1_000_000;
+            return failing() || undelivered >= MAX_UNDELIVERED_PER_PEER
+                    || waitedNanos > (millis < 0 ? peerRoundMillis : millis) * 1_000_000;
         }
 
         /** Comparing and fetching each get a share of time, so a long comparison leaves time to fetch what it found. */
@@ -981,13 +992,18 @@ public class RoutingNode {
                     LOG.log(Level.FINE, "Fetching " + batch.size() + " subjects from " + from.id() + " failed: " + t.getMessage());
                 }
                 for (Offer o : batch) {
+                    Outcome res = null;
                     try {
                         List<SignedRecord> records = got.get(o.subject);
                         if (records != null)
-                            accept(from, o.subject, records, true);
+                            res = accept(from, o.subject, records, true);
                     } catch (Throwable t) {
                         LOG.log(Level.FINE, "Taking " + o.subject + " failed: " + t.getMessage());
                     }
+                    // Not sent, or not valid: the range's turn is given back. One that arrived meanwhile as catch-up
+                    // keeps it spent, so what a range gets in either way stays within its rate.
+                    if (res == null || res == Outcome.Rejected)
+                        inceptions.refund(o);
                     if (! o.subject.isIdentity()) {
                         fetchingServers.computeIfPresent(o.subject, (x, n) -> n > 1 ? n - 1 : null);
                         if (! isOnItsWay(o.subject))
@@ -1071,6 +1087,11 @@ public class RoutingNode {
     private final Map<Multihash, Integer> notServingStrikes = new ConcurrentHashMap<>();
     /** An admitter with this many identities waiting here is asked for some of them, a few admitters a round. */
     public static final int CHECK_BACKLOG = 64, CHECKED_ADMITTERS = 4;
+    /** All the checks of a round together wait at most this long, failing calls included. */
+    public static final long CHECK_MILLIS = 20_000;
+    /** Rounds running that an admitter with a backlog here can't be reached before it counts as not serving. */
+    public static final int UNREACHED_STRIKES = 3;
+    private final Map<Multihash, Integer> unreachedStrikes = new ConcurrentHashMap<>();
     private final Random checkRandom = new Random();
 
     /** Asks the admitters with the most waiting here for a sample of what they admitted. An honest home server
@@ -1083,7 +1104,10 @@ public class RoutingNode {
         List<Map.Entry<Multihash, Integer>> backlogs = new ArrayList<>(inceptions.waitingByServer().entrySet());
         backlogs.removeIf(e -> e.getValue() < CHECK_BACKLOG || isNotServing(e.getKey()));
         backlogs.sort(Map.Entry.<Multihash, Integer>comparingByValue().reversed());
+        Budget budget = new Budget(CHECK_MILLIS);
         for (Map.Entry<Multihash, Integer> e : backlogs.subList(0, Math.min(CHECKED_ADMITTERS, backlogs.size()))) {
+            if (budget.spent())
+                return;
             Multihash server = e.getKey();
             List<Subject> asked = inceptions.sample(server, RECHECK_BATCH, checkRandom).stream()
                     .map(o -> o.subject)
@@ -1091,11 +1115,17 @@ public class RoutingNode {
             Map<Subject, List<SignedRecord>> got;
             try {
                 RoutingPeer home = dial(endpointOf(server));
-                got = ask(home, new Budget(), () -> home.recordsOf(asked));
+                got = ask(home, budget, () -> home.recordsOf(asked));
+            } catch (Spent s) {
+                return;
             } catch (Throwable t) {
-                // an offline home server shows nothing
+                // Offline for a while is as good as not serving: its users can't be looked up either. Their
+                // identities still come in as catch-up.
+                if (unreachedStrikes.merge(server, 1, Integer::sum) >= UNREACHED_STRIKES)
+                    notServing(server, "it couldn't be reached " + UNREACHED_STRIKES + " rounds running");
                 continue;
             }
+            unreachedStrikes.remove(server);
             long left = asked.stream().filter(s -> got.get(s) == null || got.get(s).isEmpty()).count();
             if (left * 2 <= asked.size()) {
                 notServingStrikes.remove(server);
@@ -1104,11 +1134,15 @@ public class RoutingNode {
             if (notServingStrikes.merge(server, 1, Integer::sum) < 2)
                 continue;
             notServingStrikes.remove(server);
-            notServing.put(server, clock.getAsLong() + SUSPECT_MILLIS);
-            int dropped = inceptions.drop(server);
-            LOG.info("Taking identities admitted by " + server + " only as catch-up for a day: it left out " + left + " of "
-                    + asked.size() + " it was asked for, twice; dropped " + dropped + " waiting");
+            notServing(server, "it left out " + left + " of " + asked.size() + " it was asked for, twice");
         }
+    }
+
+    private void notServing(Multihash server, String why) {
+        unreachedStrikes.remove(server);
+        notServing.put(server, clock.getAsLong() + SUSPECT_MILLIS);
+        int dropped = inceptions.drop(server);
+        LOG.info("Taking identities admitted by " + server + " only as catch-up for a day: " + why + "; dropped " + dropped + " waiting");
     }
 
     public boolean isNotServing(Multihash admitter) {
@@ -1548,9 +1582,10 @@ public class RoutingNode {
                 skipped += page.records.isEmpty() && page.next.isPresent() ? Math.max(1, page.skipped) : page.skipped;
                 if (skipped > served) {
                     // Nothing is marked done: another configured peer, or reconciliation, brings what this one left out.
+                    // Only this round's pages from it are read again, from where an archival peer got to.
                     cantPage.add(from.id().bareMultihash());
                     bootstrapping = false;
-                    store.setMeta(SNAPSHOT, progress(Subject.SERVER, Reconciliation.Cursor.START));
+                    store.setMeta(SNAPSHOT, progress.orElseGet(() -> progress(Subject.SERVER, Reconciliation.Cursor.START)));
                     LOG.info("Not reading the routing log of " + from.id() + ": it holds most subjects without their " +
                             "signatures. Starting from little is far quicker from an archival routing peer");
                     return changed;
