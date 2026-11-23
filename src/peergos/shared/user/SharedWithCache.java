@@ -382,7 +382,7 @@ public class SharedWithCache {
                         current.add(Access.READ, newFilename, sharees.readAccess)
                                 .add(Access.WRITE, newFilename, sharees.writeAccess)
                                 .addLinks(newFilename, withRenamedMember(current.get(initialFilename).links,
-                                        initial.toString(), after.toString()))
+                                        initial, after))
                                 .clear(initialFilename), in, committer, network));
     }
 
@@ -391,10 +391,10 @@ public class SharedWithCache {
      * not follow a rename on their own, and every later edit of the link re-resolves them, so a
      * rename would otherwise make the link uneditable.
      */
-    private static Set<LinkProperties> withRenamedMember(Set<LinkProperties> links, String from, String to) {
+    private static Set<LinkProperties> withRenamedMember(Set<LinkProperties> links, Path from, Path to) {
         return links.stream()
                 .map(l -> l.members.isEmpty() ? l : l.withMembers(l.members.stream()
-                        .map(m -> m.path.equals(from) ? m.withPath(to) : m)
+                        .map(m -> movedPath(m.path, from, to).map(m::withPath).orElse(m))
                         .collect(Collectors.toList())))
                 .collect(Collectors.toSet());
     }
@@ -410,20 +410,15 @@ public class SharedWithCache {
         return new SharedWithState(state.readShares(), state.writeShares(), links);
     }
 
-    /** Where a path ends up when the subtree at from moves to to, if it is in that subtree. */
+    /** Where a path ends up when the subtree at from moves to to, if it is in that subtree. Compared by component,
+     *  as a recorded path always uses / but Path.toString uses the platform separator. */
     private static Optional<String> movedPath(String path, Path from, Path to) {
-        String p = trimLeadingSlash(path);
-        String src = trimLeadingSlash(from.toString());
-        String dest = trimLeadingSlash(to.toString());
-        if (p.equals(src))
-            return Optional.of(dest);
-        if (p.startsWith(src + "/"))
-            return Optional.of(dest + p.substring(src.length()));
-        return Optional.empty();
-    }
-
-    private static String trimLeadingSlash(String p) {
-        return p.startsWith("/") ? p.substring(1) : p;
+        Path p = PathUtil.get(path);
+        Path src = PathUtil.get(from.toString());
+        if (! p.startsWith(src))
+            return Optional.empty();
+        Path dest = PathUtil.get(to.toString()).resolve(src.relativize(p));
+        return Optional.of(String.join("/", PathUtil.components(dest)));
     }
 
     /** A link that also holds items outside a moved subtree is recorded with those items too, under the old paths. */
