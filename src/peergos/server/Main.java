@@ -1158,7 +1158,8 @@ public class Main extends Builder {
                         Optional.ofNullable(ipfsWrapper).flatMap(IpfsWrapper::reachability),
                         () -> ipfsWrapper == null ? List.of() : ipfsWrapper.heldRelays(),
                         (peer, addrs) -> ipfsWrapper == null ? Futures.of(Optional.empty()) : ipfsWrapper.reach(peer, addrs), ids, crypto, sqlCommands, getDBConnector(a, RoutingService.ARG_ROUTING_SQL_FILE.name, dbConnectionPool),
-                        localStorageForLinks, p2pHttpProxy)
+                        // its own poster, so routing calls to slow servers can't hold the streams the rest of p2p needs
+                        localStorageForLinks, buildP2pHttpProxy(a))
                         .ifPresent(routing -> {
                             p2pAPI.startRoutingApi(new RoutingHandler(routing.node, server -> Optional.ofNullable(ipfsWrapper)
                                     .flatMap(IpfsWrapper::relays)

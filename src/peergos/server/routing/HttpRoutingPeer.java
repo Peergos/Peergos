@@ -15,6 +15,9 @@ public class HttpRoutingPeer implements RoutingPeer {
     private static final int TIMEOUT_MILLIS = 30_000;
     /** A peer can send anything, so no more than a full page of records or states is read. */
     public static final int MAX_RESPONSE = 16 * 1024 * 1024;
+    /** Calls to one server at once: one that never answers holds this many streams until they time out, not all. */
+    public static final int MAX_IN_FLIGHT = 8;
+    private static final Map<Multihash, Integer> inFlight = new ConcurrentHashMap<>();
 
     private final Multihash target;
     private final HttpPoster p2p;
@@ -32,8 +35,32 @@ public class HttpRoutingPeer implements RoutingPeer {
     }
 
     private CompletableFuture<CborObject> call(String method, Map<String, Cborable> args) {
-        return p2p.postBounded(prefix + method, CborObject.CborMap.build(args).serialize(), TIMEOUT_MILLIS, MAX_RESPONSE)
-                .thenApply(CborObject::fromByteArray);
+        boolean[] taken = {false};
+        inFlight.compute(target, (t, n) -> {
+            int current = n == null ? 0 : n;
+            if (current >= MAX_IN_FLIGHT)
+                return n;
+            taken[0] = true;
+            return current + 1;
+        });
+        if (! taken[0])
+            return CompletableFuture.failedFuture(new IllegalStateException(MAX_IN_FLIGHT + " calls to " + target + " are in flight"));
+        CompletableFuture<byte[]> res;
+        try {
+            res = p2p.postBounded(prefix + method, CborObject.CborMap.build(args).serialize(), TIMEOUT_MILLIS, MAX_RESPONSE);
+        } catch (Throwable t) {
+            release();
+            throw t;
+        }
+        return res.whenComplete((r, t) -> release()).thenApply(CborObject::fromByteArray);
+    }
+
+    private void release() {
+        inFlight.computeIfPresent(target, (t, n) -> n <= 1 ? null : n - 1);
+    }
+
+    public static int inFlight(Multihash target) {
+        return inFlight.getOrDefault(target.bareMultihash(), 0);
     }
 
     @Override

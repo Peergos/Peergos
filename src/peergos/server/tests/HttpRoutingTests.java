@@ -157,6 +157,38 @@ public class HttpRoutingTests {
     }
 
     @Test
+    public void aServerThatNeverAnswersHoldsOnlyAFewCallsAtOnce() throws Exception {
+        Node a = new Node(), b = new Node();
+        Multihash silent = ServerKeys.peerId(key().publicSigningKey);
+        List<CompletableFuture<byte[]>> hanging = new ArrayList<>();
+        Proxy proxy = new Proxy(a.id) {
+            @Override
+            public CompletableFuture<byte[]> postUnzip(String url, byte[] payload, int timeoutMillis) {
+                if (! url.contains(new Cid(1, Cid.Codec.LibP2pKey, silent.type, silent.getHash()).toString()))
+                    return super.postUnzip(url, payload, timeoutMillis);
+                CompletableFuture<byte[]> never = new CompletableFuture<>();
+                hanging.add(never);
+                return never;
+            }
+        };
+        HttpRoutingPeer toSilent = new HttpRoutingPeer(silent, proxy), toB = new HttpRoutingPeer(b.id, proxy);
+        List<CompletableFuture<List<SignedRecord>>> calls = new ArrayList<>();
+        for (int i = 0; i < HttpRoutingPeer.MAX_IN_FLIGHT + 5; i++)
+            calls.add(toSilent.records(Subject.server(silent)));
+        Assert.assertEquals(HttpRoutingPeer.MAX_IN_FLIGHT, hanging.size());
+        Assert.assertTrue("the rest fail at once", calls.get(calls.size() - 1).isCompletedExceptionally());
+        String toOther = toB.records(Subject.server(silent)).handle((r, t) -> t == null ? "answered" : t.getMessage()).get(5, TimeUnit.SECONDS);
+        Assert.assertFalse("another server is still called: " + toOther, toOther.contains("in flight"));
+
+        hanging.get(0).completeExceptionally(new SocketTimeoutException());
+        Assert.assertEquals(HttpRoutingPeer.MAX_IN_FLIGHT - 1, HttpRoutingPeer.inFlight(silent));
+        toSilent.records(Subject.server(silent));
+        Assert.assertEquals(HttpRoutingPeer.MAX_IN_FLIGHT + 1, hanging.size());
+        hanging.forEach(f -> f.completeExceptionally(new SocketTimeoutException()));
+        Assert.assertEquals(0, HttpRoutingPeer.inFlight(silent));
+    }
+
+    @Test
     public void aRelayAnswersWhetherItVouchesForAServer() throws Exception {
         Node relay = new Node(), asker = new Node();
         Multihash own = ServerKeys.peerId(key().publicSigningKey), stranger = ServerKeys.peerId(key().publicSigningKey);
