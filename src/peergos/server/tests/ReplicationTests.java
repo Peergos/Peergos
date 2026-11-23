@@ -460,6 +460,43 @@ public class ReplicationTests {
     }
 
     @Test
+    public void aWalkCutShortCarriesOnNextRoundPastWhatItCouldntTake() {
+        Network net = new Network();
+        Node a = net.node(1), c = net.node(1), b = net.node(1);
+        Server x = new Server();
+        for (Node n : List.of(a, b, c))
+            n.replica.add(x.subject, x.inception);
+        Set<Subject> both = new HashSet<>();
+        for (int i = 0; i < 600; i++) {
+            IdentityInception inc = x.admit(key());
+            Subject s = Subject.identity(inc.identityHash());
+            a.replica.add(s, inc);
+            // the rest only one peer holds, so this node takes them at their bucket's rate, which never refills here
+            if (i % 2 == 0) {
+                c.replica.add(s, inc);
+                both.add(s);
+            }
+        }
+        b.routing.peerRoundMillis(100);
+        b.routing.addSyncPeer(new LocalPeer(b.id, a) {
+            @Override
+            public CompletableFuture<List<List<JdbcRoutingStore.State>>> statesIn(int kind, List<Reconciliation.Range> ranges, int limit) {
+                try {
+                    Thread.sleep(20);
+                } catch (InterruptedException e) {}
+                return CompletableFuture.completedFuture(target.routing.statesIn(kind, ranges.subList(0, Math.min(4, ranges.size())), limit));
+            }
+        });
+        b.syncWith(c);
+        int rounds = 0;
+        while (! both.stream().allMatch(s -> b.replica.log(s).exists())) {
+            b.routing.syncRound();
+            Assert.assertTrue("every range both peers hold is reached: " + both.stream().filter(s -> b.replica.log(s).exists()).count()
+                    + " of " + both.size() + " after " + rounds + " rounds", ++rounds < 60);
+        }
+    }
+
+    @Test
     public void aPeerWhoseShareOfARoundRunsOutIsStillCaughtUpWith() throws Exception {
         Network net = new Network();
         Node a = net.node(1), b = net.node(1);

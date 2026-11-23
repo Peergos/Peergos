@@ -5,6 +5,7 @@ import peergos.server.util.*;
 import peergos.shared.cbor.*;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.routing.*;
+import peergos.shared.util.*;
 
 import java.sql.*;
 import java.util.*;
@@ -398,6 +399,29 @@ public class JdbcRoutingStore {
             List<State> res = new ArrayList<>();
             while (rs.next())
                 res.add(new State(subject(kind, rs.getBytes(1)), rs.getBytes(2)));
+            return res;
+        } catch (SQLException e) {
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    /** What reconciliation lists of each of these subjects, by id, for those it lists. */
+    public Map<ByteArrayWrapper, byte[]> statesOf(int kind, List<byte[]> ids) {
+        Map<ByteArrayWrapper, byte[]> res = new HashMap<>();
+        if (ids.isEmpty())
+            return res;
+        try (Connection c = getConnection();
+             PreparedStatement select = c.prepareStatement(GET_STATE)) {
+            for (byte[] id : ids) {
+                select.setInt(1, kind);
+                select.setInt(2, Reconciliation.slot(id));
+                select.setBytes(3, id);
+                try (ResultSet rs = select.executeQuery()) {
+                    if (rs.next())
+                        res.put(new ByteArrayWrapper(id), rs.getBytes(1));
+                }
+            }
             return res;
         } catch (SQLException e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
