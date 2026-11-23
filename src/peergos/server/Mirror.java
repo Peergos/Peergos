@@ -146,6 +146,7 @@ public class Mirror {
                             usage.addWriter(username, writer);
                             mirrorMerkleTree(username, owner, writer, List.of(nodeId), value, Optional.of(instanceBat), storage, targetPointers, transactions, usage, hasher);
                         }
+                        removeUnownedWriters(username, owner, snapshot.pointerState.keySet(), usage);
                         userCount++;
                     } catch (Exception e) {
                         if (e.getCause() instanceof UnknownHostException) {
@@ -213,6 +214,7 @@ public class Mirror {
             if (version.isPresent())
                 versions.put(ownedKey, version.get());
         }
+        removeUnownedWriters(username, owner, ownedKeys, usage);
         if (loginAuth.isPresent()) {
             SigningKeyPair login = loginAuth.get();
             Either<UserStaticData, MultiFactorAuthRequest> loginData = p2pAccount.getLoginData(username, login.publicSigningKey,
@@ -230,6 +232,21 @@ public class Mirror {
         }
         Logging.LOG().log(Level.INFO, "Finished mirroring data for " + username);
         return versions;
+    }
+
+    /** A writer the user has dropped is otherwise kept forever, and gc keeps walking its pointer into a tree
+     *  the source has already collected.
+     */
+    public static void removeUnownedWriters(String username,
+                                            PublicKeyHash owner,
+                                            Set<PublicKeyHash> owned,
+                                            UsageStore usage) {
+        for (PublicKeyHash writer : usage.getAllWriters(username)) {
+            if (writer.equals(owner) || owned.contains(writer))
+                continue;
+            Logging.LOG().log(Level.INFO, "Removing writer " + writer + " no longer owned by " + username);
+            usage.removeWriter(writer);
+        }
     }
 
     /**
