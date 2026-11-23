@@ -394,6 +394,24 @@ public class JdbcUsageStoreTests {
         Assert.assertTrue(store.getUsage(writer).ownedKeys().contains(owned));
     }
 
+    @Test
+    public void aMirrorDropsWritersItsSourceNoLongerOwns() throws Exception {
+        Crypto crypto = Main.initCrypto();
+        Connection db = new Sqlite.UncloseableConnection(Sqlite.build(":memory:"));
+        JdbcUsageStore store = new JdbcUsageStore(() -> db, new SqliteCommands());
+        PublicKeyHash owner = randomKey(crypto), kept = randomKey(crypto), dropped = randomKey(crypto), bobs = randomKey(crypto);
+        store.addUserIfAbsent("alice");
+        store.addUserIfAbsent("bob");
+        for (PublicKeyHash w : List.of(owner, kept, dropped))
+            store.addWriter("alice", w);
+        store.addWriter("bob", bobs);
+
+        Mirror.removeUnownedWriters("alice", owner, Set.of(kept), store);
+
+        Assert.assertEquals(Set.of(owner, kept), store.getAllWriters("alice"));
+        Assert.assertEquals(Set.of(bobs), store.getAllWriters("bob"));
+    }
+
     private static PublicKeyHash randomKey(Crypto crypto) {
         return new PublicKeyHash(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, crypto.random.randomBytes(36)));
     }

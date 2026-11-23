@@ -131,6 +131,8 @@ public class DirectS3Proxy implements ContentAddressedStorageProxy {
             }
             if (notFound && ! useLegacyPath)
                 return getRawWithoutBackoff(peerIds, owner, hash, true);
+            if (notFound)
+                throw new BlockAbsentException("Couldn't read block " + hash + " from S3 at " + path);
             throw new RuntimeException("Couldn't read block " + hash + " from S3 at " + path, e);
         }
     }
