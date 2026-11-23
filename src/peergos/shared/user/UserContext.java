@@ -3964,7 +3964,7 @@ public class UserContext {
     /** A writing space nested inside the moved subtree keeps all its blocks and its signing key.
      *  Only its link to its parent, and which key owns it, change.
      */
-    private CompletableFuture<Snapshot> reparentNestedWritingSpaces(List<AbsoluteCapability> nested,
+    public CompletableFuture<Snapshot> reparentNestedWritingSpaces(List<AbsoluteCapability> nested,
                                                                     PublicKeyHash owner,
                                                                     SigningPrivateKeyAndPublicHash oldParent,
                                                                     SigningPrivateKeyAndPublicHash newParent,

@@ -1007,9 +1007,9 @@ public class MultiUserTests {
 
         filePath = PathUtil.get(u1.username, destinationSubdirName, filename);
 
-        //new copy sharedWith entry should be empty
+        // kept, as in a move within a writing space
         FileSharedWithState newShared = u1.sharedWith(filePath).join();
-        Assert.assertTrue("file shared", ! isShared.test(newShared));
+        Assert.assertTrue("file shared", isShared.test(newShared));
     }
 
     @Test
