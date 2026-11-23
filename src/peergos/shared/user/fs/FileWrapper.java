@@ -2992,12 +2992,9 @@ public class FileWrapper {
                                 boolean differentParentWriter = !target.writer().equals(parent.writer());
                                 // a restricted key can't write where we now are, nor give the new folder our full key, so copy instead
                                 boolean restricted = isRestrictedKey() || target.isRestrictedKey() || parent.isRestrictedKey();
-                                if (! keepAccess || differentParentWriter || restricted)
-                                    return Futures.of(false);
                                 // whoever made a pending node knows its keys, so re-pointing would show them where we now are
-                                return Futures.of(! isPending() && ! parent.isPending() && ! target.isPending());
-                            })
-                            .thenCompose(repoint -> {
+                                boolean pending = isPending() || parent.isPending() || target.isPending();
+                                boolean repoint = keepAccess && ! differentParentWriter && ! restricted && ! pending;
                                 // TODO optimise different parent writer case by correcting owned keys
                                 if (repoint) {
                                     // just update parent and child pointers, no need to re-upload, rotate keys etc.
@@ -3029,10 +3026,10 @@ public class FileWrapper {
 
                                 }
                                 boolean rootInParentSpace = linkPointer.orElse(pointer).capability.writer.equals(parent.writer());
-                                if (keepAccess && rootInParentSpace)
+                                if (keepAccess && rootInParentSpace && ! restricted && ! pending)
                                     return moveAcrossWritingSpaces(v, c, target, parent, ourPath, newName, shared,
                                             targetMirrorBatId, context);
-                                if (! keepAccess && owner().equals(target.owner()))
+                                if (! keepAccess && owner().equals(target.owner()) && ! restricted && ! pending)
                                     return moveRotatingKeys(v, c, target, parent, ourPath, newName, targetMirrorBatId, context);
                                 return v.withWriter(owner(), target.writer(), net)
                                         .thenCompose(both -> target.getUpdated(both, net)
