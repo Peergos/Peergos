@@ -59,6 +59,16 @@ public class RoutingNode {
     /** Identities admitted by a server being placed or waiting its turn, queued in its bucket once it is taken. */
     private final Map<Multihash, Map<Subject, Offer>> awaitingAdmitter = Collections.synchronizedMap(new LRUCache<>(1_000));
     public static final int MAX_PLACING_PER_SENDER = 4;
+    /** Placements, which may each dial for half a minute, at once from everyone together; past it a new server
+     *  waits in the shared bucket, and is checked again in the background.
+     */
+    public static final int MAX_PLACING = 16, PLACING_THREADS = 4;
+    /** Its own threads, so dialling new servers can't hold up taking records in. */
+    private final ExecutorService placements = Executors.newFixedThreadPool(PLACING_THREADS, r -> {
+        Thread t = new Thread(r, "Routing placement");
+        t.setDaemon(true);
+        return t;
+    });
     private final Function<Multihash, RoutingPeer> dial;
     private final Map<Multihash, RoutingPeer> syncPeers = new ConcurrentHashMap<>();
     /** The state each sync peer last claimed of a subject: one per peer, so what is kept can't outgrow the peers. */
@@ -972,7 +982,7 @@ public class RoutingNode {
     private void place(RoutingPeer from, Subject s, Multihash turn, List<SignedRecord> records) {
         if (placing.containsKey(s))
             return;
-        if (placing.values().stream().filter(turn::equals).count() >= MAX_PLACING_PER_SENDER) {
+        if (placing.size() >= MAX_PLACING || placing.values().stream().filter(turn::equals).count() >= MAX_PLACING_PER_SENDER) {
             if (inceptions.offer(buckets.apply(s.id), turn, new Offer(from, s)))
                 takeSoon();
             return;
@@ -980,7 +990,7 @@ public class RoutingNode {
         if (placing.putIfAbsent(s, turn) != null)
             return;
         SubjectLog claimed = replica.preview(s, records);
-        work.submit(() -> {
+        placements.submit(() -> {
             AddressBucket bucket = AddressBucket.UNVERIFIED;
             try {
                 bucket = placer.apply(s.id, claimed);

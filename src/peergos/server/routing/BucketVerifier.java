@@ -23,6 +23,12 @@ import java.util.stream.*;
 public class BucketVerifier {
     private static final Logger LOG = Logging.LOG();
     public static final long VERIFIED_MILLIS = 24 * 3600_000L, RETRY_MILLIS = 3600_000L;
+    /** A server not reached is tried again after an hour, then twice as long each time it isn't, up to a day: its
+     *  proof of work, done once, would otherwise buy a dial every hour.
+     */
+    static long retryAfter(int failures) {
+        return Math.min(VERIFIED_MILLIS, RETRY_MILLIS << Math.min(Math.max(failures - 1, 0), 5));
+    }
     private static final long DIAL_TIMEOUT_SECONDS = 15;
 
     /** Connects to a peerid at these addresses only, giving the address the connection reached it on. */
@@ -51,11 +57,18 @@ public class BucketVerifier {
         final long at;
         /** Whether the server's addresses were known to try. */
         final boolean tried;
+        /** Checks running that didn't place it. */
+        final int failures;
 
-        Checked(Optional<AddressBucket> bucket, long at, boolean tried) {
+        Checked(Optional<AddressBucket> bucket, long at, boolean tried, int failures) {
             this.bucket = bucket;
             this.at = at;
             this.tried = tried;
+            this.failures = failures;
+        }
+
+        boolean isCurrent(long now) {
+            return now - at <= (bucket.isPresent() ? VERIFIED_MILLIS : retryAfter(failures));
         }
     }
 
@@ -83,7 +96,7 @@ public class BucketVerifier {
             c = checked.get(id);
         }
         long now = clock.getAsLong();
-        if (c == null || now - c.at > (c.bucket.isPresent() ? VERIFIED_MILLIS : RETRY_MILLIS))
+        if (c == null || ! c.isCurrent(now))
             verifyLater(id);
         return c == null ? Optional.empty() : c.bucket;
     }
@@ -108,7 +121,7 @@ public class BucketVerifier {
         synchronized (checked) {
             c = checked.get(id);
         }
-        if (c != null && c.tried && clock.getAsLong() - c.at <= (c.bucket.isPresent() ? VERIFIED_MILLIS : RETRY_MILLIS))
+        if (c != null && c.tried && c.isCurrent(clock.getAsLong()))
             return c.bucket.orElse(AddressBucket.UNVERIFIED);
         return verify(id, claimed instanceof ServerLog ? Optional.of((ServerLog) claimed) : Optional.empty(), true)
                 .orElse(AddressBucket.UNVERIFIED);
@@ -148,7 +161,9 @@ public class BucketVerifier {
             LOG.log(Level.FINE, "Couldn't place " + id + " in a bucket: " + e.getMessage());
         }
         synchronized (checked) {
-            checked.put(id, new Checked(res, clock.getAsLong(), tried));
+            Checked before = checked.get(id);
+            int failures = res.isPresent() ? 0 : (before == null ? 0 : before.failures) + 1;
+            checked.put(id, new Checked(res, clock.getAsLong(), tried, failures));
         }
         return res;
     }

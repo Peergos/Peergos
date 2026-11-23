@@ -1078,6 +1078,38 @@ public class ReplicationTests {
     }
 
     @Test
+    public void newServersFromManyFreshIdsDialOnlyAFewAtOnceAndNeverOnTheReplicationThreads() throws Exception {
+        Network net = new Network();
+        Node b = net.node(100);
+        AtomicInteger dialling = new AtomicInteger();
+        CountDownLatch never = new CountDownLatch(1);
+        b.routing.setPlacer((server, claimed) -> {
+            dialling.incrementAndGet();
+            try {
+                never.await();
+            } catch (InterruptedException e) {}
+            return AddressBucket.UNVERIFIED;
+        });
+        int servers = 3 * RoutingNode.MAX_PLACING;
+        List<Server> sent = new ArrayList<>();
+        for (int i = 0; i < servers; i++) {
+            Server x = new Server();
+            sent.add(x);
+            Node sender = net.node(100);
+            sender.replica.add(x.subject, x.inception);
+            Assert.assertEquals(Outcome.Limited, b.routing.offered(sender.id, x.subject, List.of(x.inception)));
+        }
+        waitFor(() -> dialling.get() == RoutingNode.PLACING_THREADS);
+        // the rest go in the shared bucket undialled, at its rate
+        waitFor(() -> sent.stream().filter(x -> b.replica.log(x.subject).exists()).count() == servers - RoutingNode.MAX_PLACING);
+        Assert.assertEquals(RoutingNode.PLACING_THREADS, dialling.get());
+        for (int i = 0; i < 8; i++)
+            Assert.assertEquals("free", work.submit(() -> "free").get(5, TimeUnit.SECONDS));
+        never.countDown();
+        waitFor(() -> dialling.get() == RoutingNode.MAX_PLACING);
+    }
+
+    @Test
     public void aStoreWithStateHashesComputedAnotherWayHasThemComputedAgain() {
         Network net = new Network();
         Node a = net.node(100), b = net.node(100);

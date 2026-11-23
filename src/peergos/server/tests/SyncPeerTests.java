@@ -13,6 +13,7 @@ import peergos.shared.util.*;
 import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
 import java.util.stream.*;
 
 public class SyncPeerTests {
@@ -122,6 +123,39 @@ public class SyncPeerTests {
         Assert.assertEquals("reached somewhere it doesn't list", Optional.empty(), v.verify(lying));
         Assert.assertEquals("no direct address", Optional.empty(), v.verify(relayed));
         Assert.assertEquals(AddressBucket.UNVERIFIED, v.bucket(relayed));
+    }
+
+    @Test
+    public void aServerNotReachedIsTriedLessOftenEachTimeUpToADay() {
+        RoutingReplica replica = replica();
+        Multihash dead = server(replica, true, "/ip4/198.51.100.1/tcp/4001", ServerAddresses.Mode.Archival);
+        long[] now = {1_000_000};
+        AtomicInteger dials = new AtomicInteger();
+        boolean[] up = {false};
+        BucketVerifier v = new BucketVerifier(RoutingLookup.full(replica), (peer, addrs) -> {
+            dials.incrementAndGet();
+            return Futures.of(up[0] ? Optional.of(BucketVerifier.ip(addrs.get(0)).get()) : Optional.empty());
+        }, () -> now[0], background);
+        long hour = BucketVerifier.RETRY_MILLIS;
+        Assert.assertEquals(AddressBucket.UNVERIFIED, v.place(dead, replica.log(Subject.server(dead))));
+        Assert.assertEquals(1, dials.get());
+        now[0] += hour + 1;
+        v.place(dead, replica.log(Subject.server(dead)));
+        Assert.assertEquals("an hour after the first", 2, dials.get());
+        now[0] += hour + 1;
+        v.place(dead, replica.log(Subject.server(dead)));
+        Assert.assertEquals("then two hours", 2, dials.get());
+        now[0] += hour;
+        v.place(dead, replica.log(Subject.server(dead)));
+        Assert.assertEquals(3, dials.get());
+        for (int i = 0; i < 10; i++) {
+            now[0] += BucketVerifier.VERIFIED_MILLIS + 1;
+            v.place(dead, replica.log(Subject.server(dead)));
+        }
+        Assert.assertEquals("at most daily", 13, dials.get());
+        up[0] = true;
+        now[0] += BucketVerifier.VERIFIED_MILLIS + 1;
+        Assert.assertEquals("198.51/16", v.place(dead, replica.log(Subject.server(dead))).toString());
     }
 
     @Test
