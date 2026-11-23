@@ -411,14 +411,16 @@ public class SharedWithCache {
     }
 
     /** Where a path ends up when the subtree at from moves to to, if it is in that subtree. Compared by component,
-     *  as a recorded path always uses / but Path.toString uses the platform separator. */
+     *  as a recorded path always uses / but Path.toString uses the platform separator, and on lists rather than Paths,
+     *  as the browser's Path compares and joins as strings (startsWith, relativize and resolve differ from the JDK's). */
     private static Optional<String> movedPath(String path, Path from, Path to) {
-        Path p = PathUtil.get(path);
-        Path src = PathUtil.get(from.toString());
-        if (! p.startsWith(src))
+        List<String> p = PathUtil.components(PathUtil.get(path));
+        List<String> src = PathUtil.components(PathUtil.get(from.toString()));
+        if (p.size() < src.size() || ! p.subList(0, src.size()).equals(src))
             return Optional.empty();
-        Path dest = PathUtil.get(to.toString()).resolve(src.relativize(p));
-        return Optional.of(String.join("/", PathUtil.components(dest)));
+        List<String> dest = new ArrayList<>(PathUtil.components(PathUtil.get(to.toString())));
+        dest.addAll(p.subList(src.size(), p.size()));
+        return Optional.of(String.join("/", dest));
     }
 
     /** A link that also holds items outside a moved subtree is recorded with those items too, under the old paths. */
