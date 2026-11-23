@@ -437,6 +437,29 @@ public class ReplicationTests {
     }
 
     @Test
+    public void aRoundListingMoreThanIsRememberedStillTakesWhatMostPeersHold() {
+        Network net = new Network();
+        Node a = net.node(1), c = net.node(1), b = net.node(1);
+        Server x = new Server();
+        for (Node n : List.of(a, b, c))
+            n.replica.add(x.subject, x.inception);
+        for (int i = 0; i < 300; i++) {
+            IdentityInception inc = x.admit(key());
+            Subject s = Subject.identity(inc.identityHash());
+            a.replica.add(s, inc);
+            c.replica.add(s, inc);
+        }
+        b.routing.seenCapacity(50);
+        b.syncWith(a);
+        b.syncWith(c);
+        b.routing.syncRound();
+        Assert.assertEquals(a.replica.store().summary(Subject.IDENTITY, Reconciliation.Range.ALL),
+                b.replica.store().summary(Subject.IDENTITY, Reconciliation.Range.ALL));
+        b.routing.syncRound();
+        Assert.assertTrue(b.routing.isSynced());
+    }
+
+    @Test
     public void aPeerWhoseShareOfARoundRunsOutIsStillCaughtUpWith() throws Exception {
         Network net = new Network();
         Node a = net.node(1), b = net.node(1);

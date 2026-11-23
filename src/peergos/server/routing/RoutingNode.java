@@ -56,7 +56,7 @@ public class RoutingNode {
     private final Function<Multihash, RoutingPeer> dial;
     private final Map<Multihash, RoutingPeer> syncPeers = new ConcurrentHashMap<>();
     /** The state each sync peer last claimed of a subject: one per peer, so what is kept can't outgrow the peers. */
-    private final Map<Subject, Map<Multihash, ByteArrayWrapper>> seen = Collections.synchronizedMap(new LRUCache<>(100_000));
+    private volatile Map<Subject, Map<Multihash, ByteArrayWrapper>> seen = Collections.synchronizedMap(new LRUCache<>(100_000));
     private final Map<Subject, Held> held = new ConcurrentHashMap<>();
     private final Map<Subject, SubjectLog> unproven = Collections.synchronizedMap(new LRUCache<>(UNPROVEN_CACHE));
     private final Map<Multihash, AtomicInteger> fetching = new ConcurrentHashMap<>();
@@ -489,11 +489,12 @@ public class RoutingNode {
             if (st.hash.length != Reconciliation.HASH_BYTES)
                 throw new IllegalStateException("A state hash is " + Reconciliation.HASH_BYTES + " bytes");
             Subject s = replica.canonical(st.subject);
+            if (Arrays.equals(replica.stateHash(s), st.hash))
+                continue;
             // only a sync peer's claims count towards catch-up, so no one else's are kept
             if (isSyncPeer)
                 saw(s, st.hash, caller);
-            if (! Arrays.equals(replica.stateHash(s), st.hash))
-                wanted.add(new JdbcRoutingStore.State(s, st.hash));
+            wanted.add(new JdbcRoutingStore.State(s, st.hash));
         }
         return fetchLater(budgetKey(caller), from, wanted);
     }
@@ -975,6 +976,16 @@ public class RoutingNode {
         return inFlight.size();
     }
 
+    public void seenCapacity(int subjects) {
+        seen = Collections.synchronizedMap(new LRUCache<>(subjects));
+    }
+
+    /** A round may list more claims than are remembered, so each is remembered again just before it is used. */
+    private void remember(Claim c) {
+        for (RoutingPeer h : c.holders)
+            saw(c.subject, c.state, h.id());
+    }
+
     public int claimedStates(Subject s) {
         synchronized (seen) {
             return seen.getOrDefault(replica.canonical(s), Map.of()).size();
@@ -1359,10 +1370,11 @@ public class RoutingNode {
             if (st.subject.kind != kind || ! forward || ! range.contains(slot))
                 throw new IllegalStateException("Peer " + peer.id() + " sent states out of order or range");
             after = new Reconciliation.Cursor(slot, id);
-            saw(st.subject, st.hash, peer.id());
             theirs.put(new ByteArrayWrapper(id), st.hash);
-            if (! Arrays.equals(replica.stateHash(st.subject), st.hash))
+            if (! Arrays.equals(replica.stateHash(st.subject), st.hash)) {
+                saw(st.subject, st.hash, peer.id());
                 res.add(st);
+            }
         }
         return after;
     }
@@ -1613,6 +1625,7 @@ public class RoutingNode {
                 for (Claim c : claims) {
                     if (Arrays.equals(replica.stateHash(c.subject), c.state))
                         continue;
+                    remember(c);
                     // Waiting its turn, or recently turned away, it comes from the queue rather than being fetched
                     // again, unless most peers now hold it, which takes it at once as catch-up.
                     if (isWaitingOrLimited(c.subject) && ! isCatchUp(c.subject, c.state))
@@ -1661,11 +1674,16 @@ public class RoutingNode {
                             }
                             try {
                                 roundBudget.set(budget);
+                                remember(c);
                                 Outcome o = accept(holder, c.subject, records, false);
                                 if (o == Outcome.Added)
                                     changed++;
-                                else if (o == Outcome.Limited || o == Outcome.Ignored)
+                                else if (o == Outcome.Limited || o == Outcome.Ignored) {
                                     limited(c.subject);
+                                    // most peers hold it, so lacking it this node isn't synced
+                                    if (isCatchUp(c.subject, c.state))
+                                        failed++;
+                                }
                                 if (misrepresented(c.subject, c.state, records)) {
                                     suspect(holder.id(), "it served a state of " + c.subject + " other than the one it claimed");
                                     undelivered.add(c);
