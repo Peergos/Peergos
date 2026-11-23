@@ -3080,8 +3080,8 @@ public class FileWrapper {
         RelativeCapability newParentLink = new RelativeCapability(Optional.empty(),
                 target.getLocation().getMapKey(), target.writableFilePointer().bat, target.getParentKey(), Optional.empty());
         CryptreeNode newRoot = renamed ?
-                root.fileAccess.withParentLinkAndProperties(root.getParentKey(), newParentLink, root.getProperties().withName(newName)) :
-                root.fileAccess.withParentLink(root.getParentKey(), newParentLink);
+                root.fileAccess.withParentLinkAndProperties(root.capability.rBaseKey, newParentLink, root.getProperties().withName(newName)) :
+                root.fileAccess.withParentLink(root.capability.rBaseKey, newParentLink);
         MovedSubtree moved = new MovedSubtree();
         return IpfsTransaction.call(owner, tid -> target.getPath(net).thenCompose(newPath -> v.withWriter(owner, from.publicKeyHash, net)
                 .thenCompose(v1 -> v1.withWriter(owner, to.publicKeyHash, net))
