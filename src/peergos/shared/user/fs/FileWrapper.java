@@ -2811,7 +2811,8 @@ public class FileWrapper {
                 // each key is a folder of shares, and is given here as a path in that folder
                 .thenCompose(v2 -> context.sharedWithCache.addAllSharedWith(shared.entrySet().stream()
                         .collect(Collectors.toMap(e -> newParent.resolve(ourPath.getParent().relativize(e.getKey())).resolve(getName()),
-                                e -> e.getValue())), v2, c, net))
+                                e -> SharedWithCache.withMovedMembers(e.getValue(), ourPath, newParent.resolve(newName)))), v2, c, net))
+                .thenCompose(v2 -> context.sharedWithCache.moveMembersOutside(shared, ourPath, newParent.resolve(newName), v2, c, net))
                 .thenCompose(v3 -> newName.equals(getName()) ? Futures.of(v3) :
                         context.sharedWithCache.rename(newParent.resolve(getName()), newParent.resolve(newName), v3, c, net));
     }

@@ -399,6 +399,55 @@ public class SharedWithCache {
                 .collect(Collectors.toSet());
     }
 
+    /** As a rename, but for every member at or below a moved path. */
+    public static SharedWithState withMovedMembers(SharedWithState state, Path from, Path to) {
+        Map<String, Set<LinkProperties>> links = state.links().entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().stream()
+                        .map(l -> l.members.isEmpty() ? l : l.withMembers(l.members.stream()
+                                .map(m -> movedPath(m.path, from, to).map(m::withPath).orElse(m))
+                                .collect(Collectors.toList())))
+                        .collect(Collectors.toSet())));
+        return new SharedWithState(state.readShares(), state.writeShares(), links);
+    }
+
+    /** Where a path ends up when the subtree at from moves to to, if it is in that subtree. */
+    private static Optional<String> movedPath(String path, Path from, Path to) {
+        String p = trimLeadingSlash(path);
+        String src = trimLeadingSlash(from.toString());
+        String dest = trimLeadingSlash(to.toString());
+        if (p.equals(src))
+            return Optional.of(dest);
+        if (p.startsWith(src + "/"))
+            return Optional.of(dest + p.substring(src.length()));
+        return Optional.empty();
+    }
+
+    private static String trimLeadingSlash(String p) {
+        return p.startsWith("/") ? p.substring(1) : p;
+    }
+
+    /** A link that also holds items outside a moved subtree is recorded with those items too, under the old paths. */
+    public CompletableFuture<Snapshot> moveMembersOutside(Map<Path, SharedWithState> moved, Path from, Path to,
+                                                         Snapshot in, Committer c, NetworkAccess network) {
+        Map<String, Path> recordDirs = new LinkedHashMap<>();
+        for (SharedWithState dir : moved.values())
+            for (Set<LinkProperties> links : dir.links().values())
+                for (LinkProperties l : links) {
+                    if (l.members.stream().noneMatch(m -> movedPath(m.path, from, to).isPresent()))
+                        continue;
+                    for (LinkMember m : l.members) {
+                        if (movedPath(m.path, from, to).isPresent())
+                            continue;
+                        Path member = PathUtil.get(m.path);
+                        if (member.getParent() != null)
+                            recordDirs.putIfAbsent(member.getParent().toString(), member);
+                    }
+                }
+        return Futures.reduceAll(recordDirs.values(), in,
+                (s, member) -> applyIfPresentAndCommit(member, current -> withMovedMembers(current, from, to), s, c, network),
+                (a, b) -> b);
+    }
+
     public CompletableFuture<Snapshot> addSecretLink(Path p, LinkProperties link,
                                                      Snapshot in, Committer committer, NetworkAccess network) {
         return applyAndCommit(p, current -> current.addLink(getFilename(p), link), in, committer, network);

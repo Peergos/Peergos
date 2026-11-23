@@ -1407,6 +1407,31 @@ public abstract class UserTests {
                 fromLink.getByPath(username + "/second").join().isPresent());
     }
 
+    @Test
+    public void movingOneItemKeepsTheLinkEditableFromTheOthers() throws Exception {
+        String username = generateUsername();
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, "test", network, crypto);
+        for (String dir : Arrays.asList("first", "second", "dest"))
+            context.getUserRoot().join().mkdir(dir, context.network, false, context.mirrorBatId(), crypto).join();
+        context.createSecretLink(Arrays.asList(username + "/first", username + "/second"), Collections.emptyList(),
+                Optional.empty(), Optional.empty(), "", false).join();
+
+        FileWrapper first = context.getByPath(username + "/first").join().get();
+        FileWrapper root = context.getUserRoot().join();
+        FileWrapper dest = context.getByPath(username + "/dest").join().get();
+        first.moveTo(dest, root, PathUtil.get(username, "first"), context, () -> Futures.of(true)).join();
+
+        String moved = username + "/dest/first";
+        LinkProperties fromMoved = context.sharedWith(PathUtil.get(moved)).join().links.iterator().next();
+        LinkProperties fromOther = context.sharedWith(PathUtil.get(username, "second")).join().links.iterator().next();
+        for (LinkProperties recorded : Arrays.asList(fromMoved, fromOther))
+            Assert.assertEquals(Set.of(moved, username + "/second"),
+                    recorded.members.stream().map(m -> m.path).collect(Collectors.toSet()));
+
+        LinkProperties updated = context.updateSecretLink(username + "/second", fromOther.with("pw", "", Optional.empty(), false)).join();
+        Assert.assertEquals(2, updated.members.size());
+    }
+
     /**
      * Removing an item stops new visitors seeing it, and does not take it back from anyone who
      * already opened the link. Capabilities cannot be recalled; that is what revoking is for, and
