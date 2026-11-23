@@ -90,6 +90,13 @@ public interface RoutingPeer {
     /** Records handed in by a light server, or the caller's own, charged to the caller's budget. */
     CompletableFuture<Outcome> offer(Subject s, List<SignedRecord> records);
 
+    /** The caller's own server records, which a server it doesn't know yet takes on the caller's own allowance
+     *  rather than the one every unknown caller shares, so a new server can always be heard.
+     */
+    default CompletableFuture<Outcome> introduce(List<SignedRecord> records) {
+        return Futures.errored(new UnsupportedOperationException());
+    }
+
     /** Asked of a relay a server lists first: whether that server is one it relays for and stands behind, so that
      *  the server may be put in the relay's address bucket (remove-pki §4.5).
      */

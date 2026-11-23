@@ -407,6 +407,11 @@ public class RateLimits {
          *  take turns, one offer each, and a bucket served goes to the back.
          */
         public synchronized List<O> take() {
+            return take(o -> {});
+        }
+
+        /** @param taking called for each offer before it stops counting as waiting */
+        public synchronized List<O> take(Consumer<O> taking) {
             taken.clear();
             List<O> res = new ArrayList<>();
             long busy = clock.getAsLong() + DAY;
@@ -428,6 +433,7 @@ public class RateLimits {
                     Multihash next = servers.keySet().iterator().next();
                     ArrayDeque<O> queue = servers.remove(next);
                     O offer = queue.poll();
+                    taking.accept(offer);
                     res.add(offer);
                     taken.put(offer, bucket);
                     all.remove(offer);

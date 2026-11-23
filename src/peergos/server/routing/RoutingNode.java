@@ -515,6 +515,10 @@ public class RoutingNode {
         return fetchLater(budgetKey(caller), from, wanted);
     }
 
+    /** What one unproven peer id may have of the place all of them share, so one id can't take it all. */
+    public static final int UNPROVEN_SHARE = 8;
+    private final Map<Multihash, AtomicInteger> fetchingUnproven = new ConcurrentHashMap<>();
+
     /** Asks a peer for subjects without waiting, a batch to a call, so one that answers slowly holds no thread of
      *  ours, only places among those outstanding for it. What it answers is taken on the work pool, servers first,
      *  as identities' admissions are checked against them.
@@ -523,18 +527,26 @@ public class RoutingNode {
      */
     private boolean fetchLater(Multihash chargedTo, RoutingPeer from, List<JdbcRoutingStore.State> wanted) {
         AtomicInteger outstanding = fetching.computeIfAbsent(chargedTo, c -> new AtomicInteger());
+        Multihash sender = from.id().bareMultihash();
+        Optional<AtomicInteger> own = chargedTo.equals(POOL) ?
+                Optional.of(fetchingUnproven.computeIfAbsent(sender, c -> new AtomicInteger())) :
+                Optional.empty();
         List<JdbcRoutingStore.State> taking = new ArrayList<>();
         boolean all = true;
         for (JdbcRoutingStore.State w : wanted) {
             if (inFlight.contains(w))
                 continue;
-            if (outstanding.incrementAndGet() > MAX_FETCHING_PER_PEER) {
-                outstanding.decrementAndGet();
+            boolean overShare = own.map(n -> n.incrementAndGet() > MAX_FETCHING_PER_PEER / UNPROVEN_SHARE).orElse(false);
+            if (overShare || outstanding.incrementAndGet() > MAX_FETCHING_PER_PEER) {
+                if (! overShare)
+                    outstanding.decrementAndGet();
+                own.ifPresent(AtomicInteger::decrementAndGet);
                 all = false;
                 continue;
             }
             if (! inFlight.add(w)) {
                 outstanding.decrementAndGet();
+                own.ifPresent(AtomicInteger::decrementAndGet);
                 continue;
             }
             if (! w.subject.isIdentity())
@@ -543,6 +555,11 @@ public class RoutingNode {
         }
         if (taking.isEmpty() && outstanding.get() == 0)
             fetching.remove(chargedTo, outstanding);
+        if (taking.isEmpty())
+            own.ifPresent(n -> {
+                if (n.get() == 0)
+                    fetchingUnproven.remove(sender, n);
+            });
         taking.sort(Comparator.comparingInt(w -> w.subject.isIdentity() ? 1 : 0));
         for (int i = 0; i < taking.size(); i += FETCH_BATCH) {
             List<JdbcRoutingStore.State> batch = new ArrayList<>(taking.subList(i, Math.min(taking.size(), i + FETCH_BATCH)));
@@ -568,6 +585,10 @@ public class RoutingNode {
                         inFlight.remove(w);
                         if (outstanding.decrementAndGet() == 0)
                             fetching.remove(chargedTo, outstanding);
+                        own.ifPresent(n -> {
+                            if (n.decrementAndGet() == 0)
+                                fetchingUnproven.remove(sender, n);
+                        });
                         if (! s.isIdentity()) {
                             fetchingServers.computeIfPresent(s, (x, n) -> n > 1 ? n - 1 : null);
                             if (! isOnItsWay(s))
@@ -582,6 +603,18 @@ public class RoutingNode {
 
     public Outcome offered(Multihash caller, Subject s, List<SignedRecord> records) {
         return accept(dial.apply(caller), s, records, false, false, true);
+    }
+
+    /** A server handing over its own records. Whether they are its own costs nothing to check, so no one else's
+     *  are taken this way; its proof of work is checked as for any new server.
+     */
+    public Outcome introduced(Multihash caller, List<SignedRecord> records) {
+        Multihash id = caller.bareMultihash();
+        boolean own = records.stream().anyMatch(r -> r instanceof ServerInception
+                && ((ServerInception) r).peerId().bareMultihash().equals(id));
+        if (! own)
+            throw new IllegalStateException("A server introduces only itself");
+        return accept(dial.apply(caller), Subject.server(id), records, false, false, true);
     }
 
     // ---- acting for this node
@@ -637,7 +670,32 @@ public class RoutingNode {
         self = Optional.of(s);
     }
 
+    /** Each sync peer's answer to this server introducing itself, by the state it introduced. */
+    private final Map<Multihash, ByteArrayWrapper> introducedTo = new ConcurrentHashMap<>();
+
+    private void introduce(RoutingPeer peer, Subject s) {
+        ByteArrayWrapper state = new ByteArrayWrapper(replica.stateHash(s));
+        Multihash id = peer.id().bareMultihash();
+        if (state.equals(introducedTo.get(id)))
+            return;
+        List<SignedRecord> own;
+        try {
+            own = replica.records(s, dial);
+        } catch (Throwable t) {
+            return;
+        }
+        peer.introduce(own).thenAccept(o -> {
+            if (o == Outcome.Added || o == Outcome.Duplicate)
+                introducedTo.put(id, state);
+        }).exceptionally(t -> null);
+    }
+
     private void reannounce() {
+        self.filter(s -> ! s.isIdentity()).ifPresent(s -> {
+            for (RoutingPeer peer : new ArrayList<>(syncPeers.values()))
+                introduce(peer, s);
+        });
+        introducedTo.keySet().retainAll(syncPeers.keySet());
         for (RoutingPeer peer : new ArrayList<>(syncPeers.values())) {
             List<JdbcRoutingStore.State> states = new ArrayList<>();
             self.ifPresent(s -> states.add(new JdbcRoutingStore.State(s, replica.stateHash(s))));
@@ -942,7 +1000,8 @@ public class RoutingNode {
      *  its turn there.
      */
     private boolean isOnItsWay(Subject server) {
-        return fetchingServers.containsKey(server) || placing.containsKey(server) || inceptions.isWaiting(new Offer(null, server));
+        // in the order a server passes through them, each entered before the last is left
+        return placing.containsKey(server) || inceptions.isWaiting(new Offer(null, server)) || fetchingServers.containsKey(server);
     }
 
     /** An identity whose admitting server is on its way in waits for it, to be queued in its bucket after it. */
@@ -974,17 +1033,18 @@ public class RoutingNode {
     /** Fetches the inceptions whose turn has come, those from one peer together. */
     private void takeInceptions() {
         Map<Multihash, List<Offer>> byPeer = new LinkedHashMap<>();
-        for (Offer o : inceptions.take())
+        // A server is on its way until it is stored: it counts as fetched before it stops counting as waiting, so
+        // an identity it admitted arriving meanwhile waits for it rather than being turned away.
+        Consumer<Offer> fetching = o -> {
+            if (! o.subject.isIdentity())
+                fetchingServers.merge(o.subject, 1, Integer::sum);
+        };
+        for (Offer o : inceptions.take(fetching))
             byPeer.computeIfAbsent(o.from.id().bareMultihash(), p -> new ArrayList<>()).add(o);
         for (List<Offer> offers : byPeer.values()) {
             RoutingPeer from = offers.get(0).from;
             for (int i = 0; i < offers.size(); i += FETCH_BATCH) {
                 List<Offer> batch = offers.subList(i, Math.min(offers.size(), i + FETCH_BATCH));
-                // A server taken from the queue is still on its way until it is stored: an identity it admitted
-                // that arrives meanwhile waits for it, rather than being turned away for naming a server nobody holds.
-                for (Offer o : batch)
-                    if (! o.subject.isIdentity())
-                        fetchingServers.merge(o.subject, 1, Integer::sum);
                 Map<Subject, List<SignedRecord>> got = Map.of();
                 try {
                     got = from.recordsOf(batch.stream().map(o -> o.subject).collect(Collectors.toList())).join();

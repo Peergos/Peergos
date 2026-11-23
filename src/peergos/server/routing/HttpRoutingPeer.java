@@ -170,6 +170,14 @@ public class HttpRoutingPeer implements RoutingPeer {
     }
 
     @Override
+    public CompletableFuture<Outcome> introduce(List<SignedRecord> records) {
+        return call("introduce", Map.of("r", new CborObject.CborList(records.stream()
+                .map(RecordType::tag)
+                .collect(Collectors.toList()))))
+                .thenApply(res -> Outcome.valueOf(((CborObject.CborString) res).value));
+    }
+
+    @Override
     public CompletableFuture<Boolean> vouches(Multihash server) {
         return call("vouches", Map.of("s", Subject.server(server.bareMultihash())))
                 .thenApply(res -> ((CborObject.CborBoolean) res).value);

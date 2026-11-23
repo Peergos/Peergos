@@ -33,14 +33,19 @@ public class RoutingHandler implements HttpHandler {
     public static final RateLimits.Rate PAGES = new RateLimits.Rate(600, 100), UNPROVEN_PAGES = new RateLimits.Rate(60, 1_000);
     public static final RateLimits.Rate UNPROVEN_SCANS = new RateLimits.Rate(100, 1_000),
             UNPROVEN_RECORDS = new RateLimits.Rate(1_000, 50), UNPROVEN_OFFERS = new RateLimits.Rate(100, 1_000);
+    /** A server introducing itself, on its own allowance: its peer id is free, but its proof of work isn't. */
+    public static final RateLimits.Rate INTRODUCTIONS = new RateLimits.Rate(4, 15 * 60_000);
+    public static final int MAX_INTRODUCTION = 64 * 1024, MAX_INTRODUCED = 16;
     private static final Set<String> METHODS = Set.of("announce", "records", "records-of", "page", "summaries",
-            "children", "states", "states-in", "offer", "vouches");
+            "children", "states", "states-in", "offer", "vouches", "introduce");
     private static final Multihash POOL = new Multihash(Multihash.Type.id, new byte[0]);
 
     private final RoutingNode node;
     private final Predicate<Multihash> vouches;
     private final RateLimits.TokenBuckets<Multihash> scans, records, offers, unprovenScans, unprovenRecords, unprovenOffers,
-            pages, unprovenPages;
+            pages, unprovenPages, introductions;
+    /** Each unproven peer id's share of what all of them share, so one can't take it all. */
+    private final RateLimits.TokenBuckets<Multihash> scansShare, recordsShare, offersShare, pagesShare;
 
     public RoutingHandler(RoutingNode node) {
         this(node, server -> false);
@@ -62,6 +67,28 @@ public class RoutingHandler implements HttpHandler {
         unprovenOffers = new RateLimits.TokenBuckets<>(UNPROVEN_OFFERS, clock);
         pages = new RateLimits.TokenBuckets<>(PAGES, clock);
         unprovenPages = new RateLimits.TokenBuckets<>(UNPROVEN_PAGES, clock);
+        introductions = new RateLimits.TokenBuckets<>(INTRODUCTIONS, clock);
+        scansShare = new RateLimits.TokenBuckets<>(share(UNPROVEN_SCANS), clock);
+        recordsShare = new RateLimits.TokenBuckets<>(share(UNPROVEN_RECORDS), clock);
+        offersShare = new RateLimits.TokenBuckets<>(share(UNPROVEN_OFFERS), clock);
+        pagesShare = new RateLimits.TokenBuckets<>(share(UNPROVEN_PAGES), clock);
+    }
+
+    private static RateLimits.Rate share(RateLimits.Rate pool) {
+        return new RateLimits.Rate(Math.max(1, pool.burst / RoutingNode.UNPROVEN_SHARE), pool.refillMillis * RoutingNode.UNPROVEN_SHARE);
+    }
+
+    /** From the caller's share first, so an id past its share leaves the pool alone; a share is kept only for an id
+     *  the pool let in, so ids that never got in cost no state.
+     */
+    private static boolean unproven(RateLimits.TokenBuckets<Multihash> pool, RateLimits.TokenBuckets<Multihash> share,
+                                    Multihash caller, long cost) {
+        if (share.tokens(caller) < cost)
+            return false;
+        if (! pool.tryTake(POOL, cost))
+            return false;
+        share.tryTake(caller, cost);
+        return true;
     }
 
     /** Whether the caller may make this call now. */
@@ -71,22 +98,25 @@ public class RoutingHandler implements HttpHandler {
 
     /** @param cost what the call asks for: the subjects whose records it wants, or one */
     public boolean allow(String method, Multihash caller, int cost) {
+        if (method.equals("introduce"))
+            return introductions.tryTake(caller);
         boolean proven = node.isProvenServer(caller);
-        Multihash key = proven ? caller : POOL;
         switch (method) {
             case "summaries":
             case "children":
             case "states":
-                return (proven ? scans : unprovenScans).tryTake(key);
-            case "states-in":
-                return (proven ? scans : unprovenScans).tryTake(key, RoutingNode.LISTED / RoutingNode.PAGE);
+                return proven ? scans.tryTake(caller) : unproven(unprovenScans, scansShare, caller, 1);
+            case "states-in": {
+                int scanCost = RoutingNode.LISTED / RoutingNode.PAGE;
+                return proven ? scans.tryTake(caller, scanCost) : unproven(unprovenScans, scansShare, caller, scanCost);
+            }
             case "page":
-                return (proven ? pages : unprovenPages).tryTake(key);
+                return proven ? pages.tryTake(caller) : unproven(unprovenPages, pagesShare, caller, 1);
             case "records":
             case "records-of":
-                return (proven ? records : unprovenRecords).tryTake(key, cost);
+                return proven ? records.tryTake(caller, cost) : unproven(unprovenRecords, recordsShare, caller, cost);
             default:
-                return (proven ? offers : unprovenOffers).tryTake(key);
+                return proven ? offers.tryTake(caller) : unproven(unprovenOffers, offersShare, caller, 1);
         }
     }
 
@@ -111,7 +141,8 @@ public class RoutingHandler implements HttpHandler {
                 HttpUtil.replyErrorWithCode(exchange, 429, "Too many routing requests");
                 return;
             }
-            Cborable body = CborObject.fromByteArray(Serialize.readFully(exchange.getRequestBody(), MAX_BODY));
+            Cborable body = CborObject.fromByteArray(Serialize.readFully(exchange.getRequestBody(),
+                    method.equals("introduce") ? MAX_INTRODUCTION : MAX_BODY));
             int cost = method.equals("records-of") ? ((CborObject.CborMap) body).getList("s", Subject::fromCbor).size() : 1;
             if (cost > RoutingNode.FETCH_BATCH)
                 throw new IllegalStateException("Too many subjects");
@@ -181,6 +212,12 @@ public class RoutingHandler implements HttpHandler {
             }
             case "vouches":
                 return new CborObject.CborBoolean(vouches.test(Subject.fromCbor(m.get("s")).id));
+            case "introduce": {
+                List<SignedRecord> own = m.getList("r", RecordType::untag);
+                if (own.size() > MAX_INTRODUCED)
+                    throw new IllegalStateException("Too many records");
+                return new CborObject.CborString(node.introduced(caller, own).name());
+            }
             default:
                 throw new IllegalStateException("Unknown routing method " + method);
         }

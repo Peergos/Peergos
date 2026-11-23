@@ -73,14 +73,20 @@ public class HttpRoutingTests {
     }
 
     private static class Node {
-        final Multihash id = ServerKeys.peerId(key().publicSigningKey);
-        final Proxy proxy = new Proxy(id);
+        final Multihash id;
+        final Proxy proxy;
         final RoutingReplica replica;
         final RoutingNode routing;
         final HttpServer server;
         final Set<Multihash> vouchFor = ConcurrentHashMap.newKeySet();
 
         Node() throws IOException {
+            this(ServerKeys.peerId(key().publicSigningKey));
+        }
+
+        Node(Multihash id) throws IOException {
+            this.id = id.bareMultihash();
+            this.proxy = new Proxy(this.id);
             JdbcRoutingStore store = new JdbcRoutingStore(Builder.buildEphemeralSqlite(), new SqliteCommands());
             replica = new RoutingReplica(store, new RecordValidator(crypto.hasher, TEST_WORK, TEST_WORK), TEST_WORK, TEST_WORK);
             routing = new RoutingNode(replica, crypto.hasher, System::currentTimeMillis, 100,
@@ -89,7 +95,7 @@ public class HttpRoutingTests {
             server.createContext("/" + Constants.ROUTING_URL, new RoutingHandler(routing, vouchFor::contains));
             server.setExecutor(Executors.newFixedThreadPool(4));
             server.start();
-            ports.put(id, server.getAddress().getPort());
+            ports.put(this.id, server.getAddress().getPort());
         }
 
         HttpRoutingPeer peer(Node target) {
@@ -154,6 +160,43 @@ public class HttpRoutingTests {
             conn.disconnect();
         }
         Assert.assertTrue("requests past the limit are refused, though their bodies don't decode", refused >= 5);
+    }
+
+    @Test
+    public void unknownCallersShareOnePoolOneIdCantEmptyAndANewServerCanAlwaysIntroduceItself() throws Exception {
+        Node a = new Node();
+        RoutingHandler handler = new RoutingHandler(a.routing);
+        Multihash flooder = ServerKeys.peerId(key().publicSigningKey);
+        int took = 0;
+        while (handler.allow("summaries", flooder))
+            took++;
+        Assert.assertEquals(RoutingHandler.UNPROVEN_SCANS.burst / RoutingNode.UNPROVEN_SHARE, took);
+        Assert.assertTrue("another id still gets in", handler.allow("summaries", ServerKeys.peerId(key().publicSigningKey)));
+
+        // many free ids do empty it
+        while (handler.allow("summaries", ServerKeys.peerId(key().publicSigningKey)))
+            ;
+        // but a new server's own records come in on its own allowance, over HTTP, proof of work checked
+        SigningKeyPair serverKey = key();
+        ServerInception x = ServerInception.build(serverKey, key().publicSigningKey, crypto.hasher).join().withProof(GOOD_PROOF);
+        Node n = new Node(x.peerId());
+        n.replica.add(Subject.server(x.peerId()), x);
+        Proxy newServer = n.proxy;
+        Outcome first = new HttpRoutingPeer(a.id, newServer).introduce(List.of(x)).get(10, TimeUnit.SECONDS);
+        Assert.assertTrue("taken, or waiting its bucket's turn: " + first, first == Outcome.Added || first == Outcome.Limited);
+        long end = System.currentTimeMillis() + 10_000;
+        while (! a.replica.log(Subject.server(x.peerId())).exists() && System.currentTimeMillis() < end) {
+            a.routing.tick();
+            Thread.sleep(20);
+        }
+        Assert.assertTrue(a.replica.log(Subject.server(x.peerId())).exists());
+        Assert.assertEquals(Outcome.Duplicate, new HttpRoutingPeer(a.id, newServer).introduce(List.of(x)).get(10, TimeUnit.SECONDS));
+
+        ServerInception unproven = ServerInception.build(key(), key().publicSigningKey, crypto.hasher).join();
+        Assert.assertNotEquals("its proof of work is still checked", Outcome.Added,
+                new HttpRoutingPeer(a.id, new Proxy(unproven.peerId())).introduce(List.of(unproven))
+                        .handle((o, t) -> t == null ? o : Outcome.Rejected).get(10, TimeUnit.SECONDS));
+        Assert.assertFalse(a.replica.log(Subject.server(unproven.peerId())).exists());
     }
 
     @Test

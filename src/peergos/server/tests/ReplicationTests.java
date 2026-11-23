@@ -100,6 +100,14 @@ public class ReplicationTests {
         public CompletableFuture<Outcome> offer(Subject s, List<SignedRecord> records) {
             return CompletableFuture.completedFuture(target.routing.offered(caller, s, records));
         }
+
+        public CompletableFuture<Outcome> introduce(List<SignedRecord> records) {
+            try {
+                return CompletableFuture.completedFuture(target.routing.introduced(caller, records));
+            } catch (Throwable t) {
+                return CompletableFuture.failedFuture(t);
+            }
+        }
     }
 
     private static class Server {
@@ -834,16 +842,19 @@ public class ReplicationTests {
                     }
                 }, work);
         boolean all = true;
-        for (int caller = 0; caller < 5; caller++) {
+        int share = RoutingNode.MAX_FETCHING_PER_PEER / RoutingNode.UNPROVEN_SHARE;
+        for (int caller = 0; caller < RoutingNode.UNPROVEN_SHARE + 2; caller++) {
             List<JdbcRoutingStore.State> states = new ArrayList<>();
             for (int i = 0; i < RoutingNode.MAX_FETCHING_PER_PEER; i++)
                 states.add(new JdbcRoutingStore.State(Subject.identity(
                         peergos.shared.storage.ContentAddressedStorage.hashKey(key().publicSigningKey)), new byte[32]));
             all &= node.announced(ServerKeys.peerId(key().publicSigningKey), states);
+            if (caller == 0)
+                Assert.assertEquals("one fresh key gets only its share", share, node.outstandingFetches());
         }
         Assert.assertFalse("those not taken are announced again later", all);
-        Assert.assertEquals(RoutingNode.MAX_FETCHING_PER_PEER, node.outstandingFetches());
-        Assert.assertEquals(RoutingNode.MAX_FETCHING_PER_PEER / RoutingNode.FETCH_BATCH, asked.size());
+        Assert.assertEquals("fresh keys together share one budget", RoutingNode.MAX_FETCHING_PER_PEER, node.outstandingFetches());
+        Assert.assertEquals(RoutingNode.UNPROVEN_SHARE * ((share + RoutingNode.FETCH_BATCH - 1) / RoutingNode.FETCH_BATCH), asked.size());
         for (int i = 0; i < 8; i++)
             Assert.assertEquals("free", work.submit(() -> "free").get(5, TimeUnit.SECONDS));
         new ArrayList<>(asked).forEach(f -> f.complete(Map.of()));
@@ -1033,6 +1044,37 @@ public class ReplicationTests {
         b.routing.syncRound();
         Assert.assertTrue(b.routing.isNotServing(x.peerId));
         Assert.assertEquals(0, b.routing.waitingInceptions());
+    }
+
+    @Test
+    public void aServerIntroducesItselfToItsSyncPeersOnceForEachStateAndNoOneElse() throws Exception {
+        Network net = new Network();
+        Server x = new Server(), other = new Server();
+        Node n = net.node(100, x.peerId), b = net.node(100);
+        n.replica.add(x.subject, x.inception);
+        n.routing.setSelf(x.subject);
+        AtomicInteger introductions = new AtomicInteger();
+        n.routing.addSyncPeer(new LocalPeer(n.id, b) {
+            @Override
+            public CompletableFuture<Outcome> introduce(List<SignedRecord> records) {
+                introductions.incrementAndGet();
+                return super.introduce(records);
+            }
+        });
+        n.routing.syncRound();
+        // a new server is placed in its bucket off the caller's thread
+        waitFor(() -> b.replica.log(x.subject).exists());
+        n.routing.syncRound();
+        waitFor(() -> introductions.get() >= 2);
+        int asked = introductions.get();
+        n.routing.syncRound();
+        n.routing.syncRound();
+        Assert.assertEquals("not again once it is held", asked, introductions.get());
+        try {
+            b.routing.introduced(n.id, List.of(other.inception));
+            Assert.fail("a server introduces only itself");
+        } catch (IllegalStateException expected) {}
+        Assert.assertFalse(b.replica.log(other.subject).exists());
     }
 
     @Test
