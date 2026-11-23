@@ -25,8 +25,8 @@ public class JdbcRoutingStore {
     private static final String SUBJECTS = "SELECT subject FROM routingrecords WHERE kind = ? AND subject > ? ORDER BY subject LIMIT ?;";
     private static final String GET_STATEHASH = "SELECT statehash FROM routingrecords WHERE kind = ? AND subject = ?;";
     private static final String IS_PENDING = "SELECT 1 FROM routingpending WHERE kind = ? AND subject = ?;";
-    private static final String STATES = "SELECT subject, statehash FROM routingstates WHERE kind = ? AND slot >= ? AND slot <= ? " +
-            "AND (slot > ? OR (slot = ? AND subject > ?)) ORDER BY slot, subject LIMIT ?;";
+    private static final String STATES = "SELECT subject, statehash FROM routingstates WHERE kind = ? AND slot <= ? " +
+            "AND (slot, subject) > (?, ?) ORDER BY slot, subject LIMIT ?;";
     private static final String GET_STATE = "SELECT statehash FROM routingstates WHERE kind = ? AND slot = ? AND subject = ?;";
     private static final String PUT_STATE = "INSERT INTO routingstates (kind, slot, subject, statehash) VALUES (?, ?, ?, ?) " +
             "ON CONFLICT (kind, slot, subject) DO UPDATE SET statehash = excluded.statehash;";
@@ -387,13 +387,13 @@ public class JdbcRoutingStore {
     public List<State> states(int kind, Reconciliation.Range range, Reconciliation.Cursor after, int limit) {
         try (Connection c = getConnection();
              PreparedStatement select = c.prepareStatement(STATES)) {
+            // A separate slot >= lower bound makes SQLite scan from the range start instead of the cursor
+            boolean before = after.slot < range.from();
             select.setInt(1, kind);
-            select.setInt(2, range.from());
-            select.setInt(3, range.to());
-            select.setInt(4, after.slot);
-            select.setInt(5, after.slot);
-            select.setBytes(6, after.id);
-            select.setInt(7, limit);
+            select.setInt(2, range.to());
+            select.setInt(3, before ? range.from() : after.slot);
+            select.setBytes(4, before ? new byte[0] : after.id);
+            select.setInt(5, limit);
             ResultSet rs = select.executeQuery();
             List<State> res = new ArrayList<>();
             while (rs.next())
