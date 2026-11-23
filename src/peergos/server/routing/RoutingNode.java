@@ -30,7 +30,12 @@ public class RoutingNode {
      */
     public static final int MAX_FETCHING_PER_PEER = 1024, FETCH_BATCH = 256;
     public static final int UNPROVEN_CACHE = 1000, MAX_OFFERS_PER_SERVER = 1000;
+    /** What one peer may add to this node a day outside catch-up: at least this, and a byte per identity held, so
+     *  one honest peer can bring the whole network's changes.
+     */
     public static final long MAX_BYTES_PER_PEER = 64 * 1024 * 1024;
+    private static final int CHARGE_UNIT = 64;
+    private volatile long maxBytesPerPeer = MAX_BYTES_PER_PEER;
     /** Records new to this node taken for one subject at once, unless most of its sync peers hold them: what a
      *  subject can add within its rate limits is far fewer, and each costs a signature check. A pull, for a lookup
      *  this node is making, may bring an old identity's whole chain.
@@ -299,8 +304,7 @@ public class RoutingNode {
         this.dial = dial;
         this.work = work;
         this.flushLater = work::submit;
-        this.charged = new RateLimits.TokenBuckets<>(new RateLimits.Rate((int) (MAX_BYTES_PER_PEER / 1024),
-                RateLimits.DAY / (MAX_BYTES_PER_PEER / 1024)), clock);
+        this.charged = new RateLimits.TokenBuckets<>(chargeRate(MAX_BYTES_PER_PEER, 0), clock);
         this.rejections = new RateLimits.TokenBuckets<>(new RateLimits.Rate(REJECTIONS, RateLimits.DAY / REJECTIONS), clock);
         replica.onChange((s, log) -> {
             byte[] hash = replica.stateHash(s);
@@ -775,15 +779,21 @@ public class RoutingNode {
         RoutingReplica.Gate gate = (subject, record, isNewInception) -> {
             if (catchUp)
                 return true;
-            if (RoutingReplica.isInception(record) && ! isNewInception && ! updates.tryTakeEvidence(subject))
+            // the sender's allowance first, so a record it can't add doesn't spend the subject's own tokens
+            if (! charge(from, record))
                 return false;
+            if (RoutingReplica.isInception(record) && ! isNewInception && ! updates.tryTakeEvidence(subject)) {
+                refund(from, record);
+                return false;
+            }
             RecordType type = RecordType.of(record);
             if (updates.isLimited(type) && ! updates.tryTake(subject, type)) {
+                refund(from, record);
                 if (record instanceof Update)
                     hold(subject, from, record);
                 return false;
             }
-            return charge(from, record);
+            return true;
         };
         Outcome res = Outcome.Duplicate;
         List<SignedRecord> pending = new ArrayList<>(fresh);
@@ -831,7 +841,24 @@ public class RoutingNode {
 
     /** Records new to this replica are charged to the peer that sent them, up to a cap on what each peer may add. */
     private boolean charge(RoutingPeer from, SignedRecord record) {
-        return charged.tryTake(from.id().bareMultihash(), (record.serialize().length + 1023) / 1024);
+        return charged.tryTake(from.id().bareMultihash(), units(record));
+    }
+
+    private void refund(RoutingPeer from, SignedRecord record) {
+        charged.give(from.id().bareMultihash(), units(record));
+    }
+
+    private static long units(SignedRecord record) {
+        return (record.serialize().length + CHARGE_UNIT - 1) / CHARGE_UNIT;
+    }
+
+    private static RateLimits.Rate chargeRate(long minBytes, long identities) {
+        return RateLimits.Rate.perDay((int) Math.min(Integer.MAX_VALUE, Math.max(minBytes, identities) / CHARGE_UNIT));
+    }
+
+    public void maxBytesPerPeer(long bytes) {
+        maxBytesPerPeer = bytes;
+        charged.setRate(chargeRate(bytes, 0));
     }
 
     /** An update that arrives before its token is kept, the newest only, and applied when the token is due. */
@@ -844,7 +871,9 @@ public class RoutingNode {
 
     /** Takes the inceptions whose turn has come and the held updates whose token is due. Run periodically. */
     public void tick() {
-        inceptions.resize(replica.store().summary(Subject.IDENTITY, Reconciliation.Range.ALL).count);
+        long identities = replica.store().summary(Subject.IDENTITY, Reconciliation.Range.ALL).count;
+        inceptions.resize(identities);
+        charged.setRate(chargeRate(maxBytesPerPeer, identities));
         takeInceptions();
         long now = clock.getAsLong();
         for (Map.Entry<Subject, Held> e : new ArrayList<>(held.entrySet())) {

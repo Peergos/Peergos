@@ -48,9 +48,22 @@ public class RateLimits {
         public final int burst;
         public final long refillMillis;
 
+        public final long perRefill;
+
         public Rate(int burst, long refillMillis) {
+            this(burst, refillMillis, 1);
+        }
+
+        public Rate(int burst, long refillMillis, long perRefill) {
             this.burst = burst;
             this.refillMillis = refillMillis;
+            this.perRefill = perRefill;
+        }
+
+        /** A burst of this many refilled over a day: one at a time, or a second's worth each second. */
+        public static Rate perDay(int burst) {
+            long seconds = DAY / 1000;
+            return burst <= seconds ? new Rate(burst, DAY / burst) : new Rate(burst, 1000, burst / seconds);
         }
     }
 
@@ -87,6 +100,14 @@ public class RateLimits {
             this.rate = rate;
         }
 
+        /** Gives back tokens taken for something that was then refused. */
+        public synchronized void give(K key, long tokens) {
+            long[] b = buckets.get(key);
+            if (b == null)
+                return;
+            b[0] = Math.min(rate.burst, b[0] + tokens);
+        }
+
         /** Takes a token only if more than a floor are left. */
         public synchronized boolean tryTakeAbove(K key, long floor) {
             long[] b = current(key, clock.getAsLong());
@@ -120,7 +141,7 @@ public class RateLimits {
             long refills = (now - b[1]) / rate.refillMillis;
             if (refills <= 0)
                 return b;
-            long tokens = Math.min(rate.burst, b[0] + refills);
+            long tokens = Math.min(rate.burst, b[0] + refills * rate.perRefill);
             if (tokens == rate.burst) {
                 buckets.remove(key);
                 return new long[]{rate.burst, now};
@@ -172,7 +193,7 @@ public class RateLimits {
             long refills = (now - b[1]) / rate.refillMillis;
             if (refills <= 0)
                 return b;
-            long tokens = Math.min(rate.burst, b[0] + refills);
+            long tokens = Math.min(rate.burst, b[0] + refills * rate.perRefill);
             return tokens == rate.burst ? new long[]{rate.burst, now} : new long[]{tokens, b[1] + refills * rate.refillMillis};
         }
 

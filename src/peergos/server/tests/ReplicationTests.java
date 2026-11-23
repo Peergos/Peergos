@@ -567,6 +567,27 @@ public class ReplicationTests {
     }
 
     @Test
+    public void aRecordAPeerHasNoAllowanceForLeavesTheIdentitysTokens() {
+        Network net = new Network();
+        Node a = net.node(100), b = net.node(100), c = net.node(100);
+        Server x = new Server();
+        SigningKeyPair id = key();
+        IdentityInception inc = x.admit(id);
+        Subject s = Subject.identity(inc.identityHash());
+        for (Node n : List.of(a, b, c)) {
+            n.replica.add(x.subject, x.inception);
+            n.replica.add(s, inc);
+        }
+        int size = IdentityMove.build(id, List.of(x.peerId), 1).join().serialize().length;
+        b.routing.maxBytesPerPeer(2 * ((size + 63) / 64) * 64);
+        for (int counter = 1; counter <= 2; counter++)
+            Assert.assertEquals(Outcome.Added, b.routing.offered(a.id, s, List.of(IdentityMove.build(id, List.of(x.peerId), counter).join())));
+        IdentityMove third = IdentityMove.build(id, List.of(x.peerId), 3).join();
+        Assert.assertNotEquals(Outcome.Added, b.routing.offered(a.id, s, List.of(third)));
+        Assert.assertEquals("the identity's last move token is still there", Outcome.Added, b.routing.offered(c.id, s, List.of(third)));
+    }
+
+    @Test
     public void anUnprovenPullIsUsedButNotStored() {
         Network net = new Network();
         Node a = net.node(100), b = net.node(100);
