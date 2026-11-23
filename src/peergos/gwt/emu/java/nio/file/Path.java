@@ -53,8 +53,14 @@ public class Path {
         return new Path(pathString + "/" + other);
     }
 
+    /** As the JDK's for other at or below this; any other pair is refused (the JDK answers most with "..") */
     public Path relativize(Path other) {
-        return new Path(pathString.substring(other.pathString.length()));
+        if (other.pathString.equals(pathString))
+            return new Path("");
+        String base = pathString.isEmpty() || pathString.endsWith(SEPARATOR) ? pathString : pathString + SEPARATOR;
+        if (! other.pathString.startsWith(base))
+            throw new IllegalArgumentException(other + " is not below " + this);
+        return new Path(other.pathString.substring(base.length()));
     }
 
     public Path resolve(Path other) {

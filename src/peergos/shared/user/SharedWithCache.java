@@ -412,7 +412,7 @@ public class SharedWithCache {
 
     /** Where a path ends up when the subtree at from moves to to, if it is in that subtree. Compared by component,
      *  as a recorded path always uses / but Path.toString uses the platform separator, and on lists rather than Paths,
-     *  as the browser's Path compares and joins as strings (startsWith, relativize and resolve differ from the JDK's). */
+     *  as the browser's Path compares and joins as strings (startsWith and resolve differ from the JDK's). */
     private static Optional<String> movedPath(String path, Path from, Path to) {
         List<String> p = PathUtil.components(PathUtil.get(path));
         List<String> src = PathUtil.components(PathUtil.get(from.toString()));
