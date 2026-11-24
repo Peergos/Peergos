@@ -843,12 +843,17 @@ public class ReplicationTests {
                 }, work);
         boolean all = true;
         int share = RoutingNode.MAX_FETCHING_PER_PEER / RoutingNode.UNPROVEN_SHARE;
+        // made before any is announced, so the fetches' timeout can't pass while the keys are generated
+        List<List<JdbcRoutingStore.State>> announcements = new ArrayList<>();
         for (int caller = 0; caller < RoutingNode.UNPROVEN_SHARE + 2; caller++) {
             List<JdbcRoutingStore.State> states = new ArrayList<>();
             for (int i = 0; i < RoutingNode.MAX_FETCHING_PER_PEER; i++)
                 states.add(new JdbcRoutingStore.State(Subject.identity(
                         peergos.shared.storage.ContentAddressedStorage.hashKey(key().publicSigningKey)), new byte[32]));
-            all &= node.announced(ServerKeys.peerId(key().publicSigningKey), states);
+            announcements.add(states);
+        }
+        for (int caller = 0; caller < announcements.size(); caller++) {
+            all &= node.announced(ServerKeys.peerId(key().publicSigningKey), announcements.get(caller));
             if (caller == 0)
                 Assert.assertEquals("one fresh key gets only its share", share, node.outstandingFetches());
         }
