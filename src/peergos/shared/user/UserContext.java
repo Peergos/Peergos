@@ -583,14 +583,64 @@ public class UserContext {
                                                                       Optional<NestedSpace> from,
                                                                       List<WritableAbsoluteCapability> alsoLinked,
                                                                       Map<PublicKeyHash, Long> quotas) {
-        return switchSpace(space, parent, from, alsoLinked, quotas, 5);
+        PublicKeyHash owner = signer.publicKeyHash;
+        // The new writer is created in a commit of its own first, once for all the attempts. A server without bulk
+        // commits takes its owner's update before the writer exists, which mustn't yet point the holder at it
+        return writeSynchronizer.applyComplexComputation(owner, parent,
+                        (s, c) -> CryptreeNode.initAndAuthoriseSigner(owner, parent, SigningKeyPair.randomWriter(crypto), network, s, c)
+                                .thenApply(p -> new Pair<>(new Snapshot(parent.publicKeyHash, p.left.get(parent.publicKeyHash)),
+                                        new Pair<>(p.right, p.left.get(p.right)))))
+                .thenCompose(made -> {
+                    SigningPrivateKeyAndPublicHash newSigner = made.right.left;
+                    CommittedWriterData empty = made.right.right;
+                    return Futures.asyncExceptionally(
+                            () -> switchSpace(space, parent, newSigner, empty, from, alsoLinked, 5)
+                                    .thenCompose(newCap -> newCap.writer.equals(newSigner.publicKeyHash) ?
+                                            Futures.of(newCap) :
+                                            removeUnusedWriter(parent, newSigner, empty, 3).thenApply(x -> newCap)),
+                            t -> removeUnusedWriter(parent, newSigner, empty, 3).thenCompose(x -> Futures.errored(t)));
+                })
+                // once the move has landed, so that a failure here doesn't take the writer now in use for an unused one
+                .thenCompose(newCap -> {
+                    PublicKeyHash old = space.writer();
+                    return ! quotas.containsKey(old) ?
+                            Futures.of(newCap) :
+                            network.spaceUsage.setWriterQuota(signer, newCap.writer, Optional.of(quotas.get(old)))
+                                    .thenCompose(x -> network.spaceUsage.setWriterQuota(signer, old, Optional.empty())
+                                            .exceptionally(t -> false))
+                                    .thenApply(x -> newCap);
+                });
+    }
+
+    /** Take back a new writer that no move used, as far as we can, so that moves that fail don't each leave one behind.
+     *  Its pointer goes in the same commit, from the empty version it was created at, so that a writer whose move
+     *  did land, unknown to us, is left as it is. Tried again if it fails, as its owner may be being written to.
+     */
+    private CompletableFuture<Boolean> removeUnusedWriter(SigningPrivateKeyAndPublicHash parent,
+                                                          SigningPrivateKeyAndPublicHash unused,
+                                                          CommittedWriterData empty,
+                                                          int attempts) {
+        PublicKeyHash owner = signer.publicKeyHash;
+        return Futures.asyncExceptionally(
+                () -> writeSynchronizer.applyComplexUpdate(owner, parent,
+                                (s, c) -> IpfsTransaction.call(owner,
+                                                tid -> c.commit(owner, unused, Optional.<WriterData>empty(), empty, tid), network.dhtClient)
+                                        .thenCompose(x -> CryptreeNode.deAuthoriseSigner(owner, parent, unused.publicKeyHash, network, s, c)))
+                        .thenApply(x -> true),
+                t -> {
+                    if (attempts > 1)
+                        return removeUnusedWriter(parent, unused, empty, attempts - 1);
+                    LOG.log(Level.INFO, "Couldn't remove the unused new writer " + unused.publicKeyHash, t);
+                    return Futures.of(false);
+                });
     }
 
     private CompletableFuture<WritableAbsoluteCapability> switchSpace(FileWrapper space,
                                                                       SigningPrivateKeyAndPublicHash parent,
+                                                                      SigningPrivateKeyAndPublicHash newSigner,
+                                                                      CommittedWriterData empty,
                                                                       Optional<NestedSpace> from,
                                                                       List<WritableAbsoluteCapability> alsoLinked,
-                                                                      Map<PublicKeyHash, Long> quotas,
                                                                       int attempts) {
         PublicKeyHash owner = signer.publicKeyHash;
         WritableAbsoluteCapability oldCap = space.writableFilePointer();
@@ -609,11 +659,8 @@ public class UserContext {
                             return root.getDirectChildrenCapabilities(oldCap, v0, network)
                                     .thenApply(children -> new Pair<>(new Snapshot(parent.publicKeyHash, v0.get(parent.publicKeyHash)),
                                             (WritableAbsoluteCapability) children.iterator().next().cap));
-                        return CryptreeNode.initAndAuthoriseSigner(owner, parent, SigningKeyPair.randomWriter(crypto), network, v0, c)
-                                .thenCompose(p -> IpfsTransaction.call(owner, tid -> {
-                                    SigningPrivateKeyAndPublicHash newSigner = p.right;
+                        return IpfsTransaction.call(owner, tid -> {
                                     WritableAbsoluteCapability newCap = oldCap.withSigner(newSigner.publicKeyHash);
-                                    CommittedWriterData empty = p.left.get(newSigner);
                                     // the cryptree is a content addressed champ, and nodes in one writing space name
                                     // their children without a writer, so the new writer takes the old one's as it is
                                     CryptreeNode newRoot = root.withWriterLink(oldCap.rBaseKey,
@@ -624,7 +671,7 @@ public class UserContext {
                                                         .withWritingKey(Optional.of(from.get().holderSigner.publicKeyHash)));
                                     CryptreeNode rewritten = newRoot;
                                     return c.commit(owner, newSigner, empty.props.get().withChamp(oldVersion.props.get().tree.get()), empty, tid)
-                                            .thenApply(p.left::mergeAndOverwriteWith)
+                                            .thenApply(v0::mergeAndOverwriteWith)
                                             .thenCompose(v -> network.uploadChunk(v, c, rewritten, owner, oldCap.getMapKey(), newSigner, tid))
                                             .thenCompose(v -> from.isPresent() ?
                                                     pointHolderAt(from.get(), newCap, space.getFileProperties(), v, c) :
@@ -634,7 +681,7 @@ public class UserContext {
                                                     from.map(f -> f.holderSigner.publicKeyHash), alsoLinked, v, c, tid))
                                             // later steps change the other writers, so the lock keeps only its own
                                             .thenApply(v -> new Pair<>(new Snapshot(parent.publicKeyHash, v.get(parent.publicKeyHash)), newCap));
-                                }, network.dhtClient));
+                                }, network.dhtClient);
                     });
                 }))
                 .thenApply(p -> p.right);
@@ -648,14 +695,8 @@ public class UserContext {
                                 return Futures.errored(t);
                             // the old writer moved under us, so start again from where it is now
                             LOG.log(Level.INFO, "Retrying the move of " + oldCap.writer + " to a hybrid writer", t);
-                            return switchSpace(space, parent, from, alsoLinked, quotas, attempts - 1);
-                        })
-                .thenCompose(newCap -> ! quotas.containsKey(oldCap.writer) ?
-                        Futures.of(newCap) :
-                        network.spaceUsage.setWriterQuota(signer, newCap.writer, Optional.of(quotas.get(oldCap.writer)))
-                                .thenCompose(x -> network.spaceUsage.setWriterQuota(signer, oldCap.writer, Optional.empty())
-                                        .exceptionally(t -> false))
-                                .thenApply(x -> newCap));
+                            return switchSpace(space, parent, newSigner, empty, from, alsoLinked, attempts - 1);
+                        });
     }
 
     /** Replace an old writer's champ with links, under its old keys, to where its space's root, and the given
