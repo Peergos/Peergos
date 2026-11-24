@@ -61,6 +61,11 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
+    public void addToTransaction(PublicKeyHash owner, List<Cid> blocks, TransactionId tid) {
+        target.addToTransaction(owner, blocks, tid);
+    }
+
+    @Override
     public void clearOldTransactions(PublicKeyHash owner, long cutoffMillis) {
         target.clearOldTransactions(owner, cutoffMillis);
     }

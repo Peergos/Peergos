@@ -92,6 +92,9 @@ public class VersionedWriteOnlyStorage implements DeletableContentAddressedStora
     }
 
     @Override
+    public void addToTransaction(PublicKeyHash owner, List<Cid> blocks, TransactionId tid) {}
+
+    @Override
     public void clearOldTransactions(PublicKeyHash owner, long cutoffMillis) {
 
     }

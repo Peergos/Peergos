@@ -93,8 +93,9 @@ public class JdbcTransactionStore implements TransactionStore {
                 insert.setString(2, ownerStr);
                 insert.setString(3, hash.toString());
                 insert.setLong(4, now);
-                insert.executeUpdate();
+                insert.addBatch();
             }
+            insert.executeBatch();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new IllegalStateException(sqe);

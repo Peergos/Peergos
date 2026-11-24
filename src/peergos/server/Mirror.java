@@ -320,7 +320,7 @@ public class Mirror {
                 usagedb.resetPendingUsage(username, writer);
             storage.mirror(username, owner, writer, peerIds,
                     existingTarget.toOptional().map(c -> (Cid)c),
-                    updatedTarget.toOptional().map(c -> (Cid)c), mirrorBat, storage.id().join(), (x, y, z) -> {}, tid, hasher);
+                    updatedTarget.toOptional().map(c -> (Cid)c), mirrorBat, storage.id().join(), (x, y, z) -> {}, tid, hasher).join();
             targetPointers.setPointer(writer, existing, newPointer).join();
         } finally {
             transactions.closeTransaction(owner, tid);

@@ -1199,9 +1199,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                               PublicKeyHash owner,
                                               List<Cid> hashes,
                                               Optional<BatWithId> mirrorBat,
+                                              TransactionId tid,
                                               AtomicLong skippedCount,
                                               AtomicLong retrievalCount,
                                               AtomicLong retrievalSize) {
+        // Before the presence check, so gc can't delete a block we've decided to reuse
+        transactions.addBlocks(new ArrayList<>(hashes), tid, owner);
         Map<Cid, BlockMetadata> present = blockMetadata.getAll(hashes);
         long original = skippedCount.get();
         if (original/100 != (original + present.size())/100) {
@@ -1270,12 +1273,13 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return Futures.of(Collections.singletonList(newRoot));
 
         // This call will not verify the auth as we might not have the mirror bat present locally
+        transactions.addBlock(newRoot, tid, owner);
         boolean hasBlock = hasBlock(owner, newRoot);
         if (! hasBlock) {
             Optional<byte[]> newBlock = getRaw(peerIds, owner, newRoot, mirrorBat, ourNodeId, hasher, false, true).join();
             if (newBlock.isEmpty())
                 throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
-            getWithBackoff(() -> put(newBlock.get(), newRoot.isRaw(), tid, owner, false));
+            getWithBackoff(() -> put(owner, newRoot, newBlock.get(), false));
             usage.addPendingUsage(username, writer, newBlock.get().length);
         }
         if (newRoot.isRaw())
@@ -1295,7 +1299,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         AtomicLong blockCount = new AtomicLong(0);
         AtomicLong totalSize = new AtomicLong(0);
         bulkMirror(owner, writer, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId,
-                (p, o, h, m) -> bulkGetBlocks(p, username, o, h, m, skippedBlockCount, blockCount, totalSize),
+                (p, o, h, m) -> bulkGetBlocks(p, username, o, h, m, tid, skippedBlockCount, blockCount, totalSize),
                 (w, bs, size) -> usage.addPendingUsage(username, writer, size));
         if (blockCount.get() > 0) {
             LOG.info("Mirrored " + String.format("%,d", blockCount.get()) + " blocks, taking " +
@@ -1440,6 +1444,11 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     @Override
     public List<Cid> getOpenTransactionBlocks(PublicKeyHash owner) {
         return transactions.getOpenTransactionBlocks(owner);
+    }
+
+    @Override
+    public void addToTransaction(PublicKeyHash owner, List<Cid> blocks, TransactionId tid) {
+        transactions.addBlocks(new ArrayList<>(blocks), tid, owner);
     }
 
     @Override
