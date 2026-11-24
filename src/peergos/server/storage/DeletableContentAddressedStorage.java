@@ -44,6 +44,8 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
     List<Cid> getOpenTransactionBlocks(PublicKeyHash owner);
 
+    void addToTransaction(PublicKeyHash owner, List<Cid> blocks, TransactionId tid);
+
     void clearOldTransactions(PublicKeyHash owner, long cutoffMillis);
 
     boolean hasBlock(PublicKeyHash owner, Cid hash);
@@ -181,6 +183,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
             return Futures.of(Collections.singletonList(newRoot));
         boolean isRaw = newRoot.isRaw();
 
+        storage.addToTransaction(owner, List.of(newRoot), tid);
         Optional<byte[]> newVal = RetryStorage.runWithRetry(3, () -> storage.getRaw(peerIds, owner, newRoot, mirrorBat, ourNodeId, hasher, false, true)).join();
         if (newVal.isEmpty())
             throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
@@ -229,6 +232,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                 .filter(c -> ! c.isIdentity())
                 .collect(Collectors.toList());
 
+        addToTransaction(owner, added, tid);
         List<BlockMetadata> addedLinks = retriever.bulkGet(peerIds, owner, added, mirrorBat);
         newBlockProcessor.process(writer, added, addedLinks.stream().mapToInt(p -> p.size).sum());
         if (removed.isEmpty()) {
@@ -443,6 +447,11 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
         @Override
         public List<Cid> getOpenTransactionBlocks(PublicKeyHash owner) {
+            throw new IllegalStateException("Unimplemented!");
+        }
+
+        @Override
+        public void addToTransaction(PublicKeyHash owner, List<Cid> blocks, TransactionId tid) {
             throw new IllegalStateException("Unimplemented!");
         }
 

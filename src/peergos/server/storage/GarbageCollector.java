@@ -536,6 +536,30 @@ public class GarbageCollector {
             if (! delete)
                 continue;
 
+            // A write that started after the pending listing above may have reused a block we listed as
+            // unreachable. Pending must be re-read before pointers, as a write commits its pointer before
+            // closing its transaction.
+            List<Cid> pendingAgain = storage.getOpenTransactionBlocks(owner);
+            Map<PublicKeyHash, byte[]> changedPointers = usage.getAllWriters(username).stream()
+                    .flatMap(w -> pointers.getPointer(w).join()
+                            .filter(d -> ! allPointers.containsKey(w) || ! Arrays.equals(d, allPointers.get(w)))
+                            .map(d -> Map.entry(w, d)).stream())
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+            if (! changedPointers.isEmpty()) {
+                ForkJoinPool remarkPool = Threads.newFJPool(markParallelism, "GC-remark-");
+                List<ForkJoinTask<Boolean>> remarked = changedPointers.entrySet().stream()
+                        .map(e -> remarkPool.submit(() -> markReachable(owner, e.getKey(), e.getValue(), reachability, storage, usage, fromUsage, metadata, totalReachable, markFailures)))
+                        .collect(Collectors.toList());
+                remarked.forEach(ForkJoinTask::join);
+                remarkPool.shutdown();
+                LOG.info("Re-marked from " + changedPointers.size() + " pointers changed during GC");
+            }
+            reachability.setReachable(pendingAgain, totalReachable);
+            if (markFailures.get() > 0) {
+                LOG.log(Level.SEVERE, "Skipping deletion: " + markFailures.get() + " error(s) re-marking from changed pointers");
+                continue;
+            }
+
             int deleteParallelism = 4;
             long t7 = System.nanoTime();
             ForkJoinPool pool = Threads.newFJPool(deleteParallelism, "GC-delete-");

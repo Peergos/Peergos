@@ -273,6 +273,11 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
     }
 
     @Override
+    public void addToTransaction(PublicKeyHash owner, List<Cid> blocks, TransactionId tid) {
+        transactions.addBlocks(new ArrayList<>(blocks), tid, owner);
+    }
+
+    @Override
     public void clearOldTransactions(PublicKeyHash owner, long cutoffMillis) {
         transactions.clearOldTransactions(owner, cutoffMillis);
     }

@@ -115,6 +115,15 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
+    public void addToTransaction(PublicKeyHash owner, List<Cid> blocks, TransactionId tid) {
+        List<Cid> open = openTransactions.get(tid);
+        if (open != null)
+            synchronized (open) {
+                open.addAll(blocks);
+            }
+    }
+
+    @Override
     public void clearOldTransactions(PublicKeyHash owner, long cutoffMillis) {
 
     }
