@@ -9,6 +9,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.routing.*;
 import peergos.shared.storage.*;
+import peergos.shared.util.*;
 
 import java.net.*;
 import java.util.*;
@@ -537,19 +538,20 @@ public class ReplicationTests {
                 both.add(s);
             }
         }
-        b.routing.peerRoundMillis(100);
+        // cut short by a count of calls rather than by time, so a slow machine walks as far each round
+        AtomicInteger calls = new AtomicInteger();
         b.routing.addSyncPeer(new LocalPeer(b.id, a) {
             @Override
             public CompletableFuture<List<List<JdbcRoutingStore.State>>> statesIn(int kind, List<Reconciliation.Range> ranges, int limit) {
-                try {
-                    Thread.sleep(20);
-                } catch (InterruptedException e) {}
+                if (calls.incrementAndGet() > 4)
+                    return Futures.errored(new RateLimitException());
                 return CompletableFuture.completedFuture(target.routing.statesIn(kind, ranges.subList(0, Math.min(4, ranges.size())), limit));
             }
         });
         b.syncWith(c);
         int rounds = 0;
         while (! both.stream().allMatch(s -> b.replica.log(s).exists())) {
+            calls.set(0);
             b.routing.syncRound();
             Assert.assertTrue("every range both peers hold is reached: " + both.stream().filter(s -> b.replica.log(s).exists()).count()
                     + " of " + both.size() + " after " + rounds + " rounds", ++rounds < 60);
