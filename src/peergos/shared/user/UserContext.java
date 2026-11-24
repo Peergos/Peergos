@@ -533,6 +533,12 @@ public class UserContext {
     public CompletableFuture<Boolean> finishMoveToHybridWriters(String password,
                                                                Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa,
                                                                Consumer<String> progressCallback) {
+        // Not every client can make hybrid keys, so one with hybrid writers off can't be made to finish with them.
+        // With its own it would move the nested spaces to Ed25519 writers, which nothing moves again
+        if (! SigningKeyPair.HYBRID_WRITERS) {
+            LOG.info("Leaving the move to hybrid writers half done, for a client with hybrid writers on to finish");
+            return Futures.of(false);
+        }
         progressCallback.accept(UPGRADING_MESSAGE);
         PublicKeyHash owner = signer.publicKeyHash;
         return getUserRoot().thenCompose(home -> getWriterQuotas(owner)

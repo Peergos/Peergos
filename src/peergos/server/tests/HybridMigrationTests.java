@@ -782,4 +782,20 @@ public class HybridMigrationTests {
     private static WriterData writerData(PublicKeyHash owner, PublicKeyHash writer) {
         return WriterData.getWriterData(owner, writer, service.mutable, service.storage).join().props.get();
     }
+
+    /** A client with hybrid writers off, which may not be able to make hybrid keys, leaves a move that has started
+     *  for one with them on to finish
+     */
+    @Test
+    public void aLoginWithHybridWritersOffLeavesAMoveAlone() {
+        SmallAccount old = new SmallAccount();
+        SigningKeyPair.HYBRID_WRITERS = true;
+        old.owner.switchHomeToHybridWriter(x -> {}).join();
+        SigningKeyPair.HYBRID_WRITERS = false;
+        UserContext off = login(old.owner.username, old.password);
+        Assert.assertTrue(off.isMovingToHybridWriters().join());
+        Assert.assertEquals(old.oldTeam, writer(off, old.team));
+        old.assertAllReadable(off);
+        old.assertMigrated();
+    }
 }
