@@ -233,6 +233,22 @@ public class CapabilityStore {
         return (inbound ? "-in-" : "-out-") + suffix;
     }
 
+    /** The caps in a sharing directory's store, as they were added, without retrieving what they lead to */
+    public static CompletableFuture<Set<AbsoluteCapability>> getSharedCaps(FileWrapper sharedDir,
+                                                                           boolean writable,
+                                                                           NetworkAccess network,
+                                                                           Crypto crypto) {
+        return sharedDir.getChild(writable ? EDIT_SHARING_FILE_NAME : READ_SHARING_FILE_NAME, crypto.hasher, network)
+                .thenCompose(capStore -> {
+                    Set<AbsoluteCapability> caps = new HashSet<>();
+                    if (capStore.isEmpty())
+                        return Futures.of(caps);
+                    return capStore.get().getInputStream(network, crypto, x -> {})
+                            .thenCompose(reader -> reader.parseStream(AbsoluteCapability::fromCbor, caps::add, capStore.get().getSize()))
+                            .thenApply(read -> caps);
+                });
+    }
+
     public static CompletableFuture<Long> getReadOnlyCapabilityFileSize(FileWrapper friendSharedDir,
                                                                         Crypto crypto,
                                                                         NetworkAccess network) {

@@ -798,4 +798,90 @@ public class HybridMigrationTests {
         old.assertAllReadable(off);
         old.assertMigrated();
     }
+
+    /** A login that can't read a nested writing space stops there, rather than finishing without it, and the next
+     *  login finishes
+     */
+    @Test
+    public void aMoveThatCantReadASpaceIsFinishedLater() {
+        SmallAccount old = new SmallAccount();
+        SigningKeyPair.HYBRID_WRITERS = true;
+        old.owner.switchHomeToHybridWriter(x -> {}).join();
+        NetworkAccess unreadable = device(WORKS,
+                (call, a) -> call.startsWith("getPointer") && Arrays.asList(a).contains(old.oldTeam) ? "Read failed" : null,
+                WORKS);
+        UserContext stopped = ensureSignedUp(old.owner.username, old.password, unreadable, crypto);
+        Assert.assertTrue(stopped.isMovingToHybridWriters().join());
+        old.assertMigrated();
+    }
+
+    /** Records of a write share of a file that is no longer a writing space, and of a link that has been deleted,
+     *  are passed over: the move finishes, and doesn't make the link again
+     */
+    @Test
+    public void staleShareAndLinkRecordsDontStopAMove() {
+        OldAccount old = new OldAccount();
+        Path replaced = old.home.resolve("replaced.bin"), unlinked = old.home.resolve("unlinked.bin");
+        upload(old.owner, old.home, "replaced.bin", 800);
+        old.owner.shareWriteAccessWith(replaced, Collections.singleton(old.writer.username)).join();
+        old.files.put(unlinked, upload(old.owner, old.home, "unlinked.bin", 800));
+        LinkProperties deleted = old.owner.createSecretLink(unlinked.toString(), false, Optional.empty(), Optional.empty(), "", false).join();
+        old.owner.deleteSecretLink(deleted.label, unlinked, false).join();
+
+        // behind the back of the records of what is shared
+        UserContext owner = login(old.owner.username, old.password);
+        FileWrapper home = owner.getUserRoot().join();
+        home.removeChild(home.getChild("replaced.bin", crypto.hasher, owner.network).join().get(), owner.network, crypto.random, crypto.hasher).join();
+        old.files.put(replaced, upload(login(old.owner.username, old.password), old.home, "replaced.bin", 900));
+        UserContext recording = login(old.owner.username, old.password);
+        recording.network.synchronizer.applyComplexUpdate(recording.signer.publicKeyHash, recording.getUserRoot().join().signingPair(),
+                (s, c) -> recording.sharedWithCache.addSecretLink(unlinked, deleted, s, c, recording.network)).join();
+        UserContext before = login(old.owner.username, old.password);
+        Assert.assertTrue(before.sharedWith(replaced).join().writeAccess.contains(old.writer.username));
+        Assert.assertEquals(writer(before, old.home), writer(before, replaced));
+        Assert.assertFalse(before.sharedWith(unlinked).join().links.isEmpty());
+
+        SigningKeyPair.HYBRID_WRITERS = true;
+        UserContext after = login(old.owner.username, old.password);
+        Assert.assertFalse(after.hasEd25519Home().join());
+        Assert.assertFalse(after.isMovingToHybridWriters().join());
+        boolean opens;
+        try {
+            old.fromLink(deleted);
+            opens = true;
+        } catch (Exception e) {
+            opens = false;
+        }
+        Assert.assertFalse("The move made a deleted link again", opens);
+        old.assertMigrated();
+    }
+
+    /** A move that sent the shares again, and then failed, sends none of them twice when the next login tries again */
+    @Test
+    public void aMoveTriedAgainSendsNoCapTwice() {
+        SmallAccount old = new SmallAccount();
+        SigningKeyPair.HYBRID_WRITERS = true;
+        old.owner.switchHomeToHybridWriter(x -> {}).join();
+        Map<String, Long> before = capStores(old.owner);
+        BiFunction<String, Object[], String> noEntryPoint = (call, a) -> call.equals("setLoginData") ? "Refused" : null;
+        UserContext first = ensureSignedUp(old.owner.username, old.password, device(WORKS, WORKS, noEntryPoint), crypto);
+        Assert.assertTrue(first.isMovingToHybridWriters().join());
+        Map<String, Long> sent = capStores(first);
+        Assert.assertNotEquals(before, sent);
+        UserContext second = ensureSignedUp(old.owner.username, old.password, device(WORKS, WORKS, noEntryPoint), crypto);
+        Assert.assertTrue(second.isMovingToHybridWriters().join());
+        Assert.assertEquals(sent, capStores(second));
+        old.assertMigrated();
+    }
+
+    /** The size of each store of caps that the owner shares things through */
+    private static Map<String, Long> capStores(UserContext owner) {
+        Map<String, Long> res = new TreeMap<>();
+        for (FileWrapper sharing : owner.getSharingFolder().join().getChildren(crypto.hasher, owner.network).join())
+            if (sharing.isDirectory())
+                for (FileWrapper store : sharing.getChildren(crypto.hasher, owner.network).join())
+                    if (! store.isDirectory())
+                        res.put(sharing.getName() + "/" + store.getName(), store.getSize());
+        return res;
+    }
 }
