@@ -27,8 +27,10 @@ public class JvmThumbnailer {
                         // ffmpeg is the better thumbnailer, but an image is not worth losing when it
                         // can't parse one, or when its worker is gone
                         ThumbnailGenerator.Generator ffmpegFirst = new FallbackThumbnailer(ffmpeg, images);
-                        // it draws a jpeg as stored though, not turned the way its exif says it is shown
-                        ThumbnailGenerator.Generator javaFirst = new FallbackThumbnailer(images, ffmpeg);
+                        // it draws a jpeg as stored though, not turned the way its exif says it is shown:
+                        // Java turns those, and ffmpeg makes the webp of what Java made
+                        ThumbnailGenerator.Generator javaFirst = new FallbackThumbnailer(
+                                new JavaImageThumbnailer(Optional.of(ffmpeg)), ffmpeg);
                         ThumbnailGenerator.setInstance(data -> (JavaImageThumbnailer.exifOrientation(data) == 1 ?
                                 ffmpegFirst : javaFirst).generateThumbnail(data));
                         ThumbnailGenerator.setVideoInstance(ffmpeg);

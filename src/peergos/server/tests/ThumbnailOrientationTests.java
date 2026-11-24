@@ -114,13 +114,17 @@ public class ThumbnailOrientationTests {
                 assertUpright("orientation " + orientation + " " + order, thumbnailer.generateThumbnail(photo(orientation, order)));
     }
 
-    /** ffmpeg, which the desktop app tries first, draws a jpeg as stored, so an oriented one has to go
-     *  to the Java thumbnailer: ImageIO can't read ffmpeg's WebP, so a thumbnail read here came from Java. */
+    /** ffmpeg, which the desktop app tries first, draws a jpeg as stored, so Java turns an oriented one
+     *  and ffmpeg makes the webp of that. The WebP is read with lib-build's TwelveMonkeys plugin. */
     @Test
     public void theDesktopThumbnailerTurnsThemToo() throws IOException {
         JvmThumbnailer.initJava();
-        for (int orientation = 2; orientation <= 8; orientation++)
-            assertUpright("orientation " + orientation, ThumbnailGenerator.get().generateThumbnail(photo(orientation, ByteOrder.BIG_ENDIAN)));
+        Assume.assumeTrue("native thumbnailer available", ThumbnailGenerator.getVideo() instanceof ThumbnailerHost);
+        for (int orientation = 1; orientation <= 8; orientation++) {
+            Optional<Thumbnail> thumbnail = ThumbnailGenerator.get().generateThumbnail(photo(orientation, ByteOrder.BIG_ENDIAN));
+            Assert.assertEquals("orientation " + orientation, "image/webp", thumbnail.get().mimeType);
+            assertUpright("orientation " + orientation, thumbnail);
+        }
     }
 
     /** Fill bytes before a marker are allowed; whatever is really wrong with the Exif, the thumbnail is

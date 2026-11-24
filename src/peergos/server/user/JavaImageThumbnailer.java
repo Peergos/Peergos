@@ -18,6 +18,17 @@ import java.util.logging.*;
 public class JavaImageThumbnailer implements ThumbnailGenerator.Generator {
     private final static int THUMBNAIL_SIZE = 400;
 
+    /** Makes the webp of a finished thumbnail, handed it as a png: ImageIO has no webp writer. */
+    private final Optional<ThumbnailGenerator.Generator> webpEncoder;
+
+    public JavaImageThumbnailer() {
+        this(Optional.empty());
+    }
+
+    public JavaImageThumbnailer(Optional<ThumbnailGenerator.Generator> webpEncoder) {
+        this.webpEncoder = webpEncoder;
+    }
+
     public Optional<Thumbnail> generateThumbnail(byte[] imageBlob) {
         try {
             BufferedImage image = ImageIO.read(new ByteArrayInputStream(imageBlob));
@@ -40,8 +51,17 @@ public class JavaImageThumbnailer implements ThumbnailGenerator.Generator {
             int y = tall ? -(canvasHeight - THUMBNAIL_SIZE) / 2 : 0;
             g.drawImage(image, x, y, canvasWidth, canvasHeight, null);
             g.dispose();
+            image = null; // not held while the webp is made
             // the centre square is the same however the image is turned
             thumbnailImage = upright(thumbnailImage, exifOrientation(imageBlob));
+
+            if (webpEncoder.isPresent()) {
+                ByteArrayOutputStream png = new ByteArrayOutputStream();
+                ImageIO.write(thumbnailImage, "png", png);
+                Optional<Thumbnail> webp = webpEncoder.get().generateThumbnail(png.toByteArray());
+                if (webp.isPresent())
+                    return webp;
+            }
 
             // try webp first
             try {
