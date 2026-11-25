@@ -1442,6 +1442,11 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
+    public Optional<BlockMetadataStore> getBlockMetadataStore() {
+        return Optional.of(blockMetadata);
+    }
+
+    @Override
     public List<Cid> getOpenTransactionBlocks(PublicKeyHash owner) {
         return transactions.getOpenTransactionBlocks(owner);
     }

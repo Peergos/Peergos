@@ -614,6 +614,55 @@ public class MultiNodeNetworkTests {
         }
     }
 
+    /** Blocks fetched from another node are held under the never-closed tid "", which gc only clears once
+     *  it is a day old, so stand in for that day passing.
+     */
+    public static void expireTransactions(Args node, PublicKeyHash owner) {
+        Args withDb = node.with("transactions-sql-file", node.getArg("transactions-sql-file", "transactions.sql"));
+        JdbcTransactionStore.build(Builder.getDBConnector(withDb, "transactions-sql-file"), new SqliteCommands())
+                .clearOldTransactions(owner, System.currentTimeMillis() + 1);
+    }
+
+    private long mirroredBlockCount(int i, String username) throws Exception {
+        Path userBlocks = Builder.blockstorePath(argsToCleanUp.get(i)).resolve(username);
+        if (! userBlocks.toFile().exists())
+            return 0;
+        try (Stream<Path> files = Files.walk(userBlocks)) {
+            return files.filter(p -> p.toString().endsWith(".data")).count();
+        }
+    }
+
+    @Test
+    public void mirrorDropsDeletedAccount() throws Exception {
+        if (iNode1 == 0 || iNode2 == 0)
+            return;
+        String username = generateUsername(random);
+        String password = randomString();
+        UserContext user = ensureSignedUp(username, password, getNode(iNode1), crypto);
+        byte[] data = new byte[1024 * 1024];
+        new Random(43).nextBytes(data);
+        user.getUserRoot().join().uploadOrReplaceFile("somedata.bin", AsyncReader.build(data),
+                data.length, user.network, crypto, () -> false, x -> {}).join();
+        updatePkis();
+
+        giveQuota(iNode2, username, 1024L * 1024 * 1024);
+        mirrorUserOn(iNode2, username, password, user);
+        PublicKeyHash owner = user.signer.publicKeyHash;
+        awaitMirrorCaughtUp(iNode2, iNode1, owner);
+        long before = mirroredBlockCount(iNode2, username);
+        Assert.assertTrue("mirror holds the user's blocks", before > 0);
+
+        user.deleteAccount(password, UserTests::noMfa).join();
+        awaitMirrorCaughtUp(iNode2, iNode1, owner);
+        expireTransactions(argsToCleanUp.get(iNode2), owner);
+        expireTransactions(argsToCleanUp.get(iNode1), owner);
+        getService(iNode2).gc.collect(s -> Futures.of(true));
+        getService(iNode1).gc.collect(s -> Futures.of(true));
+
+        Assert.assertEquals("home still holds blocks of a deleted account", 0, mirroredBlockCount(iNode1, username));
+        Assert.assertEquals("mirror still holds blocks of a deleted account", 0, mirroredBlockCount(iNode2, username));
+    }
+
     /** An unknown user is refused rather than migrated. */
     @Test
     public void forceMigrateUnknownUser() {
