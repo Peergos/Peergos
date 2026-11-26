@@ -1419,19 +1419,18 @@ public class FileWrapper {
             currentTotal += next.length;
         }
 
-        // Pre-load the existing children of this directory in one parallel batch so we
-        // can compare hashes without a per-file CHAMP lookup inside the reduce loop.
-        // We must NOT use parent.getChildren(Set<String>) here because uploadFolder
-        // runs inside applyComplexUpdate which already holds the WriteSynchronizer
-        // lock; that path calls getAllChildrenCapabilities() → withWriter() →
-        // getValue() which tries to re-acquire the same lock, causing an async
-        // deadlock.  CryptreeNode.getChildren(Snapshot,...) traverses all CHAMP
-        // chunks using the provided Snapshot directly and never calls withWriter(),
-        // so it is safe to call while the lock is held.
+        // Pre-load the existing children with these names, so the per-file loop needs no lookups.
+        // List names across every chunk, then fetch metadata only for the matches: fetching all of it would make
+        // each call O(directory size). This runs inside applyComplexUpdate, which holds the WriteSynchronizer lock,
+        // so it must use the snapshot directly: withWriter() would try to re-take the lock and deadlock.
         Set<String> filenames = sortedChildren.stream().map(f -> f.filename).collect(Collectors.toSet());
         RetrievedCapability parentRc = parent.getPointer();
-        return parentRc.fileAccess.getChildren(parent.version, crypto.hasher, network, parentRc.capability)
-                .thenApply(existing -> existing.stream()
+        return parentRc.fileAccess.getAllChildrenCapabilitiesInSnapshot(parent.version, parentRc.capability, crypto.hasher, network)
+                .thenCompose(caps -> network.retrieveAllMetadata(caps.stream()
+                        .filter(n -> filenames.contains(n.name.name))
+                        .map(n -> n.cap)
+                        .collect(Collectors.toList()), parent.version))
+                .thenApply(existing -> existing.left.stream()
                         .filter(rc -> filenames.contains(rc.getProperties().name))
                         .collect(Collectors.toMap(rc -> rc.getProperties().name, RetrievedCapability::getProperties)))
                 .thenCompose(existingByName -> Futures.reduceAll(groupedChildren, identity, (id, group) -> Futures.reduceAll(group, id,
@@ -1454,11 +1453,11 @@ public class FileWrapper {
                                 // Remote file exists but content differs — ask the caller.
                                 return replaceFile.apply(toParent + "/" + f.filename)
                                         .thenCompose(replace -> replace ?
-                                                uploadFilePart(toParent, parent, p, f.withOverwriteExisting(),
+                                                uploadFilePart(toParent, parent, p, f.withOverwriteExisting(), false,
                                                         mirrorBat, transactions, resumeFile, commitWatcher, isCancelled, opened, network, crypto, c) :
                                                 Futures.of(new Pair<>(p.left, p.right)));
                             }
-                            return uploadFilePart(toParent, parent, p, f,
+                            return uploadFilePart(toParent, parent, p, f, true,
                                     mirrorBat, transactions, resumeFile, commitWatcher, isCancelled, opened, network, crypto, c);
                         },
                         (a, b) -> new Pair<>(b.left, Stream.concat(a.right.stream(), b.right.stream()).collect(Collectors.toList())))
@@ -1472,6 +1471,7 @@ public class FileWrapper {
             FileWrapper parent,
             Pair<Snapshot, List<NamedRelativeCapability>> p,
             FileUploadProperties f,
+            boolean knownAbsent,
             Optional<BatId> mirrorBat,
             TransactionService transactions,
             Function<FileUploadTransaction, CompletableFuture<Boolean>> resumeFile,
@@ -1485,7 +1485,7 @@ public class FileWrapper {
         if (f.length <= Chunk.LEGACY_SIZE || transactions == null) // small files or writable public links
             return parent.uploadFileSection(p.left, c, f.filename, fileData, Optional.empty(), false, 0, f.length, f.hash, f.modifiedTime,
                             Optional.empty(), Optional.empty(), Optional.empty(), f.skipExisting,
-                            f.overwriteExisting, true, network.disableCommits(), crypto, isCancelled, f.monitor,
+                            f.overwriteExisting, true, knownAbsent, network.disableCommits(), crypto, isCancelled, f.monitor,
                             crypto.random.randomBytes(32), Optional.empty(), Optional.of(Bat.random(crypto.random)), mirrorBat)
                     .thenApply(pair -> new Pair<>(pair.left, Stream.concat(p.right.stream(), pair.right.stream()).collect(Collectors.toList())))
                     .thenCompose(r -> {
@@ -1544,7 +1544,7 @@ public class FileWrapper {
                                                             opened.add(txn);
                                                             return fileData.reset().thenCompose(reset -> parent.uploadFileSection(r2.a(), c, f.filename, reset, Optional.empty(),
                                                                     false, 0, f.length, f.hash, f.modifiedTime, Optional.of(txn.baseKey), Optional.of(txn.dataKey), Optional.of(txn.writeKey),
-                                                                    f.skipExisting, f.overwriteExisting, true,
+                                                                    f.skipExisting, f.overwriteExisting, true, knownAbsent,
                                                                     network, crypto, isCancelled, f.monitor, txn.firstMapKey(),
                                                                     Optional.of(txn.streamSecret()), txn.firstBat, mirrorBat));
                                                         });
@@ -1552,7 +1552,7 @@ public class FileWrapper {
                                 toClose.add(txn);
                                 opened.add(txn);
                                 return fileData.reset().thenCompose(reset -> parent.uploadFileSection(r.a(), c, f.filename, fileData, Optional.empty(), false,
-                                                0, f.length, f.hash, f.modifiedTime, Optional.of(txn.baseKey), Optional.of(txn.dataKey), Optional.of(txn.writeKey), f.skipExisting, f.overwriteExisting, true,
+                                                0, f.length, f.hash, f.modifiedTime, Optional.of(txn.baseKey), Optional.of(txn.dataKey), Optional.of(txn.writeKey), f.skipExisting, f.overwriteExisting, true, knownAbsent,
                                                 network, crypto, isCancelled, f.monitor, txn.firstMapKey(), Optional.of(txn.streamSecret()), txn.firstBat, mirrorBat))
                                         .thenApply(pair -> new Pair<>(pair.left, pair.right.stream().collect(Collectors.toList())));
                             })
@@ -1991,6 +1991,39 @@ public class FileWrapper {
             Optional<byte[]> streamSecret,
             Optional<Bat> firstBat,
             Optional<BatId> requestedMirrorBat) {
+        return uploadFileSection(initialVersion, committer, filename, fileData, existingThumbnail, isHidden, startIndex, endIndex,
+                hash, modificationTime, requestedBaseKey, requestedDataKey, requestedWriteKey, skipExisting, overwriteExisting,
+                truncateExisting, false, network, crypto, isCancelled, monitor, firstChunkMapKey, streamSecret, firstBat, requestedMirrorBat);
+    }
+
+    /** @param knownAbsent the caller has checked that the parent has no child with this name, so skip the lookup,
+     *                     which scans every chunk of a large directory */
+    private CompletableFuture<Pair<Snapshot, Optional<NamedRelativeCapability>>> uploadFileSection(
+            Snapshot initialVersion,
+            Committer committer,
+            String filename,
+            AsyncReader fileData,
+            Optional<Thumbnail> existingThumbnail,
+            boolean isHidden,
+            long startIndex,
+            long endIndex,
+            Optional<HashTree> hash,
+            Optional<LocalDateTime> modificationTime,
+            Optional<SymmetricKey> requestedBaseKey,
+            Optional<SymmetricKey> requestedDataKey,
+            Optional<SymmetricKey> requestedWriteKey,
+            boolean skipExisting,
+            boolean overwriteExisting,
+            boolean truncateExisting,
+            boolean knownAbsent,
+            NetworkAccess network,
+            Crypto crypto,
+            Supplier<Boolean> isCancelled,
+            ProgressConsumer<Long> monitor,
+            byte[] firstChunkMapKey,
+            Optional<byte[]> streamSecret,
+            Optional<Bat> firstBat,
+            Optional<BatId> requestedMirrorBat) {
         if (!isLegalName(filename)) {
             return Futures.errored(new IllegalStateException("Illegal filename: " + filename));
         }
@@ -2000,7 +2033,9 @@ public class FileWrapper {
         Optional<BatId> mirrorBat = mirrorBatId().or(() -> requestedMirrorBat);
         return initialVersion.withWriter(owner(), writer(), network)
                 .thenCompose(current -> getUpdated(current, network)
-                        .thenCompose(latest -> latest.getChild(current, filename, network)
+                        .thenCompose(latest -> (knownAbsent ?
+                                        Futures.of(Optional.<FileWrapper>empty()) :
+                                        latest.getChild(current, filename, network))
                                         .thenCompose(childOpt -> {
                                             if (childOpt.isPresent()) {
                                                 if (skipExisting)
