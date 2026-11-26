@@ -17,8 +17,7 @@ public class CachingBlockMetadataStore implements BlockMetadataStore {
 
     private final BlockMetadataStore target;
     private final Map<Cid, BlockMetadata> cache;
-    /** A block's row has one owner, kept beside it here */
-    private final Map<Cid, Pair<PublicKeyHash, BlockMetadata>> ownedCache;
+    private final Map<Pair<PublicKeyHash, Cid>, BlockMetadata> ownedCache;
 
     public CachingBlockMetadataStore(BlockMetadataStore target, int cacheSize) {
         this.target = target;
@@ -63,15 +62,15 @@ public class CachingBlockMetadataStore implements BlockMetadataStore {
         Map<Cid, BlockMetadata> result = new HashMap<>();
         List<Cid> misses = new ArrayList<>();
         for (Cid block : blocks) {
-            Pair<PublicKeyHash, BlockMetadata> cached = ownedCache.get(block);
-            if (cached != null && Objects.equals(cached.left, owner))
-                result.put(block, cached.right);
+            BlockMetadata cached = owner == null ? null : ownedCache.get(new Pair<>(owner, block));
+            if (cached != null)
+                result.put(block, cached);
             else
                 misses.add(block);
         }
         if (! misses.isEmpty()) {
             Map<Cid, BlockMetadata> fromDb = target.getAll(owner, misses);
-            fromDb.forEach((block, meta) -> ownedCache.put(block, new Pair<>(owner, meta)));
+            fromDb.forEach((block, meta) -> ownedCache.put(new Pair<>(owner, block), meta));
             result.putAll(fromDb);
         }
         return result;
@@ -88,19 +87,12 @@ public class CachingBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
-    public void setOwner(PublicKeyHash owner, Cid block) {
-        target.setOwner(owner, block);
-        ownedCache.remove(block);
+    public void setVersion(PublicKeyHash owner, Cid block, String version) {
+        target.setVersion(owner, block, version);
     }
 
-    @Override
-    public void setOwnerAndVersion(PublicKeyHash owner, Cid block, String version) {
-        target.setOwnerAndVersion(owner, block, version);
-        ownedCache.remove(block);
-    }
-
-    /** What a caller puts isn't cached: the store keeps the first row for a block and ignores a later one, and a
-     *  cached later row - with bats of its writer's choosing - would answer for the block in its place. */
+    /** What a caller puts isn't cached: the store keeps an owner's first row for a block and ignores a later one,
+     *  and a cached later row - with bats of its writer's choosing - would answer for the block in its place. */
     @Override
     public void put(PublicKeyHash owner, Cid block, String version, BlockMetadata meta) {
         target.put(owner, block, version, meta);
@@ -113,21 +105,24 @@ public class CachingBlockMetadataStore implements BlockMetadataStore {
         blocks.forEach(cache::remove);
     }
 
-    /** The row goes first, so a lookup that starts after the eviction finds nothing to cache again */
+    /** The rows go first, so a lookup that starts after the eviction finds nothing to cache again */
     @Override
-    public void remove(Cid block) {
-        target.remove(block);
-        cache.remove(block);
-        ownedCache.remove(block);
+    public void remove(PublicKeyHash owner, List<Cid> blocks) {
+        target.remove(owner, blocks);
+        for (Cid block : blocks) {
+            cache.remove(block);
+            ownedCache.remove(new Pair<>(owner, block));
+        }
     }
 
     @Override
-    public void remove(List<Cid> blocks) {
-        target.remove(blocks);
-        for (Cid block : blocks) {
-            cache.remove(block);
-            ownedCache.remove(block);
-        }
+    public boolean needsBlockstoreListing(PublicKeyHash owner) {
+        return target.needsBlockstoreListing(owner);
+    }
+
+    @Override
+    public void blockstoreListed(PublicKeyHash owner) {
+        target.blockstoreListed(owner);
     }
 
     @Override

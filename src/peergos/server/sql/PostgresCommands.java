@@ -1,5 +1,7 @@
 package peergos.server.sql;
 
+import java.util.*;
+
 public class PostgresCommands implements SqlSupplier {
 
     @Override
@@ -25,13 +27,19 @@ public class PostgresCommands implements SqlSupplier {
     }
 
     @Override
-    public String updateMetadataCommand() {
-        return "UPDATE blockmetadata SET owner=? WHERE cid=?;";
+    public String blockMetadataPrimaryKeySizeCommand() {
+        return "SELECT COUNT(*) FROM information_schema.key_column_usage k " +
+                "JOIN information_schema.table_constraints t ON k.constraint_name = t.constraint_name AND k.table_name = t.table_name " +
+                "WHERE t.table_name = 'blockmetadata' AND t.constraint_type = 'PRIMARY KEY';";
     }
 
     @Override
-    public String setMetadataVersionAndOwnerCommand() {
-        return "UPDATE blockmetadata SET version=?, owner=? WHERE cid=?;";
+    public List<String> migrateBlockMetadataToOwnerKeyCommands() {
+        return List.of(
+                "DELETE FROM blockmetadata WHERE owner IS NULL;",
+                "ALTER TABLE blockmetadata DROP CONSTRAINT blockmetadata_pkey;",
+                "ALTER TABLE blockmetadata ALTER COLUMN owner SET NOT NULL;",
+                "ALTER TABLE blockmetadata ADD PRIMARY KEY (owner, cid);");
     }
 
     @Override

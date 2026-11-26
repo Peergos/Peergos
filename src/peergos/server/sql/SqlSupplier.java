@@ -25,9 +25,11 @@ public interface SqlSupplier {
 
     String addMetadataCommand(int rows);
 
-    String updateMetadataCommand();
+    /** The number of columns in the blockmetadata primary key, 1 for the old cid only key */
+    String blockMetadataPrimaryKeySizeCommand();
 
-    String setMetadataVersionAndOwnerCommand();
+    /** Rekey a blockmetadata table from cid to (owner, cid), dropping the null owner rows */
+    List<String> migrateBlockMetadataToOwnerKeyCommands();
 
     String vacuumCommand();
 
@@ -122,12 +124,17 @@ public interface SqlSupplier {
     }
 
     default String createBlockMetadataStoreTableCommand() {
-        return "CREATE TABLE IF NOT EXISTS blockmetadata (owner " + getByteArrayType() + ", " +
-                "cid " + getByteArrayType() + " primary key not null, " +
+        return createBlockMetadataStoreTableCommand("blockmetadata");
+    }
+
+    default String createBlockMetadataStoreTableCommand(String table) {
+        return "CREATE TABLE IF NOT EXISTS " + table + " (owner " + getByteArrayType() + " not null, " +
+                "cid " + getByteArrayType() + " not null, " +
                 "version varchar(160)," +
                 "size " + sqlInteger() + " not null, " +
                 "links " + getByteArrayType() + " not null, " +
-                "batids " + getByteArrayType() + " not null);";
+                "batids " + getByteArrayType() + " not null, " +
+                "PRIMARY KEY (owner, cid));";
     }
 
     default String createPartitionStatusTableCommand() {

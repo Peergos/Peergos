@@ -71,13 +71,8 @@ class RequestCountingBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
-    public void setOwner(PublicKeyHash owner, Cid block) {
-        target.setOwner(owner, block);
-    }
-
-    @Override
-    public void setOwnerAndVersion(PublicKeyHash owner, Cid block, String version) {
-        target.setOwnerAndVersion(owner, block, version);
+    public void setVersion(PublicKeyHash owner, Cid block, String version) {
+        target.setVersion(owner, block, version);
     }
 
     @Override
@@ -86,13 +81,18 @@ class RequestCountingBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
-    public void remove(Cid block) {
-        target.remove(block);
+    public void remove(PublicKeyHash owner, List<Cid> blocks) {
+        target.remove(owner, blocks);
     }
 
     @Override
-    public void remove(List<Cid> blocks) {
-        target.remove(blocks);
+    public boolean needsBlockstoreListing(PublicKeyHash owner) {
+        return target.needsBlockstoreListing(owner);
+    }
+
+    @Override
+    public void blockstoreListed(PublicKeyHash owner) {
+        target.blockstoreListed(owner);
     }
 
     @Override

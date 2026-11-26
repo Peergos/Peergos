@@ -1,5 +1,7 @@
 package peergos.server.sql;
 
+import java.util.*;
+
 public class SqliteCommands implements SqlSupplier {
 
     @Override
@@ -24,13 +26,20 @@ public class SqliteCommands implements SqlSupplier {
     }
 
     @Override
-    public String updateMetadataCommand() {
-        return "UPDATE blockmetadata SET owner=? WHERE cid=?;";
+    public String blockMetadataPrimaryKeySizeCommand() {
+        return "SELECT COUNT(*) FROM pragma_table_info('blockmetadata') WHERE pk > 0;";
     }
 
+    /** sqlite can't change a primary key in place */
     @Override
-    public String setMetadataVersionAndOwnerCommand() {
-        return "UPDATE blockmetadata SET version=?, owner=? WHERE cid=?;";
+    public List<String> migrateBlockMetadataToOwnerKeyCommands() {
+        return List.of(
+                "DROP TABLE IF EXISTS blockmetadata_rekeyed;",
+                createBlockMetadataStoreTableCommand("blockmetadata_rekeyed"),
+                "INSERT INTO blockmetadata_rekeyed (owner, cid, version, size, links, batids) " +
+                        "SELECT owner, cid, version, size, links, batids FROM blockmetadata WHERE owner IS NOT NULL;",
+                "DROP TABLE blockmetadata;",
+                "ALTER TABLE blockmetadata_rekeyed RENAME TO blockmetadata;");
     }
 
     @Override

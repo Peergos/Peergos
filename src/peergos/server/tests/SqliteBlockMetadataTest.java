@@ -279,7 +279,7 @@ public class SqliteBlockMetadataTest {
         store.put(owner, block, "alpha", new BlockMetadata(1024, Collections.emptyList(), Collections.emptyList()));
         Assert.assertTrue(store.getAll(owner, List.of(block)).containsKey(block));
 
-        store.remove(block);
+        store.remove(owner, List.of(block));
         Assert.assertTrue(store.getAll(owner, List.of(block)).isEmpty());
     }
 
@@ -296,7 +296,7 @@ public class SqliteBlockMetadataTest {
         Assert.assertEquals(toRemove.size(), store.getAll(owner, toRemove).size());
         Assert.assertTrue(store.get(toRemove.get(0)).isPresent());
 
-        store.remove(toRemove);
+        store.remove(owner, toRemove);
 
         Assert.assertTrue(store.getAll(owner, toRemove).isEmpty());
         Assert.assertTrue(toRemove.stream().noneMatch(b -> store.get(b).isPresent()));
@@ -305,19 +305,66 @@ public class SqliteBlockMetadataTest {
     }
 
     @Test
-    public void aNewOwnerEvictsTheOwnerScopedCache() throws Exception {
+    public void eachOwnerOfABlockHasItsOwnRow() throws Exception {
         Path dir = Files.createTempDirectory("peergos-block-metadata");
-        BlockMetadataStore store = new CachingBlockMetadataStore(buildStore(dir.resolve("meta.sql")), 1000);
-        PublicKeyHash was = new PublicKeyHash(randomCid());
-        PublicKeyHash now = new PublicKeyHash(randomCid());
+        BlockMetadataStore sql = new CachingBlockMetadataStore(buildStore(dir.resolve("meta.sql")), 1000);
+        for (BlockMetadataStore store : List.of(sql, new RamBlockMetadataStore())) {
+            PublicKeyHash first = new PublicKeyHash(randomCid());
+            PublicKeyHash second = new PublicKeyHash(randomCid());
+            Cid block = randomCid();
+            store.put(first, block, null, new BlockMetadata(1024, Collections.emptyList(), Collections.emptyList()));
+            store.put(second, block, null, new BlockMetadata(1024, Collections.emptyList(), Collections.emptyList()));
+            String name = store.getClass().getSimpleName();
+            Assert.assertTrue(name, store.getAll(second, List.of(block)).containsKey(block));
+            Assert.assertEquals(name, Set.of(block), listCbor(store, second));
 
-        Cid block = randomCid();
-        store.put(was, block, "alpha", new BlockMetadata(1024, Collections.emptyList(), Collections.emptyList()));
-        Assert.assertTrue(store.getAll(was, List.of(block)).containsKey(block));
+            store.remove(first, List.of(block));
+            Assert.assertTrue(name, store.getAll(first, List.of(block)).isEmpty());
+            Assert.assertTrue(name, listCbor(store, first).isEmpty());
+            Assert.assertTrue("another owner's row must survive", store.getAll(second, List.of(block)).containsKey(block));
+            Assert.assertEquals(name, Set.of(block), listCbor(store, second));
+        }
+    }
 
-        store.setOwner(now, block);
-        Assert.assertTrue("the old owner's cached row must not answer", store.getAll(was, List.of(block)).isEmpty());
-        Assert.assertTrue(store.getAll(now, List.of(block)).containsKey(block));
+    @Test
+    public void migratesCidKeyedTable() throws Exception {
+        Path dir = Files.createTempDirectory("peergos-block-metadata");
+        Connection conn = new Sqlite.UncloseableConnection(Sqlite.build(dir.resolve("meta.sql").toString()));
+        PublicKeyHash owner = new PublicKeyHash(randomCid());
+        PublicKeyHash other = new PublicKeyHash(randomCid());
+        Cid owned = randomCid(), legacy = randomCid();
+        byte[] emptyList = new CborObject.CborList(Collections.emptyList()).toByteArray();
+        try (Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate("CREATE TABLE blockmetadata (owner blob, cid blob primary key not null, version varchar(160), " +
+                    "size integer not null, links blob not null, batids blob not null);");
+        }
+        try (PreparedStatement insert = conn.prepareStatement("INSERT INTO blockmetadata VALUES (?, ?, null, 10, ?, ?), (null, ?, null, 10, ?, ?);")) {
+            insert.setBytes(1, owner.toBytes());
+            insert.setBytes(2, owned.toBytes());
+            insert.setBytes(3, emptyList);
+            insert.setBytes(4, emptyList);
+            insert.setBytes(5, legacy.toBytes());
+            insert.setBytes(6, emptyList);
+            insert.setBytes(7, emptyList);
+            insert.executeUpdate();
+        }
+
+        BlockMetadataStore store = new JdbcBlockMetadataStore(() -> conn, new SqliteCommands());
+        Assert.assertTrue(store.getAll(owner, List.of(owned)).containsKey(owned));
+        Assert.assertTrue("legacy rows are dropped", store.get(legacy).isEmpty());
+        store.put(other, owned, null, new BlockMetadata(10, Collections.emptyList(), Collections.emptyList()));
+        Assert.assertTrue(store.getAll(other, List.of(owned)).containsKey(owned));
+
+        Assert.assertTrue(store.needsBlockstoreListing(owner));
+        store.blockstoreListed(owner);
+        Assert.assertFalse(store.needsBlockstoreListing(owner));
+        Assert.assertTrue(store.needsBlockstoreListing(other));
+
+        BlockMetadataStore reopened = new JdbcBlockMetadataStore(() -> conn, new SqliteCommands());
+        Assert.assertFalse(reopened.needsBlockstoreListing(owner));
+        Assert.assertTrue(reopened.needsBlockstoreListing(other));
+        Assert.assertFalse("a new table needs no listing",
+                buildStore(dir.resolve("fresh.sql")).needsBlockstoreListing(owner));
     }
 
     @Test

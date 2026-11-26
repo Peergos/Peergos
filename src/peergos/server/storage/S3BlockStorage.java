@@ -427,10 +427,11 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 }
             }
 
-            if (isVersioned)
-                blockMetadata.setOwnerAndVersion(owner, block, newVersion);
-            else
-                blockMetadata.setOwner(owner, block);
+            if (! blockMetadata.getAll(owner, List.of(block)).isEmpty()) {
+                if (isVersioned)
+                    blockMetadata.setVersion(owner, block, newVersion);
+            } else // from the bytes, as another owner's row may hold bats of its writer's choosing
+                getBlockMetadata(owner, block, peerIds, Optional.empty(), false).join();
         } catch (Exception e) {
             String msg = e.getMessage();
             // tolerate missing blocks
@@ -1026,7 +1027,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         String key = useLegacyPath ? legacyHashToKey(hash) : hashToKey(owner, hash);
         // The mirror can't give us the main store's version, so a versioned store only uses it once the version is recorded
         boolean useCborMirror = cborMirror.isPresent() && ! hash.isRaw() && ! useLegacyPath
-                && (! isVersioned || blockMetadata.get(hash).isPresent());
+                && (! isVersioned || ! blockMetadata.getAll(owner, List.of(hash)).isEmpty());
         if (useCborMirror) {
             Optional<byte[]> mirrored = cborMirror.get().get(key, range);
             if (mirrored.isPresent()) {
@@ -1126,8 +1127,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return true;
         if (! hash.isRaw() && cborCache.hasBlock(hash))
             return true;
-        Optional<BlockMetadata> meta = blockMetadata.get(hash);
-        if (meta.isPresent())
+        if (owner != null && ! blockMetadata.getAll(owner, List.of(hash)).isEmpty())
             return true;
         return getWithBackoff(() -> hasBlockWithoutBackoff(owner, hash, false));
     }

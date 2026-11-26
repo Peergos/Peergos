@@ -272,19 +272,17 @@ public class GarbageCollector {
                                     Hasher h) {
         if (cid.isIdentity())
             return;
-        Optional<BlockMetadata> meta = metadata.get((Cid) cid);
+        Optional<BlockMetadata> meta = Optional.ofNullable(metadata.getAll(owner, List.of((Cid) cid)).get(cid));
         Cid ourId = storage.id().join();
         if (meta.isEmpty() && fixMetadata) {
-            // retrieving the block should add it to the metadata store
+            // retrieving the block should add it to the metadata store under this owner
             Optional<byte[]> block = storage.getRaw(Arrays.asList(homeServer), owner, (Cid) cid, Optional.empty(), ourId, h, false, true).join();
-            meta = metadata.get((Cid) cid);
+            meta = Optional.ofNullable(metadata.getAll(owner, List.of((Cid) cid)).get(cid));
             if (meta.isPresent())
                 System.out.println("Fixed block metadata for " + cid);
         }
-        Optional<PublicKeyHash> fromMeta = metadata.getOwner((Cid) cid);
-        if (fromMeta.isPresent() && ! fromMeta.get().equals(owner) && fixMetadata) {
-            metadata.setOwner(owner, (Cid) cid);
-        }
+        if (meta.isEmpty())
+            meta = metadata.get((Cid) cid);
 
         if (meta.isEmpty())
             throw new IllegalStateException("Absent block! " + cid + ", key: " + DirectS3BlockStore.hashToKey(cid));
@@ -433,8 +431,9 @@ public class GarbageCollector {
             Path snapshotFile = reachabilityDbDir.resolve("pointer-snapshots")
                     .resolve(username + ".cbor");
             snapshotFile.getParent().toFile().mkdirs();
+            boolean relist = metadata.needsBlockstoreListing(owner);
             // load snapshot
-            if (snapshotFile.toFile().exists()) {
+            if (! relist && snapshotFile.toFile().exists()) {
                 try {
                     PointerSnapshot loaded = PointerSnapshot.fromCbor(CborObject.fromByteArray(Files.readAllBytes(snapshotFile)));
                     Set<PublicKeyHash> initialWriters = usage.getAllWriters(username);
@@ -461,7 +460,10 @@ public class GarbageCollector {
             reachability.applyToAllVersions(versions -> versions.forEach(inRdb::add));
             // Versions are only relevant for versioned S3 buckets, otherwise version is null
             // For S3, clients write raw blocks directly, we need to get their version directly from S3
-            listBlocks(owner, reachability, inRdb, listFromBlockstore, storage, metadata);
+            listBlocks(owner, reachability, inRdb, listFromBlockstore || relist, storage, metadata);
+            // listed blocks stay in the reachability db until they are deleted
+            if (relist)
+                metadata.blockstoreListed(owner);
             long t1 = System.nanoTime();
             long nBlocks = reachability.size();
             LOG.info("Listing " + nBlocks + " blocks took " + (t1 - t0) / 1_000_000_000 + "s");
@@ -659,7 +661,7 @@ public class GarbageCollector {
             return new Pair<>(0L, 0L);
         long deletedCborBlocks = toDelete.stream().filter(v -> ! v.cid.isRaw()).count();
         long deletedRawBlocks = toDelete.size() - deletedCborBlocks;
-        metadata.remove(toDelete.stream().map(v -> v.cid).toList());
+        metadata.remove(owner, toDelete.stream().map(v -> v.cid).toList());
         for (BlockVersion block : toDelete)
             reachability.removeBlock(block);
         getWithBackoff(() -> {storage.bulkDelete(owner, toDelete); return true;});

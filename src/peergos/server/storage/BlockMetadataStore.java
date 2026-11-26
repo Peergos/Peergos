@@ -24,29 +24,28 @@ public interface BlockMetadataStore {
      *  able to authorise a read under another. A miss is safe - the caller falls back to reading the
      *  block itself and deriving its bats from the bytes.
      *
-     *  Legacy rows predating partitioning have a null owner and match no owner, so callers gate this
-     *  on partitioning being complete. A null owner matches no row either.
+     *  A null owner matches no row.
      */
     Map<Cid, BlockMetadata> getAll(PublicKeyHash owner, List<Cid> blocks);
 
-    /**
-     *
-     * @param block
-     * @return The owner for a block or empty if it is a legacy block
-     */
+    /** @return an owner holding this block, if any */
     Optional<PublicKeyHash> getOwner(Cid block);
 
-    void setOwner(PublicKeyHash owner, Cid block);
+    /** Update the version of an owner's existing row */
+    void setVersion(PublicKeyHash owner, Cid block, String version);
 
-    void setOwnerAndVersion(PublicKeyHash owner, Cid block, String version);
-
+    /** Rows are keyed by owner and cid, so each owner holding a block has its own row. A null owner is not stored. */
     void put(PublicKeyHash owner, Cid block, String version, BlockMetadata meta);
 
-    void remove(Cid block);
+    /** Remove only this owner's rows, leaving those of any other owner of the same blocks */
+    void remove(PublicKeyHash owner, List<Cid> blocks);
 
-    default void remove(List<Cid> blocks) {
-        blocks.forEach(this::remove);
+    /** Whether gc must list this owner's blocks from the blockstore once, to find blocks without a row */
+    default boolean needsBlockstoreListing(PublicKeyHash owner) {
+        return false;
     }
+
+    default void blockstoreListed(PublicKeyHash owner) {}
 
     long size(PublicKeyHash owner);
 

@@ -412,7 +412,7 @@ public class GCTests {
                 .map(Map.Entry::getKey)
                 .findFirst()
                 .orElseThrow();
-        metadb.remove(interior);
+        metadb.remove(writer, List.of(interior));
 
         int before = storage.storage.get(writer).size();
         GarbageCollector gc = new GarbageCollector(storage, pointers, usage, new RamPki(), dir,
@@ -455,7 +455,7 @@ public class GCTests {
                 .map(Map.Entry::getKey)
                 .findFirst()
                 .orElseThrow();
-        metadb.remove(interior);
+        metadb.remove(owner, List.of(interior));
 
         AtomicLong totalReachable = new AtomicLong(0);
         AtomicLong markFailures = new AtomicLong(0);
