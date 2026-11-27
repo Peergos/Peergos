@@ -39,6 +39,8 @@ public class FileUploader implements AutoCloseable {
     private final byte[] firstLocation;
     private final Optional<Bat> firstBat;
     private final Supplier<Boolean> isCancelled;
+    // uploading through the parent's restricted key, which can't link to the parent
+    private final boolean pendingParent;
     private HashTreeBuilder hashBuilder;
 
     public FileUploader(String name, AsyncReader fileData,
@@ -54,6 +56,24 @@ public class FileUploader implements AutoCloseable {
                         byte[] firstLocation,
                         Optional<Bat> firstBat,
                         Supplier<Boolean> isCancelled) {
+        this(name, fileData, offsetHi, offsetLow, lengthHi, lengthLow, baseKey, dataKey, parentLocation, parentBat,
+                parentparentKey, monitor, fileProperties, hash, firstLocation, firstBat, isCancelled, false);
+    }
+
+    public FileUploader(String name, AsyncReader fileData,
+                        int offsetHi, int offsetLow, int lengthHi, int lengthLow,
+                        SymmetricKey baseKey,
+                        SymmetricKey dataKey,
+                        Location parentLocation,
+                        Optional<Bat> parentBat,
+                        SymmetricKey parentparentKey,
+                        ProgressConsumer<Long> monitor,
+                        FileProperties fileProperties,
+                        Optional<HashTree> hash,
+                        byte[] firstLocation,
+                        Optional<Bat> firstBat,
+                        Supplier<Boolean> isCancelled,
+                        boolean pendingParent) {
         long length = (lengthLow & 0xFFFFFFFFL) + ((lengthHi & 0xFFFFFFFFL) << 32);
         this.props = fileProperties;
         this.hash = hash;
@@ -77,6 +97,7 @@ public class FileUploader implements AutoCloseable {
         this.firstLocation = firstLocation;
         this.firstBat = firstBat;
         this.isCancelled = isCancelled;
+        this.pendingParent = pendingParent;
         this.hashBuilder = hash.isEmpty() ? new HashTreeBuilder(length, fileProperties.chunkSize) : null;
     }
 
@@ -84,8 +105,18 @@ public class FileUploader implements AutoCloseable {
                         SymmetricKey baseKey, SymmetricKey dataKey, Location parentLocation, Optional<Bat> parentBat,
                         SymmetricKey parentparentKey, ProgressConsumer<Long> monitor, FileProperties fileProperties,
                         Optional<HashTree> hash, byte[] firstLocation, Optional<Bat> firstBat, Supplier<Boolean> isCancelled) {
+        this(name, fileData, offset, length, baseKey, dataKey, parentLocation, parentBat, parentparentKey, monitor,
+                fileProperties, hash, firstLocation, firstBat, isCancelled, false);
+    }
+
+    public FileUploader(String name, AsyncReader fileData, long offset, long length,
+                        SymmetricKey baseKey, SymmetricKey dataKey, Location parentLocation, Optional<Bat> parentBat,
+                        SymmetricKey parentparentKey, ProgressConsumer<Long> monitor, FileProperties fileProperties,
+                        Optional<HashTree> hash, byte[] firstLocation, Optional<Bat> firstBat, Supplier<Boolean> isCancelled,
+                        boolean pendingParent) {
         this(name, fileData, (int)(offset >> 32), (int) offset, (int) (length >> 32), (int) length,
-                baseKey, dataKey, parentLocation, parentBat, parentparentKey, monitor, fileProperties, hash, firstLocation, firstBat, isCancelled);
+                baseKey, dataKey, parentLocation, parentBat, parentparentKey, monitor, fileProperties, hash, firstLocation, firstBat,
+                isCancelled, pendingParent);
     }
 
     private static class AsyncUploadQueue {
@@ -241,7 +272,7 @@ public class FileUploader implements AutoCloseable {
                                     return CryptreeNode.createFile(chunk.existingHash, chunk.location.writer, baseKey,
                                                     chunk.chunk.key(), chunkIndex % 1024 == 0 ?
                                                             props.withHash(hash.map(t -> t.branch(chunkIndex))) :
-                                                            props, chunk.chunk.data(), parentLocation, parentBat, parentparentKey, nextChunk,
+                                                            props, chunk.chunk.data(), parentLocation, parentBat, parentparentKey, pendingParent, nextChunk,
                                                     chunk.bat, mirrorBat, random, hasher, isJS)
                                             .thenApply(p -> new ChunkUpload(chunk, p.left, p.right));
                                 });
@@ -300,9 +331,35 @@ public class FileUploader implements AutoCloseable {
             throw new IllegalStateException("Trying to write a chunk to the wrong signing key space!");
         RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(nextChunkLocation.getMapKey(), nextChunkBat, baseKey);
         return CryptreeNode.createFile(chunk.existingHash, chunk.location.writer, baseKey,
-                chunk.chunk.key(), props, chunk.chunk.data(), parentLocation, parentBat, parentparentKey, nextChunk,
+                chunk.chunk.key(), props, chunk.chunk.data(), parentLocation, parentBat, parentparentKey, false, nextChunk,
                 chunk.bat, mirrorBat, random, hasher, network.isJavascript())
                 .thenCompose(file -> uploadChunk(current, committer, new ChunkUpload(chunk, file.left.withWriterLink(baseKey, writerLink), file.right),
+                        writer, network, progress));
+    }
+
+    /** Write a chunk through a restricted key, which can only copy the parent link from what it replaces. */
+    public static CompletableFuture<Snapshot> uploadRestrictedChunk(Snapshot current,
+                                                                    Committer committer,
+                                                                    SigningPrivateKeyAndPublicHash writer,
+                                                                    FileProperties props,
+                                                                    Optional<PaddedCipherText> parentLink,
+                                                                    SymmetricKey restrictedKey,
+                                                                    LocatedChunk chunk,
+                                                                    Location nextChunkLocation,
+                                                                    Optional<Bat> nextChunkBat,
+                                                                    Optional<SymmetricLinkToSigner> writerLink,
+                                                                    Optional<BatId> mirrorBat,
+                                                                    SafeRandom random,
+                                                                    Hasher hasher,
+                                                                    NetworkAccess network,
+                                                                    ProgressConsumer<Long> monitor) {
+        CappedProgressConsumer progress = new CappedProgressConsumer(monitor, chunk.chunk.length());
+        if (! writer.publicKeyHash.equals(chunk.location.writer))
+            throw new IllegalStateException("Trying to write a chunk to the wrong signing key space!");
+        RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(nextChunkLocation.getMapKey(), nextChunkBat, restrictedKey);
+        return CryptreeNode.createRestrictedFile(chunk.existingHash, restrictedKey, chunk.chunk.key(), props,
+                        chunk.chunk.data(), parentLink, nextChunk, chunk.bat, mirrorBat, random, hasher, network.isJavascript())
+                .thenCompose(file -> uploadChunk(current, committer, new ChunkUpload(chunk, file.left.withWriterLink(restrictedKey, writerLink), file.right),
                         writer, network, progress));
     }
 
