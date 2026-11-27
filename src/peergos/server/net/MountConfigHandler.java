@@ -57,6 +57,8 @@ public class MountConfigHandler implements HttpHandler {
      *  the existing session may keep working until its token expires; this check is what
      *  surfaces the change so we can disable the mount and prompt the user to re-mount. */
     private static final long CREDENTIAL_CHECK_INTERVAL_MIN = 60;
+    private static final long FIRST_RESTORE_RETRY_SEC = 5;
+    private static final long MAX_RESTORE_RETRY_SEC = 300;
 
     /** Service name used for all mount-related secrets in the OS keyring. */
     private static final String SECRET_SERVICE = "peergos-mount";
@@ -86,9 +88,10 @@ public class MountConfigHandler implements HttpHandler {
         return t;
     });
     private final AtomicReference<ScheduledFuture<?>> credentialCheck = new AtomicReference<>(null);
+    private final AtomicReference<ScheduledFuture<?>> restoreRetry = new AtomicReference<>(null);
 
     public MountConfigHandler(MountProperties props) {
-        this(props, SecretStore.detect(), defaultBackend(props.peergosUrl),
+        this(props, SecretStore.detect(), defaultBackend(),
                 Main::initCrypto, defaultNetworkFactory(props.peergosUrl));
     }
 
@@ -107,12 +110,12 @@ public class MountConfigHandler implements HttpHandler {
         this.networkFactory = networkFactory;
     }
 
-    private static MountBackend defaultBackend(String peergosUrl) {
+    private static MountBackend defaultBackend() {
         if (WindowsVersionCheck.isCfApiAvailable())
             // CFAPI gives the drive but serves no CalDAV or CardDAV, so the bridge runs beside it
             // off the same login rather than the two having a credential each
-            return new CompositeBackend(new CloudFilesBackend(), new WebdavBackend(peergosUrl, false));
-        return new WebdavBackend(peergosUrl);
+            return new CompositeBackend(new CloudFilesBackend(), new WebdavBackend(false));
+        return new WebdavBackend();
     }
 
     private static java.util.function.Supplier<NetworkAccess> defaultNetworkFactory(String peergosUrl) {
@@ -128,17 +131,36 @@ public class MountConfigHandler implements HttpHandler {
     }
 
     public void start() {
-        MountConfig config = readConfig();
-        if (config.enabled) {
+        if (readConfig().enabled) {
             mountError.set(null);
-            ForkJoinPool.commonPool().execute(() -> {
-                try { enableMount(config); }
-                catch (Exception e) {
-                    LOG.log(Level.WARNING, "Failed to restore WebDAV mount on startup", e);
-                    mountError.set(e.getMessage());
-                    backend.enableFailed(e.getMessage());
-                }
-            });
+            ForkJoinPool.commonPool().execute(() -> restoreMount(FIRST_RESTORE_RETRY_SEC));
+        }
+    }
+
+    /** At startup the network is often not up yet, and CalDAV clients that find the port closed
+     *  mark the account offline, so a failed restore keeps trying until it works. */
+    private void restoreMount(long retryDelaySec) {
+        MountConfig config = readConfig();
+        if (! config.enabled)
+            return;
+        try {
+            enableMount(config);
+            mountError.set(null);
+        } catch (Exception e) {
+            mountError.set(e.getMessage());
+            backend.enableFailed(e.getMessage());
+            if (isCredentialFailure(e)) {
+                LOG.log(Level.WARNING, "Failed to restore WebDAV mount on startup", e);
+                return;
+            }
+            LOG.log(Level.WARNING, "Failed to restore WebDAV mount on startup, retrying in "
+                    + retryDelaySec + "s: " + rootMessage(e));
+            // an enable that failed part way can leave the bridge holding its port
+            backend.disable();
+            long nextDelaySec = Math.min(retryDelaySec * 2, MAX_RESTORE_RETRY_SEC);
+            ScheduledFuture<?> prev = restoreRetry.getAndSet(loginScheduler.schedule(
+                    () -> restoreMount(nextDelaySec), retryDelaySec, TimeUnit.SECONDS));
+            if (prev != null) prev.cancel(false);
         }
     }
 
@@ -369,6 +391,8 @@ public class MountConfigHandler implements HttpHandler {
     private void disableMount() {
         ScheduledFuture<?> check = credentialCheck.getAndSet(null);
         if (check != null) check.cancel(false);
+        ScheduledFuture<?> retry = restoreRetry.getAndSet(null);
+        if (retry != null) retry.cancel(false);
         backend.disable();
         activeContext.set(null);
         activePeergosUsername.set("");

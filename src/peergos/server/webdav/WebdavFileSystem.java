@@ -93,6 +93,17 @@ public class WebdavFileSystem implements IWebdavStore {
      */
     public WebdavFileSystem(String username, String password, String peergosUrl, MountConfig config,
                             boolean seedThumbnailCache) {
+        this(signIn(username, password, peergosUrl, config), config, seedThumbnailCache);
+    }
+
+    public WebdavFileSystem(UserContext context, MountConfig config, boolean seedThumbnailCache) {
+        this.context = context;
+        this.thumbnailSeeder = seedThumbnailCache
+                ? ThumbnailCacheSeeder.createForFlatpakMount(config)
+                : Optional.empty();
+    }
+
+    private static UserContext signIn(String username, String password, String peergosUrl, MountConfig config) {
         Crypto crypto = Main.initCrypto();
         try {
             Optional<String> userAgent = Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-webdav");
@@ -100,14 +111,11 @@ public class WebdavFileSystem implements IWebdavStore {
                     peergosUrl.startsWith("https"), userAgent, Optional.empty()).join();
             Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa =
                 config.hasTotp() ? mountTotpResponder(config) : Main::getMfaResponseCLI;
-            context = UserContext.signIn(username, password, mfa, network, crypto).join();
+            return UserContext.signIn(username, password, mfa, network, crypto).join();
         } catch (Exception ex) {
             LOG.log(Level.WARNING, ex, () -> "Unable to connect to Peergos account");
             throw new IllegalStateException("Unable to connect to Peergos account: ", ex);
         }
-        this.thumbnailSeeder = seedThumbnailCache
-                ? ThumbnailCacheSeeder.createForFlatpakMount(config)
-                : Optional.empty();
     }
 
     /**
