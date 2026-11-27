@@ -1205,7 +1205,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                               AtomicLong retrievalSize) {
         // Before the presence check, so gc can't delete a block we've decided to reuse
         transactions.addBlocks(new ArrayList<>(hashes), tid, owner);
-        Map<Cid, BlockMetadata> present = blockMetadata.getAll(hashes);
+        Map<Cid, BlockMetadata> present = blockMetadata.getAll(owner, hashes);
         long original = skippedCount.get();
         if (original/100 != (original + present.size())/100) {
             long skipped = (original + present.size())/100 * 100;
