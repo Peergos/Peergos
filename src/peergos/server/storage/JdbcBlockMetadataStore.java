@@ -82,6 +82,9 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
      *  any later owner were invisible to gc. Dropping the legacy null owner rows is safe, as the store is
      *  rebuilt from the blockstore on demand. A gc listing from the blockstore picks up any blocks left without
      *  a row.
+     *
+     *  Cockroachdb doesn't support schema changes in an explicit transaction, so on postgres each step is its
+     *  own statement, and each is safe to repeat if we stop part way.
      */
     private static void migrateToOwnerKey(Connection conn, SqlSupplier commands) throws SQLException {
         try (PreparedStatement stmt = conn.prepareStatement(commands.blockMetadataPrimaryKeySizeCommand());
@@ -91,18 +94,40 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
         }
         LOG.info("Rekeying block metadata by owner and cid...");
         long t0 = System.currentTimeMillis();
-        conn.setAutoCommit(false);
         try (Statement stmt = conn.createStatement()) {
-            for (String command : commands.migrateBlockMetadataToOwnerKeyCommands())
-                stmt.executeUpdate(command);
+            // first, so a migration that stops after rekeying still gets its blockstore listing
             stmt.executeUpdate("CREATE TABLE IF NOT EXISTS " + RELISTED_TABLE + " (owner " + commands.getByteArrayType() + " primary key not null);");
-            conn.commit();
-        } catch (SQLException e) {
-            conn.rollback();
-            throw e;
-        } finally {
-            conn.setAutoCommit(true);
         }
+        if (commands instanceof SqliteCommands sqlite) {
+            conn.setAutoCommit(false);
+            try (Statement stmt = conn.createStatement()) {
+                for (String command : sqlite.rebuildBlockMetadataWithOwnerKeyCommands())
+                    stmt.executeUpdate(command);
+                conn.commit();
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            } finally {
+                conn.setAutoCommit(true);
+            }
+        } else if (commands instanceof PostgresCommands postgres) {
+            try (Statement stmt = conn.createStatement()) {
+                long deleted = 0;
+                int batch;
+                while ((batch = stmt.executeUpdate(postgres.deleteNullOwnerBlockMetadataCommand(10_000))) > 0) {
+                    deleted += batch;
+                    LOG.info("Deleted " + deleted + " legacy block metadata rows");
+                }
+                stmt.executeUpdate("ALTER TABLE blockmetadata ALTER COLUMN owner SET NOT NULL;");
+                String oldKey;
+                try (ResultSet rs = stmt.executeQuery(postgres.blockMetadataPrimaryKeyNameCommand())) {
+                    rs.next();
+                    oldKey = rs.getString(1);
+                }
+                stmt.executeUpdate(postgres.rekeyBlockMetadataCommand(oldKey));
+            }
+        } else
+            throw new IllegalStateException("Unknown sql dialect " + commands);
         LOG.info("Rekeyed block metadata in " + (System.currentTimeMillis() - t0) / 1000 + "s");
     }
 

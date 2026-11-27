@@ -28,9 +28,6 @@ public interface SqlSupplier {
     /** The number of columns in the blockmetadata primary key, 1 for the old cid only key */
     String blockMetadataPrimaryKeySizeCommand();
 
-    /** Rekey a blockmetadata table from cid to (owner, cid), dropping the null owner rows */
-    List<String> migrateBlockMetadataToOwnerKeyCommands();
-
     String vacuumCommand();
 
     static String valuePlaceholders(int columns, int rows) {

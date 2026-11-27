@@ -1,7 +1,5 @@
 package peergos.server.sql;
 
-import java.util.*;
-
 public class PostgresCommands implements SqlSupplier {
 
     @Override
@@ -33,13 +31,20 @@ public class PostgresCommands implements SqlSupplier {
                 "WHERE t.table_name = 'blockmetadata' AND t.constraint_type = 'PRIMARY KEY';";
     }
 
-    @Override
-    public List<String> migrateBlockMetadataToOwnerKeyCommands() {
-        return List.of(
-                "DELETE FROM blockmetadata WHERE owner IS NULL;",
-                "ALTER TABLE blockmetadata DROP CONSTRAINT blockmetadata_pkey;",
-                "ALTER TABLE blockmetadata ALTER COLUMN owner SET NOT NULL;",
-                "ALTER TABLE blockmetadata ADD PRIMARY KEY (owner, cid);");
+    /** Older cockroachdb tables call it "primary" */
+    public String blockMetadataPrimaryKeyNameCommand() {
+        return "SELECT constraint_name FROM information_schema.table_constraints " +
+                "WHERE table_name = 'blockmetadata' AND constraint_type = 'PRIMARY KEY';";
+    }
+
+    public String deleteNullOwnerBlockMetadataCommand(int batchSize) {
+        return "DELETE FROM blockmetadata WHERE cid IN (SELECT cid FROM blockmetadata WHERE owner IS NULL LIMIT " + batchSize + ");";
+    }
+
+    /** One statement, so cockroachdb swaps the key without keeping the old one as a unique index */
+    public String rekeyBlockMetadataCommand(String oldPrimaryKeyName) {
+        return "ALTER TABLE blockmetadata DROP CONSTRAINT \"" + oldPrimaryKeyName + "\", " +
+                "ADD CONSTRAINT blockmetadata_pkey PRIMARY KEY (owner, cid);";
     }
 
     @Override

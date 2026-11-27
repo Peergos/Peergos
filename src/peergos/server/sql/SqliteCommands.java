@@ -30,9 +30,8 @@ public class SqliteCommands implements SqlSupplier {
         return "SELECT COUNT(*) FROM pragma_table_info('blockmetadata') WHERE pk > 0;";
     }
 
-    /** sqlite can't change a primary key in place */
-    @Override
-    public List<String> migrateBlockMetadataToOwnerKeyCommands() {
+    /** sqlite can't change a primary key in place, so this rebuilds the table without its null owner rows */
+    public List<String> rebuildBlockMetadataWithOwnerKeyCommands() {
         return List.of(
                 "DROP TABLE IF EXISTS blockmetadata_rekeyed;",
                 createBlockMetadataStoreTableCommand("blockmetadata_rekeyed"),
