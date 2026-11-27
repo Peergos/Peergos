@@ -38,36 +38,9 @@ class RequestCountingBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
-    public Optional<BlockMetadata> get(Cid block) {
-        count.incrementAndGet();
-        return target.get(block);
-    }
-
-    @Override
-    public List<Cid> hasBlocks(List<Cid> blocks) {
-        count.incrementAndGet();
-        return blocks.stream()
-                .filter(h -> target.get(h).isPresent())
-                .collect(Collectors.toList());
-    }
-
-    @Override
-    public Map<Cid, BlockMetadata> getAll(List<Cid> blocks) {
-        return blocks.stream()
-                .map(h -> new Pair<>(h, target.get(h)))
-                .filter(p -> p.right.isPresent())
-                .collect(Collectors.toMap(p -> p.left, p -> p.right.get()));
-    }
-
-    @Override
     public Map<Cid, BlockMetadata> getAll(PublicKeyHash owner, List<Cid> blocks) {
         count.incrementAndGet();
         return target.getAll(owner, blocks);
-    }
-
-    @Override
-    public Optional<PublicKeyHash> getOwner(Cid block) {
-        return target.getOwner(block);
     }
 
     @Override

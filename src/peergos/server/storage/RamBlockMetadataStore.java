@@ -21,27 +21,6 @@ public class RamBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
-    public Optional<BlockMetadata> get(Cid block) {
-        return Optional.ofNullable(store.get(block))
-                .flatMap(owners -> owners.values().stream().findFirst());
-    }
-
-    @Override
-    public List<Cid> hasBlocks(List<Cid> blocks) {
-        return blocks.stream()
-                .filter(store::containsKey)
-                .collect(Collectors.toList());
-    }
-
-    @Override
-    public Map<Cid, BlockMetadata> getAll(List<Cid> blocks) {
-        Map<Cid, BlockMetadata> res = new HashMap<>();
-        for (Cid block : blocks)
-            get(block).ifPresent(m -> res.put(block, m));
-        return res;
-    }
-
-    @Override
     public Map<Cid, BlockMetadata> getAll(PublicKeyHash owner, List<Cid> blocks) {
         Map<Cid, BlockMetadata> res = new HashMap<>();
         if (owner == null)
@@ -51,12 +30,6 @@ public class RamBlockMetadataStore implements BlockMetadataStore {
                     .map(owners -> owners.get(owner))
                     .ifPresent(m -> res.put(block, m));
         return res;
-    }
-
-    @Override
-    public Optional<PublicKeyHash> getOwner(Cid block) {
-        return Optional.ofNullable(store.get(block))
-                .flatMap(owners -> owners.keySet().stream().findFirst());
     }
 
     @Override
@@ -88,7 +61,7 @@ public class RamBlockMetadataStore implements BlockMetadataStore {
 
     @Override
     public void applyToAllSizes(BiConsumer<Cid, Long> action) {
-        store.keySet().forEach(c -> action.accept(c, (long) get(c).get().size));
+        store.forEach((c, owners) -> action.accept(c, (long) owners.values().iterator().next().size));
     }
 
     private Stream<Cid> owned(PublicKeyHash owner) {

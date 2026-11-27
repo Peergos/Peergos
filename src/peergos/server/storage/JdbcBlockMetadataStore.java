@@ -16,8 +16,6 @@ import java.util.stream.*;
 public class JdbcBlockMetadataStore implements BlockMetadataStore {
 
     private static final Logger LOG = Logging.LOG();
-    private static final String GET_INFO = "SELECT * FROM blockmetadata WHERE cid = ? LIMIT 1;";
-    private static final String GET_OWNER = "SELECT owner FROM blockmetadata WHERE cid = ? LIMIT 1;";
     private static final String SET_VERSION = "UPDATE blockmetadata SET version=? WHERE owner=? AND cid=?;";
     public static final int PAGE_LIMIT = 100_000;
     private static final int INSERT_COLUMNS = 6;
@@ -142,76 +140,15 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
-    public Optional<BlockMetadata> get(Cid block) {
-        try (Connection conn = getConnection(false, false);
-             PreparedStatement stmt = conn.prepareStatement(GET_INFO)) {
-            stmt.setBytes(1, block.toBytes());
-            ResultSet rs = stmt.executeQuery();
-            while (rs.next()) {
-                List<Cid> links = ((CborObject.CborList) CborObject.fromByteArray(rs.getBytes("links")))
-                        .map(cbor -> Cid.cast(((CborObject.CborByteArray)cbor).value));
-                List<BatId> batIds = ((CborObject.CborList) CborObject.fromByteArray(rs.getBytes("batids")))
-                        .map(BatId::fromCbor);
-                return Optional.of(new BlockMetadata(rs.getInt("size"), links, batIds));
-            }
-            return Optional.empty();
-        } catch (SQLException sqe) {
-            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            throw new RuntimeException(sqe);
-        }
-    }
-
-    @Override
-    public List<Cid> hasBlocks(List<Cid> blocks) {
-        String placeholders = blocks.stream()
-                .map(b -> "?")
-                .collect(Collectors.joining(","));
-
-        String sql = "SELECT DISTINCT cid FROM blockmetadata WHERE cid IN (" + placeholders + ");";
-
-        try (Connection conn = getConnection(false, false);
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-
-            for (int i = 0; i < blocks.size(); i++) {
-                stmt.setBytes(i + 1, blocks.get(i).toBytes());
-            }
-
-            ResultSet rs = stmt.executeQuery();
-            List<Cid> present = new ArrayList<>();
-
-            while (rs.next()) {
-                present.add(Cid.cast(rs.getBytes("cid")));
-            }
-
-            return present;
-        } catch (SQLException sqe) {
-            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            throw new RuntimeException(sqe);
-        }
-    }
-
-    @Override
-    public Map<Cid, BlockMetadata> getAll(List<Cid> blocks) {
-        return getAll(Optional.empty(), blocks);
-    }
-
-    @Override
     public Map<Cid, BlockMetadata> getAll(PublicKeyHash owner, List<Cid> blocks) {
-        if (owner == null)
-            return Collections.emptyMap();
-        return getAll(Optional.of(owner), blocks);
-    }
-
-    private Map<Cid, BlockMetadata> getAll(Optional<PublicKeyHash> owner, List<Cid> blocks) {
-        if (blocks.isEmpty())
+        if (owner == null || blocks.isEmpty())
             return Collections.emptyMap();
 
         String placeholders = blocks.stream()
                 .map(b -> "?")
                 .collect(Collectors.joining(","));
 
-        String sql = "SELECT cid, links, batids, size FROM blockmetadata WHERE cid IN (" + placeholders + ")"
-                + (owner.isPresent() ? " AND owner = ?" : "") + ";";
+        String sql = "SELECT cid, links, batids, size FROM blockmetadata WHERE cid IN (" + placeholders + ") AND owner = ?;";
 
         try (Connection conn = getConnection(false, false);
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -219,8 +156,7 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
             for (int i = 0; i < blocks.size(); i++) {
                 stmt.setBytes(i + 1, blocks.get(i).toBytes());
             }
-            if (owner.isPresent())
-                stmt.setBytes(blocks.size() + 1, owner.get().toBytes());
+            stmt.setBytes(blocks.size() + 1, owner.toBytes());
 
             ResultSet rs = stmt.executeQuery();
             Map<Cid, BlockMetadata> present = new HashMap<>();
@@ -235,23 +171,6 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
             }
 
             return present;
-        } catch (SQLException sqe) {
-            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            throw new RuntimeException(sqe);
-        }
-    }
-
-    @Override
-    public Optional<PublicKeyHash> getOwner(Cid block) {
-        try (Connection conn = getConnection(false, false);
-             PreparedStatement stmt = conn.prepareStatement(GET_OWNER)) {
-            stmt.setBytes(1, block.toBytes());
-            ResultSet rs = stmt.executeQuery();
-            if (rs.next()) {
-                return Optional.ofNullable(rs.getBytes("owner"))
-                        .map(PublicKeyHash::decode);
-            }
-            return Optional.empty();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);

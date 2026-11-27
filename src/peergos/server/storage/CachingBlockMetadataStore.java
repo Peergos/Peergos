@@ -16,53 +16,19 @@ import java.util.stream.*;
 public class CachingBlockMetadataStore implements BlockMetadataStore {
 
     private final BlockMetadataStore target;
-    private final Map<Cid, BlockMetadata> cache;
-    private final Map<Pair<PublicKeyHash, Cid>, BlockMetadata> ownedCache;
+    private final Map<Pair<PublicKeyHash, Cid>, BlockMetadata> cache;
 
     public CachingBlockMetadataStore(BlockMetadataStore target, int cacheSize) {
         this.target = target;
         this.cache = Collections.synchronizedMap(new LRUCache<>(cacheSize));
-        this.ownedCache = Collections.synchronizedMap(new LRUCache<>(cacheSize));
     }
 
-    @Override
-    public Optional<BlockMetadata> get(Cid block) {
-        BlockMetadata cached = cache.get(block);
-        if (cached != null)
-            return Optional.of(cached);
-        Optional<BlockMetadata> result = target.get(block);
-        result.ifPresent(m -> cache.put(block, m));
-        return result;
-    }
-
-    @Override
-    public Map<Cid, BlockMetadata> getAll(List<Cid> blocks) {
-        Map<Cid, BlockMetadata> result = new HashMap<>();
-        List<Cid> misses = new ArrayList<>();
-        for (Cid block : blocks) {
-            BlockMetadata cached = cache.get(block);
-            if (cached != null)
-                result.put(block, cached);
-            else
-                misses.add(block);
-        }
-        if (!misses.isEmpty()) {
-            Map<Cid, BlockMetadata> fromDb = target.getAll(misses);
-            cache.putAll(fromDb);
-            result.putAll(fromDb);
-        }
-        return result;
-    }
-
-    /** Owner scoped lookups are cached with the owner, and only answer for that owner, because the point of
-     *  scoping is that a row written under one owner must not answer for another.
-     */
     @Override
     public Map<Cid, BlockMetadata> getAll(PublicKeyHash owner, List<Cid> blocks) {
         Map<Cid, BlockMetadata> result = new HashMap<>();
         List<Cid> misses = new ArrayList<>();
         for (Cid block : blocks) {
-            BlockMetadata cached = owner == null ? null : ownedCache.get(new Pair<>(owner, block));
+            BlockMetadata cached = owner == null ? null : cache.get(new Pair<>(owner, block));
             if (cached != null)
                 result.put(block, cached);
             else
@@ -70,20 +36,10 @@ public class CachingBlockMetadataStore implements BlockMetadataStore {
         }
         if (! misses.isEmpty()) {
             Map<Cid, BlockMetadata> fromDb = target.getAll(owner, misses);
-            fromDb.forEach((block, meta) -> ownedCache.put(new Pair<>(owner, block), meta));
+            fromDb.forEach((block, meta) -> cache.put(new Pair<>(owner, block), meta));
             result.putAll(fromDb);
         }
         return result;
-    }
-
-    @Override
-    public List<Cid> hasBlocks(List<Cid> blocks) {
-        return target.hasBlocks(blocks);
-    }
-
-    @Override
-    public Optional<PublicKeyHash> getOwner(Cid block) {
-        return target.getOwner(block);
     }
 
     @Override
@@ -96,23 +52,19 @@ public class CachingBlockMetadataStore implements BlockMetadataStore {
     @Override
     public void put(PublicKeyHash owner, Cid block, String version, BlockMetadata meta) {
         target.put(owner, block, version, meta);
-        cache.remove(block);
     }
 
     @Override
     public void put(PublicKeyHash owner, List<Cid> blocks, List<byte[]> data) {
         target.put(owner, blocks, data);
-        blocks.forEach(cache::remove);
     }
 
     /** The rows go first, so a lookup that starts after the eviction finds nothing to cache again */
     @Override
     public void remove(PublicKeyHash owner, List<Cid> blocks) {
         target.remove(owner, blocks);
-        for (Cid block : blocks) {
-            cache.remove(block);
-            ownedCache.remove(new Pair<>(owner, block));
-        }
+        for (Cid block : blocks)
+            cache.remove(new Pair<>(owner, block));
     }
 
     @Override

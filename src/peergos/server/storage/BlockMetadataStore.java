@@ -11,25 +11,17 @@ import java.util.stream.*;
 
 public interface BlockMetadataStore {
 
-    Optional<BlockMetadata> get(Cid block);
-
-    List<Cid> hasBlocks(List<Cid> blocks);
-
-    Map<Cid, BlockMetadata> getAll(List<Cid> blocks);
-
-    /** The metadata for these blocks, but only where they are recorded under this owner.
+    /** The metadata for these blocks, where they are recorded under this owner. A null owner matches no row.
      *
-     *  Authorising a read has to use this rather than the owner blind lookup: the bats in a block's
-     *  metadata can be supplied by whoever wrote it, so a row written under one owner must never be
-     *  able to authorise a read under another. A miss is safe - the caller falls back to reading the
-     *  block itself and deriving its bats from the bytes.
-     *
-     *  A null owner matches no row.
+     *  Lookups are always owner scoped: the bats in a block's metadata can be supplied by whoever wrote it,
+     *  so a row written under one owner must never be able to authorise a read under another. A miss is
+     *  safe - the caller falls back to reading the block itself and deriving its bats from the bytes.
      */
     Map<Cid, BlockMetadata> getAll(PublicKeyHash owner, List<Cid> blocks);
 
-    /** @return an owner holding this block, if any */
-    Optional<PublicKeyHash> getOwner(Cid block);
+    default Optional<BlockMetadata> get(PublicKeyHash owner, Cid block) {
+        return Optional.ofNullable(getAll(owner, List.of(block)).get(block));
+    }
 
     /** Update the version of an owner's existing row */
     void setVersion(PublicKeyHash owner, Cid block, String version);
@@ -37,7 +29,7 @@ public interface BlockMetadataStore {
     /** Rows are keyed by owner and cid, so each owner holding a block has its own row. A null owner is not stored. */
     void put(PublicKeyHash owner, Cid block, String version, BlockMetadata meta);
 
-    /** Remove only this owner's rows, leaving those of any other owner of the same blocks */
+    /** Remove only this owner's rows */
     void remove(PublicKeyHash owner, List<Cid> blocks);
 
     /** Whether gc must list this owner's blocks from the blockstore once, to find blocks without a row */

@@ -272,18 +272,15 @@ public class GarbageCollector {
                                     Hasher h) {
         if (cid.isIdentity())
             return;
-        Optional<BlockMetadata> meta = Optional.ofNullable(metadata.getAll(owner, List.of((Cid) cid)).get(cid));
+        Optional<BlockMetadata> meta = metadata.get(owner, (Cid) cid);
         Cid ourId = storage.id().join();
         if (meta.isEmpty() && fixMetadata) {
             // retrieving the block should add it to the metadata store under this owner
             Optional<byte[]> block = storage.getRaw(Arrays.asList(homeServer), owner, (Cid) cid, Optional.empty(), ourId, h, false, true).join();
-            meta = Optional.ofNullable(metadata.getAll(owner, List.of((Cid) cid)).get(cid));
+            meta = metadata.get(owner, (Cid) cid);
             if (meta.isPresent())
                 System.out.println("Fixed block metadata for " + cid);
         }
-        if (meta.isEmpty())
-            meta = metadata.get((Cid) cid);
-
         if (meta.isEmpty())
             throw new IllegalStateException("Absent block! " + cid + ", key: " + DirectS3BlockStore.hashToKey(cid));
         for (Cid link : meta.get().links) {
@@ -703,7 +700,7 @@ public class GarbageCollector {
                     Optional.of(Collections.emptyList()) :
                     reachability.getLinks(block);
             List<Cid> newLinks = fromRdb
-                    .orElseGet(() -> metadata.get(block).map(m -> m.links)
+                    .orElseGet(() -> metadata.get(owner, block).map(m -> m.links)
                             .orElseGet(() -> getWithBackoff(() -> storage.getLinks(owner, block, Arrays.asList(storage.id().join())).join())));
 
             if (fromRdb.isEmpty() && ! block.isRaw()) {

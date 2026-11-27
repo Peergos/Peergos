@@ -274,7 +274,7 @@ public class GCTests {
             throw new IllegalStateException("Absent block " + block);
         if (block.isRaw())
             return;
-        BlockMetadata m = meta.get(block).get();
+        BlockMetadata m = meta.get(owner, block).get();
         for (Cid link : m.links) {
             verifySubtreePresent(owner, link, meta, storage);
         }

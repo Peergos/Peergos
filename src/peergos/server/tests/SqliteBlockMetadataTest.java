@@ -110,12 +110,11 @@ public class SqliteBlockMetadataTest {
 
         Assert.assertEquals(cids.size(), bulkStore.size(owner));
         for (Cid cid : cids) {
-            BlockMetadata expected = oneByOneStore.get(cid).get();
-            BlockMetadata actual = bulkStore.get(cid).get();
+            BlockMetadata expected = oneByOneStore.get(owner, cid).get();
+            BlockMetadata actual = bulkStore.get(owner, cid).get();
             Assert.assertEquals("size of " + cid, expected.size, actual.size);
             Assert.assertEquals("links of " + cid, expected.links, actual.links);
             Assert.assertEquals("bats of " + cid, expected.batids, actual.batids);
-            Assert.assertEquals("owner of " + cid, owner, bulkStore.getOwner(cid).get());
         }
 
         // versions are null on the bulk path, as they are for the individual puts it replaces
@@ -232,8 +231,6 @@ public class SqliteBlockMetadataTest {
                 store.getAll(attacker, List.of(block)).containsKey(block));
         Assert.assertTrue("a row written under another owner must not answer here",
                 store.getAll(victim, List.of(block)).isEmpty());
-        // the owner blind lookup is unchanged, for the paths that legitimately use it
-        Assert.assertTrue(store.getAll(List.of(block)).containsKey(block));
     }
 
     /** The caching layer is the half that made this exploitable, so it has to scope too. */
@@ -258,15 +255,14 @@ public class SqliteBlockMetadataTest {
     public void aLaterPutDoesNotReplaceTheStoredRow() throws Exception {
         Path dir = Files.createTempDirectory("peergos-block-metadata");
         BlockMetadataStore store = new CachingBlockMetadataStore(buildStore(dir.resolve("meta.sql")), 1000);
-        PublicKeyHash victim = new PublicKeyHash(randomCid());
-        PublicKeyHash attacker = new PublicKeyHash(randomCid());
+        PublicKeyHash owner = new PublicKeyHash(randomCid());
 
         Cid block = randomCid();
-        store.put(victim, block, "alpha", new BlockMetadata(1024, Collections.emptyList(), Collections.emptyList()));
-        store.put(attacker, block, "beta", new BlockMetadata(1, Collections.emptyList(), Collections.emptyList()));
+        store.put(owner, block, "alpha", new BlockMetadata(1024, Collections.emptyList(), Collections.emptyList()));
+        Assert.assertEquals(1024, store.get(owner, block).get().size);
+        store.put(owner, block, "beta", new BlockMetadata(1, Collections.emptyList(), Collections.emptyList()));
 
-        Assert.assertEquals(1024, store.get(block).get().size);
-        Assert.assertEquals(1024, store.getAll(victim, List.of(block)).get(block).size);
+        Assert.assertEquals(1024, store.get(owner, block).get().size);
     }
 
     @Test
@@ -294,12 +290,12 @@ public class SqliteBlockMetadataTest {
         for (Cid block : Stream.concat(toRemove.stream(), toKeep.stream()).toList())
             store.put(owner, block, null, new BlockMetadata(1024, Collections.emptyList(), Collections.emptyList()));
         Assert.assertEquals(toRemove.size(), store.getAll(owner, toRemove).size());
-        Assert.assertTrue(store.get(toRemove.get(0)).isPresent());
+        Assert.assertTrue(store.get(owner, toRemove.get(0)).isPresent());
 
         store.remove(owner, toRemove);
 
         Assert.assertTrue(store.getAll(owner, toRemove).isEmpty());
-        Assert.assertTrue(toRemove.stream().noneMatch(b -> store.get(b).isPresent()));
+        Assert.assertTrue(toRemove.stream().noneMatch(b -> store.get(owner, b).isPresent()));
         Assert.assertEquals(toKeep.size(), store.getAll(owner, toKeep).size());
         Assert.assertEquals(toKeep.size(), store.size(owner));
     }
@@ -351,7 +347,9 @@ public class SqliteBlockMetadataTest {
 
         BlockMetadataStore store = new JdbcBlockMetadataStore(() -> conn, new SqliteCommands());
         Assert.assertTrue(store.getAll(owner, List.of(owned)).containsKey(owned));
-        Assert.assertTrue("legacy rows are dropped", store.get(legacy).isEmpty());
+        List<Cid> all = new ArrayList<>();
+        store.applyToAll(all::add);
+        Assert.assertEquals("legacy rows are dropped", List.of(owned), all);
         store.put(other, owned, null, new BlockMetadata(10, Collections.emptyList(), Collections.emptyList()));
         Assert.assertTrue(store.getAll(other, List.of(owned)).containsKey(owned));
 

@@ -188,7 +188,7 @@ public class WriteOnlyStorage implements DeletableContentAddressedStorage {
             return CompletableFuture.completedFuture(Collections.emptyList());
         if (! storage.getOrDefault(owner, Collections.emptyMap()).containsKey(root))
             throw new BlockAbsentException(root);
-        return CompletableFuture.completedFuture(metadb.get(root)
+        return CompletableFuture.completedFuture(metadb.get(owner, root)
                 .orElseThrow(() -> new IllegalStateException("Could not read block: " + root))
                 .links);
     }

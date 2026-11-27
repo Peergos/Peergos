@@ -106,9 +106,8 @@ public class S3HasBlock {
         PublicKeyHash owner = core.getPublicKeyHash(username).join().get();
         Cid hash = Cid.decode(a.getArg("hash"));
 
-        Optional<BlockMetadata> blockMetadata = meta.get(hash);
+        Optional<BlockMetadata> blockMetadata = meta.get(owner, hash);
         System.out.println("Block present in metadb " + owner + ": " + hash + " " + blockMetadata.isPresent());
-        System.out.println("Stored owner " + meta.getOwner(hash));
         System.out.println("Block present " + owner + ": " + hash + " " + s3.hasBlock(owner, hash));
         List<Multihash> peerIds = ids.stream()
                 .map(c -> (Multihash) c)
