@@ -23,19 +23,17 @@ public class WebdavBackend implements MountBackend {
 
     private static final Logger LOG = Logging.LOG();
 
-    private final String peergosUrl;
     /** False when another backend owns the drive and this one is only here for the bridge, which
      *  is the Windows CFAPI case. Mounting as well would stack a second drive beside it. */
     private final boolean canMountDrive;
     private final AtomicReference<WebdavMount> activeMount = new AtomicReference<>();
     private final AtomicReference<Server> activeServer = new AtomicReference<>();
 
-    public WebdavBackend(String peergosUrl) {
-        this(peergosUrl, true);
+    public WebdavBackend() {
+        this(true);
     }
 
-    public WebdavBackend(String peergosUrl, boolean canMountDrive) {
-        this.peergosUrl = peergosUrl;
+    public WebdavBackend(boolean canMountDrive) {
         this.canMountDrive = canMountDrive;
     }
 
@@ -51,8 +49,7 @@ public class WebdavBackend implements MountBackend {
         // The bridge is what serves CalDAV and CardDAV as well as files, so it runs for any of the
         // three; only the drive is gated on mountDrive. Thumbnail-cache seeding is for the drive
         // (and a no-op unless running under flatpak).
-        WebdavFileSystem fs = new WebdavFileSystem(config.peergosUsername, config.peergosPassword,
-                peergosUrl, config, wantsDrive);
+        WebdavFileSystem fs = new WebdavFileSystem(context, config, wantsDrive);
         Server server = WebdavServer.startNonBlocking(config.webdavPort, config.webdavUsername,
                 config.webdavPassword, fs, config.authType, config.syncCalendar, config.syncContacts);
         Server prevServer = activeServer.getAndSet(server);
