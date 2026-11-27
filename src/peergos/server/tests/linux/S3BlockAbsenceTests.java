@@ -139,7 +139,7 @@ public class S3BlockAbsenceTests {
         byte[] data = "another real block".getBytes();
         Cid present = putRawBlock(data);
         Assert.assertEquals(data.length, s3.getBlockMetadata(owner, present).join().size);
-        meta.remove(present);
+        meta.remove(owner, List.of(present));
         cborCache.clear().join();
         server.refuseRequestsFor(s3Key(present));
         try {
@@ -159,7 +159,7 @@ public class S3BlockAbsenceTests {
         Assert.assertEquals("readable before the fault", data.length, s3.getBlockMetadata(owner, present).join().size);
 
         // the read only reaches s3 when neither the metadata store nor the cbor cache has the block
-        meta.remove(present);
+        meta.remove(owner, List.of(present));
         cborCache.clear().join();
         server.refuseRequestsFor(s3Key(present));
 
@@ -234,7 +234,7 @@ public class S3BlockAbsenceTests {
 
         // the gc only reaches s3 when neither the metadata store nor the cbor cache has the block,
         // which is the normal case on a store larger than the cache
-        meta.remove(root);
+        meta.remove(owner, List.of(root));
         cborCache.clear().join();
         server.refuseRequestsFor(s3Key(root));
 

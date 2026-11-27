@@ -25,13 +25,26 @@ public class PostgresCommands implements SqlSupplier {
     }
 
     @Override
-    public String updateMetadataCommand() {
-        return "UPDATE blockmetadata SET owner=? WHERE cid=?;";
+    public String blockMetadataPrimaryKeySizeCommand() {
+        return "SELECT COUNT(*) FROM information_schema.key_column_usage k " +
+                "JOIN information_schema.table_constraints t ON k.constraint_name = t.constraint_name AND k.table_name = t.table_name " +
+                "WHERE t.table_name = 'blockmetadata' AND t.constraint_type = 'PRIMARY KEY';";
     }
 
-    @Override
-    public String setMetadataVersionAndOwnerCommand() {
-        return "UPDATE blockmetadata SET version=?, owner=? WHERE cid=?;";
+    /** Older cockroachdb tables call it "primary" */
+    public String blockMetadataPrimaryKeyNameCommand() {
+        return "SELECT constraint_name FROM information_schema.table_constraints " +
+                "WHERE table_name = 'blockmetadata' AND constraint_type = 'PRIMARY KEY';";
+    }
+
+    public String deleteNullOwnerBlockMetadataCommand(int batchSize) {
+        return "DELETE FROM blockmetadata WHERE cid IN (SELECT cid FROM blockmetadata WHERE owner IS NULL LIMIT " + batchSize + ");";
+    }
+
+    /** One statement, so cockroachdb swaps the key without keeping the old one as a unique index */
+    public String rekeyBlockMetadataCommand(String oldPrimaryKeyName) {
+        return "ALTER TABLE blockmetadata DROP CONSTRAINT \"" + oldPrimaryKeyName + "\", " +
+                "ADD CONSTRAINT blockmetadata_pkey PRIMARY KEY (owner, cid);";
     }
 
     @Override

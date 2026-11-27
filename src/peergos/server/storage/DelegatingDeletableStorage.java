@@ -29,6 +29,11 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
+    public Optional<BlockMetadataStore> getBlockMetadataStore() {
+        return target.getBlockMetadataStore();
+    }
+
+    @Override
     public void setPki(CoreNode pki) {
         target.setPki(pki);
     }

@@ -38,46 +38,14 @@ class RequestCountingBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
-    public Optional<BlockMetadata> get(Cid block) {
-        count.incrementAndGet();
-        return target.get(block);
-    }
-
-    @Override
-    public List<Cid> hasBlocks(List<Cid> blocks) {
-        count.incrementAndGet();
-        return blocks.stream()
-                .filter(h -> target.get(h).isPresent())
-                .collect(Collectors.toList());
-    }
-
-    @Override
-    public Map<Cid, BlockMetadata> getAll(List<Cid> blocks) {
-        return blocks.stream()
-                .map(h -> new Pair<>(h, target.get(h)))
-                .filter(p -> p.right.isPresent())
-                .collect(Collectors.toMap(p -> p.left, p -> p.right.get()));
-    }
-
-    @Override
     public Map<Cid, BlockMetadata> getAll(PublicKeyHash owner, List<Cid> blocks) {
         count.incrementAndGet();
         return target.getAll(owner, blocks);
     }
 
     @Override
-    public Optional<PublicKeyHash> getOwner(Cid block) {
-        return target.getOwner(block);
-    }
-
-    @Override
-    public void setOwner(PublicKeyHash owner, Cid block) {
-        target.setOwner(owner, block);
-    }
-
-    @Override
-    public void setOwnerAndVersion(PublicKeyHash owner, Cid block, String version) {
-        target.setOwnerAndVersion(owner, block, version);
+    public void setVersion(PublicKeyHash owner, Cid block, String version) {
+        target.setVersion(owner, block, version);
     }
 
     @Override
@@ -86,13 +54,18 @@ class RequestCountingBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
-    public void remove(Cid block) {
-        target.remove(block);
+    public void remove(PublicKeyHash owner, List<Cid> blocks) {
+        target.remove(owner, blocks);
     }
 
     @Override
-    public void remove(List<Cid> blocks) {
-        target.remove(blocks);
+    public boolean needsBlockstoreListing(PublicKeyHash owner) {
+        return target.needsBlockstoreListing(owner);
+    }
+
+    @Override
+    public void blockstoreListed(PublicKeyHash owner) {
+        target.blockstoreListed(owner);
     }
 
     @Override

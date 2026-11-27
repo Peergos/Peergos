@@ -44,7 +44,7 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
             return;
         LOG.info("Populating block metadata db..");
         target.getAllBlockHashes(true).forEach(p -> {
-            Optional<BlockMetadata> existing = metadata.get(p.right);
+            Optional<BlockMetadata> existing = metadata.get(p.left, p.right);
             if (existing.isEmpty())
                 metadata.put(p.left, p.right, null, target.getBlockMetadata(p.left, p.right).join());
         });
@@ -75,7 +75,7 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
 
     @Override
     public CompletableFuture<Optional<Integer>> getSize(PublicKeyHash owner, Multihash block) {
-        Optional<BlockMetadata> meta = metadata.get((Cid) block);
+        Optional<BlockMetadata> meta = metadata.get(owner, (Cid) block);
         if (meta.isPresent())
             return Futures.of(Optional.of(meta.get().size));
         return target.getSize(owner, block);
@@ -87,7 +87,7 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
             return Futures.of(Collections.emptyList());
         if (block.isIdentity())
             return Futures.of(CborObject.getLinks(block, block.getHash()));
-        Optional<BlockMetadata> meta = metadata.get(block);
+        Optional<BlockMetadata> meta = metadata.get(owner, block);
         if (meta.isPresent())
             return Futures.of(meta.get().links);
         return getBlockMetadata(owner, block).thenApply(res -> res.links);
@@ -97,7 +97,7 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     public CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid block) {
         if (block.isIdentity())
             return Futures.of(BlockMetadataStore.extractMetadata(block, block.getHash()));
-        Optional<BlockMetadata> meta = metadata.get(block);
+        Optional<BlockMetadata> meta = metadata.get(owner, block);
         if (meta.isPresent())
             return Futures.of(meta.get());
         return target.getBlockMetadata(owner, block);
