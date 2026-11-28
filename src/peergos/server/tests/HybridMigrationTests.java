@@ -21,6 +21,8 @@ import peergos.shared.util.*;
 
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.*;
 
 import static peergos.server.tests.PeergosNetworkUtils.*;
 
@@ -322,6 +324,53 @@ public class HybridMigrationTests {
         }
     }
 
+    /** The least an account needs for a move to take each of its steps: a file with a read share, and a nested
+     *  writing space that a friend writes to
+     */
+    private static class SmallAccount {
+        final String password = generatePassword(), friendPassword = generatePassword();
+        final UserContext owner, friend;
+        final Path home, team;
+        final Map<Path, byte[]> files = new HashMap<>();
+        final PublicKeyHash oldTeam;
+
+        SmallAccount() {
+            SigningKeyPair.HYBRID_WRITERS = false;
+            owner = login(generateUsername(random), password);
+            friend = login(generateUsername(random), friendPassword);
+            friendBetweenGroups(Arrays.asList(owner), Arrays.asList(friend));
+            home = PathUtil.get(owner.username);
+            team = home.resolve("team");
+            files.put(home.resolve("small.bin"), upload(owner, home, "small.bin", 2000));
+            owner.shareReadAccessWith(home.resolve("small.bin"), Collections.singleton(friend.username)).join();
+            mkdir(owner, home, "team");
+            owner.shareWriteAccessWith(team, Collections.singleton(friend.username)).join();
+            files.put(team.resolve("t.bin"), upload(owner, team, "t.bin", 1500));
+            oldTeam = writer(owner, team);
+            Assert.assertTrue(oldTeam.isIdentity());
+        }
+
+        void assertAllReadable(UserContext context) {
+            for (Map.Entry<Path, byte[]> file : files.entrySet())
+                Assert.assertArrayEquals(file.getValue(), read(context, file.getKey()));
+        }
+
+        /** The next login with hybrid writers on finishes the move, with nothing lost to the owner or the friend */
+        void assertMigrated() {
+            SigningKeyPair.HYBRID_WRITERS = true;
+            UserContext after = login(owner.username, password);
+            Assert.assertFalse(after.hasEd25519Home().join());
+            Assert.assertFalse(after.isMovingToHybridWriters().join());
+            assertAllHybrid(after, after.getUserRoot().join(), home);
+            Assert.assertNotEquals(writer(after, home), writer(after, team));
+            assertAllReadable(after);
+            UserContext friendNow = login(friend.username, friendPassword);
+            assertAllReadable(friendNow);
+            files.put(team.resolve("later.bin"), upload(friendNow, team, "later.bin", 800));
+            assertAllReadable(login(owner.username, password));
+        }
+    }
+
     @Test
     public void oldAccountMovesToHybridWritersOnLogin() {
         OldAccount old = new OldAccount();
@@ -446,18 +495,24 @@ public class HybridMigrationTests {
         OldAccount old = new OldAccount();
         UserContext other = ensureSignedUp(old.owner.username, old.password, device(), crypto);
         SigningKeyPair.HYBRID_WRITERS = true;
-        NetworkAccess moving = device();
+        int[] movesOfTheHome = new int[1];
+        NetworkAccess moving = device((call, a) -> {
+            if (call.equals("bulkCommit") && ((BulkCommit) a[1]).writers.stream().anyMatch(w -> w.writer.equals(old.oldRoot)))
+                movesOfTheHome[0]++;
+            return null;
+        }, WORKS, WORKS);
         byte[] data = new byte[777];
         random.nextBytes(data);
-        java.util.concurrent.atomic.AtomicBoolean written = new java.util.concurrent.atomic.AtomicBoolean(false);
+        java.util.concurrent.atomic.AtomicInteger toNewWriters = new java.util.concurrent.atomic.AtomicInteger();
         moving.synchronizer.setCommitObserver((w, seq) -> {
-            // the move's first commit to a new writer comes after it has read the old one
-            if (! w.isIdentity() && written.compareAndSet(false, true))
+            // the first commit to a new writer creates it. The second gives it the old one's champ, once the move
+            // has read the old one
+            if (! w.isIdentity() && toNewWriters.incrementAndGet() == 2)
                 other.getByPath(old.home).join().get().uploadOrReplaceFile("between.bin", AsyncReader.build(data), data.length,
                         other.network, crypto, () -> false, x -> {}).join();
         });
         ensureSignedUp(old.owner.username, old.password, moving, crypto);
-        Assert.assertTrue(written.get());
+        Assert.assertTrue("The move of the home wasn't tried again", movesOfTheHome[0] > 1);
         UserContext now = login(old.owner.username, old.password);
         Assert.assertFalse(now.getUserRoot().join().writer().isIdentity());
         Assert.assertArrayEquals(data, read(now, old.home.resolve("between.bin")));
@@ -641,5 +696,192 @@ public class HybridMigrationTests {
         Assert.assertArrayEquals(data, read(again, home.resolve("only.bin")));
         Assert.assertArrayEquals(more, read(again, home.resolve("more.bin")));
         assertRetired(again, oldRootCap, writer(again, home));
+    }
+
+    private static final BiFunction<String, Object[], String> WORKS = (call, a) -> null;
+
+    /** A device whose calls to the server fail when these say so: each is given a call's name and arguments, and
+     *  answers the error to fail it with, or null
+     */
+    private static NetworkAccess device(BiFunction<String, Object[], String> storage,
+                                        BiFunction<String, Object[], String> pointers,
+                                        BiFunction<String, Object[], String> account) {
+        return NetworkAccess.buildBuffered(failing(ContentAddressedStorage.class, service.storage, storage), service.bats,
+                service.coreNode, failing(Account.class, service.account, account),
+                failing(MutablePointers.class, service.mutable, pointers), 0, service.social, service.controller,
+                service.usage, service.serverMessages, crypto.hasher, Arrays.asList("peergos"), false);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> T failing(Class<T> type, T target, BiFunction<String, Object[], String> error) {
+        return (T) java.lang.reflect.Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[]{type}, (proxy, method, a) -> {
+            String failure = CompletableFuture.class.isAssignableFrom(method.getReturnType()) ?
+                    error.apply(method.getName(), a == null ? new Object[0] : a) :
+                    null;
+            if (failure != null)
+                return Futures.errored(new IllegalStateException(failure));
+            try {
+                Object res = method.invoke(target, a);
+                return res == target ? proxy : res;
+            } catch (java.lang.reflect.InvocationTargetException e) {
+                throw e.getCause();
+            }
+        });
+    }
+
+    /** A server from before bulk commits takes a move as one pointer update after another. A client that dies
+     *  between them, here after the first, which authorises a nested space's new writer, leaves nothing that the
+     *  next login can't reach and finish
+     */
+    @Test
+    public void aMoveCutShortWithoutBulkCommitsIsFinished() {
+        OldAccount old = new OldAccount();
+        SigningKeyPair.HYBRID_WRITERS = true;
+        old.owner.switchHomeToHybridWriter(x -> {}).join();
+        boolean[] dead = new boolean[1];
+        NetworkAccess dying = device(
+                (call, a) -> call.equals("bulkCommit") ? "Unimplemented call!" : dead[0] ? "The client has died" : null,
+                (call, a) -> {
+                    if (dead[0])
+                        return "The client has died";
+                    dead[0] = call.equals("setPointers");
+                    return null;
+                },
+                WORKS);
+        try {
+            ensureSignedUp(old.owner.username, old.password, dying, crypto);
+        } catch (Exception e) {}
+        Assert.assertTrue(dead[0]);
+        old.assertMigrated();
+    }
+
+    /** A move that keeps failing, here with every commit to team's old writer refused, leaves none of the new writers
+     *  made for it behind
+     */
+    @Test
+    public void aMoveThatFailsLeavesNoWriters() {
+        SmallAccount old = new SmallAccount();
+        SigningKeyPair.HYBRID_WRITERS = true;
+        old.owner.switchHomeToHybridWriter(x -> {}).join();
+        int[] refused = new int[1];
+        NetworkAccess refusing = device((call, a) -> {
+            if (! call.equals("bulkCommit") || ((BulkCommit) a[1]).writers.stream().noneMatch(w -> w.writer.equals(old.oldTeam)))
+                return null;
+            refused[0]++;
+            return "Refused";
+        }, WORKS, WORKS);
+        UserContext stopped = ensureSignedUp(old.owner.username, old.password, refusing, crypto);
+        Assert.assertTrue(refused[0] > 1);
+        Assert.assertTrue(stopped.isMovingToHybridWriters().join());
+        PublicKeyHash owner = stopped.signer.publicKeyHash;
+        for (PublicKeyHash made : writerData(owner, writer(stopped, old.home)).directOwnedKeys(owner, service.storage, crypto.hasher).join())
+            Assert.assertTrue("A new writer was left with nothing in it", writerData(owner, made).tree.isPresent());
+        old.assertMigrated();
+    }
+
+    private static WriterData writerData(PublicKeyHash owner, PublicKeyHash writer) {
+        return WriterData.getWriterData(owner, writer, service.mutable, service.storage).join().props.get();
+    }
+
+    /** A client with hybrid writers off, which may not be able to make hybrid keys, leaves a move that has started
+     *  for one with them on to finish
+     */
+    @Test
+    public void aLoginWithHybridWritersOffLeavesAMoveAlone() {
+        SmallAccount old = new SmallAccount();
+        SigningKeyPair.HYBRID_WRITERS = true;
+        old.owner.switchHomeToHybridWriter(x -> {}).join();
+        SigningKeyPair.HYBRID_WRITERS = false;
+        UserContext off = login(old.owner.username, old.password);
+        Assert.assertTrue(off.isMovingToHybridWriters().join());
+        Assert.assertEquals(old.oldTeam, writer(off, old.team));
+        old.assertAllReadable(off);
+        old.assertMigrated();
+    }
+
+    /** A login that can't read a nested writing space stops there, rather than finishing without it, and the next
+     *  login finishes
+     */
+    @Test
+    public void aMoveThatCantReadASpaceIsFinishedLater() {
+        SmallAccount old = new SmallAccount();
+        SigningKeyPair.HYBRID_WRITERS = true;
+        old.owner.switchHomeToHybridWriter(x -> {}).join();
+        NetworkAccess unreadable = device(WORKS,
+                (call, a) -> call.startsWith("getPointer") && Arrays.asList(a).contains(old.oldTeam) ? "Read failed" : null,
+                WORKS);
+        UserContext stopped = ensureSignedUp(old.owner.username, old.password, unreadable, crypto);
+        Assert.assertTrue(stopped.isMovingToHybridWriters().join());
+        old.assertMigrated();
+    }
+
+    /** Records of a write share of a file that is no longer a writing space, and of a link that has been deleted,
+     *  are passed over: the move finishes, and doesn't make the link again
+     */
+    @Test
+    public void staleShareAndLinkRecordsDontStopAMove() {
+        OldAccount old = new OldAccount();
+        Path replaced = old.home.resolve("replaced.bin"), unlinked = old.home.resolve("unlinked.bin");
+        upload(old.owner, old.home, "replaced.bin", 800);
+        old.owner.shareWriteAccessWith(replaced, Collections.singleton(old.writer.username)).join();
+        old.files.put(unlinked, upload(old.owner, old.home, "unlinked.bin", 800));
+        LinkProperties deleted = old.owner.createSecretLink(unlinked.toString(), false, Optional.empty(), Optional.empty(), "", false).join();
+        old.owner.deleteSecretLink(deleted.label, unlinked, false).join();
+
+        // behind the back of the records of what is shared
+        UserContext owner = login(old.owner.username, old.password);
+        FileWrapper home = owner.getUserRoot().join();
+        home.removeChild(home.getChild("replaced.bin", crypto.hasher, owner.network).join().get(), owner.network, crypto.random, crypto.hasher).join();
+        old.files.put(replaced, upload(login(old.owner.username, old.password), old.home, "replaced.bin", 900));
+        UserContext recording = login(old.owner.username, old.password);
+        recording.network.synchronizer.applyComplexUpdate(recording.signer.publicKeyHash, recording.getUserRoot().join().signingPair(),
+                (s, c) -> recording.sharedWithCache.addSecretLink(unlinked, deleted, s, c, recording.network)).join();
+        UserContext before = login(old.owner.username, old.password);
+        Assert.assertTrue(before.sharedWith(replaced).join().writeAccess.contains(old.writer.username));
+        Assert.assertEquals(writer(before, old.home), writer(before, replaced));
+        Assert.assertFalse(before.sharedWith(unlinked).join().links.isEmpty());
+
+        SigningKeyPair.HYBRID_WRITERS = true;
+        UserContext after = login(old.owner.username, old.password);
+        Assert.assertFalse(after.hasEd25519Home().join());
+        Assert.assertFalse(after.isMovingToHybridWriters().join());
+        boolean opens;
+        try {
+            old.fromLink(deleted);
+            opens = true;
+        } catch (Exception e) {
+            opens = false;
+        }
+        Assert.assertFalse("The move made a deleted link again", opens);
+        old.assertMigrated();
+    }
+
+    /** A move that sent the shares again, and then failed, sends none of them twice when the next login tries again */
+    @Test
+    public void aMoveTriedAgainSendsNoCapTwice() {
+        SmallAccount old = new SmallAccount();
+        SigningKeyPair.HYBRID_WRITERS = true;
+        old.owner.switchHomeToHybridWriter(x -> {}).join();
+        Map<String, Long> before = capStores(old.owner);
+        BiFunction<String, Object[], String> noEntryPoint = (call, a) -> call.equals("setLoginData") ? "Refused" : null;
+        UserContext first = ensureSignedUp(old.owner.username, old.password, device(WORKS, WORKS, noEntryPoint), crypto);
+        Assert.assertTrue(first.isMovingToHybridWriters().join());
+        Map<String, Long> sent = capStores(first);
+        Assert.assertNotEquals(before, sent);
+        UserContext second = ensureSignedUp(old.owner.username, old.password, device(WORKS, WORKS, noEntryPoint), crypto);
+        Assert.assertTrue(second.isMovingToHybridWriters().join());
+        Assert.assertEquals(sent, capStores(second));
+        old.assertMigrated();
+    }
+
+    /** The size of each store of caps that the owner shares things through */
+    private static Map<String, Long> capStores(UserContext owner) {
+        Map<String, Long> res = new TreeMap<>();
+        for (FileWrapper sharing : owner.getSharingFolder().join().getChildren(crypto.hasher, owner.network).join())
+            if (sharing.isDirectory())
+                for (FileWrapper store : sharing.getChildren(crypto.hasher, owner.network).join())
+                    if (! store.isDirectory())
+                        res.put(sharing.getName() + "/" + store.getName(), store.getSize());
+        return res;
     }
 }

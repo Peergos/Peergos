@@ -533,18 +533,33 @@ public class UserContext {
     public CompletableFuture<Boolean> finishMoveToHybridWriters(String password,
                                                                Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa,
                                                                Consumer<String> progressCallback) {
+        // Not every client can make hybrid keys, so one with hybrid writers off can't be made to finish with them.
+        // With its own it would move the nested spaces to Ed25519 writers, which nothing moves again
+        if (! SigningKeyPair.HYBRID_WRITERS) {
+            LOG.info("Leaving the move to hybrid writers half done, for a client with hybrid writers on to finish");
+            return Futures.of(false);
+        }
         progressCallback.accept(UPGRADING_MESSAGE);
         PublicKeyHash owner = signer.publicKeyHash;
+        Map<String, Optional<Set<AbsoluteCapability>>> sent = new HashMap<>();
+        List<String> unsent = new ArrayList<>();
         return getUserRoot().thenCompose(home -> getWriterQuotas(owner)
                 .thenCompose(quotas -> switchNestedSpaces(home, quotas))
                 .thenCompose(x -> writeSynchronizer.applyComplexUpdate(owner, home.signingPair(),
                         (s, c) -> sharedWithCache.getAllShares(username, s)
                                 .thenCompose(shares -> Futures.reduceAll(shares.entrySet(), s,
-                                        (v, e) -> reshareAfterMove(e.getKey(), e.getValue(), v, c),
-                                        (a, b) -> b))))
+                                                (v, e) -> reshareAfterMove(e.getKey(), e.getValue(), sent, unsent, v, c),
+                                                (a, b) -> b)
+                                        .thenCompose(s2 -> Futures.reduceAll(linksByLabel(shares).values(), s2,
+                                                (v, link) -> orNote(unsent, "secret link to " + link.left, v,
+                                                        () -> linkAgain(link.left, link.right, v, c)),
+                                                (a, b) -> b)))))
                 .thenCompose(x -> republish())
-                .thenCompose(x -> replaceHomeEntryPoint(password, mfa,
-                        (WritableAbsoluteCapability) homeEntryPoint().get().pointer, home.writableFilePointer())));
+                // the entry point is what ends the move, so with anything unsent it stays for the next login to retry
+                .thenCompose(x -> ! unsent.isEmpty() ?
+                        Futures.errored(new IllegalStateException("Couldn't send again the " + String.join(", the ", unsent))) :
+                        replaceHomeEntryPoint(password, mfa,
+                                (WritableAbsoluteCapability) homeEntryPoint().get().pointer, home.writableFilePointer())));
     }
 
     /** Switch the Ed25519 writing spaces nested in a space to hybrid writers, top down, including those nested in
@@ -555,18 +570,27 @@ public class UserContext {
                 .thenCompose(found -> Futures.reduceAll(IntStream.range(0, found.nestedWritingSpaces.size())
                                 .mapToObj(i -> new NestedSpace(found.nestedWritingSpaces.get(i), found.nestedHolders.get(i), space.signingPair()))
                                 .collect(Collectors.toList()), true,
-                        (b, n) -> network.getFile(n.cap, username).thenCompose(nested -> {
+                        (b, n) -> getSpace(n.cap).thenCompose(nested -> {
                             if (nested.isEmpty() || ! nested.get().isWritable())
                                 return Futures.of(b);
                             if (! n.cap.writer.isIdentity())
                                 return switchNestedSpaces(nested.get(), quotas);
                             return switchSpace(nested.get(), n.holderSigner, Optional.of(n), Collections.emptyList(), quotas)
-                                    .thenCompose(newCap -> network.getFile(newCap, username))
-                                    .thenCompose(moved -> moved.isPresent() ?
-                                            switchNestedSpaces(moved.get(), quotas) :
-                                            Futures.of(b));
+                                    .thenCompose(this::getSpace)
+                                    .thenCompose(moved -> switchNestedSpaces(moved.orElseThrow(() ->
+                                            new IllegalStateException("Couldn't read a writing space after moving it")), quotas));
                         }),
                         (a, b) -> a && b));
+    }
+
+    /** A writing space by its cap. Unlike NetworkAccess.getFile, a read that fails is an error, so that only a space
+     *  that is gone is empty, and one we couldn't read is left for the next login to move
+     */
+    private CompletableFuture<Optional<FileWrapper>> getSpace(AbsoluteCapability cap) {
+        return network.synchronizer.readOnlyValue(cap.owner, cap.writer)
+                .thenCompose(version -> ! version.contains(cap.writer) ?
+                        Futures.of(Optional.<FileWrapper>empty()) :
+                        network.getFile(version, cap, Optional.empty(), username));
     }
 
     /** Move a writing space to a new hybrid writer in one atomic commit to the writers involved: the new writer is
@@ -583,14 +607,64 @@ public class UserContext {
                                                                       Optional<NestedSpace> from,
                                                                       List<WritableAbsoluteCapability> alsoLinked,
                                                                       Map<PublicKeyHash, Long> quotas) {
-        return switchSpace(space, parent, from, alsoLinked, quotas, 5);
+        PublicKeyHash owner = signer.publicKeyHash;
+        // The new writer is created in a commit of its own first, once for all the attempts. A server without bulk
+        // commits takes its owner's update before the writer exists, which mustn't yet point the holder at it
+        return writeSynchronizer.applyComplexComputation(owner, parent,
+                        (s, c) -> CryptreeNode.initAndAuthoriseSigner(owner, parent, SigningKeyPair.randomWriter(crypto), network, s, c)
+                                .thenApply(p -> new Pair<>(new Snapshot(parent.publicKeyHash, p.left.get(parent.publicKeyHash)),
+                                        new Pair<>(p.right, p.left.get(p.right)))))
+                .thenCompose(made -> {
+                    SigningPrivateKeyAndPublicHash newSigner = made.right.left;
+                    CommittedWriterData empty = made.right.right;
+                    return Futures.asyncExceptionally(
+                            () -> switchSpace(space, parent, newSigner, empty, from, alsoLinked, 5)
+                                    .thenCompose(newCap -> newCap.writer.equals(newSigner.publicKeyHash) ?
+                                            Futures.of(newCap) :
+                                            removeUnusedWriter(parent, newSigner, empty, 3).thenApply(x -> newCap)),
+                            t -> removeUnusedWriter(parent, newSigner, empty, 3).thenCompose(x -> Futures.errored(t)));
+                })
+                // once the move has landed, so that a failure here doesn't take the writer now in use for an unused one
+                .thenCompose(newCap -> {
+                    PublicKeyHash old = space.writer();
+                    return ! quotas.containsKey(old) ?
+                            Futures.of(newCap) :
+                            network.spaceUsage.setWriterQuota(signer, newCap.writer, Optional.of(quotas.get(old)))
+                                    .thenCompose(x -> network.spaceUsage.setWriterQuota(signer, old, Optional.empty())
+                                            .exceptionally(t -> false))
+                                    .thenApply(x -> newCap);
+                });
+    }
+
+    /** Take back a new writer that no move used, as far as we can, so that moves that fail don't each leave one behind.
+     *  Its pointer goes in the same commit, from the empty version it was created at, so that a writer whose move
+     *  did land, unknown to us, is left as it is. Tried again if it fails, as its owner may be being written to.
+     */
+    private CompletableFuture<Boolean> removeUnusedWriter(SigningPrivateKeyAndPublicHash parent,
+                                                          SigningPrivateKeyAndPublicHash unused,
+                                                          CommittedWriterData empty,
+                                                          int attempts) {
+        PublicKeyHash owner = signer.publicKeyHash;
+        return Futures.asyncExceptionally(
+                () -> writeSynchronizer.applyComplexUpdate(owner, parent,
+                                (s, c) -> IpfsTransaction.call(owner,
+                                                tid -> c.commit(owner, unused, Optional.<WriterData>empty(), empty, tid), network.dhtClient)
+                                        .thenCompose(x -> CryptreeNode.deAuthoriseSigner(owner, parent, unused.publicKeyHash, network, s, c)))
+                        .thenApply(x -> true),
+                t -> {
+                    if (attempts > 1)
+                        return removeUnusedWriter(parent, unused, empty, attempts - 1);
+                    LOG.log(Level.INFO, "Couldn't remove the unused new writer " + unused.publicKeyHash, t);
+                    return Futures.of(false);
+                });
     }
 
     private CompletableFuture<WritableAbsoluteCapability> switchSpace(FileWrapper space,
                                                                       SigningPrivateKeyAndPublicHash parent,
+                                                                      SigningPrivateKeyAndPublicHash newSigner,
+                                                                      CommittedWriterData empty,
                                                                       Optional<NestedSpace> from,
                                                                       List<WritableAbsoluteCapability> alsoLinked,
-                                                                      Map<PublicKeyHash, Long> quotas,
                                                                       int attempts) {
         PublicKeyHash owner = signer.publicKeyHash;
         WritableAbsoluteCapability oldCap = space.writableFilePointer();
@@ -609,11 +683,8 @@ public class UserContext {
                             return root.getDirectChildrenCapabilities(oldCap, v0, network)
                                     .thenApply(children -> new Pair<>(new Snapshot(parent.publicKeyHash, v0.get(parent.publicKeyHash)),
                                             (WritableAbsoluteCapability) children.iterator().next().cap));
-                        return CryptreeNode.initAndAuthoriseSigner(owner, parent, SigningKeyPair.randomWriter(crypto), network, v0, c)
-                                .thenCompose(p -> IpfsTransaction.call(owner, tid -> {
-                                    SigningPrivateKeyAndPublicHash newSigner = p.right;
+                        return IpfsTransaction.call(owner, tid -> {
                                     WritableAbsoluteCapability newCap = oldCap.withSigner(newSigner.publicKeyHash);
-                                    CommittedWriterData empty = p.left.get(newSigner);
                                     // the cryptree is a content addressed champ, and nodes in one writing space name
                                     // their children without a writer, so the new writer takes the old one's as it is
                                     CryptreeNode newRoot = root.withWriterLink(oldCap.rBaseKey,
@@ -624,7 +695,7 @@ public class UserContext {
                                                         .withWritingKey(Optional.of(from.get().holderSigner.publicKeyHash)));
                                     CryptreeNode rewritten = newRoot;
                                     return c.commit(owner, newSigner, empty.props.get().withChamp(oldVersion.props.get().tree.get()), empty, tid)
-                                            .thenApply(p.left::mergeAndOverwriteWith)
+                                            .thenApply(v0::mergeAndOverwriteWith)
                                             .thenCompose(v -> network.uploadChunk(v, c, rewritten, owner, oldCap.getMapKey(), newSigner, tid))
                                             .thenCompose(v -> from.isPresent() ?
                                                     pointHolderAt(from.get(), newCap, space.getFileProperties(), v, c) :
@@ -634,7 +705,7 @@ public class UserContext {
                                                     from.map(f -> f.holderSigner.publicKeyHash), alsoLinked, v, c, tid))
                                             // later steps change the other writers, so the lock keeps only its own
                                             .thenApply(v -> new Pair<>(new Snapshot(parent.publicKeyHash, v.get(parent.publicKeyHash)), newCap));
-                                }, network.dhtClient));
+                                }, network.dhtClient);
                     });
                 }))
                 .thenApply(p -> p.right);
@@ -648,14 +719,8 @@ public class UserContext {
                                 return Futures.errored(t);
                             // the old writer moved under us, so start again from where it is now
                             LOG.log(Level.INFO, "Retrying the move of " + oldCap.writer + " to a hybrid writer", t);
-                            return switchSpace(space, parent, from, alsoLinked, quotas, attempts - 1);
-                        })
-                .thenCompose(newCap -> ! quotas.containsKey(oldCap.writer) ?
-                        Futures.of(newCap) :
-                        network.spaceUsage.setWriterQuota(signer, newCap.writer, Optional.of(quotas.get(oldCap.writer)))
-                                .thenCompose(x -> network.spaceUsage.setWriterQuota(signer, oldCap.writer, Optional.empty())
-                                        .exceptionally(t -> false))
-                                .thenApply(x -> newCap));
+                            return switchSpace(space, parent, newSigner, empty, from, alsoLinked, attempts - 1);
+                        });
     }
 
     /** Replace an old writer's champ with links, under its old keys, to where its space's root, and the given
@@ -733,39 +798,116 @@ public class UserContext {
                                         network, crypto.random, crypto.hasher)));
     }
 
-    /** Send a directory's shares again, and point its links at the new caps. Each step's snapshot is merged in, as
-     *  some return only the writers they touched. A link is updated from its current value, which an earlier move
-     *  that stopped before its commit point may have changed.
+    /** Send a directory's shares again. Each step's snapshot is merged in, as some return only the writers they
+     *  touched. One that fails is noted in unsent and doesn't stop the others.
      */
-    private CompletableFuture<Snapshot> reshareAfterMove(Path dir, SharedWithState state, Snapshot in, Committer c) {
+    private CompletableFuture<Snapshot> reshareAfterMove(Path dir,
+                                                         SharedWithState state,
+                                                         Map<String, Optional<Set<AbsoluteCapability>>> sent,
+                                                         List<String> unsent,
+                                                         Snapshot in,
+                                                         Committer c) {
         return Futures.<Snapshot, Map.Entry<String, Set<String>>>reduceAll(state.readShares().entrySet(), in,
-                        (s, e) -> orSkip(s, "read share of " + dir.resolve(e.getKey()),
-                                () -> shareReadAccessWith(dir.resolve(e.getKey()), e.getValue(), s, c).thenApply(r -> s.mergeAndOverwriteWith(r))),
+                        (s, e) -> orNote(unsent, "read share of " + dir.resolve(e.getKey()), s,
+                                () -> shareAgain(dir.resolve(e.getKey()), e.getValue(), false, sent, s, c)),
                         (a, b) -> b)
                 .thenCompose(s2 -> Futures.<Snapshot, Map.Entry<String, Set<String>>>reduceAll(state.writeShares().entrySet(), s2,
-                        (s, e) -> orSkip(s, "write share of " + dir.resolve(e.getKey()),
-                                () -> sendWriteCapToAll(dir.resolve(e.getKey()), e.getValue(), s, c).thenApply(r -> s.mergeAndOverwriteWith(r))),
-                        (a, b) -> b))
-                .thenCompose(s3 -> Futures.<Snapshot, Map.Entry<String, Set<LinkProperties>>>reduceAll(state.links().entrySet(), s3,
-                        (s, e) -> Futures.<Snapshot, LinkProperties>reduceAll(e.getValue(), s,
-                                (v, link) -> orSkip(v, "secret link to " + dir.resolve(e.getKey()),
-                                        () -> v.withWriter(signer.publicKeyHash, signer.publicKeyHash, network)
-                                        .thenCompose(withId -> withId.get(signer).props.get()
-                                                .getSecretLinkChamp(signer.publicKeyHash, mirrorBat, network.dhtClient, crypto.hasher)
-                                                .thenCompose(champ -> champ.getValueHash(link.label))
-                                                .thenCompose(current -> updateSecretLink(dir.resolve(e.getKey()).toString(),
-                                                        link.withExisting(current), withId, c))
-                                                .thenApply(r -> withId.mergeAndOverwriteWith(r)))),
-                                (a, b) -> b),
+                        (s, e) -> orNote(unsent, "write share of " + dir.resolve(e.getKey()), s,
+                                () -> shareAgain(dir.resolve(e.getKey()), e.getValue(), true, sent, s, c)),
                         (a, b) -> b));
     }
 
-    /** A share that can't be sent again, e.g. to a former friend or of a file that is gone, mustn't stop the others */
-    private static CompletableFuture<Snapshot> orSkip(Snapshot in, String what, Supplier<CompletableFuture<Snapshot>> step) {
-        return Futures.asyncExceptionally(step, t -> {
+    private static CompletableFuture<Snapshot> orNote(List<String> unsent, String what, Snapshot in, Supplier<CompletableFuture<Snapshot>> step) {
+        return Futures.asyncExceptionally(() -> step.get().thenApply(in::mergeAndOverwriteWith), t -> {
             LOG.log(Level.WARNING, "Couldn't send the " + what + " again after moving to hybrid writers", t);
+            unsent.add(what);
             return Futures.of(in);
         });
+    }
+
+    /** Send a file's cap again to those it is shared with. Left out, as they can never be sent again: a file that
+     *  can't be shared again, and anyone whose sharing folder is gone, e.g. a former friend. Those who have the cap
+     *  already, from a move that stopped later on, aren't sent it twice.
+     */
+    private CompletableFuture<Snapshot> shareAgain(Path path,
+                                                   Set<String> with,
+                                                   boolean writable,
+                                                   Map<String, Optional<Set<AbsoluteCapability>>> sent,
+                                                   Snapshot s,
+                                                   Committer c) {
+        return canSendAgain(path.toString(), writable, s).thenCompose(file -> {
+            if (file.isEmpty()) {
+                LOG.fine("Not sharing " + path + " again after moving to hybrid writers");
+                return Futures.of(s);
+            }
+            AbsoluteCapability cap = writable ? file.get().writableFilePointer() : file.get().getPointer().capability.readOnly();
+            return Futures.reduceAll(with, new HashSet<String>(),
+                            (to, name) -> sentTo(name, writable, sent, s).thenApply(caps -> {
+                                // added now, as the snapshot we read the store at won't show what we add to it
+                                if (caps.isPresent() && caps.get().add(cap))
+                                    to.add(name);
+                                return to;
+                            }),
+                            (a, b) -> b)
+                    .thenCompose(to -> writable ?
+                            sendWriteCapToAll(path, to, s, c) :
+                            shareReadAccessWith(path, to, s, c));
+        });
+    }
+
+    /** The caps in the store we share things with someone through, read once in a move, or empty if their sharing
+     *  folder is gone
+     */
+    private CompletableFuture<Optional<Set<AbsoluteCapability>>> sentTo(String name,
+                                                                        boolean writable,
+                                                                        Map<String, Optional<Set<AbsoluteCapability>>> sent,
+                                                                        Snapshot s) {
+        String store = name + (writable ? "/w" : "/r");
+        if (sent.containsKey(store))
+            return Futures.of(sent.get(store));
+        return getAfterRetry("/" + username + "/shared/" + name, s)
+                .thenCompose(sharing -> sharing.isEmpty() ?
+                        Futures.of(Optional.<Set<AbsoluteCapability>>empty()) :
+                        CapabilityStore.getSharedCaps(sharing.get(), writable, network, crypto).thenApply(Optional::of))
+                .thenApply(caps -> {
+                    sent.put(store, caps);
+                    return caps;
+                });
+    }
+
+    /** Point a link at the new caps of its files, from its current value, which an earlier move that stopped before
+     *  its commit point may have changed. Left out, as they can never be sent again: a link that has been deleted,
+     *  whose label a stale record still names, and one with a file that can't be shared again or isn't ours.
+     */
+    private CompletableFuture<Snapshot> linkAgain(String path, LinkProperties link, Snapshot s, Committer c) {
+        List<Pair<String, Boolean>> files = link.members.isEmpty() ?
+                Collections.singletonList(new Pair<>(path, link.isLinkWritable)) :
+                link.members.stream().map(m -> new Pair<>(m.path, m.writable)).collect(Collectors.toList());
+        return Futures.reduceAll(files, true,
+                        (all, f) -> canSendAgain(f.left, f.right, s)
+                                .thenApply(file -> all && file.filter(x -> x.owner().equals(signer.publicKeyHash)).isPresent()),
+                        (a, b) -> a && b)
+                .thenCompose(all -> {
+                    if (all)
+                        return updateSecretLinkAgain(path, link, s, c);
+                    LOG.fine("Not sending the secret link to " + path + " again after moving to hybrid writers");
+                    return Futures.of(s);
+                });
+    }
+
+    /** A file whose share or link can be sent again, or empty if it never can: it is gone, or it was shared for
+     *  writing and is no longer a writing space of its own
+     */
+    private CompletableFuture<Optional<FileWrapper>> canSendAgain(String path, boolean writable, Snapshot s) {
+        return getAfterRetry(path, s).thenApply(file -> file.filter(f -> ! writable ||
+                f.getPointer().getParentCap().writer.filter(parent -> ! parent.equals(f.writer())).isPresent()));
+    }
+
+    /** By path, read a second time if the first finds nothing: a read can come back empty, rather than failing, when
+     *  a block it wanted isn't there. Empty twice is taken to mean it is gone, which it may still not be.
+     */
+    private CompletableFuture<Optional<FileWrapper>> getAfterRetry(String path, Snapshot s) {
+        return getByPath(path, s).thenCompose(file -> file.isPresent() ? Futures.of(file) : getByPath(path, s));
     }
 
     /** Publish each published file again, with its cap under its new writer */
@@ -781,7 +923,7 @@ public class UserContext {
                     .thenCompose(pubCaps -> allPublished(pubCaps, "")
                             // every one, as a move that stopped part way may have published caps that are now gone
                             .thenCompose(published -> Futures.reduceAll(published, pubCaps,
-                                    (fs, p) -> getByPath(p.left).thenCompose(file -> {
+                                    (fs, p) -> getAfterRetry(p.left, s).thenCompose(file -> {
                                         if (file.isEmpty())
                                             return Futures.of(fs);
                                         AbsoluteCapability now = file.get().getPointer().capability.readOnly();
